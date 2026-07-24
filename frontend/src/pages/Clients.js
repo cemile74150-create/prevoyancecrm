@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import Layout from "@/components/Layout";
@@ -18,15 +18,20 @@ const handleSaved = async () => {
   await load();
   setDialog(false);
 };
-  const load = async () => {
-    const res = await api.get("/clients", { params: q ? { q } : {} });
-    setClients(res.data);
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const load = useCallback(async () => {
+  const res = await api.get("/clients", {
+    params: q ? { q } : {},
+  });
+  setClients(res.data);
+}, [q]);
+ 
   useEffect(() => {
-    const t = setTimeout(load, 200);
-    return () => clearTimeout(t);
-  }, [q]);
+  const t = setTimeout(() => {
+    load();
+  }, 200);
+
+  return () => clearTimeout(t);
+}, [load]);
 
   return (
     <Layout>
