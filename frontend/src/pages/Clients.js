@@ -22,6 +22,7 @@ const handleSaved = async () => {
     const res = await api.get("/clients", { params: q ? { q } : {} });
     setClients(res.data);
   };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const t = setTimeout(load, 200);
     return () => clearTimeout(t);

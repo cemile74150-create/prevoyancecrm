@@ -50,6 +50,7 @@ export default function ClientDetail() {
     ]);
     setClient(c.data); setNotes(n.data); setDocs(d.data); setAppts(a.data); setActions(h.data);
   };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadAll(); }, [id]);
 
   const changeStatut = async (statut) => {
