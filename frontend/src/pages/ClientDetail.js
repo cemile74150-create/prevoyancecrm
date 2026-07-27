@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import ClientFormDialog from "@/components/ClientFormDialog";
 import { STATUT_COLORS, STATUTS, DOC_CATEGORIES } from "@/lib/constants";
+import { DOCUMENT_CHECKLIST_ITEMS, getInitialDocumentChecklistState, getNextDocumentStatus } from "@/lib/documentChecklist";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
   ArrowLeft, Pencil, Trash2, Mail, Phone, MapPin, Briefcase, Users2, AlertTriangle,
@@ -36,6 +38,7 @@ export default function ClientDetail() {
   const [editDialog, setEditDialog] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [uploadCat, setUploadCat] = useState("Certificat LPP");
+  const [documentChecklist, setDocumentChecklist] = useState({});
   const [apptDialog, setApptDialog] = useState(false);
   const [apptForm, setApptForm] = useState({ titre: "", date: "", type: "Rendez-vous", lieu: "" });
   const fileRef = useRef();
@@ -52,6 +55,10 @@ export default function ClientDetail() {
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadAll(); }, [id]);
+
+  useEffect(() => {
+    setDocumentChecklist(getInitialDocumentChecklistState(DOCUMENT_CHECKLIST_ITEMS));
+  }, [id]);
 
   const changeStatut = async (statut) => {
     setClient((c) => ({ ...c, statut }));
@@ -97,6 +104,13 @@ export default function ClientDetail() {
     await api.delete(`/clients/${id}`);
     toast.success("Dossier supprimé");
     navigate("/clients");
+  };
+
+  const toggleDocumentStatus = (documentName, statusKey) => {
+    setDocumentChecklist((prev) => ({
+      ...prev,
+      [documentName]: getNextDocumentStatus(prev[documentName], statusKey),
+    }));
   };
 
   const createAppt = async () => {
@@ -248,23 +262,55 @@ export default function ClientDetail() {
                   <input ref={fileRef} type="file" className="hidden" onChange={uploadDoc} data-testid="doc-file-input" />
                   <Button onClick={() => fileRef.current?.click()} data-testid="upload-doc-btn" className="bg-[#002FA7] hover:bg-[#00248a] gap-1.5"><Upload className="h-4 w-4" />Téléverser</Button>
                 </div>
-                {docs.length === 0 ? <p className="text-sm text-muted-foreground py-8 text-center">Aucun document.</p> : (
-                  <div className="space-y-2">
-                    {docs.map((d) => (
-                      <div key={d.id} data-testid={`doc-row-${d.id}`} className="flex items-center gap-3 p-3 rounded-md border border-border hover:bg-secondary transition-colors">
-                        <div className="h-9 w-9 rounded bg-red-50 text-red-600 flex items-center justify-center"><FileText className="h-4.5 w-4.5" /></div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{d.original_filename}</p>
-                          <p className="text-xs text-muted-foreground">{d.category} · {fmtSize(d.size)}</p>
+                <div className="border rounded-md p-4 bg-secondary/30">
+                  <p className="text-sm font-semibold mb-3">Liste des documents</p>
+                  <div className="space-y-3">
+                    {DOCUMENT_CHECKLIST_ITEMS.map((documentName) => {
+                      const status = documentChecklist[documentName] || { sent: false, pending: false, received: false };
+                      return (
+                        <div key={documentName} className="flex flex-col gap-2 rounded-md border border-border bg-background px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                          <span className="text-sm font-medium">{documentName}</span>
+                          <div className="flex flex-wrap gap-3 text-sm">
+                            {[
+                              { key: 'sent', label: 'Envoyé' },
+                              { key: 'pending', label: 'En attente' },
+                              { key: 'received', label: 'Reçu' },
+                            ].map((option) => (
+                              <label key={option.key} className="flex items-center gap-2 cursor-pointer">
+                                <Checkbox
+                                  checked={status[option.key]}
+                                  onCheckedChange={() => toggleDocumentStatus(documentName, option.key)}
+                                />
+                                <span>{option.label}</span>
+                              </label>
+                            ))}
+                          </div>
                         </div>
-                        <a href={`${API}/documents/${d.id}/download`} target="_blank" rel="noreferrer" data-testid={`doc-download-${d.id}`}>
-                          <Button size="icon" variant="ghost"><Download className="h-4 w-4" /></Button>
-                        </a>
-                        <Button size="icon" variant="ghost" onClick={() => deleteDoc(d.id)} className="text-destructive hover:text-destructive" data-testid={`doc-delete-${d.id}`}><Trash2 className="h-4 w-4" /></Button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                )}
+                </div>
+
+                <div className="mt-6 border-t border-border pt-4">
+                  <p className="text-sm font-semibold mb-3">Documents téléversés</p>
+                  {docs.length === 0 ? <p className="text-sm text-muted-foreground py-4 text-center">Aucun document.</p> : (
+                    <div className="space-y-2">
+                      {docs.map((d) => (
+                        <div key={d.id} data-testid={`doc-row-${d.id}`} className="flex items-center gap-3 p-3 rounded-md border border-border hover:bg-secondary transition-colors">
+                          <div className="h-9 w-9 rounded bg-red-50 text-red-600 flex items-center justify-center"><FileText className="h-4.5 w-4.5" /></div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{d.original_filename}</p>
+                            <p className="text-xs text-muted-foreground">{d.category} · {fmtSize(d.size)}</p>
+                          </div>
+                          <a href={`${API}/documents/${d.id}/download`} target="_blank" rel="noreferrer" data-testid={`doc-download-${d.id}`}>
+                            <Button size="icon" variant="ghost"><Download className="h-4 w-4" /></Button>
+                          </a>
+                          <Button size="icon" variant="ghost" onClick={() => deleteDoc(d.id)} className="text-destructive hover:text-destructive" data-testid={`doc-delete-${d.id}`}><Trash2 className="h-4 w-4" /></Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </Card>
             </TabsContent>
 
