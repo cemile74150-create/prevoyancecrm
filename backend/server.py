@@ -1,4 +1,6 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Query, Response, UploadFile, File, Form, Request
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -20,6 +22,10 @@ db = client[os.environ['DB_NAME']]
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
+
+@app.get("/health")
+async def health_check():
+    return JSONResponse(status_code=200, content={"status": "ok"})
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -441,16 +447,43 @@ async def root():
 
 app.include_router(api_router)
 
+cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=[origin.strip() for origin in cors_origins if origin.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Serve React production build (same origin as /api) when present
+FRONTEND_BUILD = Path(__file__).resolve().parent.parent / "frontend" / "build"
+if FRONTEND_BUILD.exists():
+    static_dir = FRONTEND_BUILD / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # API and health already registered above; this catches frontend routes
+        candidate = FRONTEND_BUILD / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        index = FRONTEND_BUILD / "index.html"
+        if index.exists():
+            return FileResponse(index)
+        raise HTTPException(status_code=404, detail="Frontend non déployé")
+else:
+    logger.warning("Frontend build introuvable à %s", FRONTEND_BUILD)
+
 @app.on_event("startup")
 async def startup():
+    # #region agent log
+    try:
+        logger.info("DEBUG_STARTUP frontend_build_exists=%s mongo_set=%s", FRONTEND_BUILD.exists(), bool(os.environ.get("MONGO_URL")))
+    except Exception:
+        pass
+    # #endregion
     try:
         init_storage()
         logger.info("Storage initialized")

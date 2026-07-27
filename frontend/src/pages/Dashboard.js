@@ -14,9 +14,14 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
   PieChart, Pie, Cell,
 } from "recharts";
+import { getDashboardTarget } from "@/lib/dashboardRoutes";
 
-const KPI = ({ icon: Icon, label, value, accent, testid }) => (
-  <Card data-testid={testid} className="p-6 border-border hover:-translate-y-[2px] transition-transform duration-200 cursor-default">
+const KPI = ({ icon: Icon, label, value, accent, testid, onClick }) => (
+  <Card
+    data-testid={testid}
+    onClick={onClick}
+    className="p-6 border-border hover:-translate-y-[2px] transition-transform duration-200 cursor-pointer"
+  >
     <div className="flex items-start justify-between">
       <div>
         <p className="text-sm text-muted-foreground font-medium">{label}</p>
@@ -35,8 +40,31 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const load = async () => {
-    const res = await api.get("/dashboard/stats");
-    setStats(res.data);
+    try {
+      const res = await api.get("/dashboard/stats");
+      setStats(res.data);
+    } catch (e) {
+      // #region agent log
+      fetch("http://127.0.0.1:7823/ingest/ab1b10fc-23b9-4892-bcb8-eb93db856015", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5656aa" },
+        body: JSON.stringify({
+          sessionId: "5656aa",
+          runId: "deploy-verify",
+          hypothesisId: "H2-dashboard-api",
+          location: "frontend/src/pages/Dashboard.js:load",
+          message: "dashboard stats failed",
+          data: { err: String(e?.message || e), status: e?.response?.status || null },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
+      setStats({
+        nouveaux: 0, en_attente_docs: 0, en_analyse: 0, a_presenter: 0, termines: 0,
+        urgent: 0, total: 0, pending_tasks: 0, statuts: [], by_statut: {}, monthly: [],
+        today_appointments: [], upcoming_tasks: [],
+      });
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -44,6 +72,11 @@ export default function Dashboard() {
 
   const pieData = stats.statuts.map((s) => ({ name: s, value: stats.by_statut[s] })).filter((d) => d.value > 0);
   const pieColors = ["#3b82f6", "#f59e0b", "#10b981", "#a855f7", "#ec4899", "#06b6d4", "#94a3b8"];
+
+  const goToDashboardTarget = (key) => {
+    const target = getDashboardTarget(key);
+    navigate(`${target.path}${target.search || ""}`);
+  };
 
   return (
     <Layout>
@@ -60,14 +93,14 @@ export default function Dashboard() {
 
         {/* KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <KPI testid="kpi-nouveaux" icon={FilePlus2} label="Nouveaux dossiers" value={stats.nouveaux} accent="bg-blue-100 text-blue-700" />
-          <KPI testid="kpi-attente-docs" icon={Clock} label="En attente de documents" value={stats.en_attente_docs} accent="bg-amber-100 text-amber-700" />
-          <KPI testid="kpi-analyse" icon={FileSearch} label="En cours d'analyse" value={stats.en_analyse} accent="bg-purple-100 text-purple-700" />
-          <KPI testid="kpi-presenter" icon={Presentation} label="Prêts à présenter" value={stats.a_presenter} accent="bg-cyan-100 text-cyan-700" />
-          <KPI testid="kpi-termines" icon={CheckCircle2} label="Dossiers terminés" value={stats.termines} accent="bg-emerald-100 text-emerald-700" />
-          <KPI testid="kpi-urgents" icon={AlertTriangle} label="Dossiers urgents" value={stats.urgent} accent="bg-red-100 text-red-700" />
-          <KPI testid="kpi-total" icon={FolderKanban} label="Total des dossiers" value={stats.total} accent="bg-slate-100 text-slate-700" />
-          <KPI testid="kpi-taches" icon={ListTodo} label="Tâches en attente" value={stats.pending_tasks} accent="bg-indigo-100 text-indigo-700" />
+          <KPI testid="kpi-nouveaux" icon={FilePlus2} label="Nouveaux dossiers" value={stats.nouveaux} accent="bg-blue-100 text-blue-700" onClick={() => goToDashboardTarget("nouveaux")} />
+          <KPI testid="kpi-attente-docs" icon={Clock} label="En attente de documents" value={stats.en_attente_docs} accent="bg-amber-100 text-amber-700" onClick={() => goToDashboardTarget("attente-docs")} />
+          <KPI testid="kpi-analyse" icon={FileSearch} label="En cours d'analyse" value={stats.en_analyse} accent="bg-purple-100 text-purple-700" onClick={() => goToDashboardTarget("analyse")} />
+          <KPI testid="kpi-presenter" icon={Presentation} label="Prêts à présenter" value={stats.a_presenter} accent="bg-cyan-100 text-cyan-700" onClick={() => goToDashboardTarget("presenter")} />
+          <KPI testid="kpi-termines" icon={CheckCircle2} label="Dossiers terminés" value={stats.termines} accent="bg-emerald-100 text-emerald-700" onClick={() => goToDashboardTarget("termines")} />
+          <KPI testid="kpi-urgents" icon={AlertTriangle} label="Dossiers urgents" value={stats.urgent} accent="bg-red-100 text-red-700" onClick={() => goToDashboardTarget("urgent")} />
+          <KPI testid="kpi-total" icon={FolderKanban} label="Total des dossiers" value={stats.total} accent="bg-slate-100 text-slate-700" onClick={() => goToDashboardTarget("total")} />
+          <KPI testid="kpi-taches" icon={ListTodo} label="Tâches en attente" value={stats.pending_tasks} accent="bg-indigo-100 text-indigo-700" onClick={() => goToDashboardTarget("taches")} />
         </div>
 
         {/* Charts + today */}

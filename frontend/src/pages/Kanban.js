@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import api from "@/lib/api";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -14,12 +14,23 @@ export default function Kanban() {
   const [dragId, setDragId] = useState(null);
   const [overCol, setOverCol] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const load = async () => {
     const res = await api.get("/clients");
     setClients(res.data);
   };
   useEffect(() => { load(); }, []);
+
+  const params = new URLSearchParams(location.search);
+  const selectedStatut = params.get("statut");
+  const selectedPriority = params.get("priorite");
+
+  const filteredClients = clients.filter((client) => {
+    if (selectedStatut && client.statut !== selectedStatut) return false;
+    if (selectedPriority && client.priorite !== selectedPriority) return false;
+    return true;
+  });
 
   const onDrop = async (statut) => {
     setOverCol(null);
@@ -50,9 +61,15 @@ export default function Kanban() {
         </Button>
       </div>
 
+      {(selectedStatut || selectedPriority) && (
+        <div className="mb-4 rounded-md border border-[#002FA7]/20 bg-[#002FA7]/5 px-4 py-3 text-sm text-[#002FA7]">
+          Affichage filtré : {selectedStatut || `priorité ${selectedPriority}`}
+        </div>
+      )}
+
       <div className="flex gap-4 overflow-x-auto pb-4" data-testid="kanban-board">
         {STATUTS.map((statut) => {
-          const items = clients.filter((c) => c.statut === statut);
+          const items = filteredClients.filter((c) => c.statut === statut);
           return (
             <div
               key={statut}

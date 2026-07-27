@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+.git
+.gitignore
+.emergent
+memory
+tests
+test_reports
+**/__pycache__
+**/*.pyc
+frontend/build
+frontend/src.zip
+**/.env
+.env
+*.md
+.cursor
+debug-*.log
