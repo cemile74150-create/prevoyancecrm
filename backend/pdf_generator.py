@@ -24,7 +24,7 @@ DOCUMENT_TEMPLATES = [
         "mode": "acroform",
         "output_prefix": "Procuration_AVS_LPP",
         "category": "Procuration",
-        "checklist_item": "Procuration",
+        "checklist_item": "Demande LPP",
     },
     {
         "id": "recherche_avoirs_lpp",
@@ -34,7 +34,7 @@ DOCUMENT_TEMPLATES = [
         "mode": "acroform",
         "output_prefix": "Recherche_avoirs_LPP",
         "category": "Formulaire de recherche LPP",
-        "checklist_item": "Formulaire Recherche LPP",
+        "checklist_item": "Demande LPP",
     },
     {
         "id": "calcul_rente_future",
@@ -54,7 +54,7 @@ DOCUMENT_TEMPLATES = [
         "mode": "acroform",
         "output_prefix": "Lettre_Recherche_LPP",
         "category": "Courriers",
-        "checklist_item": "Formulaire Recherche LPP",
+        "checklist_item": "Demande LPP",
     },
     {
         "id": "lettre_avs",
@@ -1759,3 +1759,51 @@ def extract_pension_funds_from_pdf(pdf_bytes: bytes) -> List[Dict[str, str]]:
         [f.get("name") for f in funds],
     )
     return funds
+
+
+def extract_3p_expiry_from_pdf(pdf_bytes: bytes) -> Optional[str]:
+    """
+    Detecte la date d'echeance d'une police 3e pilier.
+    Retourne YYYY-MM-DD ou None.
+    """
+    text = _extract_pdf_text(pdf_bytes)
+    if not text:
+        return None
+    flat = re.sub(r"[ \t]+", " ", text)
+    patterns = [
+        r"(?:date\s+d[e']?\s*)?(?:echeance|échéance)(?:\s+du\s+contrat)?(?:\s*:|\s+au|\s+le)?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        r"(?:echeance|échéance|ablauf|expiry)(?:\s*:|\s+au|\s+le|\s+am)?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        r"(?:echeance|échéance|ablauf|expiry)[^\n]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+    ]
+    candidates = []
+    for pat in patterns:
+        for m in re.finditer(pat, flat, flags=re.IGNORECASE):
+            candidates.append(m.group(1))
+    if not candidates:
+        lines = [ln.strip() for ln in flat.splitlines() if ln.strip()]
+        for i, ln in enumerate(lines):
+            if re.search(r"echeance|échéance|ablauf|expiry", ln, re.I):
+                chunk = ln + " " + (lines[i + 1] if i + 1 < len(lines) else "")
+                m = re.search(r"(\d{1,2}[./]\d{1,2}[./]\d{2,4})", chunk)
+                if m:
+                    candidates.append(m.group(1))
+
+    def _to_iso(raw: str):
+        raw = raw.strip()
+        for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%d.%m.%y", "%d/%m/%y"):
+            try:
+                dt = datetime.strptime(raw, fmt)
+                if dt.year < 100:
+                    dt = dt.replace(year=dt.year + 2000)
+                if dt.year < 1990:
+                    return None
+                return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        return None
+
+    for c in candidates:
+        iso = _to_iso(c)
+        if iso:
+            return iso
+    return None

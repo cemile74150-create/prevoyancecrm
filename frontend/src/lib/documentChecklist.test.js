@@ -1,12 +1,18 @@
-import { getInitialDocumentChecklistState, getNextDocumentStatus } from './documentChecklist';
+import { DOCUMENT_CHECKLIST_ITEMS, getInitialDocumentChecklistState, getNextDocumentStatus } from './documentChecklist';
 
 describe('document checklist helpers', () => {
   it('creates an empty checklist state for every document', () => {
-    const state = getInitialDocumentChecklistState(["Carte d'identité", 'Procuration']);
+    const state = getInitialDocumentChecklistState(["Carte d'identité", 'Demande LPP']);
     expect(state).toEqual({
       "Carte d'identité": { sent: false, received: false },
-      Procuration: { sent: false, received: false },
+      "Demande LPP": { sent: false, received: false },
     });
+  });
+
+  it('uses a single Demande LPP checklist item', () => {
+    expect(DOCUMENT_CHECKLIST_ITEMS).toContain('Demande LPP');
+    expect(DOCUMENT_CHECKLIST_ITEMS).not.toContain('Procuration');
+    expect(DOCUMENT_CHECKLIST_ITEMS).not.toContain('Formulaire Recherche LPP');
   });
 
   it('merges saved checklist values when provided', () => {

@@ -21,6 +21,7 @@ from pdf_generator import (
     generate_decompte_letters,
     get_template,
     extract_pension_funds_from_pdf,
+    extract_3p_expiry_from_pdf,
     fill_pdf_bytes_with_client,
     prepare_library_form_pdf,
     render_pdf_page_png,
@@ -119,6 +120,8 @@ class ClientBase(BaseModel):
     conseiller: Optional[str] = None
     agent_apporteur: Optional[str] = None
     linked_spouse_id: Optional[str] = None
+    dossier_id: Optional[str] = None
+    dossier_label: Optional[str] = None
     echeance_3p: Optional[str] = None
     statut: str = "Nouveau"
     priorite: str = "normale"
@@ -160,6 +163,9 @@ class GenerateDecompteRequest(BaseModel):
 
 class Echeance3PUpdate(BaseModel):
     echeance_3p: Optional[str] = None
+
+class LppCaisseTrackingUpdate(BaseModel):
+    lpp_caisse_tracking: List[dict] = Field(default_factory=list)
 
 class CreateSpouseRequest(BaseModel):
     prenom: str = ""
@@ -247,6 +253,51 @@ async def next_dossier_number(user_id: str) -> str:
     count = await db.clients.count_documents({"user_id": user_id})
     return f"DOS-{count + 1:04d}"
 
+async def _upsert_echeance_3p_reminder(user_id: str, client: dict, echeance_iso: Optional[str]):
+    """Create or update the open 3P reminder when the expiry is within one year."""
+    if not echeance_iso:
+        return
+    try:
+        due = datetime.fromisoformat(echeance_iso[:10])
+        days_left = (due - datetime.now()).days
+    except (TypeError, ValueError):
+        return
+    if not 0 <= days_left <= 365:
+        return
+    existing = await db.tasks.find_one({
+        "user_id": user_id, "client_id": client["id"], "type": "echeance_3p", "done": False,
+    }, {"_id": 0})
+    titre = f"Échéance 3e pilier — {client.get('prenom', '')} {client.get('nom', '')}".strip()
+    if existing:
+        await db.tasks.update_one({"id": existing["id"]}, {"$set": {"echeance": echeance_iso, "titre": titre}})
+    else:
+        await db.tasks.insert_one({
+            "id": str(uuid.uuid4()), "user_id": user_id, "client_id": client["id"],
+            "titre": titre, "echeance": echeance_iso, "priorite": "haute",
+            "type": "echeance_3p", "done": False, "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+def _lpp_tracking_from_funds(funds: List[dict], existing: Optional[List[dict]] = None) -> List[dict]:
+    previous = {
+        str(item.get("name") or "").strip().casefold(): item
+        for item in (existing or []) if item.get("name")
+    }
+    tracking = []
+    for fund in funds:
+        name = str(fund.get("name") or fund.get("nom") or "").strip()
+        if not name:
+            continue
+        prior = previous.get(name.casefold(), {})
+        tracking.append({
+            "id": prior.get("id") or str(uuid.uuid4()),
+            "name": name,
+            "address": fund.get("address") or fund.get("adresse") or "",
+            "reference": fund.get("reference") or fund.get("ref") or "",
+            "sent": bool(prior.get("sent")),
+            "received": bool(prior.get("received")),
+        })
+    return tracking
+
 # ---------------- Clients ----------------
 @api_router.get("/clients")
 async def list_clients(q: Optional[str] = None, statut: Optional[str] = None, user: User = Depends(get_current_user)):
@@ -268,6 +319,9 @@ async def create_client(payload: ClientCreate, user: User = Depends(get_current_
     doc["id"] = str(uuid.uuid4())
     doc["user_id"] = user.user_id
     doc["numero_dossier"] = await next_dossier_number(user.user_id)
+    doc["dossier_id"] = doc["id"]
+    married = "mari" in (doc.get("etat_civil") or "").casefold()
+    doc["dossier_label"] = f"Famille {doc['nom']}" if married else f"{doc['prenom']} {doc['nom']}".strip()
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
     doc["updated_at"] = doc["created_at"]
     await db.clients.insert_one(doc)
@@ -281,6 +335,46 @@ async def get_client(client_id: str, user: User = Depends(get_current_user)):
     if not c:
         raise HTTPException(status_code=404, detail="Client introuvable")
     return c
+
+@api_router.get("/dossiers/{dossier_id}")
+async def get_dossier(dossier_id: str, user: User = Depends(get_current_user)):
+    members = await db.clients.find(
+        {"user_id": user.user_id, "dossier_id": dossier_id}, {"_id": 0}
+    ).sort("created_at", 1).to_list(100)
+    if not members:
+        # Compat: ancien couple lié sans dossier_id partagé
+        primary = await db.clients.find_one({"id": dossier_id, "user_id": user.user_id}, {"_id": 0})
+        if not primary:
+            raise HTTPException(status_code=404, detail="Dossier introuvable")
+        members = [primary]
+        spouse_id = primary.get("linked_spouse_id")
+        if spouse_id:
+            spouse = await db.clients.find_one({"id": spouse_id, "user_id": user.user_id}, {"_id": 0})
+            if spouse:
+                members.append(spouse)
+        dossier_label = primary.get("dossier_label") or (
+            f"Famille {primary.get('nom', '')}" if len(members) > 1 else f"{primary.get('prenom', '')} {primary.get('nom', '')}".strip()
+        )
+        for m in members:
+            await db.clients.update_one(
+                {"id": m["id"]},
+                {"$set": {
+                    "dossier_id": dossier_id,
+                    "dossier_label": dossier_label,
+                    "numero_dossier": primary.get("numero_dossier"),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+            m["dossier_id"] = dossier_id
+            m["dossier_label"] = dossier_label
+            m["numero_dossier"] = primary.get("numero_dossier")
+    primary = members[0]
+    return {
+        "dossier_id": dossier_id,
+        "dossier_label": primary.get("dossier_label") or f"{primary.get('prenom', '')} {primary.get('nom', '')}".strip(),
+        "numero_dossier": primary.get("numero_dossier"),
+        "members": members,
+    }
 
 @api_router.put("/clients/{client_id}")
 async def update_client(client_id: str, payload: ClientCreate, user: User = Depends(get_current_user)):
@@ -317,6 +411,20 @@ async def update_document_checklist(client_id: str, payload: DocumentChecklistUp
         }},
     )
     return await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+
+@api_router.patch("/clients/{client_id}/lpp-caisse-tracking")
+async def update_lpp_caisse_tracking(client_id: str, payload: LppCaisseTrackingUpdate, user: User = Depends(get_current_user)):
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    tracking = [
+        {**entry, "id": entry.get("id") or str(uuid.uuid4()), "sent": bool(entry.get("sent")), "received": bool(entry.get("received"))}
+        for entry in payload.lpp_caisse_tracking if entry.get("name")
+    ]
+    await db.clients.update_one({"id": client_id, "user_id": user.user_id}, {"$set": {
+        "lpp_caisse_tracking": tracking, "updated_at": datetime.now(timezone.utc).isoformat(),
+    }})
+    return {"lpp_caisse_tracking": tracking}
 
 @api_router.delete("/clients/{client_id}")
 async def delete_client(client_id: str, user: User = Depends(get_current_user)):
@@ -386,7 +494,18 @@ async def _store_pdf_bytes(user_id: str, pdf_bytes: bytes, meta: dict, client_id
 
 @api_router.get("/clients/{client_id}/documents")
 async def list_documents(client_id: str, user: User = Depends(get_current_user)):
-    return await db.documents.find({"client_id": client_id, "user_id": user.user_id, "is_deleted": False}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    if c.get("dossier_id"):
+        members = await db.clients.find({"user_id": user.user_id, "dossier_id": c["dossier_id"]}, {"id": 1}).to_list(100)
+        member_ids = [member["id"] for member in members]
+        query = {"user_id": user.user_id, "is_deleted": False, "$or": [
+            {"client_id": {"$in": member_ids}}, {"dossier_id": c["dossier_id"]},
+        ]}
+    else:
+        query = {"client_id": client_id, "user_id": user.user_id, "is_deleted": False}
+    return await db.documents.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
 @api_router.post("/clients/{client_id}/documents")
 async def upload_document(
@@ -417,6 +536,7 @@ async def upload_document(
         size = len(data)
     doc = {
         "id": str(uuid.uuid4()), "user_id": user.user_id, "client_id": client_id,
+        "dossier_id": c.get("dossier_id"),
         "storage_path": storage_path, "original_filename": file.filename,
         "content_type": ctype, "size": size,
         "category": category,
@@ -425,8 +545,24 @@ async def upload_document(
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.documents.insert_one(doc)
+    detected_echeance = None
+    is_3p_police = checklist_item in {"Police 3e pilier", "Police de 3e pilier"} or category in {"Police 3e pilier", "Police de 3e pilier"}
+    if is_3p_police and (ext == "pdf" or ctype == "application/pdf"):
+        try:
+            detected_echeance = extract_3p_expiry_from_pdf(data)
+        except Exception:
+            logger.exception("Extraction échéance 3P échouée")
+        if detected_echeance:
+            await db.clients.update_one({"id": client_id, "user_id": user.user_id}, {"$set": {
+                "echeance_3p": detected_echeance, "updated_at": datetime.now(timezone.utc).isoformat(),
+            }})
+            await _upsert_echeance_3p_reminder(user.user_id, c, detected_echeance)
+            await db.documents.update_one({"id": doc["id"]}, {"$set": {"extracted_echeance_3p": detected_echeance}})
+            doc["extracted_echeance_3p"] = detected_echeance
     await log_action(user.user_id, client_id, f"Document ajouté: {file.filename} ({category})")
     doc.pop("_id", None)
+    doc["echeance_3p"] = detected_echeance
+    doc["echeance_3p_detected"] = bool(detected_echeance)
     return doc
 
 @api_router.get("/document-templates")
@@ -948,6 +1084,7 @@ async def parse_lpp_response(client_id: str, file: UploadFile = File(...), user:
         size = len(data)
     doc = {
         "id": str(uuid.uuid4()), "user_id": user.user_id, "client_id": client_id,
+        "dossier_id": c.get("dossier_id"),
         "storage_path": storage_path, "original_filename": file.filename or "reponse_lpp.pdf",
         "content_type": "application/pdf", "size": size,
         "category": "Réponse recherche LPP",
@@ -973,17 +1110,19 @@ async def parse_lpp_response(client_id: str, file: UploadFile = File(...), user:
     )
     doc["detected_funds"] = funds
     doc["fund_count"] = len(funds)
+    tracking = _lpp_tracking_from_funds(funds, c.get("lpp_caisse_tracking"))
     await db.clients.update_one(
         {"id": client_id, "user_id": user.user_id},
         {"$set": {
             "lpp_detected_funds": funds,
+            "lpp_caisse_tracking": tracking,
             "lpp_response_doc_id": doc["id"],
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
     )
     logger.info("parse-lpp-response client=%s funds=%s", client_id, len(funds))
     await log_action(user.user_id, client_id, f"Réponse LPP analysée: {len(funds)} caisse(s) détectée(s)")
-    return {"document": doc, "funds": funds, "fund_count": len(funds)}
+    return {"document": doc, "funds": funds, "fund_count": len(funds), "lpp_caisse_tracking": tracking}
 
 @api_router.post("/clients/{client_id}/reparse-lpp-response/{doc_id}")
 async def reparse_lpp_response(client_id: str, doc_id: str, user: User = Depends(get_current_user)):
@@ -1014,14 +1153,18 @@ async def reparse_lpp_response(client_id: str, doc_id: str, user: User = Depends
         {"id": doc_id},
         {"$set": {"detected_funds": funds, "fund_count": len(funds)}},
     )
+    tracking = _lpp_tracking_from_funds(funds, c.get("lpp_caisse_tracking"))
     await db.clients.update_one(
         {"id": client_id},
-        {"$set": {"lpp_detected_funds": funds, "lpp_response_doc_id": doc_id}},
+        {"$set": {
+            "lpp_detected_funds": funds, "lpp_response_doc_id": doc_id,
+            "lpp_caisse_tracking": tracking, "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
     )
     doc["detected_funds"] = funds
     doc["fund_count"] = len(funds)
     await log_action(user.user_id, client_id, f"Réanalyse LPP: {len(funds)} caisse(s)")
-    return {"document": doc, "funds": funds, "fund_count": len(funds)}
+    return {"document": doc, "funds": funds, "fund_count": len(funds), "lpp_caisse_tracking": tracking}
 
 @api_router.post("/clients/{client_id}/generate-decompte-letters")
 async def generate_decompte_for_funds(client_id: str, payload: GenerateDecompteRequest, user: User = Depends(get_current_user)):
@@ -1059,7 +1202,8 @@ async def create_spouse(client_id: str, payload: CreateSpouseRequest, user: User
     if not spouse_prenom or not spouse_nom:
         raise HTTPException(status_code=400, detail="Prénom et nom du conjoint requis")
 
-    count = await db.clients.count_documents({"user_id": user.user_id})
+    dossier_id = c.get("dossier_id") or c["id"]
+    dossier_label = c.get("dossier_label") or f"Famille {c.get('nom', '')}".strip()
     spouse = {
         "id": str(uuid.uuid4()),
         "user_id": user.user_id,
@@ -1087,7 +1231,9 @@ async def create_spouse(client_id: str, payload: CreateSpouseRequest, user: User
         "echeance_3p": None,
         "statut": "Nouveau",
         "priorite": "normale",
-        "numero_dossier": f"DOS-{count + 1:04d}",
+        "numero_dossier": c.get("numero_dossier"),
+        "dossier_id": dossier_id,
+        "dossier_label": dossier_label,
         "document_checklist": {},
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -1098,6 +1244,8 @@ async def create_spouse(client_id: str, payload: CreateSpouseRequest, user: User
         {"$set": {
             "linked_spouse_id": spouse["id"],
             "conjoint": f"{spouse_prenom} {spouse_nom}".strip(),
+            "dossier_id": dossier_id,
+            "dossier_label": dossier_label,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
     )
@@ -1114,35 +1262,7 @@ async def update_echeance_3p(client_id: str, payload: Echeance3PUpdate, user: Us
         {"id": client_id, "user_id": user.user_id},
         {"$set": {"echeance_3p": payload.echeance_3p, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
-    # Create/update reminder task if within 1 year
-    if payload.echeance_3p:
-        try:
-            due = datetime.fromisoformat(payload.echeance_3p[:10])
-            days_left = (due - datetime.now()).days
-            if 0 <= days_left <= 365:
-                existing = await db.tasks.find_one({
-                    "user_id": user.user_id,
-                    "client_id": client_id,
-                    "type": "echeance_3p",
-                    "done": False,
-                }, {"_id": 0})
-                titre = f"Échéance 3e pilier — {c.get('prenom', '')} {c.get('nom', '')}".strip()
-                if existing:
-                    await db.tasks.update_one({"id": existing["id"]}, {"$set": {"echeance": payload.echeance_3p, "titre": titre}})
-                else:
-                    await db.tasks.insert_one({
-                        "id": str(uuid.uuid4()),
-                        "user_id": user.user_id,
-                        "client_id": client_id,
-                        "titre": titre,
-                        "echeance": payload.echeance_3p,
-                        "priorite": "haute",
-                        "type": "echeance_3p",
-                        "done": False,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    })
-        except ValueError:
-            pass
+    await _upsert_echeance_3p_reminder(user.user_id, c, payload.echeance_3p)
     await log_action(user.user_id, client_id, f"Échéance 3P mise à jour: {payload.echeance_3p or '—'}")
     return await db.clients.find_one({"id": client_id}, {"_id": 0})
 

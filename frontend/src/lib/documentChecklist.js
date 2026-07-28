@@ -1,9 +1,8 @@
 export const DOCUMENT_CHECKLIST_ITEMS = [
   'Carte d\'identité',
-  'Procuration',
+  'Demande LPP',
   'Mandat de gestion',
   'Formulaire AVS',
-  'Formulaire Recherche LPP',
   'Certificat LPP',
   'Police 3e pilier',
   'Autre formulaire',

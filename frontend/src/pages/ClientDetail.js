@@ -29,8 +29,13 @@ const Info = ({ label, value }) => (
   </div>
 );
 
-const matchesChecklistItem = (doc, documentName) =>
-  doc.checklist_item === documentName || doc.category === documentName;
+const matchesChecklistItem = (doc, documentName) => {
+  if (documentName === "Demande LPP") {
+    return ["Demande LPP", "Procuration", "Formulaire Recherche LPP"].includes(doc.checklist_item)
+      || ["Demande LPP", "Procuration", "Formulaire de recherche LPP"].includes(doc.category);
+  }
+  return doc.checklist_item === documentName || doc.category === documentName;
+};
 
 const FileChip = ({ doc, onDelete }) => (
   <div className="inline-flex items-center gap-0.5 max-w-[240px]">
@@ -74,6 +79,7 @@ export default function ClientDetail() {
   const [savingEcheance3p, setSavingEcheance3p] = useState(false);
   const [generatingDemand, setGeneratingDemand] = useState(null);
   const [lppFunds, setLppFunds] = useState([]);
+  const [lppCaisseTracking, setLppCaisseTracking] = useState([]);
   const [selectedFunds, setSelectedFunds] = useState([]);
   const [lppResponseDoc, setLppResponseDoc] = useState(null);
   const [parsingLpp, setParsingLpp] = useState(false);
@@ -102,8 +108,18 @@ export default function ClientDetail() {
     ]);
     setClient(c.data); setNotes(n.data); setDocs(d.data); setAppts(a.data); setActions(h.data);
     setLibraryForms(lib.data || []);
-    setDocumentChecklist(getInitialDocumentChecklistState(DOCUMENT_CHECKLIST_ITEMS, c.data?.document_checklist));
+    const savedChecklist = c.data?.document_checklist || {};
+    const migratedLpp = savedChecklist["Demande LPP"] || savedChecklist.Procuration || savedChecklist["Formulaire Recherche LPP"];
+    const nextChecklist = getInitialDocumentChecklistState(DOCUMENT_CHECKLIST_ITEMS, {
+      ...savedChecklist,
+      ...(migratedLpp ? { "Demande LPP": migratedLpp } : {}),
+    });
+    setDocumentChecklist(nextChecklist);
+    if (migratedLpp && !savedChecklist["Demande LPP"]) {
+      api.patch(`/clients/${id}/document-checklist`, { document_checklist: nextChecklist }).catch(() => {});
+    }
     setEcheance3p(c.data?.echeance_3p ? c.data.echeance_3p.split("T")[0] : "");
+    setLppCaisseTracking(c.data?.lpp_caisse_tracking || []);
     const forms = lib.data || [];
     setSelectedLibraryForm((prev) => {
       if (prev && forms.some((f) => f.id === prev)) return prev;
@@ -157,8 +173,14 @@ export default function ClientDetail() {
     fd.append("checklist_item", documentName);
     fd.append("category", documentName);
     try {
-      await api.post(`/clients/${id}/documents`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success("Document téléversé");
+      const res = await api.post(`/clients/${id}/documents`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      if (res.data?.echeance_3p_detected) {
+        setEcheance3p(res.data.echeance_3p);
+        setClient((current) => ({ ...current, echeance_3p: res.data.echeance_3p }));
+        toast.success(`Échéance 3e pilier détectée : ${new Date(`${res.data.echeance_3p}T00:00:00`).toLocaleDateString("fr-CH")}`);
+      } else {
+        toast.success("Document téléversé");
+      }
       const [d, h] = await Promise.all([api.get(`/clients/${id}/documents`), api.get(`/clients/${id}/actions`)]);
       setDocs(d.data); setActions(h.data);
     } catch (err) {
@@ -304,9 +326,6 @@ export default function ClientDetail() {
     try {
       const res = await api.post(`/clients/${id}/generate-demand`, { pack_id: packId });
       const documents = res.data?.documents ?? (Array.isArray(res.data) ? res.data : res.data ? [res.data] : []);
-      // #region agent log
-      fetch('http://127.0.0.1:7823/ingest/ab1b10fc-23b9-4892-bcb8-eb93db856015',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5656aa'},body:JSON.stringify({sessionId:'5656aa',runId:'post-fix',hypothesisId:'G',location:'ClientDetail.js:generateDemand',message:'demand pack response no auto-open',data:{packId,docCount:documents.length,names:documents.map((d)=>d?.original_filename||d?.filename||d?.name),templateIds:documents.map((d)=>d?.template_id),autoOpen:false},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       toast.success(`${documents.length || ""} document(s) généré(s) — cliquez pour télécharger`.trim());
       const [d, h] = await Promise.all([
         api.get(`/clients/${id}/documents`),
@@ -336,11 +355,9 @@ export default function ClientDetail() {
       const funds = res.data?.funds ?? [];
       const list = Array.isArray(funds) ? funds : [];
       setLppFunds(list);
+      setLppCaisseTracking(res.data?.lpp_caisse_tracking || []);
       setSelectedFunds(list.map((_, i) => i));
       if (res.data?.document) setLppResponseDoc(res.data.document);
-      // #region agent log
-      fetch('http://127.0.0.1:7823/ingest/ab1b10fc-23b9-4892-bcb8-eb93db856015',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5656aa'},body:JSON.stringify({sessionId:'5656aa',runId:'post-fix',hypothesisId:'I',location:'ClientDetail.js:parseLppResponse',message:'funds detected in UI',data:{count:list.length,names:list.map((f)=>f?.name),fundCount:res.data?.fund_count,error:res.data?.error||null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const [d, h, c] = await Promise.all([
         api.get(`/clients/${id}/documents`),
         api.get(`/clients/${id}/actions`),
@@ -355,9 +372,6 @@ export default function ClientDetail() {
         toast.success(`${list.length} caisse(s) détectée(s)`);
       }
     } catch (err) {
-      // #region agent log
-      fetch('http://127.0.0.1:7823/ingest/ab1b10fc-23b9-4892-bcb8-eb93db856015',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5656aa'},body:JSON.stringify({sessionId:'5656aa',runId:'post-fix',hypothesisId:'I',location:'ClientDetail.js:parseLppResponse',message:'parse failed',data:{status:err?.response?.status,detail:err?.response?.data?.detail||err?.message,code:err?.code},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       toast.error(err?.response?.data?.detail || "Échec de l'analyse du PDF (timeout possible — rechargez la page)");
       // Recharger : les caisses ont pu être persistées côté serveur malgré un timeout client
       try {
@@ -382,6 +396,7 @@ export default function ClientDetail() {
       const res = await api.post(`/clients/${id}/reparse-lpp-response/${target.id}`, null, { timeout: 120000 });
       const funds = res.data?.funds ?? [];
       setLppFunds(funds);
+      setLppCaisseTracking(res.data?.lpp_caisse_tracking || []);
       setSelectedFunds(funds.map((_, i) => i));
       if (res.data?.document) setLppResponseDoc(res.data.document);
       toast.success(`${funds.length} caisse(s) détectée(s)`);
@@ -399,6 +414,20 @@ export default function ClientDetail() {
     );
   };
 
+  const updateCaisseTracking = async (trackingId, key) => {
+    const next = lppCaisseTracking.map((entry) =>
+      entry.id === trackingId ? { ...entry, [key]: !entry[key] } : entry
+    );
+    setLppCaisseTracking(next);
+    try {
+      const res = await api.patch(`/clients/${id}/lpp-caisse-tracking`, { lpp_caisse_tracking: next });
+      setLppCaisseTracking(res.data?.lpp_caisse_tracking || next);
+    } catch {
+      toast.error("Impossible d'enregistrer le suivi de la caisse");
+      setLppCaisseTracking(lppCaisseTracking);
+    }
+  };
+
   const generateForSelectedFunds = async () => {
     if (selectedFunds.length === 0) {
       toast.error("Sélectionnez au moins une caisse");
@@ -409,9 +438,6 @@ export default function ClientDetail() {
     try {
       const res = await api.post(`/clients/${id}/generate-decompte-letters`, { funds });
       const documents = res.data?.documents ?? [];
-      // #region agent log
-      fetch('http://127.0.0.1:7823/ingest/ab1b10fc-23b9-4892-bcb8-eb93db856015',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5656aa'},body:JSON.stringify({sessionId:'5656aa',runId:'post-fix',hypothesisId:'J',location:'ClientDetail.js:generateDecompte',message:'decompte letters generated',data:{count:documents.length,names:documents.map((d)=>d?.original_filename),caisses:documents.map((d)=>d?.caisse_name)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       toast.success(`${documents.length} demande(s) de décompte générée(s)`);
       const [d, h] = await Promise.all([
         api.get(`/clients/${id}/documents`),
@@ -457,7 +483,7 @@ export default function ClientDetail() {
 
   const LPP_DEMAND_TEMPLATES = ["recherche_avoirs_lpp", "procuration_avs_lpp", "lettre_lpp"];
   const AVS_DEMAND_TEMPLATES = ["calcul_rente_future", "lettre_avs"];
-  const LPP_CHECKLIST = ["Procuration", "Formulaire Recherche LPP"];
+  const LPP_CHECKLIST = ["Demande LPP"];
   const AVS_CHECKLIST = ["Formulaire AVS"];
 
   const getDecompteDocs = () =>
@@ -528,7 +554,7 @@ export default function ClientDetail() {
   return (
     <Layout>
       <button onClick={() => navigate("/clients")} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors" data-testid="back-btn">
-        <ArrowLeft className="h-4 w-4" /> Retour aux clients
+        <ArrowLeft className="h-4 w-4" /> {client.dossier_id && client.linked_spouse_id ? "Retour au dossier" : "Retour aux clients"}
       </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -612,7 +638,12 @@ export default function ClientDetail() {
                 <div>
                   <p className="text-sm font-semibold text-[#002FA7] mb-3">Informations personnelles</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <Info label="Nom" value={client.nom} />
+                    <Info label="Prénom" value={client.prenom} />
                     <Info label="Date de naissance" value={client.date_naissance} />
+                    <Info label="Adresse" value={[client.adresse, client.npa, client.ville].filter(Boolean).join(", ")} />
+                    <Info label="Téléphone" value={client.telephone} />
+                    <Info label="Email" value={client.email} />
                     <Info label="Sexe" value={client.sexe} />
                     <Info label="Nationalité" value={client.nationalite} />
                     <Info label="N° AVS" value={client.avs_number} />
@@ -633,6 +664,11 @@ export default function ClientDetail() {
                     <Info label="Profession" value={client.profession} />
                     <Info label="Taux d'activité" value={client.taux_activite} />
                     <Info label="Salaire annuel" value={client.salaire_annuel ? `CHF ${Number(client.salaire_annuel).toLocaleString("fr-CH")}` : null} />
+                    <Info label="Conseiller" value={client.conseiller} />
+                    <Info label="Agent apporteur" value={client.agent_apporteur} />
+                    <Info label="N° dossier" value={client.numero_dossier} />
+                    <Info label="Statut" value={client.statut} />
+                    <Info label="Priorité" value={client.priorite} />
                   </div>
                 </div>
               </Card>
@@ -767,9 +803,6 @@ export default function ClientDetail() {
 
             <TabsContent value="demande-lpp">
               <Card className="p-6 space-y-6">
-                {/* #region agent log */}
-                {(() => { fetch('http://127.0.0.1:7823/ingest/ab1b10fc-23b9-4892-bcb8-eb93db856015',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5656aa'},body:JSON.stringify({sessionId:'5656aa',runId:'post-fix',hypothesisId:'G',location:'ClientDetail.js:demande-lpp',message:'demande LPP tab open',data:{linkedCount:getDocsForTemplates(LPP_DEMAND_TEMPLATES).length,decompteCount:getDecompteDocs().length,pack:LPP_DEMAND_TEMPLATES},timestamp:Date.now()})}).catch(()=>{}); return null; })()}
-                {/* #endregion */}
                 <div>
                   <p className="text-sm font-semibold text-[#002FA7] mb-1">Demande LPP</p>
                   <p className="text-xs text-muted-foreground mb-4">Génère automatiquement le formulaire de recherche (case « pour moi-même »), la procuration et la lettre — préremplis et enregistrés dans le dossier.</p>
@@ -793,6 +826,29 @@ export default function ClientDetail() {
                   <p className="text-sm font-semibold mb-3">Suivi</p>
                   <p className="text-xs text-muted-foreground mb-3">Statuts Envoyé / Reçu uniquement. Ouvrir, télécharger ou supprimer les fichiers ci-dessous.</p>
                   <div className="space-y-3">{renderChecklistRows(LPP_CHECKLIST)}</div>
+                  {lppCaisseTracking.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {lppCaisseTracking.map((caisse) => (
+                        <div key={caisse.id} className="flex flex-col gap-2 rounded-md border border-border bg-background px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-sm font-medium">Demande {caisse.name}</p>
+                            {(caisse.address || caisse.reference) && <p className="text-xs text-muted-foreground whitespace-pre-line">{caisse.address}{caisse.reference ? ` · Réf. ${caisse.reference}` : ""}</p>}
+                          </div>
+                          <div className="flex gap-4 text-sm">
+                            {[
+                              { key: "sent", label: "Envoyé" },
+                              { key: "received", label: "Reçu" },
+                            ].map((option) => (
+                              <label key={option.key} className="flex items-center gap-2 cursor-pointer">
+                                <Checkbox checked={Boolean(caisse[option.key])} onCheckedChange={() => updateCaisseTracking(caisse.id, option.key)} />
+                                <span>{option.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t border-border pt-4 space-y-4">
@@ -884,9 +940,6 @@ export default function ClientDetail() {
 
             <TabsContent value="demande-avs">
               <Card className="p-6 space-y-6">
-                {/* #region agent log */}
-                {(() => { fetch('http://127.0.0.1:7823/ingest/ab1b10fc-23b9-4892-bcb8-eb93db856015',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5656aa'},body:JSON.stringify({sessionId:'5656aa',runId:'post-fix',hypothesisId:'E',location:'ClientDetail.js:demande-avs',message:'demande AVS tab open',data:{linkedCount:getDocsForTemplates(AVS_DEMAND_TEMPLATES).length,pack:['calcul_rente_future','lettre_avs']},timestamp:Date.now()})}).catch(()=>{}); return null; })()}
-                {/* #endregion */}
                 <div>
                   <p className="text-sm font-semibold text-[#002FA7] mb-1">Demande AVS</p>
                   <p className="text-xs text-muted-foreground mb-4">Génère le formulaire rente future et la lettre d&apos;accompagnement — préremplis et enregistrés dans le CRM (téléchargement au clic).</p>
@@ -922,6 +975,12 @@ export default function ClientDetail() {
             <TabsContent value="echeance3p">
               <Card className="p-6 space-y-4">
                 <p className="text-sm font-semibold text-[#002FA7]">Échéance 3e pilier</p>
+                {echeance3p && (
+                  <div className="rounded-md border border-[#002FA7]/20 bg-[#002FA7]/5 px-4 py-3">
+                    <p className="text-xs text-muted-foreground">Date détectée / enregistrée</p>
+                    <p className="font-display text-xl font-black text-[#002FA7]">{new Date(`${echeance3p}T00:00:00`).toLocaleDateString("fr-CH")}</p>
+                  </div>
+                )}
                 {isWithinOneYear(echeance3p) && (
                   <Alert className="border-amber-200 bg-amber-50/50">
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
