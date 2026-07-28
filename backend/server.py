@@ -24,6 +24,7 @@ from pdf_generator import (
     fill_pdf_bytes_with_client,
     prepare_library_form_pdf,
     render_pdf_page_png,
+    repair_library_pdf_bytes,
     CRM_FIELD_SOURCES,
     DEMAND_PACKS,
 )
@@ -492,12 +493,28 @@ async def _prepare_and_store_library_pdf(user_id: str, form_id: str, raw_pdf: by
         "field_mapping": prepared["field_mapping"],
         "field_count": len(prepared["widgets"]),
         "widgets_prepared": True,
+        "checkboxes_scrubbed": True,
     }
 
 
 async def _ensure_library_widgets(record: dict) -> dict:
-    """Prépare les widgets uniques si le formulaire n'a pas encore été uniqueifié."""
+    """Prépare les widgets uniques si besoin, et nettoie les ronds dans les cases."""
     if record.get("widgets_prepared") and record.get("widgets"):
+        # Nettoyer les PDF déjà préparés (artefacts cercles sur cases)
+        if not record.get("checkboxes_scrubbed"):
+            try:
+                raw = _read_storage_bytes(record["storage_path"])
+                cleaned = repair_library_pdf_bytes(raw)
+                storage_path = _write_storage_bytes(record["storage_path"], cleaned)
+                updates = {
+                    "storage_path": storage_path,
+                    "size": len(cleaned),
+                    "checkboxes_scrubbed": True,
+                }
+                await db.form_library.update_one({"id": record["id"]}, {"$set": updates})
+                record.update(updates)
+            except Exception:
+                logger.exception("Nettoyage cases à cocher échoué pour %s", record.get("id"))
         return record
     try:
         raw = _read_storage_bytes(record["storage_path"])
@@ -539,6 +556,7 @@ async def _ensure_library_widgets(record: dict) -> dict:
         "field_mapping": new_mapping,
         "field_count": meta["field_count"],
         "widgets_prepared": True,
+        "checkboxes_scrubbed": True,
     }
     await db.form_library.update_one({"id": record["id"]}, {"$set": updates})
     record.update(updates)

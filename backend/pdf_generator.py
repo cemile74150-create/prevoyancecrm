@@ -656,22 +656,81 @@ def _widget_on_value(widget) -> Any:
             on = on()
         return on
     except Exception:
-        return True
+        return "Yes"
+
+
+def _widget_off_value(widget) -> Any:
+    try:
+        states = widget.button_states() or {}
+        offs = states.get("off") or states.get("Off") or []
+        if offs:
+            return offs[0]
+    except Exception:
+        pass
+    return "Off"
 
 
 def _set_widget_checked(widget, checked: bool) -> None:
+    """
+    Coche une case. Pour décocher : valeur Off SANS widget.update()
+    (update() régénère souvent un glyphe « rond » indésirable).
+    """
     try:
         if checked:
             widget.field_value = _widget_on_value(widget)
+            try:
+                widget.update()
+            except Exception:
+                pass
         else:
-            widget.field_value = False
-        widget.update()
+            widget.field_value = _widget_off_value(widget)
+            # Ne pas appeler update() : laisse la case vide visuellement
     except Exception:
         try:
             widget.field_value = _widget_on_value(widget) if checked else "Off"
-            widget.update()
+            if checked:
+                widget.update()
         except Exception:
             pass
+
+
+def _scrub_checkbox_circle_artifacts(doc) -> None:
+    """
+    Supprime les apparences corrompues (petits ronds) sur les cases non cochées.
+    Causées typiquement par widget.update() après renommage.
+    """
+    for page in doc:
+        for widget in page.widgets() or []:
+            ftype = str(getattr(widget, "field_type_string", None) or getattr(widget, "field_type", "") or "")
+            if not _is_checkbox_or_radio_type(ftype):
+                continue
+            try:
+                val = widget.field_value
+            except Exception:
+                val = None
+            on_val = _widget_on_value(widget)
+            # Si la case n'est pas explicitement cochée → nettoyer
+            checked = False
+            try:
+                checked = val == on_val or val is True or str(val) == str(on_val)
+            except Exception:
+                checked = False
+            if checked:
+                continue
+            try:
+                widget.field_value = _widget_off_value(widget)
+            except Exception:
+                try:
+                    widget.field_value = "Off"
+                except Exception:
+                    pass
+            # Effacer le flux d'apparence qui dessine le rond
+            try:
+                xref = getattr(widget, "xref", None)
+                if xref:
+                    doc.xref_set_key(xref, "AP", "null")
+            except Exception:
+                pass
 
 
 def prepare_library_form_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
@@ -691,11 +750,23 @@ def prepare_library_form_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
         for widget in page.widgets() or []:
             original = (widget.field_name or "").strip() or f"Champ_{idx + 1}"
             unique = f"w_{idx:04d}"
+            field_type = str(
+                getattr(widget, "field_type_string", None)
+                or getattr(widget, "field_type", "")
+                or "text"
+            )
             try:
                 widget.field_name = unique
-                widget.update()
+                # Important : ne PAS appeler update() sur les cases à cocher
+                # (régénère des ronds / glyphes parasites).
+                if not _is_checkbox_or_radio_type(field_type):
+                    widget.update()
+                else:
+                    try:
+                        widget.field_value = _widget_off_value(widget)
+                    except Exception:
+                        pass
             except Exception:
-                # Certains widgets protégés : on garde le nom d'origine
                 unique = widget.field_name or unique
             r = widget.rect
             widgets.append(
@@ -704,7 +775,7 @@ def prepare_library_form_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
                     "original_name": original,
                     "unique_name": unique,
                     "page": page_index,
-                    "field_type": str(getattr(widget, "field_type_string", None) or getattr(widget, "field_type", "") or "text"),
+                    "field_type": field_type,
                     "rect": {
                         "x": max(0.0, min(1.0, float(r.x0) / pw)),
                         "y": max(0.0, min(1.0, float(r.y0) / ph)),
@@ -714,6 +785,11 @@ def prepare_library_form_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
                 }
             )
             idx += 1
+
+    try:
+        _scrub_checkbox_circle_artifacts(doc)
+    except Exception:
+        pass
 
     out = io.BytesIO()
     page_count = len(doc)
@@ -727,6 +803,21 @@ def prepare_library_form_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
         "field_names": [w["id"] for w in widgets],
         "field_mapping": suggest_widget_mapping(widgets),
     }
+
+
+def repair_library_pdf_bytes(pdf_bytes: bytes) -> bytes:
+    """Nettoie les ronds parasites dans les cases à cocher d'un PDF bibliothèque."""
+    import fitz
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        _scrub_checkbox_circle_artifacts(doc)
+    except Exception:
+        pass
+    out = io.BytesIO()
+    doc.save(out, garbage=4, deflate=True)
+    doc.close()
+    return out.getvalue()
 
 
 def render_pdf_page_png(pdf_bytes: bytes, page_index: int = 0, dpi: float = 144.0) -> bytes:
@@ -838,6 +929,12 @@ def _fill_with_pymupdf(
 ) -> bytes:
     import fitz
 
+    # Nettoyer d'abord les artefacts (ronds) déjà présents dans le modèle
+    try:
+        pdf_bytes = repair_library_pdf_bytes(pdf_bytes)
+    except Exception:
+        pass
+
     meta_by_id = {w.get("id") or w.get("unique_name"): w for w in (widgets or []) if w}
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     for page in doc:
@@ -876,6 +973,12 @@ def _fill_with_pymupdf(
     # Cases Oui/Non voisines de la question US Person
     try:
         _apply_us_person_oui_non_siblings(doc, meta_by_id)
+    except Exception:
+        pass
+
+    # Nettoyage final des cases non cochées (supprime les ronds restants)
+    try:
+        _scrub_checkbox_circle_artifacts(doc)
     except Exception:
         pass
 
