@@ -31,8 +31,10 @@ export default function FormMappingEditor({
   const [clients, setClients] = useState([]);
   const [testClientId, setTestClientId] = useState("");
   const [testing, setTesting] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
   const listRefs = useRef({});
   const pageBlobUrls = useRef([]);
+  const previewBlobUrl = useRef("");
 
   const widgets = useMemo(() => form?.widgets || [], [form]);
   const selected = widgets.find((w) => w.id === selectedId) || null;
@@ -63,6 +65,14 @@ export default function FormMappingEditor({
   const revokePageUrls = () => {
     pageBlobUrls.current.forEach((u) => URL.revokeObjectURL(u));
     pageBlobUrls.current = [];
+  };
+
+  const revokePreview = () => {
+    if (previewBlobUrl.current) {
+      URL.revokeObjectURL(previewBlobUrl.current);
+      previewBlobUrl.current = "";
+    }
+    setPreviewUrl("");
   };
 
   const loadPages = async (id, count) => {
@@ -109,13 +119,17 @@ export default function FormMappingEditor({
     }
     if (!open) {
       revokePageUrls();
+      revokePreview();
       setForm(null);
       setPageUrls([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, formId]);
 
-  useEffect(() => () => revokePageUrls(), []);
+  useEffect(() => () => {
+    revokePageUrls();
+    revokePreview();
+  }, []);
 
   useEffect(() => {
     if (selectedId && listRefs.current[selectedId]) {
@@ -145,9 +159,10 @@ export default function FormMappingEditor({
       const res = await api.patch(`/form-library/${formId}`, {
         field_mapping: mappingDraft,
       });
-      toast.success("Mapping enregistré");
+      setForm(res.data);
+      setMappingDraft(res.data.field_mapping || mappingDraft);
+      toast.success("Mapping enregistré — vous pouvez tester le remplissage");
       onSaved?.(res.data);
-      onOpenChange(false);
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Enregistrement impossible");
     } finally {
@@ -167,12 +182,22 @@ export default function FormMappingEditor({
         { client_id: testClientId, field_mapping: mappingDraft },
         { responseType: "blob" },
       );
+      if (res.data?.type && String(res.data.type).includes("json")) {
+        const text = await res.data.text();
+        let detail = "Échec du test de remplissage";
+        try {
+          detail = JSON.parse(text)?.detail || detail;
+        } catch (_) { /* ignore */ }
+        throw new Error(detail);
+      }
+      revokePreview();
       const url = URL.createObjectURL(res.data);
+      previewBlobUrl.current = url;
+      setPreviewUrl(url);
       window.open(url, "_blank", "noopener,noreferrer");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      toast.success("Aperçu généré");
+      toast.success("Aperçu généré avec le mapping actuel");
     } catch (err) {
-      toast.error("Échec du test de remplissage");
+      toast.error(err?.message || "Échec du test de remplissage");
     } finally {
       setTesting(false);
     }
@@ -393,8 +418,28 @@ export default function FormMappingEditor({
                   Tester le remplissage
                 </Button>
                 <p className="text-[11px] text-muted-foreground">
-                  Génère un aperçu avec les données du client choisi (mapping actuel, même non enregistré).
+                  Utilise le mapping affiché (enregistré ou non) pour préremplir tous les champs associés avec les données du client.
                 </p>
+                {previewUrl && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-[#002FA7]">Aperçu du PDF rempli</p>
+                    <iframe
+                      title="Aperçu remplissage"
+                      src={previewUrl}
+                      className="w-full h-64 rounded-md border border-border bg-white"
+                      data-testid="map-test-preview"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="w-full"
+                      onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
+                    >
+                      Ouvrir dans un nouvel onglet
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <div className="text-[11px] text-muted-foreground space-y-1 border-t border-border pt-3">

@@ -906,11 +906,20 @@ def _apply_us_person_oui_non_siblings(doc, meta_by_id: Dict[str, Dict[str, Any]]
                 _set_widget_checked(widget, False)
 
 
-def _fill_checkbox_from_value(widget, text: str) -> None:
+def _fill_checkbox_from_value(widget, text: str, original_name: str = "") -> None:
     """Coche uniquement si la valeur CRM est explicitement affirmative."""
     raw = _norm(text)
     if not raw:
         _set_widget_checked(widget, False)
+        return
+    label = _norm(original_name)
+    # Cases d'identité : ne cocher que si le libellé correspond à la valeur CRM
+    identity_tokens = (
+        "masculin", "feminin", "féminin", "homme", "femme",
+        "celibat", "célibat", "marie", "marié", "divorce", "veuf",
+    )
+    if label and any(tok in label for tok in identity_tokens):
+        _set_widget_checked(widget, raw in label or label in raw or any(tok in raw and tok in label for tok in identity_tokens if tok in label))
         return
     truthy = raw in {
         "1", "true", "oui", "yes", "ja", "x", "on", "checked", "vrai",
@@ -921,6 +930,169 @@ def _fill_checkbox_from_value(widget, text: str) -> None:
     _set_widget_checked(widget, bool(truthy))
 
 
+def _resolve_mapped_value(values: Dict[str, str], source_key: str) -> str:
+    """Récupère la valeur CRM pour une clé de mapping (avec alias courants)."""
+    key = (source_key or "").strip()
+    if not key:
+        return ""
+    if key in values and str(values.get(key) or "").strip():
+        return str(values.get(key) or "")
+    aliases = {
+        "avs_number": "avs",
+        "numero_avs": "avs",
+        "n_avs": "avs",
+        "date_of_birth": "date_naissance",
+        "dob": "date_naissance",
+        "naissance": "date_naissance",
+        "address": "adresse",
+        "adresse_ligne": "adresse",
+        "phone": "telephone",
+        "tel": "telephone",
+        "mail": "email",
+        "e_mail": "email",
+        "lastname": "nom",
+        "firstname": "prenom",
+        "full_address": "adresse_complete",
+    }
+    alt = aliases.get(key) or aliases.get(_norm(key).replace(" ", "_"))
+    if alt and alt in values:
+        return str(values.get(alt) or "")
+    # Cherche aussi une clé normalisée dans values
+    wanted = _norm(key)
+    for k, v in values.items():
+        if _norm(k) == wanted and str(v or "").strip():
+            return str(v)
+    return str(values.get(key) or "")
+
+
+def _rect_key(page_index: int, rect: Dict[str, Any], decimals: int = 3) -> tuple:
+    return (
+        int(page_index),
+        round(float(rect.get("x") or 0), decimals),
+        round(float(rect.get("y") or 0), decimals),
+        round(float(rect.get("w") or 0), decimals),
+        round(float(rect.get("h") or 0), decimals),
+    )
+
+
+def _widget_norm_rect(page, widget) -> Dict[str, float]:
+    pw = float(page.rect.width) or 1.0
+    ph = float(page.rect.height) or 1.0
+    r = widget.rect
+    return {
+        "x": max(0.0, min(1.0, float(r.x0) / pw)),
+        "y": max(0.0, min(1.0, float(r.y0) / ph)),
+        "w": max(0.0, min(1.0, float(r.x1 - r.x0) / pw)),
+        "h": max(0.0, min(1.0, float(r.y1 - r.y0) / ph)),
+    }
+
+
+def _index_widgets_meta(doc, widgets_meta: Optional[List[Dict[str, Any]]]) -> Dict[Any, Dict[str, Any]]:
+    """
+    Indexe les métadonnées par nom PDF courant et par position.
+    Ne conserve PAS de références Widget (elles se détachent hors de la page).
+    """
+    by_name_counts: Dict[str, int] = {}
+    # Pré-index positions des widgets meta
+    meta_by_pos: Dict[tuple, Dict[str, Any]] = {}
+    meta_by_id: Dict[str, Dict[str, Any]] = {}
+    meta_by_original: Dict[str, List[Dict[str, Any]]] = {}
+    for meta in widgets_meta or []:
+        mid = meta.get("id") or meta.get("unique_name") or ""
+        if mid:
+            meta_by_id[mid] = meta
+        oname = meta.get("original_name") or ""
+        if oname:
+            meta_by_original.setdefault(oname, []).append(meta)
+        rect = meta.get("rect") or {}
+        meta_by_pos[_rect_key(int(meta.get("page") or 0), rect)] = meta
+
+    return {
+        "by_id": meta_by_id,
+        "by_pos": meta_by_pos,
+        "by_original": meta_by_original,
+        "used_meta_ids": set(),
+    }
+
+
+def _match_meta_for_live_widget(
+    index: Dict[str, Any],
+    page_index: int,
+    page,
+    widget,
+) -> Dict[str, Any]:
+    name = widget.field_name or ""
+    used = index["used_meta_ids"]
+
+    meta = index["by_id"].get(name)
+    if meta and meta.get("id") not in used:
+        used.add(meta.get("id"))
+        return meta
+
+    pos = _rect_key(page_index, _widget_norm_rect(page, widget))
+    meta = index["by_pos"].get(pos)
+    if meta and meta.get("id") not in used:
+        used.add(meta.get("id"))
+        return meta
+
+    for cand in index["by_original"].get(name, []):
+        cid = cand.get("id")
+        if cid not in used:
+            used.add(cid)
+            return cand
+
+    return {
+        "id": name,
+        "unique_name": name,
+        "original_name": name,
+        "field_type": str(
+            getattr(widget, "field_type_string", None)
+            or getattr(widget, "field_type", "")
+            or ""
+        ),
+        "page": page_index,
+    }
+
+
+def _source_key_for_widget(
+    field_mapping: Dict[str, str],
+    meta: Dict[str, Any],
+    current_name: str,
+) -> str:
+    mapping = field_mapping or {}
+    for key in (
+        meta.get("id"),
+        meta.get("unique_name"),
+        current_name,
+        meta.get("original_name"),
+    ):
+        if not key:
+            continue
+        src = mapping.get(key)
+        if src:
+            return str(src)
+    return ""
+
+
+def _set_widget_text(widget, text: str) -> bool:
+    """Affecte une valeur texte et régénère l'apparence si possible."""
+    value = "" if text is None else str(text)
+    try:
+        widget.field_value = value
+    except Exception:
+        return False
+    try:
+        widget.update()
+    except Exception:
+        # La valeur /V peut rester même si l'apparence échoue
+        pass
+    try:
+        current = widget.field_value
+        return ("" if current is None else str(current)) == value
+    except Exception:
+        return bool(value)
+
+
 def _fill_with_pymupdf(
     pdf_bytes: bytes,
     values: Dict[str, str],
@@ -928,6 +1100,9 @@ def _fill_with_pymupdf(
     widgets: Optional[List[Dict[str, Any]]] = None,
 ) -> bytes:
     import fitz
+    import logging
+
+    log = logging.getLogger("server")
 
     # Nettoyer d'abord les artefacts (ronds) déjà présents dans le modèle
     try:
@@ -935,13 +1110,18 @@ def _fill_with_pymupdf(
     except Exception:
         pass
 
-    meta_by_id = {w.get("id") or w.get("unique_name"): w for w in (widgets or []) if w}
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    for page in doc:
+    index = _index_widgets_meta(doc, widgets)
+    meta_by_id = {w.get("id") or w.get("unique_name"): w for w in (widgets or []) if w}
+    filled = 0
+    attempted = 0
+
+    # Important : remplir pendant l'itération page.widgets() (widget lié à la page)
+    for page_index, page in enumerate(doc):
         for widget in page.widgets() or []:
-            name = widget.field_name or ""
-            meta = meta_by_id.get(name) or {}
-            original = meta.get("original_name") or name
+            meta = _match_meta_for_live_widget(index, page_index, page, widget)
+            current_name = widget.field_name or ""
+            original = meta.get("original_name") or current_name
             field_type = str(
                 meta.get("field_type")
                 or getattr(widget, "field_type_string", None)
@@ -953,21 +1133,23 @@ def _fill_with_pymupdf(
             if _apply_us_person_default(widget, original, field_type):
                 continue
 
-            source_key = (field_mapping or {}).get(name) or ""
+            source_key = _source_key_for_widget(field_mapping, meta, current_name)
             if not source_key:
-                # Pas de mapping → ne jamais cocher / remplir (questionnaires, etc.)
                 continue
 
-            text = values.get(source_key, "")
+            text = _resolve_mapped_value(values, source_key)
+            attempted += 1
             try:
                 if _is_checkbox_or_radio_type(field_type):
                     if text is None or str(text).strip() == "":
                         continue
-                    _fill_checkbox_from_value(widget, str(text))
+                    _fill_checkbox_from_value(widget, str(text), original_name=original)
+                    filled += 1
                 else:
-                    widget.field_value = "" if text is None else str(text)
-                    widget.update()
+                    if _set_widget_text(widget, text):
+                        filled += 1
             except Exception:
+                log.exception("Échec remplissage champ %s → %s", current_name, source_key)
                 continue
 
     # Cases Oui/Non voisines de la question US Person
@@ -982,10 +1164,34 @@ def _fill_with_pymupdf(
     except Exception:
         pass
 
+    try:
+        if hasattr(doc, "set_need_appearances"):
+            doc.set_need_appearances(True)
+    except Exception:
+        pass
+
+    log.info(
+        "PDF library fill: attempted=%s filled=%s mapped_keys=%s",
+        attempted,
+        filled,
+        sum(1 for v in (field_mapping or {}).values() if v),
+    )
+
     out = io.BytesIO()
     doc.save(out, garbage=4, deflate=True)
     doc.close()
     return out.getvalue()
+
+
+# Conservé pour compatibilité éventuelle (évite de stocker des Widget détachés)
+def _pair_widgets_with_meta(doc, widgets_meta: Optional[List[Dict[str, Any]]]) -> List[tuple]:
+    pairs: List[tuple] = []
+    index = _index_widgets_meta(doc, widgets_meta)
+    for page_index, page in enumerate(doc):
+        for widget in page.widgets() or []:
+            meta = _match_meta_for_live_widget(index, page_index, page, widget)
+            pairs.append((meta, widget, widget.field_name or ""))
+    return pairs
 
 
 def _build_mapped_field_map(
@@ -1005,7 +1211,7 @@ def _build_mapped_field_map(
                 actual = pdf_field
             else:
                 continue
-        mapping[actual] = values.get(source_key, "")
+        mapping[actual] = _resolve_mapped_value(values, str(source_key))
     return mapping
 
 
@@ -1087,7 +1293,11 @@ def fill_pdf_bytes_with_client(
         try:
             return _fill_with_pymupdf(pdf_bytes, values, field_mapping, widgets=widgets)
         except Exception:
-            pass  # fallback pypdf ci-dessous
+            import logging
+            logging.getLogger("server").exception(
+                "Remplissage PyMuPDF échoué — bascule pypdf"
+            )
+            # fallback pypdf ci-dessous
 
     from pypdf.generic import IndirectObject, NumberObject
 

@@ -682,6 +682,19 @@ async def _ensure_library_widgets(record: dict) -> dict:
                 if oname in old_mapping and oname not in used_names:
                     new_mapping[w["id"]] = old_mapping.get(oname) or new_mapping.get(w["id"], "")
                     used_names.add(oname)
+            # Mapping indexé par anciens ids : reporter via original_name
+            by_original = {}
+            for w in meta["widgets"]:
+                by_original.setdefault(w.get("original_name"), []).append(w["id"])
+            for key, src in old_mapping.items():
+                if not src or key in widget_ids:
+                    continue
+                for old_w in (record.get("widgets") or []):
+                    if old_w.get("id") == key and old_w.get("original_name") in by_original:
+                        for new_id in by_original[old_w["original_name"]]:
+                            if not new_mapping.get(new_id):
+                                new_mapping[new_id] = src
+                                break
 
     updates = {
         "storage_path": meta["storage_path"],
