@@ -142,7 +142,7 @@ export default function ClientFormDialog({ open, onOpenChange, client, onSaved }
           <DialogTitle className="font-display tracking-tight">{isEdit ? "Modifier la fiche client" : "Nouveau dossier client"}</DialogTitle>
           {showSpouseBlock && (
             <DialogDescription>
-              Client marié : une fiche sera créée pour chaque conjoint, dans un seul dossier familial.
+              Deux fiches clients séparées seront créées (une par personne), rattachées au même dossier.
             </DialogDescription>
           )}
         </DialogHeader>
@@ -199,9 +199,9 @@ export default function ClientFormDialog({ open, onOpenChange, client, onSaved }
             <div className="rounded-md border border-[#002FA7]/20 bg-[#002FA7]/5 p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-[#002FA7]">Fiche du conjoint</p>
+                  <p className="text-sm font-semibold text-[#002FA7]">2ᵉ client (conjoint)</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Les deux personnes partageront le même dossier (documents, notes, historique).
+                    Fiche indépendante (AVS, salaire, employeur…) + même dossier partagé.
                   </p>
                 </div>
                 <label className="flex items-center gap-2 text-xs shrink-0 cursor-pointer">

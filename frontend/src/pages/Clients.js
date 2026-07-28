@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import ClientFormDialog from "@/components/ClientFormDialog";
 import { STATUT_COLORS } from "@/lib/constants";
-import { Plus, Search, Mail, Phone, AlertTriangle, ChevronRight } from "lucide-react";
+import { Plus, Search, Mail, Phone, AlertTriangle, ChevronRight, FolderOpen, User } from "lucide-react";
 
 function dossierKey(client) {
   if (client.dossier_id) return client.dossier_id;
@@ -68,7 +68,9 @@ export default function Clients() {
       <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
         <div>
           <h1 className="font-display font-black text-3xl sm:text-4xl tracking-tight">Clients</h1>
-          <p className="text-muted-foreground mt-1">{groups.length} dossier{groups.length > 1 ? "s" : ""}</p>
+          <p className="text-muted-foreground mt-1">
+            {groups.length} dossier{groups.length > 1 ? "s" : ""} · {clients.length} client{clients.length > 1 ? "s" : ""}
+          </p>
         </div>
         <Button data-testid="clients-new-btn" onClick={() => setDialog(true)} className="bg-[#002FA7] hover:bg-[#00248a] gap-2">
           <Plus className="h-4 w-4" /> Nouveau client
@@ -80,63 +82,107 @@ export default function Clients() {
         <Input data-testid="clients-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrer par nom, tél, email, n° dossier…" className="pl-10" />
       </div>
 
-      <Card className="overflow-hidden">
-        <div className="hidden md:grid grid-cols-12 gap-4 px-6 h-12 items-center border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          <div className="col-span-3">Client / Dossier</div>
-          <div className="col-span-2">N° dossier</div>
-          <div className="col-span-3">Contact</div>
-          <div className="col-span-3">Statut</div>
-          <div className="col-span-1"></div>
-        </div>
+      <div className="space-y-3">
         {groups.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-16 text-center">Aucun client trouvé.</p>
+          <Card className="p-10">
+            <p className="text-sm text-muted-foreground text-center">Aucun client trouvé.</p>
+          </Card>
         ) : (
           groups.map((members) => {
             const c = members[0];
             const family = isFamilyGroup(members);
             const hubId = c.dossier_id || c.id;
-            const names = members.map((m) => `${m.prenom} ${m.nom}`).join(" · ");
+
+            if (!family) {
+              return (
+                <Card key={hubId} className="overflow-hidden">
+                  <button
+                    data-testid={`client-row-${c.id}`}
+                    onClick={() => navigate(`/clients/${c.id}`)}
+                    className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-secondary transition-colors group"
+                  >
+                    <div className="h-10 w-10 rounded-full bg-[#002FA7]/10 text-[#002FA7] flex items-center justify-center font-semibold text-sm flex-shrink-0">
+                      {c.prenom?.[0]}{c.nom?.[0]}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm truncate flex items-center gap-1.5">
+                        {c.prenom} {c.nom}
+                        {c.priorite === "urgent" && <AlertTriangle className="h-3.5 w-3.5 text-red-600" />}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono">{c.numero_dossier}</p>
+                    </div>
+                    <div className="hidden sm:block text-sm text-muted-foreground space-y-0.5 min-w-[10rem]">
+                      {c.email && <p className="flex items-center gap-1.5 truncate"><Mail className="h-3 w-3" />{c.email}</p>}
+                      {c.telephone && <p className="flex items-center gap-1.5"><Phone className="h-3 w-3" />{c.telephone}</p>}
+                    </div>
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUT_COLORS[c.statut]}`}>{c.statut}</span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                  </button>
+                </Card>
+              );
+            }
+
             return (
-              <button
-                key={hubId}
-                data-testid={`client-row-${hubId}`}
-                onClick={() => navigate(family ? `/dossiers/${hubId}` : `/clients/${c.id}`)}
-                className="w-full grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 px-6 py-4 items-center border-b border-border last:border-0 hover:bg-secondary text-left transition-colors group"
-              >
-                <div className="col-span-3 flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-[#002FA7]/10 text-[#002FA7] flex items-center justify-center font-semibold text-sm flex-shrink-0">
-                    {c.prenom?.[0]}{c.nom?.[0]}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm truncate flex items-center gap-1.5">
-                      {family ? (c.dossier_label || `Famille ${c.nom}`) : `${c.prenom} ${c.nom}`}
-                      {c.priorite === "urgent" && <AlertTriangle className="h-3.5 w-3.5 text-red-600" />}
+              <Card key={hubId} className="overflow-hidden" data-testid={`dossier-row-${hubId}`}>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/dossiers/${hubId}`)}
+                  className="w-full flex items-center gap-3 px-5 py-3 border-b border-border bg-[#002FA7]/5 text-left hover:bg-[#002FA7]/10 transition-colors"
+                >
+                  <FolderOpen className="h-5 w-5 text-[#002FA7] shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display font-bold text-[#002FA7]">
+                      {c.dossier_label || `Famille ${c.nom}`}
                     </p>
-                    {family ? (
-                      <p className="text-xs text-muted-foreground truncate">{names || c.ville}</p>
-                    ) : (
-                      c.ville && <p className="text-xs text-muted-foreground">{c.ville}</p>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      1 dossier · {members.length} client{members.length > 1 ? "s" : ""} distinct{members.length > 1 ? "s" : ""} · <span className="font-mono">{c.numero_dossier}</span>
+                    </p>
                   </div>
+                  <span className="text-xs text-[#002FA7] font-medium hidden sm:inline">Ouvrir le dossier</span>
+                  <ChevronRight className="h-4 w-4 text-[#002FA7]" />
+                </button>
+
+                <div className="divide-y divide-border">
+                  {members.map((member) => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      data-testid={`client-row-${member.id}`}
+                      onClick={() => navigate(`/clients/${member.id}`)}
+                      className="w-full flex items-center gap-4 px-5 py-3.5 text-left hover:bg-secondary transition-colors group"
+                    >
+                      <div className="h-9 w-9 rounded-full bg-secondary text-foreground flex items-center justify-center shrink-0">
+                        <User className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm truncate flex items-center gap-1.5">
+                          {member.prenom} {member.nom}
+                          {member.priorite === "urgent" && <AlertTriangle className="h-3.5 w-3.5 text-red-600" />}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Fiche client séparée
+                          {member.date_naissance ? ` · né(e) ${member.date_naissance}` : ""}
+                        </p>
+                      </div>
+                      <div className="hidden md:block text-sm text-muted-foreground space-y-0.5 min-w-[10rem]">
+                        {member.email && <p className="flex items-center gap-1.5 truncate"><Mail className="h-3 w-3" />{member.email}</p>}
+                        {member.telephone && <p className="flex items-center gap-1.5"><Phone className="h-3 w-3" />{member.telephone}</p>}
+                      </div>
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUT_COLORS[member.statut]}`}>{member.statut}</span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                    </button>
+                  ))}
+                  {members.length < 2 && (
+                    <div className="px-5 py-3 text-xs text-amber-700 bg-amber-50 border-t border-amber-100">
+                      Un seul client pour l’instant — créez la 2ᵉ fiche conjoint depuis le dossier ou la fiche.
+                    </div>
+                  )}
                 </div>
-                <div className="col-span-2 text-sm text-muted-foreground font-mono">
-                  {c.numero_dossier}{family ? ` · ${members.length} membre${members.length > 1 ? "s" : ""}` : ""}
-                </div>
-                <div className="col-span-3 text-sm text-muted-foreground space-y-0.5">
-                  {c.email && <p className="flex items-center gap-1.5 truncate"><Mail className="h-3 w-3" />{c.email}</p>}
-                  {c.telephone && <p className="flex items-center gap-1.5"><Phone className="h-3 w-3" />{c.telephone}</p>}
-                </div>
-                <div className="col-span-3">
-                  <span className={`inline-block text-xs font-medium px-2.5 py-1 rounded-full border ${STATUT_COLORS[c.statut]}`}>{c.statut}</span>
-                </div>
-                <div className="col-span-1 flex justify-end">
-                  <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-              </button>
+              </Card>
             );
           })
         )}
-      </Card>
+      </div>
 
       <ClientFormDialog
         open={dialog}

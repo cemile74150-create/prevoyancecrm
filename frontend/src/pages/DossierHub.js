@@ -56,13 +56,13 @@ export default function DossierHub() {
             <Users2 className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Dossier familial</p>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">1 dossier · {dossier.members.length} client{dossier.members.length > 1 ? "s" : ""} distinct{dossier.members.length > 1 ? "s" : ""}</p>
             <h1 className="font-display font-black text-3xl tracking-tight">{dossier.dossier_label}</h1>
             <p className="text-sm text-muted-foreground font-mono mt-0.5">{dossier.numero_dossier}</p>
           </div>
         </div>
         <p className="text-sm text-muted-foreground mt-3 max-w-2xl">
-          Choisissez la personne à consulter. Les documents, notes et l’historique sont partagés au niveau du dossier.
+          Chaque personne a sa propre fiche (infos, AVS, salaire…). Les documents, notes et l’historique sont communs au dossier.
         </p>
       </div>
 
@@ -74,6 +74,7 @@ export default function DossierHub() {
             onClick={() => navigate(`/clients/${member.id}`)}
             className="rounded-lg border border-border bg-background p-5 text-left hover:border-[#002FA7] hover:bg-[#002FA7]/5 transition-colors"
           >
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">Fiche client</p>
             <div className="flex items-center gap-3">
               <div className="h-12 w-12 rounded-full bg-[#002FA7]/10 text-[#002FA7] flex items-center justify-center font-display font-black text-lg">
                 {member.prenom?.[0]}{member.nom?.[0]}
