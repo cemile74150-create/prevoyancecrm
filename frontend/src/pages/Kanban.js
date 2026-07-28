@@ -95,7 +95,11 @@ export default function Kanban() {
                     draggable
                     onDragStart={() => setDragId(c.id)}
                     onDragEnd={() => setDragId(null)}
-                    onClick={() => navigate(`/clients/${c.id}`)}
+                    onClick={() => navigate(
+                      c.linked_spouse_id || (c.etat_civil || "").toLowerCase().includes("mari")
+                        ? `/dossiers/${c.dossier_id || c.id}`
+                        : `/clients/${c.id}`
+                    )}
                     data-testid={`kanban-card-${c.id}`}
                     className={`group bg-white border border-border rounded-md p-3 cursor-grab active:cursor-grabbing hover:border-[#002FA7] hover:shadow-sm transition-all ${
                       dragId === c.id ? "opacity-40" : ""
@@ -127,7 +131,16 @@ export default function Kanban() {
         })}
       </div>
 
-      <ClientFormDialog open={dialog} onOpenChange={setDialog} onSaved={() => load()} />
+      <ClientFormDialog
+        open={dialog}
+        onOpenChange={setDialog}
+        onSaved={(created, meta = {}) => {
+          load();
+          if (meta.spouse || meta.isFamily) {
+            navigate(`/dossiers/${created.dossier_id || created.id}`);
+          }
+        }}
+      />
     </Layout>
   );
 }

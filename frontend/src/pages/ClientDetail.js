@@ -313,9 +313,17 @@ export default function ClientDetail() {
 
   const createSpouse = async () => {
     try {
-      const res = await api.post(`/clients/${id}/create-spouse`, {});
+      let payload = {};
+      if (!(client.conjoint || "").trim()) {
+        const prenom = window.prompt("Prénom du conjoint ?");
+        if (!prenom?.trim()) return;
+        const nom = window.prompt("Nom du conjoint ?", client.nom || "") || client.nom;
+        if (!nom?.trim()) return;
+        payload = { prenom: prenom.trim(), nom: nom.trim() };
+      }
+      await api.post(`/clients/${id}/create-spouse`, payload);
       toast.success("Fiche conjoint créée");
-      navigate(`/clients/${res.data.id}`);
+      navigate(`/dossiers/${client.dossier_id || client.id}`);
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Impossible de créer la fiche conjoint");
     }
@@ -554,11 +562,19 @@ export default function ClientDetail() {
   return (
     <Layout>
       <button
-        onClick={() => navigate(client.dossier_id && client.linked_spouse_id ? `/dossiers/${client.dossier_id}` : "/clients")}
+        onClick={() => navigate(
+          client.dossier_id && (client.linked_spouse_id || (client.etat_civil || "").toLowerCase().includes("mari"))
+            ? `/dossiers/${client.dossier_id}`
+            : "/clients"
+        )}
         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
         data-testid="back-btn"
       >
-        <ArrowLeft className="h-4 w-4" /> {client.dossier_id && client.linked_spouse_id ? "Retour au dossier" : "Retour aux clients"}
+        <ArrowLeft className="h-4 w-4" /> {
+          client.dossier_id && (client.linked_spouse_id || (client.etat_civil || "").toLowerCase().includes("mari"))
+            ? "Retour au dossier"
+            : "Retour aux clients"
+        }
       </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -581,18 +597,29 @@ export default function ClientDetail() {
             <p className="text-sm text-muted-foreground font-mono">{client.numero_dossier}</p>
 
             <div className="mt-3 flex flex-wrap gap-2">
+              {client.dossier_id && (client.linked_spouse_id || (client.etat_civil || "").toLowerCase().includes("mari")) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid="view-dossier-btn"
+                  onClick={() => navigate(`/dossiers/${client.dossier_id}`)}
+                  className="gap-1.5 border-[#002FA7] text-[#002FA7] hover:bg-[#002FA7]/5"
+                >
+                  <Users2 className="h-4 w-4" />Voir le dossier
+                </Button>
+              )}
               {client.linked_spouse_id && (
                 <Button
                   size="sm"
                   variant="outline"
                   data-testid="view-spouse-btn"
                   onClick={() => navigate(`/clients/${client.linked_spouse_id}`)}
-                  className="gap-1.5 border-[#002FA7] text-[#002FA7] hover:bg-[#002FA7]/5"
+                  className="gap-1.5"
                 >
-                  <Users2 className="h-4 w-4" />Voir conjoint
+                  Voir conjoint
                 </Button>
               )}
-              {client.conjoint && !client.linked_spouse_id && (
+              {!client.linked_spouse_id && ((client.etat_civil || "").toLowerCase().includes("mari") || client.conjoint) && (
                 <Button
                   size="sm"
                   variant="outline"

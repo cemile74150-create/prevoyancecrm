@@ -165,7 +165,16 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <ClientFormDialog open={dialog} onOpenChange={setDialog} onSaved={() => load()} />
+      <ClientFormDialog
+        open={dialog}
+        onOpenChange={setDialog}
+        onSaved={(created, meta = {}) => {
+          load();
+          if (meta.spouse || meta.isFamily) {
+            navigate(`/dossiers/${created.dossier_id || created.id}`);
+          }
+        }}
+      />
     </Layout>
   );
 }

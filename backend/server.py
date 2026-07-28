@@ -243,15 +243,36 @@ async def logout(response: Response, request: Request):
     return {"ok": True}
 
 # ---------------- Helpers ----------------
-async def log_action(user_id: str, client_id: str, description: str):
+async def log_action(user_id: str, client_id: str, description: str, dossier_id: Optional[str] = None):
     await db.actions.insert_one({
         "id": str(uuid.uuid4()), "user_id": user_id, "client_id": client_id,
+        "dossier_id": dossier_id,
         "description": description, "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
 async def next_dossier_number(user_id: str) -> str:
-    count = await db.clients.count_documents({"user_id": user_id})
+    # Compte les dossiers distincts (pas chaque conjoint)
+    pipeline = [
+        {"$match": {"user_id": user_id}},
+        {"$group": {"_id": {"$ifNull": ["$dossier_id", "$id"]}}},
+        {"$count": "n"},
+    ]
+    rows = await db.clients.aggregate(pipeline).to_list(1)
+    count = rows[0]["n"] if rows else 0
     return f"DOS-{count + 1:04d}"
+
+async def _dossier_scope(user_id: str, client: dict) -> dict:
+    """Retourne dossier_id + ids des membres du dossier familial."""
+    dossier_id = client.get("dossier_id") or client["id"]
+    members = await db.clients.find(
+        {"user_id": user_id, "dossier_id": dossier_id}, {"id": 1}
+    ).to_list(100)
+    member_ids = [m["id"] for m in members]
+    if not member_ids:
+        member_ids = [client["id"]]
+        if client.get("linked_spouse_id"):
+            member_ids.append(client["linked_spouse_id"])
+    return {"dossier_id": dossier_id, "member_ids": list(dict.fromkeys(member_ids))}
 
 async def _upsert_echeance_3p_reminder(user_id: str, client: dict, echeance_iso: Optional[str]):
     """Create or update the open 3P reminder when the expiry is within one year."""
@@ -320,7 +341,8 @@ async def create_client(payload: ClientCreate, user: User = Depends(get_current_
     doc["user_id"] = user.user_id
     doc["numero_dossier"] = await next_dossier_number(user.user_id)
     doc["dossier_id"] = doc["id"]
-    married = "mari" in (doc.get("etat_civil") or "").casefold()
+    etat = (doc.get("etat_civil") or "").casefold()
+    married = "mari" in etat or "partenariat" in etat
     doc["dossier_label"] = f"Famille {doc['nom']}" if married else f"{doc['prenom']} {doc['nom']}".strip()
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
     doc["updated_at"] = doc["created_at"]
@@ -369,11 +391,36 @@ async def get_dossier(dossier_id: str, user: User = Depends(get_current_user)):
             m["dossier_label"] = dossier_label
             m["numero_dossier"] = primary.get("numero_dossier")
     primary = members[0]
+    scope_id = primary.get("dossier_id") or dossier_id
+    member_ids = [m["id"] for m in members]
+    docs = await db.documents.find(
+        {
+            "user_id": user.user_id,
+            "is_deleted": False,
+            "$or": [
+                {"client_id": {"$in": member_ids}},
+                {"dossier_id": scope_id},
+            ],
+        },
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(50)
+    notes = await db.notes.find(
+        {
+            "user_id": user.user_id,
+            "$or": [
+                {"client_id": {"$in": member_ids}},
+                {"dossier_id": scope_id},
+            ],
+        },
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(20)
     return {
         "dossier_id": dossier_id,
         "dossier_label": primary.get("dossier_label") or f"{primary.get('prenom', '')} {primary.get('nom', '')}".strip(),
         "numero_dossier": primary.get("numero_dossier"),
         "members": members,
+        "documents": docs,
+        "notes": notes,
     }
 
 @api_router.put("/clients/{client_id}")
@@ -428,6 +475,15 @@ async def update_lpp_caisse_tracking(client_id: str, payload: LppCaisseTrackingU
 
 @api_router.delete("/clients/{client_id}")
 async def delete_client(client_id: str, user: User = Depends(get_current_user)):
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    spouse_id = c.get("linked_spouse_id")
+    if spouse_id:
+        await db.clients.update_one(
+            {"id": spouse_id, "user_id": user.user_id},
+            {"$unset": {"linked_spouse_id": ""}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
     res = await db.clients.delete_one({"id": client_id, "user_id": user.user_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Client introuvable")
@@ -436,21 +492,54 @@ async def delete_client(client_id: str, user: User = Depends(get_current_user)):
 # ---------------- Notes ----------------
 @api_router.get("/clients/{client_id}/notes")
 async def list_notes(client_id: str, user: User = Depends(get_current_user)):
-    return await db.notes.find({"client_id": client_id, "user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    scope = await _dossier_scope(user.user_id, c)
+    query = {
+        "user_id": user.user_id,
+        "$or": [
+            {"client_id": {"$in": scope["member_ids"]}},
+            {"dossier_id": scope["dossier_id"]},
+        ],
+    }
+    return await db.notes.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
 @api_router.post("/clients/{client_id}/notes")
 async def add_note(client_id: str, payload: NoteCreate, user: User = Depends(get_current_user)):
-    doc = {"id": str(uuid.uuid4()), "client_id": client_id, "user_id": user.user_id,
-           "content": payload.content, "author": user.name, "created_at": datetime.now(timezone.utc).isoformat()}
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    scope = await _dossier_scope(user.user_id, c)
+    doc = {
+        "id": str(uuid.uuid4()),
+        "client_id": client_id,
+        "dossier_id": scope["dossier_id"],
+        "user_id": user.user_id,
+        "content": payload.content,
+        "author": user.name,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
     await db.notes.insert_one(doc)
-    await log_action(user.user_id, client_id, "Note interne ajoutée")
+    await log_action(user.user_id, client_id, "Note interne ajoutée", dossier_id=scope["dossier_id"])
     doc.pop("_id", None)
     return doc
 
 # ---------------- Actions history ----------------
 @api_router.get("/clients/{client_id}/actions")
 async def list_actions(client_id: str, user: User = Depends(get_current_user)):
-    return await db.actions.find({"client_id": client_id, "user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    scope = await _dossier_scope(user.user_id, c)
+    query = {
+        "user_id": user.user_id,
+        "$or": [
+            {"client_id": {"$in": scope["member_ids"]}},
+            {"dossier_id": scope["dossier_id"]},
+        ],
+    }
+    return await db.actions.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
 # ---------------- Documents ----------------
 # ---------------- Documents ----------------
@@ -469,10 +558,14 @@ async def _store_pdf_bytes(user_id: str, pdf_bytes: bytes, meta: dict, client_id
         storage_path = f"local://generated/{user_id}/{local_name}"
         size = len(pdf_bytes)
 
+    client = await db.clients.find_one({"id": client_id, "user_id": user_id}, {"_id": 0, "dossier_id": 1})
+    dossier_id = (client or {}).get("dossier_id") or meta.get("dossier_id") or client_id
+
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
         "client_id": client_id,
+        "dossier_id": dossier_id,
         "storage_path": storage_path,
         "original_filename": meta["original_filename"],
         "content_type": "application/pdf",
@@ -497,14 +590,15 @@ async def list_documents(client_id: str, user: User = Depends(get_current_user))
     c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
     if not c:
         raise HTTPException(status_code=404, detail="Client introuvable")
-    if c.get("dossier_id"):
-        members = await db.clients.find({"user_id": user.user_id, "dossier_id": c["dossier_id"]}, {"id": 1}).to_list(100)
-        member_ids = [member["id"] for member in members]
-        query = {"user_id": user.user_id, "is_deleted": False, "$or": [
-            {"client_id": {"$in": member_ids}}, {"dossier_id": c["dossier_id"]},
-        ]}
-    else:
-        query = {"client_id": client_id, "user_id": user.user_id, "is_deleted": False}
+    scope = await _dossier_scope(user.user_id, c)
+    query = {
+        "user_id": user.user_id,
+        "is_deleted": False,
+        "$or": [
+            {"client_id": {"$in": scope["member_ids"]}},
+            {"dossier_id": scope["dossier_id"]},
+        ],
+    }
     return await db.documents.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
 @api_router.post("/clients/{client_id}/documents")

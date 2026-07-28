@@ -17,6 +17,14 @@ function dossierKey(client) {
   return client.id;
 }
 
+function isFamilyGroup(members) {
+  if (members.length > 1) return true;
+  const c = members[0];
+  if (c?.linked_spouse_id) return true;
+  const etat = (c?.etat_civil || "").toLowerCase();
+  return etat.includes("mari") || etat.includes("partenariat");
+}
+
 export default function Clients() {
   const [clients, setClients] = useState([]);
   const [q, setQ] = useState("");
@@ -30,17 +38,12 @@ export default function Clients() {
     setClients(res.data);
   }, [q]);
 
-  const handleSaved = async (createdClient) => {
+  const handleSaved = async (createdClient, meta = {}) => {
     await load();
     setDialog(false);
-    const isMarried = (createdClient?.etat_civil || "").toLowerCase().includes("mari");
-    if (createdClient && isMarried && window.confirm("Créer maintenant la fiche du conjoint ?")) {
-      try {
-        await api.post(`/clients/${createdClient.id}/create-spouse`, {});
-        navigate(`/dossiers/${createdClient.dossier_id || createdClient.id}`);
-      } catch (err) {
-        navigate(`/clients/${createdClient.id}`);
-      }
+    const hubId = createdClient?.dossier_id || createdClient?.id;
+    if (meta.spouse || meta.isFamily) {
+      navigate(`/dossiers/${hubId}`);
     }
   };
 
@@ -79,7 +82,7 @@ export default function Clients() {
 
       <Card className="overflow-hidden">
         <div className="hidden md:grid grid-cols-12 gap-4 px-6 h-12 items-center border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          <div className="col-span-3">Client</div>
+          <div className="col-span-3">Client / Dossier</div>
           <div className="col-span-2">N° dossier</div>
           <div className="col-span-3">Contact</div>
           <div className="col-span-3">Statut</div>
@@ -90,13 +93,14 @@ export default function Clients() {
         ) : (
           groups.map((members) => {
             const c = members[0];
-            const isFamily = members.length > 1 || Boolean(c.linked_spouse_id);
+            const family = isFamilyGroup(members);
             const hubId = c.dossier_id || c.id;
+            const names = members.map((m) => `${m.prenom} ${m.nom}`).join(" · ");
             return (
               <button
                 key={hubId}
                 data-testid={`client-row-${hubId}`}
-                onClick={() => navigate(isFamily ? `/dossiers/${hubId}` : `/clients/${c.id}`)}
+                onClick={() => navigate(family ? `/dossiers/${hubId}` : `/clients/${c.id}`)}
                 className="w-full grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 px-6 py-4 items-center border-b border-border last:border-0 hover:bg-secondary text-left transition-colors group"
               >
                 <div className="col-span-3 flex items-center gap-3">
@@ -105,14 +109,18 @@ export default function Clients() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate flex items-center gap-1.5">
-                      {isFamily ? (c.dossier_label || `Famille ${c.nom}`) : `${c.prenom} ${c.nom}`}
+                      {family ? (c.dossier_label || `Famille ${c.nom}`) : `${c.prenom} ${c.nom}`}
                       {c.priorite === "urgent" && <AlertTriangle className="h-3.5 w-3.5 text-red-600" />}
                     </p>
-                    {c.ville && <p className="text-xs text-muted-foreground">{c.ville}</p>}
+                    {family ? (
+                      <p className="text-xs text-muted-foreground truncate">{names || c.ville}</p>
+                    ) : (
+                      c.ville && <p className="text-xs text-muted-foreground">{c.ville}</p>
+                    )}
                   </div>
                 </div>
                 <div className="col-span-2 text-sm text-muted-foreground font-mono">
-                  {c.numero_dossier}{isFamily ? ` · ${members.length} membre${members.length > 1 ? "s" : ""}` : ""}
+                  {c.numero_dossier}{family ? ` · ${members.length} membre${members.length > 1 ? "s" : ""}` : ""}
                 </div>
                 <div className="col-span-3 text-sm text-muted-foreground space-y-0.5">
                   {c.email && <p className="flex items-center gap-1.5 truncate"><Mail className="h-3 w-3" />{c.email}</p>}

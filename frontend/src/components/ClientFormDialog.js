@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -8,12 +8,12 @@ import { STATUTS } from "@/lib/constants";
 import api from "@/lib/api";
 import { toast } from "sonner";
 
-function Field({ label, k, type = "text", placeholder, form, setField }) {
+function Field({ label, k, type = "text", placeholder, form, setField, testId }) {
   return (
     <div className="space-y-1.5">
       <Label className="text-xs text-muted-foreground">{label}</Label>
       <Input
-        data-testid={`client-field-${k}`}
+        data-testid={testId || `client-field-${k}`}
         type={type}
         value={form[k] ?? ""}
         placeholder={placeholder}
@@ -34,18 +34,52 @@ const empty = {
   statut: "Nouveau", priorite: "normale",
 };
 
+const emptySpouse = {
+  prenom: "", nom: "", date_naissance: "", sexe: "", avs_number: "",
+};
+
+function isMarriedEtat(etat) {
+  const v = (etat || "").toLowerCase();
+  return v.includes("mari") || v.includes("partenariat");
+}
+
 export default function ClientFormDialog({ open, onOpenChange, client, onSaved }) {
   const [form, setForm] = useState(empty);
+  const [spouseForm, setSpouseForm] = useState(emptySpouse);
+  const [createSpouseFiche, setCreateSpouseFiche] = useState(true);
   const [saving, setSaving] = useState(false);
   const isEdit = !!client;
+  const showSpouseBlock = !isEdit && isMarriedEtat(form.etat_civil);
 
   useEffect(() => {
     if (client) setForm({ ...empty, ...client, salaire_annuel: client.salaire_annuel ?? "" });
     else setForm(empty);
+    setSpouseForm(emptySpouse);
+    setCreateSpouseFiche(true);
   }, [client, open]);
+
+  useEffect(() => {
+    if (!showSpouseBlock) return;
+    // Préremplir depuis le champ conjoint si saisi (Prénom Nom)
+    const parts = (form.conjoint || "").trim().split(/\s+/).filter(Boolean);
+    if (parts.length && !spouseForm.prenom && !spouseForm.nom) {
+      setSpouseForm((s) => ({
+        ...s,
+        prenom: parts[0] || "",
+        nom: parts.slice(1).join(" ") || form.nom || "",
+      }));
+    } else if (!spouseForm.nom && form.nom) {
+      setSpouseForm((s) => ({ ...s, nom: s.nom || form.nom }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSpouseBlock, form.conjoint, form.nom]);
 
   const setField = (k, v) => {
     setForm((f) => ({ ...f, [k]: v }));
+  };
+
+  const setSpouseField = (k, v) => {
+    setSpouseForm((f) => ({ ...f, [k]: v }));
   };
 
   const save = async () => {
@@ -53,18 +87,46 @@ export default function ClientFormDialog({ open, onOpenChange, client, onSaved }
       toast.error("Le prénom et le nom sont obligatoires");
       return;
     }
+    if (showSpouseBlock && createSpouseFiche) {
+      if (!spouseForm.prenom.trim() || !spouseForm.nom.trim()) {
+        toast.error("Renseignez le prénom et le nom du conjoint");
+        return;
+      }
+    }
     setSaving(true);
     try {
       const payload = {
         ...form,
         nombre_enfants: parseInt(form.nombre_enfants) || 0,
         salaire_annuel: form.salaire_annuel ? parseFloat(form.salaire_annuel) : null,
+        conjoint: showSpouseBlock && createSpouseFiche
+          ? `${spouseForm.prenom} ${spouseForm.nom}`.trim()
+          : form.conjoint,
       };
       const res = isEdit
         ? await api.put(`/clients/${client.id}`, payload)
         : await api.post("/clients", payload);
-      toast.success(isEdit ? "Fiche mise à jour" : "Dossier créé");
-      onSaved(res.data);
+
+      let spouse = null;
+      if (!isEdit && showSpouseBlock && createSpouseFiche) {
+        try {
+          const spouseRes = await api.post(`/clients/${res.data.id}/create-spouse`, {
+            prenom: spouseForm.prenom.trim(),
+            nom: spouseForm.nom.trim(),
+            date_naissance: spouseForm.date_naissance || null,
+            sexe: spouseForm.sexe || null,
+            avs_number: spouseForm.avs_number || null,
+          });
+          spouse = spouseRes.data;
+          toast.success("Dossier familial créé (2 fiches)");
+        } catch (err) {
+          toast.error(err?.response?.data?.detail || "Client créé, mais fiche conjoint impossible");
+        }
+      } else {
+        toast.success(isEdit ? "Fiche mise à jour" : "Dossier créé");
+      }
+
+      onSaved?.(res.data, { spouse, isFamily: Boolean(spouse) || isMarriedEtat(res.data.etat_civil) });
       onOpenChange(false);
     } catch (e) {
       toast.error("Erreur lors de l'enregistrement");
@@ -78,6 +140,11 @@ export default function ClientFormDialog({ open, onOpenChange, client, onSaved }
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display tracking-tight">{isEdit ? "Modifier la fiche client" : "Nouveau dossier client"}</DialogTitle>
+          {showSpouseBlock && (
+            <DialogDescription>
+              Client marié : une fiche sera créée pour chaque conjoint, dans un seul dossier familial.
+            </DialogDescription>
+          )}
         </DialogHeader>
 
         <div className="space-y-5 py-2">
@@ -122,9 +189,51 @@ export default function ClientFormDialog({ open, onOpenChange, client, onSaved }
                 </Select>
               </div>
               <Field label="Nombre d'enfants" k="nombre_enfants" type="number" form={form} setField={setField} />
-              <Field label="Conjoint" k="conjoint" form={form} setField={setField} />
+              {!showSpouseBlock && (
+                <Field label="Conjoint" k="conjoint" form={form} setField={setField} />
+              )}
             </div>
           </div>
+
+          {showSpouseBlock && (
+            <div className="rounded-md border border-[#002FA7]/20 bg-[#002FA7]/5 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[#002FA7]">Fiche du conjoint</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Les deux personnes partageront le même dossier (documents, notes, historique).
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 text-xs shrink-0 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={createSpouseFiche}
+                    onChange={(e) => setCreateSpouseFiche(e.target.checked)}
+                    data-testid="create-spouse-toggle"
+                  />
+                  Créer maintenant
+                </label>
+              </div>
+              {createSpouseFiche && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Prénom conjoint *" k="prenom" form={spouseForm} setField={setSpouseField} testId="spouse-field-prenom" />
+                  <Field label="Nom conjoint *" k="nom" form={spouseForm} setField={setSpouseField} testId="spouse-field-nom" />
+                  <Field label="Date de naissance" k="date_naissance" type="date" form={spouseForm} setField={setSpouseField} testId="spouse-field-date_naissance" />
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Sexe</Label>
+                    <Select value={spouseForm.sexe || ""} onValueChange={(v) => setSpouseField("sexe", v)}>
+                      <SelectTrigger data-testid="spouse-field-sexe"><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Homme">Homme</SelectItem>
+                        <SelectItem value="Femme">Femme</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Field label="N° AVS conjoint" k="avs_number" placeholder="756.XXXX.XXXX.XX" form={spouseForm} setField={setSpouseField} testId="spouse-field-avs" />
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <p className="text-sm font-semibold text-[#002FA7] mb-3">Situation professionnelle</p>
@@ -165,7 +274,7 @@ export default function ClientFormDialog({ open, onOpenChange, client, onSaved }
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="client-form-cancel">Annuler</Button>
           <Button onClick={save} disabled={saving} data-testid="client-form-save" className="bg-[#002FA7] hover:bg-[#00248a]">
-            {saving ? "Enregistrement…" : isEdit ? "Enregistrer" : "Créer le dossier"}
+            {saving ? "Enregistrement…" : isEdit ? "Enregistrer" : showSpouseBlock && createSpouseFiche ? "Créer le dossier familial" : "Créer le dossier"}
           </Button>
         </DialogFooter>
       </DialogContent>
