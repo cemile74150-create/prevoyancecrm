@@ -10,7 +10,8 @@ import Kanban from "@/pages/Kanban";
 import Clients from "@/pages/Clients";
 import ClientDetail from "@/pages/ClientDetail";
 import Agenda from "@/pages/Agenda";
-import { Loader2 } from "lucide-react";
+import Formulaires from "@/pages/Formulaires";
+// Visual PDF field mapping editor (FormMappingEditor) — 2026-07-28
 
 function Protected({ children }) {
   return children;
@@ -31,6 +32,7 @@ function AppRoutes() {
       <Route path="/clients" element={<Protected><Clients /></Protected>} />
       <Route path="/clients/:id" element={<Protected><ClientDetail /></Protected>} />
       <Route path="/agenda" element={<Protected><Agenda /></Protected>} />
+      <Route path="/formulaires" element={<Protected><Formulaires /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

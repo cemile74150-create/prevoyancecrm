@@ -34,5 +34,8 @@ export const DOC_CATEGORIES = [
   "Pièce d'identité",
   "Fiches de salaire",
   "Contrats",
+  "Procuration",
+  "Formulaire AVS",
+  "Formulaire de recherche LPP",
   "Autre",
 ];

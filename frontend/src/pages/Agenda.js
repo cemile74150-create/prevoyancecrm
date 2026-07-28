@@ -10,12 +10,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { CalendarClock, ListTodo, Plus, Trash2, MapPin } from "lucide-react";
+import { CalendarClock, ListTodo, Plus, Trash2, MapPin, AlertTriangle } from "lucide-react";
 
 export default function Agenda() {
   const [appts, setAppts] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [clients, setClients] = useState([]);
+  const [echeances3p, setEcheances3p] = useState([]);
   const [apptDialog, setApptDialog] = useState(false);
   const [taskDialog, setTaskDialog] = useState(false);
   const [apptForm, setApptForm] = useState({ titre: "", date: "", type: "Rendez-vous", lieu: "", client_id: "none" });
@@ -23,8 +24,13 @@ export default function Agenda() {
   const navigate = useNavigate();
 
   const load = async () => {
-    const [a, t, c] = await Promise.all([api.get("/appointments"), api.get("/tasks"), api.get("/clients")]);
-    setAppts(a.data); setTasks(t.data); setClients(c.data);
+    const [a, t, c, e] = await Promise.all([
+      api.get("/appointments"),
+      api.get("/tasks"),
+      api.get("/clients"),
+      api.get("/echeances-3p").catch(() => ({ data: [] })),
+    ]);
+    setAppts(a.data); setTasks(t.data); setClients(c.data); setEcheances3p(e.data || []);
   };
   useEffect(() => { load(); }, []);
 
@@ -61,7 +67,7 @@ export default function Agenda() {
     <Layout>
       <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
         <div>
-          <h1 className="font-display font-black text-3xl sm:text-4xl tracking-tight">Agenda</h1>
+          <h1 className="font-display font-black text-3xl sm:text-4xl tracking-tight">Ordre du jour</h1>
           <p className="text-muted-foreground mt-1">Rendez-vous, rappels et tâches à effectuer</p>
         </div>
         <div className="flex gap-2">
@@ -71,6 +77,34 @@ export default function Agenda() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {echeances3p.length > 0 && (
+          <div className="lg:col-span-3">
+            <Card className="p-4 border-amber-200 bg-amber-50/50">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+                <h2 className="font-display font-bold text-lg tracking-tight">Échéances 3e pilier (&lt; 1 an)</h2>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {echeances3p.map((e) => (
+                  <button
+                    key={e.client_id || e.id}
+                    data-testid={`echeance-3p-${e.client_id || e.id}`}
+                    onClick={() => navigate(`/clients/${e.client_id || e.id}`)}
+                    className="text-sm px-3 py-1.5 rounded-md border border-amber-200 bg-white hover:border-[#002FA7] hover:text-[#002FA7] transition-colors"
+                  >
+                    {e.prenom} {e.nom}
+                    {e.echeance_3p && (
+                      <span className="text-muted-foreground ml-1.5">
+                        — {new Date(e.echeance_3p).toLocaleDateString("fr-CH")}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
+
         <div className="lg:col-span-2">
           <div className="flex items-center gap-2 mb-4">
             <CalendarClock className="h-5 w-5 text-[#002FA7]" />
