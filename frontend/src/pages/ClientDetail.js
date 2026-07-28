@@ -553,7 +553,11 @@ export default function ClientDetail() {
 
   return (
     <Layout>
-      <button onClick={() => navigate("/clients")} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors" data-testid="back-btn">
+      <button
+        onClick={() => navigate(client.dossier_id && client.linked_spouse_id ? `/dossiers/${client.dossier_id}` : "/clients")}
+        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
+        data-testid="back-btn"
+      >
         <ArrowLeft className="h-4 w-4" /> {client.dossier_id && client.linked_spouse_id ? "Retour au dossier" : "Retour aux clients"}
       </button>
 
