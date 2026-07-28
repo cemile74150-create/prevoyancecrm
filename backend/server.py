@@ -778,6 +778,7 @@ async def test_fill_library_form(
             field_mapping=mapping if isinstance(mapping, dict) else None,
             spouse=spouse,
             extra_values={"date_rdv": date_rdv},
+            widgets=record.get("widgets"),
         )
     except Exception as e:
         logger.exception("Test fill formulaire échoué")
@@ -827,6 +828,7 @@ async def generate_library_form_for_client(
             field_mapping=use_mapping,
             spouse=spouse,
             extra_values={"date_rdv": date_rdv},
+            widgets=form.get("widgets"),
         )
     except Exception as e:
         logger.exception("Génération formulaire bibliothèque échouée")

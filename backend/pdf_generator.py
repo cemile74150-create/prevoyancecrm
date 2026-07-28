@@ -591,11 +591,87 @@ def suggest_field_mapping(field_names: List[str]) -> Dict[str, str]:
 
 
 def suggest_widget_mapping(widgets: List[Dict[str, Any]]) -> Dict[str, str]:
-    """Suggestions par widget unique (id -> crm_key)."""
-    return {
-        w["id"]: _guess_source_key_for_field(w.get("original_name") or "")
-        for w in widgets
-    }
+    """Suggestions par widget. Pas d'auto-mapping des cases questionnaire ni US Person."""
+    mapping: Dict[str, str] = {}
+    for w in widgets:
+        original = w.get("original_name") or ""
+        ftype = w.get("field_type") or ""
+        if _is_us_person_label(original):
+            mapping[w["id"]] = ""
+            continue
+        if _is_checkbox_or_radio_type(ftype) and not _is_safe_identity_checkbox(original):
+            mapping[w["id"]] = ""
+            continue
+        mapping[w["id"]] = _guess_source_key_for_field(original)
+    return mapping
+
+
+def _is_checkbox_or_radio_type(field_type: str) -> bool:
+    t = (field_type or "").lower()
+    return any(x in t for x in ("check", "radio", "button"))
+
+
+def _is_safe_identity_checkbox(original_name: str) -> bool:
+    """Cases d'identité (sexe / état civil) — pas les questionnaires profil."""
+    n = _norm(original_name)
+    safe = (
+        "masculin", "feminin", "féminin", "homme", "femme",
+        "celibat", "célibat", "marie", "marié", "divorce", "veuf", "pacse",
+        "sexe", "genre", "gender",
+    )
+    return any(s in n for s in safe)
+
+
+def _is_us_person_label(name: str) -> bool:
+    n = _norm(name)
+    needles = (
+        "us person", "usperson", "us-person", "us_person",
+        "personne us", "personne americaine", "personne américaine",
+        "citoyen americain", "citoyen américain", "american person",
+        "fatca",
+    )
+    return any(x in n for x in needles)
+
+
+def _looks_like_yes(name: str) -> bool:
+    n = _norm(name)
+    if n in ("oui", "yes", "ja", "true", "1"):
+        return True
+    if _looks_like_no(name):
+        return False
+    return bool(re.search(r"(^|[\s_\-./])(oui|yes|ja)([\s_\-./]|$)", n))
+
+
+def _looks_like_no(name: str) -> bool:
+    n = _norm(name)
+    if n in ("non", "no", "nein", "false", "0"):
+        return True
+    return bool(re.search(r"(^|[\s_\-./])(non|no|nein)([\s_\-./]|$)", n))
+
+
+def _widget_on_value(widget) -> Any:
+    try:
+        on = widget.on_state()
+        if callable(on):
+            on = on()
+        return on
+    except Exception:
+        return True
+
+
+def _set_widget_checked(widget, checked: bool) -> None:
+    try:
+        if checked:
+            widget.field_value = _widget_on_value(widget)
+        else:
+            widget.field_value = False
+        widget.update()
+    except Exception:
+        try:
+            widget.field_value = _widget_on_value(widget) if checked else "Off"
+            widget.update()
+        except Exception:
+            pass
 
 
 def prepare_library_form_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
@@ -669,26 +745,140 @@ def render_pdf_page_png(pdf_bytes: bytes, page_index: int = 0, dpi: float = 144.
     return png
 
 
+def _apply_us_person_default(widget, original_name: str, field_type: str = "") -> bool:
+    """US Person = toujours Non (sans mapping CRM). Retourne True si traité."""
+    if not _is_us_person_label(original_name):
+        return False
+    if _looks_like_no(original_name):
+        _set_widget_checked(widget, True)
+        return True
+    if _looks_like_yes(original_name):
+        _set_widget_checked(widget, False)
+        return True
+    if _is_checkbox_or_radio_type(field_type):
+        # Case unique « je suis US Person » → Non = décochée
+        _set_widget_checked(widget, False)
+        return True
+    try:
+        widget.field_value = "Non"
+        widget.update()
+        return True
+    except Exception:
+        return False
+
+
+def _near_us_person_row(meta: Dict[str, Any], us_metas: List[Dict[str, Any]], max_dy: float = 0.06) -> bool:
+    """True si le widget est sur la même ligne approximative qu'un champ US Person."""
+    r = meta.get("rect") or {}
+    y = float(r.get("y") or 0)
+    page = meta.get("page")
+    for u in us_metas:
+        if u.get("page") != page:
+            continue
+        uy = float((u.get("rect") or {}).get("y") or 0)
+        if abs(uy - y) <= max_dy:
+            return True
+    return False
+
+
+def _apply_us_person_oui_non_siblings(doc, meta_by_id: Dict[str, Dict[str, Any]]) -> None:
+    """
+    Si la question US Person existe, coche « Non » / décoche « Oui » pour les cases
+    voisines nommées uniquement Oui/Non (sans US dans le libellé).
+    """
+    us_metas = [
+        m for m in meta_by_id.values()
+        if _is_us_person_label(m.get("original_name") or "")
+    ]
+    if not us_metas:
+        return
+    for page in doc:
+        for widget in page.widgets() or []:
+            name = widget.field_name or ""
+            meta = meta_by_id.get(name) or {}
+            original = meta.get("original_name") or ""
+            if _is_us_person_label(original):
+                continue  # déjà traité
+            n = _norm(original)
+            if n not in ("non", "no", "nein", "oui", "yes", "ja"):
+                continue
+            if not _is_checkbox_or_radio_type(meta.get("field_type") or ""):
+                # type runtime
+                ft = str(getattr(widget, "field_type_string", None) or "")
+                if not _is_checkbox_or_radio_type(ft):
+                    continue
+            if not _near_us_person_row(meta, us_metas):
+                continue
+            if n in ("non", "no", "nein"):
+                _set_widget_checked(widget, True)
+            else:
+                _set_widget_checked(widget, False)
+
+
+def _fill_checkbox_from_value(widget, text: str) -> None:
+    """Coche uniquement si la valeur CRM est explicitement affirmative."""
+    raw = _norm(text)
+    if not raw:
+        _set_widget_checked(widget, False)
+        return
+    truthy = raw in {
+        "1", "true", "oui", "yes", "ja", "x", "on", "checked", "vrai",
+        "masculin", "feminin", "féminin", "marie", "marié", "celibataire", "célibataire",
+    }
+    if raw.startswith("/") and len(raw) > 1:
+        truthy = raw[1:] not in ("off", "no", "non")
+    _set_widget_checked(widget, bool(truthy))
+
+
 def _fill_with_pymupdf(
     pdf_bytes: bytes,
     values: Dict[str, str],
     field_mapping: Dict[str, str],
+    widgets: Optional[List[Dict[str, Any]]] = None,
 ) -> bytes:
     import fitz
 
+    meta_by_id = {w.get("id") or w.get("unique_name"): w for w in (widgets or []) if w}
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     for page in doc:
         for widget in page.widgets() or []:
             name = widget.field_name or ""
-            source_key = field_mapping.get(name)
-            if not source_key:
+            meta = meta_by_id.get(name) or {}
+            original = meta.get("original_name") or name
+            field_type = str(
+                meta.get("field_type")
+                or getattr(widget, "field_type_string", None)
+                or getattr(widget, "field_type", "")
+                or ""
+            )
+
+            # Défaut codé : US Person → Non (sans mapping)
+            if _apply_us_person_default(widget, original, field_type):
                 continue
+
+            source_key = (field_mapping or {}).get(name) or ""
+            if not source_key:
+                # Pas de mapping → ne jamais cocher / remplir (questionnaires, etc.)
+                continue
+
             text = values.get(source_key, "")
             try:
-                widget.field_value = text
-                widget.update()
+                if _is_checkbox_or_radio_type(field_type):
+                    if text is None or str(text).strip() == "":
+                        continue
+                    _fill_checkbox_from_value(widget, str(text))
+                else:
+                    widget.field_value = "" if text is None else str(text)
+                    widget.update()
             except Exception:
                 continue
+
+    # Cases Oui/Non voisines de la question US Person
+    try:
+        _apply_us_person_oui_non_siblings(doc, meta_by_id)
+    except Exception:
+        pass
+
     out = io.BytesIO()
     doc.save(out, garbage=4, deflate=True)
     doc.close()
@@ -717,8 +907,13 @@ def _build_mapped_field_map(
 
 
 def _guess_value_for_field(field_name: str, values: Dict[str, str]) -> Optional[str]:
-    """Associe un nom de champ AcroForm à une valeur client (heuristique)."""
+    """Associe un nom de champ AcroForm à une valeur client (heuristique texte)."""
     n = _norm(field_name)
+    # Ne jamais préremplir cases questionnaire / US Person
+    if n.startswith("case a cocher") or n.startswith("checkbox") or n.startswith("caseacocher"):
+        return None
+    if _is_us_person_label(field_name):
+        return None
     checks = [
         ("date_naissance", values.get("date_naissance")),
         ("avs", values.get("avs")),
@@ -775,6 +970,7 @@ def fill_pdf_bytes_with_client(
     field_mapping: Optional[Dict[str, str]] = None,
     spouse: Optional[Dict[str, Any]] = None,
     extra_values: Optional[Dict[str, str]] = None,
+    widgets: Optional[List[Dict[str, Any]]] = None,
 ) -> bytes:
     """Préremplit un PDF AcroForm avec les données client (mapping manuel ou heuristique)."""
     values = client_field_values(
@@ -786,7 +982,7 @@ def fill_pdf_bytes_with_client(
 
     if field_mapping is not None:
         try:
-            return _fill_with_pymupdf(pdf_bytes, values, field_mapping)
+            return _fill_with_pymupdf(pdf_bytes, values, field_mapping, widgets=widgets)
         except Exception:
             pass  # fallback pypdf ci-dessous
 
@@ -800,6 +996,17 @@ def fill_pdf_bytes_with_client(
         field_map = _build_mapped_field_map(values, existing, field_mapping)
     else:
         field_map = _build_generic_field_map(values, existing)
+
+    # Défaut US Person (noms d'origine si non uniqueifiés / fallback)
+    for fname in list(existing.keys()):
+        if not _is_us_person_label(fname):
+            continue
+        if _looks_like_no(fname):
+            field_map[fname] = "/Oui"
+        elif _looks_like_yes(fname):
+            field_map[fname] = "/Off"
+        else:
+            field_map[fname] = "/Off"
 
     text_values: Dict[str, Any] = {}
     multiline_names: set = set()
