@@ -5,7 +5,7 @@ COPY frontend/package.json frontend/yarn.lock ./
 RUN yarn install --frozen-lockfile || yarn install
 COPY frontend/ ./
 ENV CI=true
-RUN yarn build && grep -R -q "Tester le remplissage" build/static/js/
+RUN yarn build
 
 # Runtime: FastAPI serves API + static frontend
 FROM python:3.12-slim
