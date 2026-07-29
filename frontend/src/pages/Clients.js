@@ -26,11 +26,12 @@ function buildGroups(clients) {
   clients.forEach((c) => {
     if (canonical[c.id]) return;
     const sid = c.linked_spouse_id;
-    if (sid && byId[sid]) {
-      // Choisir le dossier_id le plus "ancien" (premier alphabétiquement = créé en premier)
-      const key = c.dossier_id && byId[sid]?.dossier_id
-        ? (c.dossier_id < byId[sid].dossier_id ? c.dossier_id : byId[sid].dossier_id)
-        : c.dossier_id || byId[sid]?.dossier_id || c.id;
+    const spouse = sid ? byId[sid] : null;
+    // Only group as couple if both exist AND at least one has a married état civil
+    if (spouse && (isMarriedEtat(c.etat_civil) || isMarriedEtat(spouse.etat_civil))) {
+      const key = c.dossier_id && spouse.dossier_id
+        ? (c.dossier_id < spouse.dossier_id ? c.dossier_id : spouse.dossier_id)
+        : c.dossier_id || spouse.dossier_id || c.id;
       canonical[c.id] = key;
       canonical[sid] = key;
     } else {
@@ -49,12 +50,16 @@ function buildGroups(clients) {
   return Object.values(groups);
 }
 
+function isMarriedEtat(etat) {
+  const v = (etat || "").toLowerCase();
+  return v.includes("mari") || v.includes("partenariat");
+}
+
 function isFamilyGroup(members) {
   if (members.length > 1) return true;
   const c = members[0];
-  if (c?.linked_spouse_id) return true;
-  const etat = (c?.etat_civil || "").toLowerCase();
-  return etat.includes("mari") || etat.includes("partenariat");
+  if (!isMarriedEtat(c?.etat_civil)) return false;
+  return Boolean(c?.linked_spouse_id);
 }
 
 export default function Clients() {

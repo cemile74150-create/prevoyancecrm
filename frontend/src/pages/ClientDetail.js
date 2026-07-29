@@ -557,13 +557,14 @@ export default function ClientDetail() {
 
   if (!client) return <Layout><div className="animate-pulse text-muted-foreground">Chargement…</div></Layout>;
 
+  const isMarried = ((client.etat_civil || "").toLowerCase().includes("mari") || (client.etat_civil || "").toLowerCase().includes("partenariat"));
   const fmtDate = (s) => s ? new Date(s).toLocaleString("fr-CH", { dateStyle: "medium", timeStyle: "short" }) : "";
 
   return (
     <Layout>
       <button
         onClick={() => navigate(
-          client.dossier_id && (client.linked_spouse_id || (client.etat_civil || "").toLowerCase().includes("mari"))
+          isMarried && client.dossier_id && client.linked_spouse_id
             ? `/dossiers/${client.dossier_id}`
             : "/clients"
         )}
@@ -571,7 +572,7 @@ export default function ClientDetail() {
         data-testid="back-btn"
       >
         <ArrowLeft className="h-4 w-4" /> {
-          client.dossier_id && (client.linked_spouse_id || (client.etat_civil || "").toLowerCase().includes("mari"))
+          isMarried && client.dossier_id && client.linked_spouse_id
             ? "Retour au dossier"
             : "Retour aux clients"
         }
@@ -597,7 +598,7 @@ export default function ClientDetail() {
             <p className="text-sm text-muted-foreground font-mono">{client.numero_dossier}</p>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              {client.dossier_id && (client.linked_spouse_id || (client.etat_civil || "").toLowerCase().includes("mari")) && (
+              {isMarried && client.dossier_id && client.linked_spouse_id && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -608,7 +609,7 @@ export default function ClientDetail() {
                   <Users2 className="h-4 w-4" />Voir le dossier
                 </Button>
               )}
-              {client.linked_spouse_id && (
+              {isMarried && client.linked_spouse_id && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -619,7 +620,7 @@ export default function ClientDetail() {
                   Voir conjoint
                 </Button>
               )}
-              {!client.linked_spouse_id && ((client.etat_civil || "").toLowerCase().includes("mari") || client.conjoint) && (
+              {isMarried && !client.linked_spouse_id && (
                 <Button
                   size="sm"
                   variant="outline"
