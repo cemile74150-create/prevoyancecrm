@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 const ANALYSE_PREVOYANCE_CATEGORY = "Analyse de prévoyance";
+const OFFRE_CATEGORY = "Offre";
 
 const Info = ({ label, value }) => (
   <div>
@@ -101,7 +102,9 @@ export default function ClientDetail() {
   const lppResponseRef = useRef();
   const otherFileRef = useRef();
   const analyseFileRef = useRef();
+  const offreFileRef = useRef();
   const [uploadingAnalyse, setUploadingAnalyse] = useState(false);
+  const [uploadingOffre, setUploadingOffre] = useState(false);
 
   const loadAll = async () => {
     const [c, n, d, a, h, lib] = await Promise.all([
@@ -251,31 +254,37 @@ export default function ClientDetail() {
     e.target.value = "";
   };
 
-  const uploadAnalyseDocs = async (e) => {
+  const uploadCategorizedDocs = async (e, category, setUploading, successSingular, successPlural) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    setUploadingAnalyse(true);
+    setUploading(true);
     let ok = 0;
     try {
       for (const file of files) {
         const fd = new FormData();
         fd.append("file", file);
-        fd.append("category", ANALYSE_PREVOYANCE_CATEGORY);
-        fd.append("checklist_item", ANALYSE_PREVOYANCE_CATEGORY);
+        fd.append("category", category);
+        fd.append("checklist_item", category);
         await api.post(`/clients/${id}/documents`, fd, { headers: { "Content-Type": "multipart/form-data" } });
         ok += 1;
       }
-      toast.success(ok > 1 ? `${ok} analyses ajoutées` : "Analyse ajoutée");
+      toast.success(ok > 1 ? successPlural.replace("{n}", String(ok)) : successSingular);
       const [d, h] = await Promise.all([api.get(`/clients/${id}/documents`), api.get(`/clients/${id}/actions`)]);
       setDocs(d.data);
       setActions(h.data);
     } catch (err) {
       toast.error(ok > 0 ? `${ok} fichier(s) ajouté(s), puis échec` : "Échec du téléversement");
     } finally {
-      setUploadingAnalyse(false);
+      setUploading(false);
       e.target.value = "";
     }
   };
+
+  const uploadAnalyseDocs = (e) =>
+    uploadCategorizedDocs(e, ANALYSE_PREVOYANCE_CATEGORY, setUploadingAnalyse, "Analyse ajoutée", "{n} analyses ajoutées");
+
+  const uploadOffreDocs = (e) =>
+    uploadCategorizedDocs(e, OFFRE_CATEGORY, setUploadingOffre, "Offre ajoutée", "{n} offres ajoutées");
 
   const triggerChecklistUpload = (documentName) => {
     uploadTargetRef.current = documentName;
@@ -291,6 +300,11 @@ export default function ClientDetail() {
 
   const deleteAnalyseDoc = async (docId) => {
     if (!window.confirm("Supprimer cette analyse de prévoyance ?")) return;
+    await deleteDoc(docId);
+  };
+
+  const deleteOffreDoc = async (docId) => {
+    if (!window.confirm("Supprimer cette offre ?")) return;
     await deleteDoc(docId);
   };
 
@@ -683,12 +697,70 @@ export default function ClientDetail() {
   const isAnalysePrevoyanceDoc = (d) =>
     d?.category === ANALYSE_PREVOYANCE_CATEGORY || d?.checklist_item === ANALYSE_PREVOYANCE_CATEGORY;
 
-  const analyseDocs = docs
-    .filter(isAnalysePrevoyanceDoc)
-    .slice()
-    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+  const isOffreDoc = (d) =>
+    d?.category === OFFRE_CATEGORY || d?.checklist_item === OFFRE_CATEGORY;
 
-  const otherDocs = docs.filter((d) => !isAnalysePrevoyanceDoc(d));
+  const sortDocsByDateDesc = (list) =>
+    list.slice().sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+
+  const analyseDocs = sortDocsByDateDesc(docs.filter(isAnalysePrevoyanceDoc));
+  const offreDocs = sortDocsByDateDesc(docs.filter(isOffreDoc));
+  const otherDocs = docs.filter((d) => !isAnalysePrevoyanceDoc(d) && !isOffreDoc(d));
+
+  const renderSpecialDocList = (list, { emptyLabel, testIdPrefix, onDelete, showLatestBadge = false }) => {
+    if (list.length === 0) {
+      return <p className="text-sm text-muted-foreground py-4">{emptyLabel}</p>;
+    }
+    return (
+      <div className="space-y-3">
+        {list.map((d, index) => (
+          <div key={d.id} className="flex items-start justify-between gap-3 border-b border-border pb-3 last:border-0 last:pb-0">
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate" title={d.original_filename}>
+                {d.original_filename || "Document"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {fmtDate(d.created_at)}
+                {d.author ? ` · ${d.author}` : ""}
+                {showLatestBadge && index === 0 ? " · Version la plus récente" : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button size="icon" variant="ghost" asChild className="h-8 w-8" title="Ouvrir">
+                <a
+                  href={`${apiBaseUrl}/documents/${d.id}/download`}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid={`${testIdPrefix}-open-${d.id}`}
+                >
+                  <Eye className="h-4 w-4" />
+                </a>
+              </Button>
+              <Button size="icon" variant="ghost" asChild className="h-8 w-8" title="Télécharger">
+                <a
+                  href={`${apiBaseUrl}/documents/${d.id}/download`}
+                  download={d.original_filename || "document.pdf"}
+                  data-testid={`${testIdPrefix}-download-${d.id}`}
+                >
+                  <Download className="h-4 w-4" />
+                </a>
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => onDelete(d.id)}
+                className="h-8 w-8 text-destructive hover:text-destructive"
+                title="Supprimer"
+                data-testid={`${testIdPrefix}-delete-${d.id}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <Layout>
@@ -1276,123 +1348,77 @@ export default function ClientDetail() {
             </TabsContent>
 
             <TabsContent value="analyse-prevoyance">
-              <Card className="p-6 space-y-4">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div>
-                    <p className="text-sm font-semibold text-[#002FA7]">Analyse de prévoyance</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Centralisez ici les analyses PDF. Chaque nouvel ajout conserve les versions précédentes.
-                    </p>
+              <Card className="p-6 space-y-8">
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-sm font-semibold text-[#002FA7]">Analyse de prévoyance</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        PDF d’analyse. Les nouvelles versions sont conservées dans l’historique.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => analyseFileRef.current?.click()}
+                      disabled={uploadingAnalyse}
+                      data-testid="upload-analyse-prevoyance-btn"
+                      className="h-8 gap-1.5 bg-[#002FA7] hover:bg-[#00248a]"
+                    >
+                      {uploadingAnalyse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Ajouter une analyse
+                    </Button>
+                    <input
+                      ref={analyseFileRef}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      multiple
+                      className="hidden"
+                      onChange={uploadAnalyseDocs}
+                      data-testid="analyse-prevoyance-file-input"
+                    />
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => analyseFileRef.current?.click()}
-                    disabled={uploadingAnalyse}
-                    data-testid="upload-analyse-prevoyance-btn"
-                    className="h-8 gap-1.5 bg-[#002FA7] hover:bg-[#00248a]"
-                  >
-                    {uploadingAnalyse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                    Ajouter une analyse
-                  </Button>
-                  <input
-                    ref={analyseFileRef}
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    multiple
-                    className="hidden"
-                    onChange={uploadAnalyseDocs}
-                    data-testid="analyse-prevoyance-file-input"
-                  />
+                  {renderSpecialDocList(analyseDocs, {
+                    emptyLabel: "Aucune analyse enregistrée pour l’instant.",
+                    testIdPrefix: "analyse",
+                    onDelete: deleteAnalyseDoc,
+                    showLatestBadge: true,
+                  })}
                 </div>
 
-                {analyseDocs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-6 text-center">
-                    Aucune analyse enregistrée pour l’instant.
-                  </p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left">
-                          <th className="pb-2 pr-3 font-medium text-muted-foreground">Nom du fichier</th>
-                          <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">Date d&apos;ajout</th>
-                          <th className="pb-2 pr-3 font-medium text-muted-foreground">Auteur</th>
-                          <th className="pb-2 font-medium text-muted-foreground text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {analyseDocs.map((d, index) => (
-                          <tr key={d.id} className="border-t border-border">
-                            <td className="py-3 pr-3">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <FileText className="h-4 w-4 text-[#002FA7] shrink-0" />
-                                <div className="min-w-0">
-                                  <p className="truncate font-medium" title={d.original_filename}>
-                                    {d.original_filename || "Analyse"}
-                                  </p>
-                                  {index === 0 && (
-                                    <p className="text-[11px] text-emerald-700">Version la plus récente</p>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-3 pr-3 whitespace-nowrap text-muted-foreground">
-                              {fmtDate(d.created_at)}
-                            </td>
-                            <td className="py-3 pr-3 whitespace-nowrap text-muted-foreground">
-                              {d.author || "—"}
-                            </td>
-                            <td className="py-3">
-                              <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  asChild
-                                  className="h-8 w-8"
-                                  title="Ouvrir"
-                                >
-                                  <a
-                                    href={`${apiBaseUrl}/documents/${d.id}/download`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    data-testid={`analyse-open-${d.id}`}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </a>
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  asChild
-                                  className="h-8 w-8"
-                                  title="Télécharger"
-                                >
-                                  <a
-                                    href={`${apiBaseUrl}/documents/${d.id}/download`}
-                                    download={d.original_filename || "analyse.pdf"}
-                                    data-testid={`analyse-download-${d.id}`}
-                                  >
-                                    <Download className="h-4 w-4" />
-                                  </a>
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => deleteAnalyseDoc(d.id)}
-                                  className="h-8 w-8 text-destructive hover:text-destructive"
-                                  title="Supprimer"
-                                  data-testid={`analyse-delete-${d.id}`}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                <div className="border-t border-border pt-6 space-y-4">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-sm font-semibold text-[#002FA7]">Offres</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Offres remises au client (rente, 3e pilier, LPP, hypothèque, etc.).
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => offreFileRef.current?.click()}
+                      disabled={uploadingOffre}
+                      data-testid="upload-offre-btn"
+                      className="h-8 gap-1.5 bg-[#002FA7] hover:bg-[#00248a]"
+                    >
+                      {uploadingOffre ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Ajouter une offre
+                    </Button>
+                    <input
+                      ref={offreFileRef}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      multiple
+                      className="hidden"
+                      onChange={uploadOffreDocs}
+                      data-testid="offre-file-input"
+                    />
                   </div>
-                )}
+                  {renderSpecialDocList(offreDocs, {
+                    emptyLabel: "Aucune offre enregistrée pour l’instant.",
+                    testIdPrefix: "offre",
+                    onDelete: deleteOffreDoc,
+                  })}
+                </div>
               </Card>
             </TabsContent>
 
