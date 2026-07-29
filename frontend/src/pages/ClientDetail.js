@@ -255,6 +255,7 @@ export default function ClientDetail() {
     await api.delete(`/documents/${docId}`);
     setDocs((prev) => prev.filter((x) => x.id !== docId));
     toast.success("Document supprimé");
+    await loadAll();
   };
 
   const deleteClient = async () => {

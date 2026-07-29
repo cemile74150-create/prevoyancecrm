@@ -326,22 +326,46 @@ def _echeance_3p_line_identity(line: dict) -> tuple:
 
 def _merge_echeances_3p_lines(existing_lines: Optional[List[dict]], new_lines: List[dict]) -> List[dict]:
     previous = list(existing_lines or [])
-    by_identity = {_echeance_3p_line_identity(l): l for l in previous if isinstance(l, dict)}
+
+    def _contract_pair_key(l: dict):
+        company = _normalize_3p_str(l.get("company"))
+        policy = _normalize_3p_str(l.get("policy_number"))
+        # Si on peut identifier le contrat (compagnie + n°), on met à jour la ligne existante.
+        if company or policy:
+            return (company, policy)
+        # Sinon on utilise l'id du document source (évite de fusionner des inconnus).
+        return ("", "", str(l.get("source_doc_id") or ""))
+
+    by_contract = {}
+    for l in previous:
+        if isinstance(l, dict):
+            by_contract[_contract_pair_key(l)] = l
 
     merged = previous[:]
+    now_iso = datetime.now(timezone.utc).isoformat()
+
     for line in new_lines:
-        identity = _echeance_3p_line_identity(line)
-        if identity in by_identity:
-            # Si une ligne existante n'avait pas de date (non détectée),
-            # et qu'on récupère une date maintenant, on met à jour.
-            existing = by_identity[identity]
-            if not existing.get("echeance_3p") and line.get("echeance_3p"):
-                existing["echeance_3p"] = line.get("echeance_3p")
+        key = _contract_pair_key(line)
+        if key in by_contract:
+            existing = by_contract[key]
+            # Mise à jour compagnie / n° / source doc (remplacement de version)
+            existing["company"] = line.get("company")
+            existing["policy_number"] = line.get("policy_number")
+            existing["source_doc_id"] = line.get("source_doc_id")
+            existing["raw_date"] = line.get("raw_date") or existing.get("raw_date")
+            existing["updated_at"] = now_iso
+
+            # Si une date est détectée maintenant, on l'applique.
+            # On ne "supprime" pas une date détectée si la nouvelle extraction est vide.
+            new_date = line.get("echeance_3p")
+            if new_date:
+                existing["echeance_3p"] = new_date
                 existing["detected"] = True
-                existing["updated_at"] = datetime.now(timezone.utc).isoformat()
             continue
+
         merged.append(line)
-        by_identity[identity] = line
+        by_contract[key] = line
+
     return merged
 
 async def _upsert_echeance_3p_line_reminder(user_id: str, client: dict, line: dict):
@@ -757,7 +781,16 @@ async def upload_document(
                 "updated_at": now_iso,
             })
 
-        merged_lines = _merge_echeances_3p_lines(c.get("echeances_3p"), new_lines)
+        existing_lines = c.get("echeances_3p") or []
+        existing_by_contract = {}
+        for l in existing_lines:
+            if isinstance(l, dict):
+                pair = (_normalize_3p_str(l.get("company")), _normalize_3p_str(l.get("policy_number")))
+                # Si on n'a ni compagnie ni n° => on ne peut pas faire de mise à jour “remplacement”
+                if pair[0] or pair[1]:
+                    existing_by_contract[pair] = l
+
+        merged_lines = _merge_echeances_3p_lines(existing_lines, new_lines)
 
         # Compat : conserver aussi le champ historique unique (prend la plus proche échéance).
         detected_dates = [l.get("echeance_3p") for l in merged_lines if l.get("echeance_3p")]
@@ -773,8 +806,24 @@ async def upload_document(
             }},
         )
 
-        # Créer les rappels pour toutes les lignes nouvellement détectées avec une date.
+        # Mettre à jour / créer les rappels selon les changements de date.
         for line in new_lines:
+            pair = (_normalize_3p_str(line.get("company")), _normalize_3p_str(line.get("policy_number")))
+            old_line = existing_by_contract.get(pair) if (pair[0] or pair[1]) else None
+            old_date = (old_line or {}).get("echeance_3p")
+            new_date = line.get("echeance_3p")
+
+            # Si on remplace un contrat avec une nouvelle échéance, fermer l’ancien rappel ouvert.
+            if old_date and new_date and old_date != new_date:
+                old_key = _echeance_3p_contract_key(old_line.get("company"), old_line.get("policy_number"), old_date)
+                await db.tasks.delete_many({
+                    "user_id": user.user_id,
+                    "client_id": client_id,
+                    "type": "echeance_3p",
+                    "echeance_3p_key": old_key,
+                    "done": False,
+                })
+
             await _upsert_echeance_3p_line_reminder(user.user_id, c, line)
 
         await db.documents.update_one(
@@ -1634,10 +1683,116 @@ async def download_document(doc_id: str, user: User = Depends(get_current_user))
 
 @api_router.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str, user: User = Depends(get_current_user)):
-    res = await db.documents.update_one({"id": doc_id, "user_id": user.user_id}, {"$set": {"is_deleted": True}})
-    if res.matched_count == 0:
+    record = await db.documents.find_one(
+        {"id": doc_id, "user_id": user.user_id, "is_deleted": False},
+        {"_id": 0},
+    )
+    if not record:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    return {"ok": True}
+
+    client_id = record.get("client_id")
+    await db.documents.update_one({"id": doc_id, "user_id": user.user_id}, {"$set": {"is_deleted": True}})
+
+    # Synchronisation Documents <-> Échéances 3P
+    if not client_id:
+        return {"ok": True}
+
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        return {"ok": True}
+
+    lines = c.get("echeances_3p") or []
+    if not isinstance(lines, list):
+        lines = []
+
+    removed_lines = [l for l in lines if isinstance(l, dict) and l.get("source_doc_id") == doc_id]
+    if not removed_lines:
+        return {"ok": True}
+
+    removed_pairs = set()
+    for l in removed_lines:
+        company = _normalize_3p_str(l.get("company"))
+        policy = _normalize_3p_str(l.get("policy_number"))
+        if company or policy:
+            removed_pairs.add((company, policy))
+
+    remaining_lines = [l for l in lines if not (isinstance(l, dict) and l.get("source_doc_id") == doc_id)]
+
+    # Fermer/supprimer les rappels liés aux lignes supprimées.
+    for l in removed_lines:
+        old_date = l.get("echeance_3p")
+        if old_date:
+            old_key = _echeance_3p_contract_key(l.get("company"), l.get("policy_number"), old_date)
+            await db.tasks.delete_many({
+                "user_id": user.user_id,
+                "client_id": client_id,
+                "type": "echeance_3p",
+                "echeance_3p_key": old_key,
+                "done": False,
+            })
+
+    # Si d'autres documents existent encore pour ces contrats, reconstruire les lignes
+    # manquantes à partir des extractions stockées dans les documents restants.
+    remaining_pairs = set()
+    for l in remaining_lines:
+        company = _normalize_3p_str(l.get("company"))
+        policy = _normalize_3p_str(l.get("policy_number"))
+        if company or policy:
+            remaining_pairs.add((company, policy))
+
+    missing_pairs = removed_pairs - remaining_pairs
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    if missing_pairs:
+        other_docs = await db.documents.find(
+            {
+                "user_id": user.user_id,
+                "client_id": client_id,
+                "is_deleted": False,
+                "extracted_echeances_3p": {"$exists": True},
+            },
+            {"_id": 0},
+        ).sort("created_at", -1).to_list(300)
+
+        latest_entry_by_pair = {}
+        for d in other_docs:
+            extracted = d.get("extracted_echeances_3p") or []
+            for entry in extracted:
+                comp = _normalize_3p_str(entry.get("company"))
+                pol = _normalize_3p_str(entry.get("policy_number"))
+                pair = (comp, pol)
+                if pair in missing_pairs and pair not in latest_entry_by_pair and (comp or pol):
+                    latest_entry_by_pair[pair] = {"source_doc_id": d.get("id"), "entry": entry}
+
+        for pair in missing_pairs:
+            packed = latest_entry_by_pair.get(pair)
+            if not packed:
+                continue
+            entry = packed.get("entry") or {}
+            new_date = entry.get("expiry_date")
+            new_line = {
+                "id": str(uuid.uuid4()),
+                "company": entry.get("company") or None,
+                "policy_number": entry.get("policy_number") or None,
+                "echeance_3p": new_date,
+                "detected": bool(entry.get("detected")),
+                "raw_date": entry.get("raw_date"),
+                "source_doc_id": packed.get("source_doc_id"),
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            }
+            remaining_lines.append(new_line)
+            await _upsert_echeance_3p_line_reminder(user.user_id, c, new_line)
+
+    detected_dates = [l.get("echeance_3p") for l in remaining_lines if isinstance(l, dict) and l.get("echeance_3p")]
+    new_first = min(detected_dates) if detected_dates else None
+
+    await db.clients.update_one(
+        {"id": client_id, "user_id": user.user_id},
+        {"$set": {"echeances_3p": remaining_lines, "echeance_3p": new_first, "updated_at": now_iso}},
+    )
+
+    return {"ok": True, "removed_lines": len(removed_lines)}
 
 # ---------------- Appointments ----------------
 @api_router.get("/appointments")
