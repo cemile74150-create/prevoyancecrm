@@ -485,11 +485,13 @@ def _lpp_tracking_from_funds(funds: List[dict], existing: Optional[List[dict]] =
 async def list_clients(q: Optional[str] = None, statut: Optional[str] = None, user: User = Depends(get_current_user)):
     query = {"user_id": user.user_id}
     wanted = normalize_statut(statut) if statut else None
+    # Inclure aussi les anciens libellés si le filtre correspond à un statut migré.
+    if wanted:
+        legacy_aliases = [old for old, new in STATUT_LEGACY_MAP.items() if new == wanted]
+        query["statut"] = {"$in": [wanted, *legacy_aliases]} if legacy_aliases else wanted
     clients = await db.clients.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     for c in clients:
         c["statut"] = normalize_statut(c.get("statut"))
-    if wanted:
-        clients = [c for c in clients if c.get("statut") == wanted]
     if q:
         ql = q.lower()
         clients = [c for c in clients if ql in (c.get("prenom", "") + " " + c.get("nom", "")).lower()
@@ -619,8 +621,21 @@ async def update_statut(client_id: str, payload: StatutUpdate, user: User = Depe
     c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
     if not c:
         raise HTTPException(status_code=404, detail="Client introuvable")
-    await db.clients.update_one({"id": client_id}, {"$set": {"statut": statut, "updated_at": datetime.now(timezone.utc).isoformat()}})
-    await log_action(user.user_id, client_id, f"Statut changé: {c.get('statut')} → {statut}")
+
+    # Statut commun au dossier familial : tous les membres avancent ensemble.
+    scope = await _dossier_scope(user.user_id, c)
+    member_ids = scope.get("member_ids") or [client_id]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.clients.update_many(
+        {"user_id": user.user_id, "id": {"$in": member_ids}},
+        {"$set": {"statut": statut, "updated_at": now_iso}},
+    )
+    await log_action(
+        user.user_id,
+        client_id,
+        f"Statut dossier changé: {c.get('statut')} → {statut}",
+        dossier_id=scope.get("dossier_id"),
+    )
     return await db.clients.find_one({"id": client_id}, {"_id": 0})
 
 @api_router.patch("/clients/{client_id}/document-checklist")
