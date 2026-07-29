@@ -1971,220 +1971,298 @@ def extract_pension_funds_from_pdf(pdf_bytes: bytes) -> List[Dict[str, str]]:
     return funds
 
 
-def extract_3p_expiry_from_pdf(pdf_bytes: bytes) -> Optional[str]:
-    """
-    Detecte la date d'echeance d'une police 3e pilier.
-    Retourne YYYY-MM-DD ou None.
-    """
-    text = _extract_pdf_text(pdf_bytes)
-    if not text:
-        return None
-    flat = re.sub(r"[ \t]+", " ", text)
-    patterns = [
-        r"(?:date\s+d[e']?\s*)?(?:echeance|échéance)(?:\s+du\s+contrat)?(?:\s*:|\s+au|\s+le)?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
-        r"(?:echeance|échéance|ablauf|expiry)(?:\s*:|\s+au|\s+le|\s+am)?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
-        r"(?:echeance|échéance|ablauf|expiry)[^\n]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
-    ]
-    candidates = []
-    for pat in patterns:
-        for m in re.finditer(pat, flat, flags=re.IGNORECASE):
-            candidates.append(m.group(1))
-    if not candidates:
-        lines = [ln.strip() for ln in flat.splitlines() if ln.strip()]
-        for i, ln in enumerate(lines):
-            if re.search(r"echeance|échéance|ablauf|expiry", ln, re.I):
-                chunk = ln + " " + (lines[i + 1] if i + 1 < len(lines) else "")
-                m = re.search(r"(\d{1,2}[./]\d{1,2}[./]\d{2,4})", chunk)
-                if m:
-                    candidates.append(m.group(1))
+# Types de documents 3e pilier reconnus (ordre d'affichage UI).
+DOCUMENT_TYPES_3P = [
+    "Police 3a",
+    "Police 3b",
+    "Valeur de rachat",
+    "Valeur de libération",
+    "Résiliation",
+    "Rachat",
+    "Libre passage",
+    "Ordre de paiement",
+    "Autre document",
+]
 
-    def _to_iso(raw: str):
-        raw = raw.strip()
-        for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%d.%m.%y", "%d/%m/%y"):
-            try:
-                dt = datetime.strptime(raw, fmt)
-                if dt.year < 100:
-                    dt = dt.replace(year=dt.year + 2000)
-                if dt.year < 1990:
-                    return None
-                return dt.strftime("%Y-%m-%d")
-            except ValueError:
-                continue
-        return None
+# Types pour lesquels on ne crée jamais d'échéance automatique.
+_NO_EXPIRY_DOC_TYPES = frozenset({"Résiliation", "Rachat", "Libre passage"})
 
-    for c in candidates:
-        iso = _to_iso(c)
-        if iso:
-            return iso
+
+def _3p_date_to_iso(raw: str) -> Optional[str]:
+    raw = (raw or "").strip()
+    for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%d.%m.%y", "%d/%m/%y"):
+        try:
+            dt = datetime.strptime(raw, fmt)
+            if dt.year < 100:
+                dt = dt.replace(year=dt.year + 2000)
+            if dt.year < 1990 or dt.year > 2100:
+                return None
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            continue
     return None
 
 
-def extract_3p_contracts_from_pdf(pdf_bytes: bytes) -> List[dict]:
-    """
-    Détecte le contrat 3e pilier dans un PDF.
-
-    Règle côté CRM (spécification actuelle) :
-    - 1 document 3e pilier = 1 contrat = 1 ligne dans "Échéance 3P"
-
-    Le moteur est heuristique et basé sur :
-    - patterns d'échéance/expiry
-    - extraction compagnie / n° de police
-
-    Pour éviter les faux contrats, on ne retourne qu'un seul candidat :
-    le meilleur (score de contexte le plus élevé).
-    """
-    text = _extract_pdf_text(pdf_bytes)
-    if not text:
-        return []
-
-    flat = re.sub(r"[ \t]+", " ", text)
-
-    def _to_iso(raw: str) -> Optional[str]:
-        raw = (raw or "").strip()
-        for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%d.%m.%y", "%d/%m/%y"):
-            try:
-                dt = datetime.strptime(raw, fmt)
-                if dt.year < 100:
-                    dt = dt.replace(year=dt.year + 2000)
-                # Eviter des dates manifestement incohérentes.
-                if dt.year < 1990 or dt.year > 2100:
-                    return None
-                return dt.strftime("%Y-%m-%d")
-            except ValueError:
-                continue
+def _normalize_3p_company_name(name: Optional[str]) -> Optional[str]:
+    if not name:
         return None
+    compact = re.sub(r"\s+", " ", name).strip()
+    key = compact.casefold().replace("é", "e").replace("è", "e").replace("ê", "e")
+    aliases = {
+        "helvete": "Helvetia",
+        "helvetia": "Helvetia",
+        "axa winterthur": "AXA",
+        "axa-winterthur": "AXA",
+        "axa": "AXA",
+        "swisslife": "Swiss Life",
+        "swiss life": "Swiss Life",
+        "la mobiliere": "Mobilière",
+        "mobiliere": "Mobilière",
+        "baloise": "Bâloise",
+        "generali schweiz": "Generali",
+        "generali switzerland": "Generali",
+        "allianz suisse": "Allianz",
+        "allianz switzerland": "Allianz",
+        "zurich insurance": "Zurich",
+        "zurich vie": "Zurich",
+        "pax": "Pax",
+        "vaudoise": "Vaudoise",
+    }
+    if key in aliases:
+        return aliases[key]
+    for alias_key, canonical in aliases.items():
+        if alias_key in key:
+            return canonical
+    return compact
 
-    # Liste initiale de compagnies (facilement extensible).
+
+def classify_3p_document_type(text: str) -> str:
+    """
+    Identifie le type de document 3e pilier avant toute extraction d'échéance.
+    """
+    flat = re.sub(r"[ \t]+", " ", text or "")
+    low = flat.casefold()
+
+    scores = {t: 0 for t in DOCUMENT_TYPES_3P}
+
+    def bump(doc_type: str, weight: int = 1) -> None:
+        scores[doc_type] = scores.get(doc_type, 0) + weight
+
+    # Libre passage (jamais une échéance 3a)
+    if re.search(r"libre\s+passage|freiz[uü]gigkeit|freizuegigkeit|compte\s+de\s+libre\s+passage|fondation\s+de\s+libre\s+passage", low):
+        bump("Libre passage", 12)
+    if re.search(r"\bvested\s+benefits?\b|\bfreizügigkeitskonto\b", low):
+        bump("Libre passage", 10)
+
+    # Résiliation
+    if re.search(r"r[ée]siliation|r[ée]silie|r[ée]silier|k[uü]ndigung|annulation\s+du\s+contrat", low):
+        bump("Résiliation", 10)
+    if re.search(r"contrat\s+(?:est\s+)?r[ée]sili[ée]|demande\s+de\s+r[ée]siliation", low):
+        bump("Résiliation", 8)
+
+    # Valeur de rachat (document d'information) vs Rachat (exécution)
+    if re.search(r"valeur\s+de\s+rachat|r[uü]ckkaufswert|rueckkaufswert|surrender\s+value", low):
+        bump("Valeur de rachat", 11)
+    if re.search(r"valeur\s+de\s+lib[ée]ration|freigabewert", low):
+        bump("Valeur de libération", 11)
+
+    # Rachat (demande / exécution) — moins fort que « valeur de rachat »
+    if re.search(r"demande\s+de\s+rachat|rachat\s+total|rachat\s+partiel|contrat\s+rachet[ée]|r[uü]ckkauf(?!\s*swert)", low):
+        bump("Rachat", 9)
+    elif "valeur de rachat" not in low and "rückkaufswert" not in low and "rueckkaufswert" not in low:
+        if re.search(r"\brachat\b", low):
+            bump("Rachat", 6)
+
+    # Ordre de paiement
+    if re.search(r"ordre\s+de\s+paiement|zahlungsauftrag|bulletin\s+de\s+versement|avis\s+de\s+paiement", low):
+        bump("Ordre de paiement", 10)
+
+    # Police 3a / 3b
+    if re.search(r"\b3\s*a\b|pilier\s*3\s*a|3e?\s*pilier\s*a|pr[ée]voyance\s+li[ée]e|tied\s+pension|säule\s*3a|saeule\s*3a", low):
+        bump("Police 3a", 8)
+    if re.search(r"\b3\s*b\b|pilier\s*3\s*b|3e?\s*pilier\s*b|pr[ée]voyance\s+libre|säule\s*3b|saeule\s*3b", low):
+        bump("Police 3b", 8)
+    if re.search(r"\bpolice\b|police\s+d['’]?assurance|contrat\s+d['’]?assurance|versicherungspolice|versicherungsschein", low):
+        if scores["Police 3b"] >= scores["Police 3a"]:
+            bump("Police 3b" if scores["Police 3b"] > 0 else "Police 3a", 4)
+        else:
+            bump("Police 3a", 4)
+    if re.search(r"conditions\s+(?:g[ée]n[ée]rales|particuli[eè]res)|capital\s+en\s+cas\s+de\s+vie|en\s+cas\s+de\s+vie\s+au", low):
+        bump("Police 3a" if scores["Police 3a"] >= scores["Police 3b"] else "Police 3b", 3)
+
+    best_type = "Autre document"
+    best_score = 0
+    for doc_type, score in scores.items():
+        if score > best_score:
+            best_score = score
+            best_type = doc_type
+
+    # Seuil minimal : sinon « Autre document »
+    if best_score < 4:
+        return "Autre document"
+    return best_type
+
+
+def _detect_3p_company(text: str) -> Optional[str]:
     company_patterns = [
         ("Swiss Life", r"Swiss\s*Life"),
-        ("Helvetia", r"Helvetia"),
+        ("Helvetia", r"Helvetia|Helv[eè]te"),
         ("Generali", r"Generali"),
-        ("AXA", r"\bAXA\b"),
+        ("AXA", r"\bAXA(?:\s*[- ]?\s*Winterthur)?\b"),
+        ("Pax", r"\bPax\b"),
         ("Pictet", r"Pictet"),
         ("BCV", r"\bBCV\b|Banque\s+Cantonale\s+Vaudoise|Banque\s+Cantonale\s+de\s+Vaud"),
         ("Retraites Populaires", r"Retraites?\s*Populaires"),
-        ("Banque Cantonale Vaudoise", r"Banque\s+Cantonale\s+Vaudoise"),
-        ("Zurich", r"Zurich"),
+        ("Zurich", r"\bZurich\b"),
         ("Vontobel", r"Vontobel"),
         ("Bâloise", r"B[aâ]loise"),
         ("Fortuna", r"Fortuna|3B\s*Fortuna"),
         ("Allianz", r"Allianz"),
         ("Mobilière", r"Mobili[eè]re|La\s+Mobili[eè]re"),
         ("Vaudoise", r"\bVaudoise\b"),
+        ("Helvetia", r"Helvetia"),
     ]
+    for company, pat in company_patterns:
+        if re.search(pat, text or "", flags=re.IGNORECASE):
+            return _normalize_3p_company_name(company)
+    return None
 
-    def _detect_company(window: str) -> Optional[str]:
-        for company, pat in company_patterns:
-            if re.search(pat, window, flags=re.IGNORECASE):
-                return company
-        return None
 
-    # Patterns "numéro de police" génériques.
+def _detect_3p_policy(text: str) -> Optional[str]:
     policy_patterns = [
-        r"(?:num(?:éro)?\s*(?:de\s*)?police|n[°º]?\s*(?:de\s*)?police|police\s*(?:n[°º]|num(?:éro)?)|pol\.\s*n[°º]?)\s*[:\-]?\s*([A-Z0-9\-]{3,20})",
-        r"(?:contract\s*(?:no\.?|number)|contrat\s*n[°º]?)\s*[:\-]?\s*([A-Z0-9\-]{3,20})",
+        r"(?:num(?:[ée]ro)?\s*(?:de\s*)?police|n[°ºo]?\s*(?:de\s*)?police|police\s*(?:n[°ºo]|num(?:[ée]ro)?)|pol\.\s*n[°ºo]?)\s*[:\-]?\s*([A-Z0-9\-/]{3,24})",
+        r"(?:contract\s*(?:no\.?|number)|contrat\s*n[°ºo]?|policenummer|vertragsnummer)\s*[:\-]?\s*([A-Z0-9\-/]{3,24})",
+        r"(?:n[°ºo]\s*(?:de\s*)?contrat|num(?:[ée]ro)?\s*(?:de\s*)?contrat)\s*[:\-]?\s*([A-Z0-9\-/]{3,24})",
     ]
-
-    def _detect_policy(window: str) -> Optional[str]:
-        for pat in policy_patterns:
-            m = re.search(pat, window, flags=re.IGNORECASE)
-            if m:
-                return (m.group(1) or "").strip()
-        # fallback : cherche un gros bloc de chiffres autour de "police" ou "contrat"
-        m = re.search(r"(?:police|contrat)[^\n]{0,40}?[:\-]?\s*([0-9]{5,20})", window, flags=re.IGNORECASE)
+    for pat in policy_patterns:
+        m = re.search(pat, text or "", flags=re.IGNORECASE)
         if m:
-            return (m.group(1) or "").strip()
-        return None
+            return (m.group(1) or "").strip().rstrip(".")
+    m = re.search(r"(?:police|contrat|vertrag)[^\n]{0,40}?[:\-]?\s*([0-9]{5,20})", text or "", flags=re.IGNORECASE)
+    if m:
+        return (m.group(1) or "").strip()
+    return None
 
-    expiry_patterns = [
-        # Français : échéance (finale) / date d’échéance / échéance du contrat
-        r"(?:date\s+d[e']?\s*)?(?:echeance|échéance)(?:\s+finale)?(?:\s+(?:du|de)\s+contrat)?(?:\s*:|\s+au|\s+le)?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
-        # “fin / terme / expiration / contract end …”
-        r"(?:fin\s+du\s+contrat|date\s+de\s+fin|terme|échéance\s+finale|echeance\s+finale|expiration(?:\s+(?:du|de)\s+contrat)?|contract\s+(?:end|expiration)|end\s+of\s+contract|maturity(?:\s+date)?)\s*[:\-]?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
-        # Anglais générique : expiry date / contract expiry / maturity date
-        r"(?:expiry\s+date|contract\s+expiry|final\s+maturity|maturity)\s*[:\-]?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+
+def _extract_3p_expiry_from_text(flat: str, document_type: str) -> tuple:
+    """
+    Cherche une date d'échéance selon le type de document.
+    Retourne (iso_date|None, raw_date|None, pattern_label|None).
+    """
+    if document_type in _NO_EXPIRY_DOC_TYPES:
+        return None, None, None
+
+    # Ordre de priorité demandé (plus le rang est bas, plus c'est prioritaire).
+    priority_patterns: List[tuple] = [
+        (0, "Échéance de l'assurance", r"(?:echeance|échéance)\s+de\s+l['’]?\s*assurance[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
+        (1, "Échéance", r"(?<![a-zàâäéèêëïîôöùûüç])(?:echeance|échéance)(?!\s+de\s+prime)(?!\s+annuelle)[^\d]{0,30}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
+        (2, "Échéance du contrat", r"(?:echeance|échéance)\s+du\s+contrat[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
+        (3, "Date d'échéance", r"date\s+d['’]?(?:echeance|échéance)[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
+        (4, "Fin du contrat", r"(?:fin\s+du\s+contrat|date\s+de\s+fin|contrat\s+jusqu['’]?\s*au)[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
+        (5, "En cas de vie au", r"en\s+cas\s+de\s+vie\s+au[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
+        (6, "Capital en cas de vie à l'échéance", r"capital\s+en\s+cas\s+de\s+vie\s+[àa]\s+l['’]?(?:echeance|échéance)[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
+        (7, "Objectif", r"objectif[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
+        # Compléments utiles (valeur de rachat / DE/EN)
+        (8, "Ablauf / Maturity", r"(?:ablauf(?:datum)?|maturity(?:\s+date)?|expiry(?:\s+date)?|vertragsende)[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
     ]
 
-    # (start_index, raw_date, match_text)
-    matches: List[tuple] = []
-    for pat in expiry_patterns:
-        for m in re.finditer(pat, flat, flags=re.IGNORECASE):
-            raw_date = (m.group(1) or "").strip()
-            if raw_date:
-                matches.append((m.start(), raw_date, m.group(0) or ""))
-
-    matches.sort(key=lambda x: x[0])
+    # Pour valeurs de rachat : patterns spécifiques un peu plus tôt.
+    if document_type in {"Valeur de rachat", "Valeur de libération"}:
+        priority_patterns = [
+            (0, "Échéance de l'assurance", priority_patterns[0][2]),
+            (1, "Échéance du contrat", priority_patterns[2][2]),
+            (2, "Échéance", priority_patterns[1][2]),
+            (3, "Contrat jusqu'au", r"contrat\s+jusqu['’]?\s*au[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
+            (4, "Date de fin", r"date\s+de\s+fin[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
+            (5, "Fin du contrat", priority_patterns[4][2]),
+            (6, "Ablauf / Maturity", priority_patterns[8][2]),
+        ]
 
     excluded_ctx = re.compile(
-        r"(signature|signé|signe|effet|date\s+d'?effet|début|imprim|impression|date\s+d'impression|entrée\s+en\s+vigueur|entry\s+into\s+force|druck|printed)\b",
+        r"(signature|sign[ée]|effet|date\s+d['’]?effet|d[ée]but|imprim|impression|date\s+d['’]?impression|"
+        r"entr[ée]e\s+en\s+vigueur|entry\s+into\s+force|druck|printed|date\s+du\s+courrier|"
+        r"[ée]ch[ée]ance\s+de\s+prime|prime\s+annuelle)\b",
         flags=re.IGNORECASE,
     )
 
-    def _score_expiry_context(ctx: str) -> int:
-        c = (ctx or "").casefold()
-        score = 0
-        if re.search(r"(final|fin|expiration|end|terme|maturity|einde)", c):
-            score += 5
-        if re.search(r"(contrat|contract|vertrag)", c):
-            score += 3
-        if re.search(r"(echeance|échéance)", c):
-            score += 2
-        return score
+    best = None  # (priority, start, iso, raw, label)
+    for priority, label, pat in priority_patterns:
+        for m in re.finditer(pat, flat, flags=re.IGNORECASE):
+            raw = (m.group(1) or "").strip()
+            iso = _3p_date_to_iso(raw)
+            if not iso:
+                continue
+            ctx = flat[max(0, m.start() - 180): min(len(flat), m.start() + 120)]
+            if excluded_ctx.search(ctx):
+                continue
+            # « Objectif » seul : n'accepter que si le contexte évoque clairement une échéance/contrat
+            if label == "Objectif" and not re.search(r"echeance|échéance|contrat|fin|vie", ctx, re.I):
+                continue
+            cand = (priority, m.start(), iso, raw, label)
+            if best is None or cand[0] < best[0] or (cand[0] == best[0] and cand[1] < best[1]):
+                best = cand
 
-    best_item: Optional[dict] = None
-    best_score: int = -1
-    best_start: Optional[int] = None
-    for start, raw, _match_text in matches:
-        expiry_iso = _to_iso(raw)
-        if not expiry_iso:
-            continue
+    if not best:
+        return None, None, None
+    return best[2], best[3], best[4]
 
-        # Contexte proche pour filtrer signature/effet/impression (éviter les faux positifs).
-        ctx = flat[max(0, start - 220): min(len(flat), start + 150)]
-        if excluded_ctx.search(ctx):
-            continue
 
-        score = _score_expiry_context(ctx)
-        if score < 2:
-            continue
+def extract_3p_expiry_from_pdf(pdf_bytes: bytes) -> Optional[str]:
+    """
+    Detecte la date d'echeance d'une police 3e pilier.
+    Retourne YYYY-MM-DD ou None.
+    """
+    contracts = extract_3p_contracts_from_pdf(pdf_bytes)
+    if not contracts:
+        return None
+    return contracts[0].get("expiry_date")
 
-        # Fenêtre plus large autour du candidat pour détecter compagnie & n° de police.
-        window = flat[max(0, start - 650): min(len(flat), start + 250)]
-        company = _detect_company(window)
-        policy_number = _detect_policy(window)
-        if best_item is None or score > best_score or (score == best_score and (best_start is None or start < best_start)):
-            best_item = {
-                "company": company,
-                "policy_number": policy_number,
-                "expiry_date": expiry_iso,
-                "detected": True,
-                "raw_date": raw,
-            }
-            best_score = score
-            best_start = start
 
-    # Si aucun candidat n'a été retenu, on retourne une ligne "non détectée"
-    # afin d'afficher un tableau et permettre une saisie manuelle.
-    if not best_item:
-        company = _detect_company(flat)
-        policy_number = _detect_policy(flat)
+def extract_3p_contracts_from_pdf(pdf_bytes: bytes) -> List[dict]:
+    """
+    Analyse un PDF 3e pilier en 2 étapes :
+    1) Identifier le type de document (police, valeur de rachat, résiliation, etc.)
+    2) Extraire compagnie / n° de police / échéance selon le type
+
+    Règles :
+    - 1 PDF = 1 ligne (jamais plusieurs compagnies inventées)
+    - Ne jamais inventer une date d'échéance
+    - Toujours retourner une ligne (même sans échéance) pour saisie manuelle
+    - Résiliation / Rachat / Libre passage → pas d'échéance automatique
+    """
+    text = _extract_pdf_text(pdf_bytes)
+    if not text:
         return [{
-            "company": company,
-            "policy_number": policy_number,
+            "company": None,
+            "policy_number": None,
             "expiry_date": None,
             "detected": False,
             "raw_date": None,
+            "document_type": "Autre document",
+            "expiry_label": None,
         }]
 
-    # Contrôle de "certitude" : si le score de contexte est trop faible,
-    # on ne remplit pas la date pour éviter d'inventer une mauvaise échéance.
-    #
-    # Note : l'entreprise/n° peuvent aussi être faux, mais au moins on n'ajoute
-    # pas de contrats multiples à partir d'un seul PDF.
-    MIN_SCORE_FOR_EXPIRY = 3
-    if best_score < MIN_SCORE_FOR_EXPIRY:
-        best_item = dict(best_item)
-        best_item["expiry_date"] = None
-        best_item["detected"] = False
+    flat = re.sub(r"[ \t]+", " ", text)
+    document_type = classify_3p_document_type(flat)
 
-    return [best_item]
+    company = _detect_3p_company(flat)
+    policy_number = _detect_3p_policy(flat)
+    expiry_iso, raw_date, expiry_label = _extract_3p_expiry_from_text(flat, document_type)
+
+    # Si une date est trouvée près d'un libellé fort, affiner compagnie/police autour du match.
+    if expiry_iso and raw_date:
+        m = re.search(re.escape(raw_date), flat)
+        if m:
+            window = flat[max(0, m.start() - 700): min(len(flat), m.start() + 250)]
+            company = _detect_3p_company(window) or company
+            policy_number = _detect_3p_policy(window) or policy_number
+
+    return [{
+        "company": company,
+        "policy_number": policy_number,
+        "expiry_date": expiry_iso,
+        "detected": bool(expiry_iso),
+        "raw_date": raw_date,
+        "document_type": document_type,
+        "expiry_label": expiry_label,
+    }]

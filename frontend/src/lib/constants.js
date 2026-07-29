@@ -20,6 +20,21 @@ export function normalizeStatut(statut) {
   return STATUT_LEGACY_MAP[statut] || statut;
 }
 
+/** Types de documents 3e pilier (alignés backend). */
+export const DOCUMENT_TYPES_3P = [
+  "Police 3a",
+  "Police 3b",
+  "Valeur de rachat",
+  "Valeur de libération",
+  "Résiliation",
+  "Rachat",
+  "Libre passage",
+  "Ordre de paiement",
+  "Autre document",
+];
+
+export const NO_EXPIRY_DOC_TYPES_3P = new Set(["Résiliation", "Rachat", "Libre passage"]);
+
 export const STATUT_COLORS = {
   "Nouveau": "bg-emerald-100 text-emerald-800 border-emerald-200",
   "Documents en attente": "bg-amber-100 text-amber-800 border-amber-200",

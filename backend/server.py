@@ -29,6 +29,7 @@ from pdf_generator import (
     repair_library_pdf_bytes,
     CRM_FIELD_SOURCES,
     DEMAND_PACKS,
+    DOCUMENT_TYPES_3P,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -187,15 +188,17 @@ class Echeance3PUpdate(BaseModel):
     echeance_3p: Optional[str] = None
 
 class Echeance3PLineUpdate(BaseModel):
-    # Permet de corriger manuellement compagnie / n° de police / date
+    # Permet de corriger manuellement compagnie / n° de police / date / type
     echeance_3p: Optional[str] = None
     company: Optional[str] = None
     policy_number: Optional[str] = None
+    document_type: Optional[str] = None
 
 class Echeance3PLineCreate(BaseModel):
     company: Optional[str] = None
     policy_number: Optional[str] = None
     echeance_3p: Optional[str] = None
+    document_type: Optional[str] = None
 
 class LppCaisseTrackingUpdate(BaseModel):
     lpp_caisse_tracking: List[dict] = Field(default_factory=list)
@@ -376,6 +379,8 @@ def _merge_echeances_3p_lines(existing_lines: Optional[List[dict]], new_lines: L
                 existing["policy_number"] = line.get("policy_number")
                 existing["source_doc_id"] = sid
                 existing["raw_date"] = line.get("raw_date") or existing.get("raw_date")
+                if line.get("document_type"):
+                    existing["document_type"] = line.get("document_type")
                 existing["updated_at"] = now_iso
                 new_date = line.get("echeance_3p")
                 if new_date:
@@ -391,15 +396,32 @@ def _merge_echeances_3p_lines(existing_lines: Optional[List[dict]], new_lines: L
     return manual + list(by_source.values())
 
 
+def _normalize_document_type_3p(value: Optional[str]) -> str:
+    if not value:
+        return "Autre document"
+    raw = str(value).strip()
+    for t in DOCUMENT_TYPES_3P:
+        if t.casefold() == raw.casefold():
+            return t
+    return "Autre document"
+
+
 def _echeance_line_from_extraction(entry: Optional[dict], source_doc_id: str, now_iso: str) -> dict:
     entry = entry or {}
+    document_type = _normalize_document_type_3p(entry.get("document_type"))
+    # Types sans échéance automatique : ne jamais reporter une date inventée.
+    no_expiry_types = {"Résiliation", "Rachat", "Libre passage"}
+    expiry = entry.get("expiry_date") or entry.get("echeance_3p")
+    if document_type in no_expiry_types:
+        expiry = None
     return {
         "id": str(uuid.uuid4()),
         "company": entry.get("company") or None,
         "policy_number": entry.get("policy_number") or None,
-        "echeance_3p": entry.get("expiry_date") or entry.get("echeance_3p"),
-        "detected": bool(entry.get("detected")),
-        "raw_date": entry.get("raw_date"),
+        "echeance_3p": expiry,
+        "detected": bool(expiry),
+        "raw_date": entry.get("raw_date") if expiry else None,
+        "document_type": document_type,
         "source_doc_id": source_doc_id,
         "manual": False,
         "created_at": now_iso,
@@ -848,8 +870,75 @@ async def _reconcile_echeances_3p_lines(user_id: str, client_id: str) -> None:
             best_by_source[sid] = l
 
     # Créer une ligne pour chaque PDF 3P qui n'en a pas encore.
+    # Enrichir aussi document_type si manquant (sans écraser les corrections manuelles de date).
     for doc_id, doc in docs_by_id.items():
         if doc_id in best_by_source:
+            existing_line = best_by_source[doc_id]
+            if not existing_line.get("document_type"):
+                extracted = doc.get("extracted_echeances_3p") or []
+                entry = extracted[0] if isinstance(extracted, list) and extracted and isinstance(extracted[0], dict) else None
+                if entry and entry.get("document_type"):
+                    existing_line["document_type"] = _normalize_document_type_3p(entry.get("document_type"))
+                    existing_line["updated_at"] = now_iso
+                    if existing_line["document_type"] in {"Résiliation", "Rachat", "Libre passage"}:
+                        existing_line["echeance_3p"] = None
+                        existing_line["detected"] = False
+                        existing_line["raw_date"] = None
+                    elif not existing_line.get("echeance_3p") and entry.get("expiry_date"):
+                        existing_line["echeance_3p"] = entry.get("expiry_date")
+                        existing_line["detected"] = True
+                        existing_line["raw_date"] = entry.get("raw_date")
+                    if not existing_line.get("company") and entry.get("company"):
+                        existing_line["company"] = entry.get("company")
+                    if not existing_line.get("policy_number") and entry.get("policy_number"):
+                        existing_line["policy_number"] = entry.get("policy_number")
+                else:
+                    # Ancien cache sans document_type → re-extraction une fois
+                    storage_path = doc.get("storage_path")
+                    ctype = (doc.get("content_type") or "").lower()
+                    fname = (doc.get("original_filename") or "").lower()
+                    if storage_path and (ctype == "application/pdf" or fname.endswith(".pdf")):
+                        try:
+                            data = _read_storage_bytes(storage_path)
+                            detected = extract_3p_contracts_from_pdf(data) or []
+                            entry = detected[0] if detected else {}
+                            await db.documents.update_one(
+                                {"id": doc_id},
+                                {"$set": {
+                                    "extracted_echeances_3p": detected,
+                                    "extracted_echeance_3p": (entry or {}).get("expiry_date"),
+                                    "extracted_document_type": (entry or {}).get("document_type"),
+                                }},
+                            )
+                            if entry.get("document_type"):
+                                existing_line["document_type"] = _normalize_document_type_3p(entry.get("document_type"))
+                                existing_line["updated_at"] = now_iso
+                            # Compléter compagnie / police / échéance seulement si vides
+                            if not existing_line.get("company") and entry.get("company"):
+                                existing_line["company"] = entry.get("company")
+                            if not existing_line.get("policy_number") and entry.get("policy_number"):
+                                existing_line["policy_number"] = entry.get("policy_number")
+                            doc_type = existing_line.get("document_type") or _normalize_document_type_3p(entry.get("document_type"))
+                            if (
+                                not existing_line.get("echeance_3p")
+                                and entry.get("expiry_date")
+                                and doc_type not in {"Résiliation", "Rachat", "Libre passage"}
+                            ):
+                                existing_line["echeance_3p"] = entry.get("expiry_date")
+                                existing_line["detected"] = True
+                                existing_line["raw_date"] = entry.get("raw_date")
+                            if doc_type in {"Résiliation", "Rachat", "Libre passage"}:
+                                existing_line["echeance_3p"] = None
+                                existing_line["detected"] = False
+                                existing_line["raw_date"] = None
+                            if not existing_line.get("document_type"):
+                                existing_line["document_type"] = "Autre document"
+                        except Exception:
+                            logger.exception("Re-extraction type 3P échouée pour doc %s", doc_id)
+                            if not existing_line.get("document_type"):
+                                existing_line["document_type"] = "Autre document"
+                    elif not existing_line.get("document_type"):
+                        existing_line["document_type"] = "Autre document"
             continue
 
         entry = None
@@ -871,6 +960,7 @@ async def _reconcile_echeances_3p_lines(user_id: str, client_id: str) -> None:
                         {"$set": {
                             "extracted_echeances_3p": detected,
                             "extracted_echeance_3p": (entry or {}).get("expiry_date"),
+                            "extracted_document_type": (entry or {}).get("document_type"),
                         }},
                     )
                 except Exception:
@@ -973,10 +1063,12 @@ async def upload_document(
             {"id": doc["id"]},
             {"$set": {
                 "extracted_echeances_3p": detected_echeances[:1] if detected_echeances else [entry],
-                "extracted_echeance_3p": detected_first_echeance,
+                "extracted_echeance_3p": new_line.get("echeance_3p"),
+                "extracted_document_type": new_line.get("document_type"),
             }},
         )
-        doc["extracted_echeance_3p"] = detected_first_echeance
+        doc["extracted_echeance_3p"] = new_line.get("echeance_3p")
+        doc["document_type"] = new_line.get("document_type")
         await _reconcile_echeances_3p_lines(user.user_id, client_id)
     await log_action(user.user_id, client_id, f"Document ajouté: {file.filename} ({category})")
     doc.pop("_id", None)
@@ -1708,6 +1800,7 @@ async def create_echeance_3p_line(client_id: str, payload: Echeance3PLineCreate,
     company = payload.company.strip() if isinstance(payload.company, str) and payload.company.strip() else None
     policy_number = payload.policy_number.strip() if isinstance(payload.policy_number, str) and payload.policy_number.strip() else None
     echeance = payload.echeance_3p or None
+    document_type = _normalize_document_type_3p(payload.document_type)
 
     new_line = {
         "id": str(uuid.uuid4()),
@@ -1716,6 +1809,7 @@ async def create_echeance_3p_line(client_id: str, payload: Echeance3PLineCreate,
         "echeance_3p": echeance,
         "detected": False,
         "raw_date": None,
+        "document_type": document_type,
         "source_doc_id": None,
         "manual": True,
         "created_at": now_iso,
@@ -1773,6 +1867,10 @@ async def update_echeance_3p_line(client_id: str, line_id: str, payload: Echeanc
     target["company"] = new_company
     target["policy_number"] = new_policy_number
     target["echeance_3p"] = new_date
+    if payload.document_type is not None:
+        target["document_type"] = _normalize_document_type_3p(payload.document_type)
+    elif not target.get("document_type"):
+        target["document_type"] = "Autre document"
     target["detected"] = bool(new_date) if target.get("manual") else bool(new_date)
     target["updated_at"] = now_iso
 

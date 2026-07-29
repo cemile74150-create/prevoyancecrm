@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import ClientFormDialog from "@/components/ClientFormDialog";
-import { STATUTS, normalizeStatut } from "@/lib/constants";
+import { STATUTS, normalizeStatut, DOCUMENT_TYPES_3P, NO_EXPIRY_DOC_TYPES_3P } from "@/lib/constants";
 import { DOCUMENT_CHECKLIST_ITEMS, getInitialDocumentChecklistState, getNextDocumentStatus } from "@/lib/documentChecklist";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -201,7 +201,10 @@ export default function ClientDetail() {
       const res = await api.post(`/clients/${id}/documents`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       if (res.data?.echeance_3p_detected && res.data?.echeance_3p) {
         const date = res.data.echeance_3p;
-        toast.success(`Échéance 3e pilier détectée : ${new Date(`${date}T00:00:00`).toLocaleDateString("fr-CH")}`);
+        const dtype = res.data?.document_type ? ` (${res.data.document_type})` : "";
+        toast.success(`Échéance 3e pilier détectée${dtype} : ${new Date(`${date}T00:00:00`).toLocaleDateString("fr-CH")}`);
+      } else if (res.data?.document_type) {
+        toast.success(`Document téléversé — type détecté : ${res.data.document_type}`);
       } else {
         toast.success("Document téléversé");
       }
@@ -574,11 +577,14 @@ export default function ClientDetail() {
     const nextCompany = (draft.company !== undefined ? draft.company : line.company) || "";
     const nextPolicy = (draft.policy_number !== undefined ? draft.policy_number : line.policy_number) || "";
     const nextDate = (draft.date !== undefined ? draft.date : line.echeance_3p) || "";
+    const nextType = (draft.document_type !== undefined ? draft.document_type : line.document_type) || "Autre document";
+    const clearDate = NO_EXPIRY_DOC_TYPES_3P.has(nextType);
 
     const payload = {
       company: nextCompany.trim() ? nextCompany.trim() : null,
       policy_number: nextPolicy.trim() ? nextPolicy.trim() : null,
-      echeance_3p: nextDate ? nextDate : null,
+      echeance_3p: clearDate ? null : (nextDate ? nextDate : null),
+      document_type: nextType,
     };
 
     setSavingEcheance3p(true);
@@ -604,6 +610,7 @@ export default function ClientDetail() {
         company: line?.company || "",
         policy_number: line?.policy_number || "",
         date: line?.echeance_3p || "",
+        document_type: line?.document_type || "Autre document",
       },
     });
     setEditingEcheance3pLineId(line.id);
@@ -616,6 +623,7 @@ export default function ClientDetail() {
         company: null,
         policy_number: null,
         echeance_3p: null,
+        document_type: "Police 3a",
       });
       const updated = res.data;
       setClient(updated);
@@ -628,6 +636,7 @@ export default function ClientDetail() {
           company: created.company || "",
           policy_number: created.policy_number || "",
           echeance_3p: created.echeance_3p ? String(created.echeance_3p).split("T")[0] : "",
+          document_type: created.document_type || "Police 3a",
         });
       }
       toast.success("Ligne 3e pilier ajoutée — complète les informations");
@@ -1261,7 +1270,7 @@ export default function ClientDetail() {
                   <div>
                     <p className="text-sm font-semibold text-[#002FA7]">Échéance 3e pilier</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Une ligne par police PDF (Documents → Police 3e pilier), ou saisie manuelle.
+                      Une ligne par PDF (Documents → Police 3e pilier). Le type de document est détecté automatiquement ; l’échéance n’est extraite que si elle est pertinente.
                     </p>
                   </div>
                   <Button
@@ -1285,6 +1294,7 @@ export default function ClientDetail() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left">
+                          <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">Type</th>
                           <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">Compagnie</th>
                           <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">N° de police</th>
                           <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">Date d&apos;échéance</th>
@@ -1300,7 +1310,11 @@ export default function ClientDetail() {
                           const effectiveIso = draft.date !== undefined ? draft.date : iso;
                           const effectiveCompany = draft.company !== undefined ? draft.company : (line?.company || "");
                           const effectivePolicy = draft.policy_number !== undefined ? draft.policy_number : (line?.policy_number || "");
+                          const effectiveType = draft.document_type !== undefined
+                            ? draft.document_type
+                            : (line?.document_type || "Autre document");
                           const isEditing = editingEcheance3pLineId === line.id;
+                          const noExpiryType = NO_EXPIRY_DOC_TYPES_3P.has(effectiveType);
 
                           const dueDate = effectiveIso ? new Date(`${effectiveIso}T00:00:00`) : null;
                           const now = new Date();
@@ -1308,18 +1322,53 @@ export default function ClientDetail() {
                           const daysLeft = dueDate ? Math.floor((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
 
                           let statusLabel = "—";
-                          if (!effectiveIso) {
-                            statusLabel = "⚠ Date d’échéance non détectée";
+                          let statusOk = false;
+                          if (effectiveType === "Libre passage") {
+                            statusLabel = "Compte libre passage (pas une échéance 3a)";
+                            statusOk = true;
+                          } else if (effectiveType === "Résiliation") {
+                            statusLabel = "Résiliation — pas d’échéance créée";
+                            statusOk = true;
+                          } else if (effectiveType === "Rachat") {
+                            statusLabel = "Rachat — pas d’échéance créée";
+                            statusOk = true;
+                          } else if (!effectiveIso) {
+                            statusLabel = "⚠ Date d’échéance à compléter";
                           } else if (typeof daysLeft === "number" && daysLeft < 0) {
                             statusLabel = "⚠ Échéance passée";
                           } else if (typeof daysLeft === "number" && 0 <= daysLeft && daysLeft <= 365) {
                             statusLabel = "⚠ Échéance dans moins d’un an";
                           } else {
                             statusLabel = "✅ À jour";
+                            statusOk = true;
                           }
 
                           return (
                             <tr key={line.id} className="border-t border-border">
+                              <td className="py-3 pr-3 whitespace-nowrap">
+                                {isEditing ? (
+                                  <select
+                                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                                    data-testid={`echeance-3p-line-type-${line.id}`}
+                                    value={effectiveType}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      setEcheance3pDraftById((m) => ({
+                                        ...m,
+                                        [line.id]: { ...(m[line.id] || {}), document_type: value },
+                                      }));
+                                    }}
+                                  >
+                                    {DOCUMENT_TYPES_3P.map((t) => (
+                                      <option key={t} value={t}>{t}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium">
+                                    {effectiveType}
+                                  </span>
+                                )}
+                              </td>
                               <td className="py-3 pr-3 whitespace-nowrap">
                                 {isEditing ? (
                                   <Input
@@ -1356,26 +1405,32 @@ export default function ClientDetail() {
                               </td>
                               <td className="py-3 pr-3 whitespace-nowrap">
                                 {isEditing ? (
-                                  <Input
-                                    type="date"
-                                    data-testid={`echeance-3p-line-date-${line.id}`}
-                                    value={effectiveIso || ""}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      setEcheance3pDraftById((m) => ({
-                                        ...m,
-                                        [line.id]: { ...(m[line.id] || {}), date: value },
-                                      }));
-                                    }}
-                                  />
+                                  noExpiryType ? (
+                                    <span className="text-muted-foreground text-xs">Non applicable</span>
+                                  ) : (
+                                    <Input
+                                      type="date"
+                                      data-testid={`echeance-3p-line-date-${line.id}`}
+                                      value={effectiveIso || ""}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        setEcheance3pDraftById((m) => ({
+                                          ...m,
+                                          [line.id]: { ...(m[line.id] || {}), date: value },
+                                        }));
+                                      }}
+                                    />
+                                  )
                                 ) : (
                                   <span>
-                                    {iso ? new Date(`${iso}T00:00:00`).toLocaleDateString("fr-CH") : "—"}
+                                    {noExpiryType
+                                      ? "—"
+                                      : (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString("fr-CH") : "—")}
                                   </span>
                                 )}
                               </td>
                               <td className="py-3 whitespace-nowrap">
-                                <span className={statusLabel.startsWith("✅") ? "text-emerald-700" : "text-amber-700"}>
+                                <span className={statusOk ? "text-emerald-700" : "text-amber-700"}>
                                   {statusLabel}
                                 </span>
                               </td>
