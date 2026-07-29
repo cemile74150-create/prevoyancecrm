@@ -8,6 +8,97 @@ import { STATUTS, STATUT_DOT } from "@/lib/constants";
 import { Plus, AlertTriangle, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 
+function isMarriedEtat(etat) {
+  const v = (etat || "").toLowerCase();
+  return v.includes("mari") || v.includes("partenariat");
+}
+
+function pickGroupStatut(members) {
+  if (!members?.length) return "";
+  if (members.length === 1) return members[0].statut;
+
+  // Priorité : le statut le plus fréquent, tie-break sur le plus "ancien" (ordre STATUTS).
+  const counts = members.reduce((acc, m) => {
+    const key = m.statut || "";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  let bestStatut = members[0].statut;
+  let bestCount = -1;
+  Object.entries(counts).forEach(([statut, count]) => {
+    if (count > bestCount) {
+      bestStatut = statut;
+      bestCount = count;
+      return;
+    }
+    if (count === bestCount) {
+      if (STATUTS.indexOf(statut) < STATUTS.indexOf(bestStatut)) bestStatut = statut;
+    }
+  });
+
+  return bestStatut;
+}
+
+function buildKanbanGroups(clients) {
+  const byId = {};
+  (clients || []).forEach((c) => { byId[c.id] = c; });
+
+  const groups = {}; // key => group
+  const processed = new Set(); // client ids
+
+  (clients || []).forEach((c) => {
+    if (!c || processed.has(c.id)) return;
+
+    const spouseId = c.linked_spouse_id;
+    const spouse = spouseId ? byId[spouseId] : null;
+    const isFamily = Boolean(
+      spouse &&
+      isMarriedEtat(c.etat_civil) &&
+      isMarriedEtat(spouse.etat_civil)
+    );
+
+    if (isFamily) {
+      const key = c.dossier_id || spouse.dossier_id || c.id;
+      const members = [c, spouse].slice().sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+
+      processed.add(c.id);
+      processed.add(spouse.id);
+
+      const urgent = members.some((m) => m.priorite === "urgent");
+      const groupStatut = pickGroupStatut(members);
+
+      groups[key] = {
+        key,
+        type: "family",
+        dossier_id: key,
+        dossier_label: members[0]?.dossier_label || c.dossier_label || spouse.dossier_label || `Famille ${c.nom}`,
+        numero_dossier: members[0]?.numero_dossier || c.numero_dossier || spouse.numero_dossier,
+        priorite: urgent ? "urgent" : (members[0]?.priorite || "normale"),
+        statut: groupStatut,
+        memberIds: members.map((m) => m.id),
+        members,
+      };
+    } else {
+      processed.add(c.id);
+      groups[c.id] = {
+        key: c.id,
+        type: "client",
+        dossier_id: c.dossier_id,
+        dossier_label: null,
+        numero_dossier: c.numero_dossier,
+        priorite: c.priorite,
+        statut: c.statut,
+        memberIds: [c.id],
+        representativeId: c.id,
+        members: [c],
+      };
+    }
+  });
+
+  return Object.values(groups);
+}
+
 export default function Kanban() {
   const [clients, setClients] = useState([]);
   const [dialog, setDialog] = useState(false);
@@ -26,9 +117,11 @@ export default function Kanban() {
   const selectedStatut = params.get("statut");
   const selectedPriority = params.get("priorite");
 
-  const filteredClients = clients.filter((client) => {
-    if (selectedStatut && client.statut !== selectedStatut) return false;
-    if (selectedPriority && client.priorite !== selectedPriority) return false;
+  const groups = buildKanbanGroups(clients);
+
+  const filteredGroups = groups.filter((g) => {
+    if (selectedStatut && g.statut !== selectedStatut) return false;
+    if (selectedPriority && g.priorite !== selectedPriority) return false;
     return true;
   });
 
@@ -37,11 +130,13 @@ export default function Kanban() {
     const id = dragId;
     setDragId(null);
     if (!id) return;
-    const c = clients.find((x) => x.id === id);
-    if (!c || c.statut === statut) return;
-    setClients((prev) => prev.map((x) => (x.id === id ? { ...x, statut } : x)));
+    const nowGroups = buildKanbanGroups(clients);
+    const g = nowGroups.find((x) => x.key === id);
+    if (!g || g.statut === statut) return;
+
+    setClients((prev) => prev.map((x) => (g.memberIds.includes(x.id) ? { ...x, statut } : x)));
     try {
-      await api.patch(`/clients/${id}/statut`, { statut });
+      await Promise.all(g.memberIds.map((clientId) => api.patch(`/clients/${clientId}/statut`, { statut })));
       toast.success(`Dossier déplacé vers « ${statut} »`);
     } catch (e) {
       toast.error("Erreur lors du déplacement");
@@ -69,7 +164,7 @@ export default function Kanban() {
 
       <div className="flex gap-4 overflow-x-auto pb-4" data-testid="kanban-board">
         {STATUTS.map((statut) => {
-          const items = filteredClients.filter((c) => c.statut === statut);
+          const items = filteredGroups.filter((g) => g.statut === statut);
           return (
             <div
               key={statut}
@@ -91,23 +186,25 @@ export default function Kanban() {
               <div className="p-3 space-y-2.5 min-h-[120px]">
                 {items.map((c) => (
                   <div
-                    key={c.id}
+                    key={c.key}
                     draggable
-                    onDragStart={() => setDragId(c.id)}
+                    onDragStart={() => setDragId(c.key)}
                     onDragEnd={() => setDragId(null)}
                     onClick={() => navigate(
-                      c.linked_spouse_id || (c.etat_civil || "").toLowerCase().includes("mari")
-                        ? `/dossiers/${c.dossier_id || c.id}`
-                        : `/clients/${c.id}`
+                      c.type === "family"
+                        ? `/dossiers/${c.dossier_id}`
+                        : `/clients/${c.representativeId}`
                     )}
-                    data-testid={`kanban-card-${c.id}`}
+                    data-testid={`kanban-card-${c.key}`}
                     className={`group bg-white border border-border rounded-md p-3 cursor-grab active:cursor-grabbing hover:border-[#002FA7] hover:shadow-sm transition-all ${
-                      dragId === c.id ? "opacity-40" : ""
+                      dragId === c.key ? "opacity-40" : ""
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold truncate">{c.prenom} {c.nom}</p>
+                        <p className="text-sm font-semibold truncate">
+                          {c.type === "family" ? c.dossier_label : `${c.members[0]?.prenom} ${c.members[0]?.nom}`}
+                        </p>
                         <p className="text-xs text-muted-foreground mt-0.5">{c.numero_dossier}</p>
                       </div>
                       <GripVertical className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground" />
@@ -118,7 +215,7 @@ export default function Kanban() {
                           <AlertTriangle className="h-3 w-3" /> Urgent
                         </span>
                       )}
-                      {c.ville && <span className="text-[11px] text-muted-foreground">{c.ville}</span>}
+                      {c.members?.[0]?.ville && <span className="text-[11px] text-muted-foreground">{c.members[0].ville}</span>}
                     </div>
                   </div>
                 ))}
