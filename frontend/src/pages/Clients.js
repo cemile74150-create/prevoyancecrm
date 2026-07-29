@@ -9,12 +9,44 @@ import ClientFormDialog from "@/components/ClientFormDialog";
 import { STATUT_COLORS } from "@/lib/constants";
 import { Plus, Search, Mail, Phone, AlertTriangle, ChevronRight, FolderOpen, User } from "lucide-react";
 
-function dossierKey(client) {
-  if (client.dossier_id) return client.dossier_id;
-  if (client.linked_spouse_id) {
-    return [client.id, client.linked_spouse_id].sort().join(":");
-  }
-  return client.id;
+/**
+ * Regroupe les clients par dossier familial.
+ * Priorité : dossier_id partagé.
+ * Fallback : linked_spouse_id (dossiers non encore fusionnés en base).
+ */
+function buildGroups(clients) {
+  // Première passe : map id → client
+  const byId = {};
+  clients.forEach((c) => { byId[c.id] = c; });
+
+  // Résoudre le dossier canonique pour chaque client
+  // Si deux clients ont linked_spouse_id l'un vers l'autre, on les regroupe
+  // sous le même dossier même si dossier_id diffère encore en base.
+  const canonical = {}; // client.id → canonical dossier key
+  clients.forEach((c) => {
+    if (canonical[c.id]) return;
+    const sid = c.linked_spouse_id;
+    if (sid && byId[sid]) {
+      // Choisir le dossier_id le plus "ancien" (premier alphabétiquement = créé en premier)
+      const key = c.dossier_id && byId[sid]?.dossier_id
+        ? (c.dossier_id < byId[sid].dossier_id ? c.dossier_id : byId[sid].dossier_id)
+        : c.dossier_id || byId[sid]?.dossier_id || c.id;
+      canonical[c.id] = key;
+      canonical[sid] = key;
+    } else {
+      canonical[c.id] = c.dossier_id || c.id;
+    }
+  });
+
+  const groups = {};
+  clients.forEach((c) => {
+    const key = canonical[c.id] || c.id;
+    if (!groups[key]) groups[key] = [];
+    // Éviter les doublons
+    if (!groups[key].find((m) => m.id === c.id)) groups[key].push(c);
+  });
+
+  return Object.values(groups);
 }
 
 function isFamilyGroup(members) {
@@ -54,14 +86,7 @@ export default function Clients() {
     return () => clearTimeout(t);
   }, [load]);
 
-  const groups = Object.values(
-    clients.reduce((acc, client) => {
-      const key = dossierKey(client);
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(client);
-      return acc;
-    }, {}),
-  );
+  const groups = buildGroups(clients);
 
   return (
     <Layout>
@@ -91,7 +116,9 @@ export default function Clients() {
           groups.map((members) => {
             const c = members[0];
             const family = isFamilyGroup(members);
-            const hubId = c.dossier_id || c.id;
+            // Pour un couple, l'hubId = dossier_id du primary (premier par created_at)
+            const sorted = [...members].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+            const hubId = sorted[0]?.dossier_id || sorted[0]?.id || c.dossier_id || c.id;
 
             if (!family) {
               return (

@@ -1571,19 +1571,104 @@ if FRONTEND_BUILD.exists():
 else:
     logger.warning("Frontend build introuvable à %s", FRONTEND_BUILD)
 
+async def _migrate_couple_dossiers(user_id: Optional[str] = None):
+    """
+    Fusionne les dossiers des couples liés (linked_spouse_id) qui ont encore
+    deux dossier_id distincts. Le dossier du membre le plus ancien est conservé.
+    Retourne le nombre de paires fusionnées.
+    """
+    query: dict = {"linked_spouse_id": {"$exists": True, "$ne": None}}
+    if user_id:
+        query["user_id"] = user_id
+    primaries = await db.clients.find(query, {"_id": 0}).to_list(10000)
+    merged = 0
+    processed: set = set()
+    for primary in primaries:
+        pid = primary["id"]
+        sid = primary.get("linked_spouse_id")
+        if not sid or pid in processed or sid in processed:
+            continue
+        spouse = await db.clients.find_one({"id": sid}, {"_id": 0})
+        if not spouse:
+            continue
+        processed.add(pid)
+        processed.add(sid)
+        # Même dossier_id → rien à faire
+        if primary.get("dossier_id") and primary.get("dossier_id") == spouse.get("dossier_id"):
+            continue
+        # Choisir le dossier_id canonique : celui du plus ancien (ou du primary)
+        canonical_dossier_id = primary.get("dossier_id") or primary["id"]
+        canonical_numero = primary.get("numero_dossier") or spouse.get("numero_dossier")
+        nom = primary.get("nom") or spouse.get("nom") or ""
+        canonical_label = f"Famille {nom}"
+        old_dossier_ids = set()
+        if spouse.get("dossier_id") and spouse["dossier_id"] != canonical_dossier_id:
+            old_dossier_ids.add(spouse["dossier_id"])
+        # Mettre à jour les deux fiches
+        now = datetime.now(timezone.utc).isoformat()
+        await db.clients.update_one(
+            {"id": pid},
+            {"$set": {"dossier_id": canonical_dossier_id, "dossier_label": canonical_label,
+                      "numero_dossier": canonical_numero, "updated_at": now}},
+        )
+        await db.clients.update_one(
+            {"id": sid},
+            {"$set": {"dossier_id": canonical_dossier_id, "dossier_label": canonical_label,
+                      "numero_dossier": canonical_numero, "updated_at": now}},
+        )
+        # Réattribuer les documents de l'ancien dossier_id
+        for old_did in old_dossier_ids:
+            await db.documents.update_many(
+                {"dossier_id": old_did},
+                {"$set": {"dossier_id": canonical_dossier_id}},
+            )
+            await db.documents.update_many(
+                {"client_id": sid, "dossier_id": {"$exists": False}},
+                {"$set": {"dossier_id": canonical_dossier_id}},
+            )
+            await db.notes.update_many(
+                {"client_id": sid, "dossier_id": {"$in": [old_did, None]}},
+                {"$set": {"dossier_id": canonical_dossier_id}},
+            )
+            await db.actions.update_many(
+                {"client_id": sid, "dossier_id": {"$in": [old_did, None]}},
+                {"$set": {"dossier_id": canonical_dossier_id}},
+            )
+        # Aussi patcher les docs du primary sans dossier_id
+        await db.documents.update_many(
+            {"client_id": pid, "dossier_id": {"$exists": False}},
+            {"$set": {"dossier_id": canonical_dossier_id}},
+        )
+        merged += 1
+        logger.info("Merged couple dossier: %s + %s → %s", pid, sid, canonical_dossier_id)
+    return merged
+
+
+@api_router.post("/admin/merge-couple-dossiers")
+async def merge_couple_dossiers(user: User = Depends(get_current_user)):
+    """Migration manuelle : fusionne tous les dossiers couple de l'utilisateur."""
+    merged = await _migrate_couple_dossiers(user_id=user.user_id)
+    return {"merged": merged, "message": f"{merged} couple(s) fusionné(s)"}
+
+
 @app.on_event("startup")
 async def startup():
-    # #region agent log
     try:
-        logger.info("DEBUG_STARTUP frontend_build_exists=%s mongo_set=%s", FRONTEND_BUILD.exists(), bool(os.environ.get("MONGO_URL")))
+        logger.info("startup frontend_build_exists=%s mongo_set=%s", FRONTEND_BUILD.exists(), bool(os.environ.get("MONGO_URL")))
     except Exception:
         pass
-    # #endregion
     try:
         init_storage()
         logger.info("Storage initialized")
     except Exception as e:
         logger.error(f"Storage init failed: {e}")
+    # Migration automatique des dossiers couple au démarrage
+    try:
+        merged = await _migrate_couple_dossiers()
+        if merged:
+            logger.info("Startup migration: %d couple dossier(s) merged", merged)
+    except Exception as e:
+        logger.error("Startup couple migration failed: %s", e)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
