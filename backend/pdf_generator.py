@@ -2021,16 +2021,17 @@ def extract_3p_expiry_from_pdf(pdf_bytes: bytes) -> Optional[str]:
 
 def extract_3p_contracts_from_pdf(pdf_bytes: bytes) -> List[dict]:
     """
-    Détecte plusieurs contrats 3e pilier dans un PDF.
+    Détecte le contrat 3e pilier dans un PDF.
 
-    Retourne une liste de lignes avec :
-    - company (si détectée)
-    - policy_number (si détecté)
-    - expiry_date (YYYY-MM-DD) si détectée, sinon None
+    Règle côté CRM (spécification actuelle) :
+    - 1 document 3e pilier = 1 contrat = 1 ligne dans "Échéance 3P"
 
-    Le moteur est volontairement heuristique et basé sur des patterns génériques
-    (mots-clés "échéance/expiry", numéros de police, et liste initiale de compagnies).
-    L'objectif est d'être facilement améliorable : il suffit d'ajouter des patterns.
+    Le moteur est heuristique et basé sur :
+    - patterns d'échéance/expiry
+    - extraction compagnie / n° de police
+
+    Pour éviter les faux contrats, on ne retourne qu'un seul candidat :
+    le meilleur (score de contexte le plus élevé).
     """
     text = _extract_pdf_text(pdf_bytes)
     if not text:
@@ -2125,7 +2126,9 @@ def extract_3p_contracts_from_pdf(pdf_bytes: bytes) -> List[dict]:
             score += 2
         return score
 
-    results: List[dict] = []
+    best_item: Optional[dict] = None
+    best_score: int = -1
+    best_start: Optional[int] = None
     for start, raw, _match_text in matches:
         expiry_iso = _to_iso(raw)
         if not expiry_iso:
@@ -2144,17 +2147,20 @@ def extract_3p_contracts_from_pdf(pdf_bytes: bytes) -> List[dict]:
         window = flat[max(0, start - 650): min(len(flat), start + 250)]
         company = _detect_company(window)
         policy_number = _detect_policy(window)
-        results.append({
-            "company": company,
-            "policy_number": policy_number,
-            "expiry_date": expiry_iso,
-            "detected": True,
-            "raw_date": raw,
-        })
+        if best_item is None or score > best_score or (score == best_score and (best_start is None or start < best_start)):
+            best_item = {
+                "company": company,
+                "policy_number": policy_number,
+                "expiry_date": expiry_iso,
+                "detected": True,
+                "raw_date": raw,
+            }
+            best_score = score
+            best_start = start
 
-    # Si aucune échéance n'a été trouvée, on retourne une ligne "non détectée"
+    # Si aucun candidat n'a été retenu, on retourne une ligne "non détectée"
     # afin d'afficher un tableau et permettre une saisie manuelle.
-    if not results:
+    if not best_item:
         company = _detect_company(flat)
         policy_number = _detect_policy(flat)
         return [{
@@ -2165,20 +2171,15 @@ def extract_3p_contracts_from_pdf(pdf_bytes: bytes) -> List[dict]:
             "raw_date": None,
         }]
 
-    # Déduplication.
-    seen = set()
-    deduped: List[dict] = []
-    for item in results:
-        key = (
-            (item.get("company") or "").casefold(),
-            (item.get("policy_number") or "").casefold(),
-            item.get("expiry_date"),
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(item)
+    # Contrôle de "certitude" : si le score de contexte est trop faible,
+    # on ne remplit pas la date pour éviter d'inventer une mauvaise échéance.
+    #
+    # Note : l'entreprise/n° peuvent aussi être faux, mais au moins on n'ajoute
+    # pas de contrats multiples à partir d'un seul PDF.
+    MIN_SCORE_FOR_EXPIRY = 3
+    if best_score < MIN_SCORE_FOR_EXPIRY:
+        best_item = dict(best_item)
+        best_item["expiry_date"] = None
+        best_item["detected"] = False
 
-    # Tri par échéance.
-    deduped.sort(key=lambda x: (x.get("expiry_date") or "9999-12-31"))
-    return deduped
+    return [best_item]
