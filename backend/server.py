@@ -1540,6 +1540,12 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
 async def root():
     return {"message": "Prévoyance CRM API"}
 
+@api_router.post("/admin/merge-couple-dossiers")
+async def merge_couple_dossiers(user: User = Depends(get_current_user)):
+    """Migration manuelle : fusionne tous les dossiers couple de l'utilisateur."""
+    merged = await _migrate_couple_dossiers(user_id=user.user_id)
+    return {"merged": merged, "message": f"{merged} couple(s) fusionné(s)"}
+
 app.include_router(api_router)
 
 cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
@@ -1642,13 +1648,6 @@ async def _migrate_couple_dossiers(user_id: Optional[str] = None):
         merged += 1
         logger.info("Merged couple dossier: %s + %s → %s", pid, sid, canonical_dossier_id)
     return merged
-
-
-@api_router.post("/admin/merge-couple-dossiers")
-async def merge_couple_dossiers(user: User = Depends(get_current_user)):
-    """Migration manuelle : fusionne tous les dossiers couple de l'utilisateur."""
-    merged = await _migrate_couple_dossiers(user_id=user.user_id)
-    return {"merged": merged, "message": f"{merged} couple(s) fusionné(s)"}
 
 
 @app.on_event("startup")
