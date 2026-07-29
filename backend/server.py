@@ -413,18 +413,24 @@ async def _upsert_echeance_3p_line_reminder(user_id: str, client: dict, line: di
     policy = str(line.get("policy_number") or "").strip()
     policy_part = f" (N° {policy})" if policy else ""
     due_display = due.strftime("%d.%m.%Y")
-    titre = f"⚠ Contrat 3e pilier — {company}{policy_part} arrivant à échéance le {due_display}"
+    client_name = f"{client.get('prenom', '')} {client.get('nom', '')}".strip() or "Client"
+    titre = f"⚠ {client_name} — Contrat 3e pilier {company}{policy_part}"
 
     if existing:
         await db.tasks.update_one(
             {"id": existing["id"]},
-            {"$set": {"echeance": echeance_iso, "titre": titre}},
+            {"$set": {
+                "echeance": echeance_iso,
+                "titre": titre,
+                "client_name": client_name,
+            }},
         )
     else:
         await db.tasks.insert_one({
             "id": str(uuid.uuid4()),
             "user_id": user_id,
             "client_id": client["id"],
+            "client_name": client_name,
             "titre": titre,
             "echeance": echeance_iso,
             "priorite": "haute",
@@ -2039,7 +2045,20 @@ async def list_tasks(client_id: Optional[str] = None, user: User = Depends(get_c
     query = {"user_id": user.user_id}
     if client_id:
         query["client_id"] = client_id
-    return await db.tasks.find(query, {"_id": 0}).sort("echeance", 1).to_list(1000)
+    tasks = await db.tasks.find(query, {"_id": 0}).sort("echeance", 1).to_list(1000)
+
+    # Enrichir avec le nom du client si manquant.
+    missing_ids = {t.get("client_id") for t in tasks if t.get("client_id") and not t.get("client_name")}
+    if missing_ids:
+        clients = await db.clients.find(
+            {"user_id": user.user_id, "id": {"$in": list(missing_ids)}},
+            {"_id": 0, "id": 1, "prenom": 1, "nom": 1},
+        ).to_list(1000)
+        by_id = {c["id"]: f"{c.get('prenom', '')} {c.get('nom', '')}".strip() for c in clients}
+        for t in tasks:
+            if t.get("client_id") and not t.get("client_name"):
+                t["client_name"] = by_id.get(t["client_id"]) or None
+    return tasks
 
 @api_router.post("/tasks")
 async def create_task(payload: TaskCreate, user: User = Depends(get_current_user)):

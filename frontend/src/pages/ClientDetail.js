@@ -18,7 +18,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import {
   ArrowLeft, Pencil, Trash2, Mail, Phone, MapPin, Briefcase, Users2, AlertTriangle,
-  FileText, Upload, Plus, StickyNote, History, CalendarClock, User, Sparkles, Loader2,
+  FileText, Upload, Plus, StickyNote, CalendarClock, User, Sparkles, Loader2,
   Send, ClipboardList, Shield, Eye, Download, BarChart3,
 } from "lucide-react";
 
@@ -914,7 +914,6 @@ export default function ClientDetail() {
               <TabsTrigger value="demande-avs" data-testid="tab-demande-avs"><Send className="h-4 w-4 mr-1.5" />Demande AVS</TabsTrigger>
               <TabsTrigger value="echeance3p" data-testid="tab-echeance3p"><Shield className="h-4 w-4 mr-1.5" />Échéance 3P</TabsTrigger>
               <TabsTrigger value="analyse-prevoyance" data-testid="tab-analyse-prevoyance"><BarChart3 className="h-4 w-4 mr-1.5" />Analyse de prévoyance</TabsTrigger>
-              <TabsTrigger value="hist" data-testid="tab-hist"><History className="h-4 w-4 mr-1.5" />Historique</TabsTrigger>
             </TabsList>
 
             <TabsContent value="infos">
@@ -1497,23 +1496,6 @@ export default function ClientDetail() {
                     onDelete: deleteOffreDoc,
                   })}
                 </div>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="hist">
-              <Card className="p-6">
-                <p className="text-sm font-semibold mb-4">Historique des actions</p>
-                {actions.length === 0 ? <p className="text-sm text-muted-foreground py-8 text-center">Aucune action.</p> : (
-                  <div className="relative pl-5 space-y-4 before:absolute before:left-1.5 before:top-1 before:bottom-1 before:w-px before:bg-border">
-                    {actions.map((a) => (
-                      <div key={a.id} className="relative">
-                        <span className="absolute -left-[15px] top-1 h-2.5 w-2.5 rounded-full bg-[#002FA7] ring-2 ring-white" />
-                        <p className="text-sm">{a.description}</p>
-                        <p className="text-xs text-muted-foreground">{fmtDate(a.created_at)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </Card>
             </TabsContent>
           </Tabs>

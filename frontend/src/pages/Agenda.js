@@ -30,7 +30,8 @@ export default function Agenda() {
       api.get("/clients"),
       api.get("/echeances-3p").catch(() => ({ data: [] })),
     ]);
-    setAppts(a.data); setTasks(t.data); setClients(c.data); setEcheances3p(e.data || []);
+    setAppts(a.data); setTasks(t.data); setClients(c.data);
+    setEcheances3p((e.data || []).filter((item) => item?.alert));
   };
   useEffect(() => { load(); }, []);
 
@@ -85,30 +86,26 @@ export default function Agenda() {
                 <h2 className="font-display font-bold text-lg tracking-tight">Échéances 3e pilier (&lt; 1 an)</h2>
               </div>
               <div className="flex flex-wrap gap-2">
-                {echeances3p.map((e) => (
-                  <button
-                    key={e.client_id || e.id}
-                    data-testid={`echeance-3p-${e.client_id || e.id}`}
-                    onClick={() => navigate(`/clients/${e.client_id || e.id}`)}
-                    className="text-sm px-3 py-1.5 rounded-md border border-amber-200 bg-white hover:border-[#002FA7] hover:text-[#002FA7] transition-colors"
-                  >
-                    {e.company ? (
-                      <>
-                        {e.company}
-                        {e.policy_number ? <span className="text-muted-foreground ml-1">— N° {e.policy_number}</span> : null}
-                      </>
-                    ) : (
-                      <>
-                        {e.prenom} {e.nom}
-                      </>
-                    )}
-                    {e.echeance_3p && (
-                      <span className="text-muted-foreground ml-1.5">
-                        — {new Date(e.echeance_3p).toLocaleDateString("fr-CH")}
-                      </span>
-                    )}
-                  </button>
-                ))}
+                {echeances3p.map((e, idx) => {
+                  const clientLabel = `${e.prenom || ""} ${e.nom || ""}`.trim();
+                  const parts = [];
+                  if (clientLabel) parts.push(clientLabel);
+                  if (e.company) parts.push(e.company);
+                  if (e.policy_number) parts.push(`N° ${e.policy_number}`);
+                  if (e.echeance_3p) {
+                    parts.push(new Date(`${String(e.echeance_3p).slice(0, 10)}T00:00:00`).toLocaleDateString("fr-CH"));
+                  }
+                  return (
+                    <button
+                      key={`${e.client_id || e.id}-${e.company || ""}-${e.policy_number || ""}-${e.echeance_3p || idx}`}
+                      data-testid={`echeance-3p-${e.client_id || e.id}-${idx}`}
+                      onClick={() => navigate(`/clients/${e.client_id || e.id}`)}
+                      className="text-sm px-3 py-1.5 rounded-md border border-amber-200 bg-white hover:border-[#002FA7] hover:text-[#002FA7] transition-colors text-left"
+                    >
+                      {parts.join(" — ") || "Échéance 3e pilier"}
+                    </button>
+                  );
+                })}
               </div>
             </Card>
           </div>
@@ -160,9 +157,32 @@ export default function Agenda() {
                   <div key={t.id} data-testid={`task-${t.id}`} className="flex items-start gap-3 p-2.5 rounded-md hover:bg-secondary transition-colors group">
                     <Checkbox checked={t.done} onCheckedChange={() => toggleTask(t)} data-testid={`task-check-${t.id}`} className="mt-0.5" />
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${t.done ? "line-through text-muted-foreground" : "font-medium"}`}>{t.titre}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {t.echeance && <span className="text-xs text-muted-foreground">{new Date(t.echeance).toLocaleDateString("fr-CH")}</span>}
+                      <p className={`text-sm ${t.done ? "line-through text-muted-foreground" : "font-medium"}`}>
+                        {t.titre}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {t.type === "echeance_3p" && t.echeance ? (
+                          <span className="text-xs text-muted-foreground">
+                            Échéance le {new Date(`${String(t.echeance).slice(0, 10)}T00:00:00`).toLocaleDateString("fr-CH")}
+                          </span>
+                        ) : (
+                          <>
+                            {t.client_name && (
+                              <button
+                                type="button"
+                                onClick={() => t.client_id && navigate(`/clients/${t.client_id}`)}
+                                className="text-xs text-muted-foreground hover:text-[#002FA7]"
+                              >
+                                {t.client_name}
+                              </button>
+                            )}
+                            {t.echeance && (
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(t.echeance).toLocaleDateString("fr-CH")}
+                              </span>
+                            )}
+                          </>
+                        )}
                         {t.priorite === "urgent" && <span className="text-[11px] text-red-700 bg-red-100 rounded px-1.5">Urgent</span>}
                       </div>
                     </div>
