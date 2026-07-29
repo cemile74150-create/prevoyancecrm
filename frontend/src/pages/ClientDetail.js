@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Pencil, Trash2, Mail, Phone, MapPin, Briefcase, Users2, AlertTriangle,
   FileText, Upload, Plus, StickyNote, CalendarClock, User, Sparkles, Loader2,
-  Send, ClipboardList, Shield, Eye, Download, BarChart3, ListChecks, AlertTriangle,
+  Send, ClipboardList, Shield, Eye, Download, BarChart3, ListChecks,
 } from "lucide-react";
 
 const ANALYSE_PREVOYANCE_CATEGORY = "Analyse de prévoyance";

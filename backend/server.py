@@ -312,13 +312,29 @@ async def _dossier_scope(user_id: str, client: dict) -> dict:
     """Retourne dossier_id + ids des membres du dossier familial."""
     dossier_id = client.get("dossier_id") or client["id"]
     members = await db.clients.find(
-        {"user_id": user_id, "dossier_id": dossier_id}, {"id": 1}
+        {"user_id": user_id, "dossier_id": dossier_id}, {"id": 1, "linked_spouse_id": 1}
     ).to_list(100)
     member_ids = [m["id"] for m in members]
     if not member_ids:
         member_ids = [client["id"]]
-        if client.get("linked_spouse_id"):
-            member_ids.append(client["linked_spouse_id"])
+
+    # Toujours inclure le conjoint lié, même si le dossier_id n'est pas encore partagé.
+    spouse_id = client.get("linked_spouse_id")
+    if spouse_id:
+        member_ids.append(spouse_id)
+        spouse = await db.clients.find_one({"id": spouse_id, "user_id": user_id}, {"_id": 0, "id": 1, "dossier_id": 1})
+        if spouse and spouse.get("dossier_id") and spouse["dossier_id"] != dossier_id:
+            extra = await db.clients.find(
+                {"user_id": user_id, "dossier_id": spouse["dossier_id"]}, {"id": 1}
+            ).to_list(100)
+            member_ids.extend(m["id"] for m in extra)
+
+    # Clients qui pointent vers ce client comme conjoint
+    reverse = await db.clients.find(
+        {"user_id": user_id, "linked_spouse_id": client["id"]}, {"id": 1}
+    ).to_list(20)
+    member_ids.extend(m["id"] for m in reverse)
+
     return {"dossier_id": dossier_id, "member_ids": list(dict.fromkeys(member_ids))}
 
 async def _upsert_echeance_3p_reminder(user_id: str, client: dict, echeance_iso: Optional[str]):
