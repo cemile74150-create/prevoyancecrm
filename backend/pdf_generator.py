@@ -2091,26 +2091,56 @@ def extract_3p_contracts_from_pdf(pdf_bytes: bytes) -> List[dict]:
         return None
 
     expiry_patterns = [
-        r"(?:date\s+d[e']?\s*)?(?:echeance|échéance)(?:\s+du\s+contrat)?(?:\s*:|\s+au|\s+le)?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
-        r"(?:echeance|échéance|ablauf|expiry)(?:\s*:|\s+au|\s+le|\s+am)?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
-        r"(?:echeance|échéance|ablauf|expiry)[^\n]{0,60}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        # Français : échéance (finale) / date d’échéance / échéance du contrat
+        r"(?:date\s+d[e']?\s*)?(?:echeance|échéance)(?:\s+finale)?(?:\s+(?:du|de)\s+contrat)?(?:\s*:|\s+au|\s+le)?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        # “fin / terme / expiration / contract end …”
+        r"(?:fin\s+du\s+contrat|date\s+de\s+fin|terme|échéance\s+finale|echeance\s+finale|expiration(?:\s+(?:du|de)\s+contrat)?|contract\s+(?:end|expiration)|end\s+of\s+contract|maturity(?:\s+date)?)\s*[:\-]?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        # Anglais générique : expiry date / contract expiry / maturity date
+        r"(?:expiry\s+date|contract\s+expiry|final\s+maturity|maturity)\s*[:\-]?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
     ]
 
-    matches: List[tuple] = []  # (start_index, raw_date)
+    # (start_index, raw_date, match_text)
+    matches: List[tuple] = []
     for pat in expiry_patterns:
         for m in re.finditer(pat, flat, flags=re.IGNORECASE):
             raw_date = (m.group(1) or "").strip()
             if raw_date:
-                matches.append((m.start(), raw_date))
+                matches.append((m.start(), raw_date, m.group(0) or ""))
 
     matches.sort(key=lambda x: x[0])
 
+    excluded_ctx = re.compile(
+        r"(signature|signé|signe|effet|date\s+d'?effet|début|imprim|impression|date\s+d'impression|entrée\s+en\s+vigueur|entry\s+into\s+force|druck|printed)\b",
+        flags=re.IGNORECASE,
+    )
+
+    def _score_expiry_context(ctx: str) -> int:
+        c = (ctx or "").casefold()
+        score = 0
+        if re.search(r"(final|fin|expiration|end|terme|maturity|einde)", c):
+            score += 5
+        if re.search(r"(contrat|contract|vertrag)", c):
+            score += 3
+        if re.search(r"(echeance|échéance)", c):
+            score += 2
+        return score
+
     results: List[dict] = []
-    for start, raw in matches:
+    for start, raw, _match_text in matches:
         expiry_iso = _to_iso(raw)
         if not expiry_iso:
             continue
-        # Fenêtre autour du candidat pour détecter compagnie & n° de police.
+
+        # Contexte proche pour filtrer signature/effet/impression (éviter les faux positifs).
+        ctx = flat[max(0, start - 220): min(len(flat), start + 150)]
+        if excluded_ctx.search(ctx):
+            continue
+
+        score = _score_expiry_context(ctx)
+        if score < 2:
+            continue
+
+        # Fenêtre plus large autour du candidat pour détecter compagnie & n° de police.
         window = flat[max(0, start - 650): min(len(flat), start + 250)]
         company = _detect_company(window)
         policy_number = _detect_policy(window)
