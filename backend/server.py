@@ -155,6 +155,17 @@ class ClientCreate(ClientBase):
 class NoteCreate(BaseModel):
     content: str
 
+class DemandeCreate(BaseModel):
+    titre: str
+    description: Optional[str] = None
+    priorite: Optional[str] = "normale"
+
+class DemandeUpdate(BaseModel):
+    titre: Optional[str] = None
+    description: Optional[str] = None
+    priorite: Optional[str] = None
+    done: Optional[bool] = None
+
 class StatutUpdate(BaseModel):
     statut: str
 
@@ -739,6 +750,147 @@ async def add_note(client_id: str, payload: NoteCreate, user: User = Depends(get
     await log_action(user.user_id, client_id, "Note interne ajoutée", dossier_id=scope["dossier_id"])
     doc.pop("_id", None)
     return doc
+
+# ---------------- Demandes à faire (to-do conseiller) ----------------
+def _normalize_demande_priorite(value: Optional[str]) -> str:
+    raw = (value or "normale").strip().lower()
+    if raw in {"haute", "high", "urgent", "urgente"}:
+        return "haute"
+    return "normale"
+
+
+async def _enrich_demande_with_client(demande: dict) -> dict:
+    client_id = demande.get("client_id")
+    if not client_id:
+        demande["client_name"] = None
+        return demande
+    c = await db.clients.find_one(
+        {"id": client_id},
+        {"_id": 0, "prenom": 1, "nom": 1, "numero_dossier": 1},
+    )
+    if c:
+        demande["client_name"] = f"{c.get('prenom') or ''} {c.get('nom') or ''}".strip() or None
+        demande["numero_dossier"] = c.get("numero_dossier")
+    else:
+        demande["client_name"] = None
+    return demande
+
+
+@api_router.get("/demandes")
+async def list_all_demandes(
+    done: Optional[bool] = Query(False),
+    user: User = Depends(get_current_user),
+):
+    """Liste globale des demandes. Par défaut : non traitées uniquement."""
+    query: dict = {"user_id": user.user_id}
+    if done is not None:
+        query["done"] = bool(done)
+    demandes = await db.demandes.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    # Tri stable : plus récentes d'abord, puis haute priorité en tête
+    demandes.sort(key=lambda d: d.get("created_at") or "", reverse=True)
+    demandes.sort(key=lambda d: 0 if d.get("priorite") == "haute" else 1)
+    enriched = []
+    for d in demandes:
+        enriched.append(await _enrich_demande_with_client(d))
+    return enriched
+
+
+@api_router.get("/clients/{client_id}/demandes")
+async def list_client_demandes(client_id: str, user: User = Depends(get_current_user)):
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    scope = await _dossier_scope(user.user_id, c)
+    query = {
+        "user_id": user.user_id,
+        "$or": [
+            {"client_id": {"$in": scope["member_ids"]}},
+            {"dossier_id": scope["dossier_id"]},
+        ],
+    }
+    # Ouvertes d'abord, puis traitées (historique)
+    demandes = await db.demandes.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    open_ones = [d for d in demandes if not d.get("done")]
+    done_ones = [d for d in demandes if d.get("done")]
+    open_ones.sort(key=lambda d: (0 if d.get("priorite") == "haute" else 1, d.get("created_at") or ""))
+    return open_ones + done_ones
+
+
+@api_router.post("/clients/{client_id}/demandes")
+async def create_demande(client_id: str, payload: DemandeCreate, user: User = Depends(get_current_user)):
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    titre = (payload.titre or "").strip()
+    if not titre:
+        raise HTTPException(status_code=400, detail="Titre obligatoire")
+    scope = await _dossier_scope(user.user_id, c)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user.user_id,
+        "client_id": client_id,
+        "dossier_id": scope["dossier_id"],
+        "titre": titre,
+        "description": (payload.description or "").strip() or None,
+        "priorite": _normalize_demande_priorite(payload.priorite),
+        "done": False,
+        "author": getattr(user, "name", None) or None,
+        "created_by": getattr(user, "user_id", None) or None,
+        "created_at": now_iso,
+        "done_at": None,
+        "done_by": None,
+        "done_by_name": None,
+    }
+    await db.demandes.insert_one(doc)
+    await log_action(user.user_id, client_id, f"Demande créée: {titre}", dossier_id=scope["dossier_id"])
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.patch("/demandes/{demande_id}")
+async def update_demande(demande_id: str, payload: DemandeUpdate, user: User = Depends(get_current_user)):
+    d = await db.demandes.find_one({"id": demande_id, "user_id": user.user_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Demande introuvable")
+
+    updates: dict = {}
+    if payload.titre is not None:
+        titre = payload.titre.strip()
+        if not titre:
+            raise HTTPException(status_code=400, detail="Titre obligatoire")
+        updates["titre"] = titre
+    if payload.description is not None:
+        updates["description"] = payload.description.strip() or None
+    if payload.priorite is not None:
+        updates["priorite"] = _normalize_demande_priorite(payload.priorite)
+
+    if payload.done is not None:
+        new_done = bool(payload.done)
+        was_done = bool(d.get("done"))
+        updates["done"] = new_done
+        if new_done and not was_done:
+            updates["done_at"] = datetime.now(timezone.utc).isoformat()
+            updates["done_by"] = getattr(user, "user_id", None) or None
+            updates["done_by_name"] = getattr(user, "name", None) or None
+        elif not new_done and was_done:
+            updates["done_at"] = None
+            updates["done_by"] = None
+            updates["done_by_name"] = None
+
+    if updates:
+        await db.demandes.update_one({"id": demande_id, "user_id": user.user_id}, {"$set": updates})
+
+    updated = await db.demandes.find_one({"id": demande_id}, {"_id": 0})
+    return await _enrich_demande_with_client(updated)
+
+
+@api_router.delete("/demandes/{demande_id}")
+async def delete_demande(demande_id: str, user: User = Depends(get_current_user)):
+    res = await db.demandes.delete_one({"id": demande_id, "user_id": user.user_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Demande introuvable")
+    return {"ok": True}
 
 # ---------------- Actions history ----------------
 @api_router.get("/clients/{client_id}/actions")

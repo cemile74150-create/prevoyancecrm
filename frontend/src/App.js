@@ -11,6 +11,7 @@ import Clients from "@/pages/Clients";
 import ClientDetail from "@/pages/ClientDetail";
 import DossierHub from "@/pages/DossierHub";
 import Agenda from "@/pages/Agenda";
+import Demandes from "@/pages/Demandes";
 import Formulaires from "@/pages/Formulaires";
 // Visual PDF field mapping editor (FormMappingEditor) — 2026-07-28
 
@@ -33,6 +34,7 @@ function AppRoutes() {
       <Route path="/clients" element={<Protected><Clients /></Protected>} />
       <Route path="/clients/:id" element={<Protected><ClientDetail /></Protected>} />
       <Route path="/dossiers/:dossierId" element={<Protected><DossierHub /></Protected>} />
+      <Route path="/demandes" element={<Protected><Demandes /></Protected>} />
       <Route path="/agenda" element={<Protected><Agenda /></Protected>} />
       <Route path="/formulaires" element={<Protected><Formulaires /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

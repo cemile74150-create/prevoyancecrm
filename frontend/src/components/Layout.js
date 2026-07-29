@@ -2,12 +2,13 @@ import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
-import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, ShieldCheck, Menu } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, ShieldCheck, Menu, ClipboardList } from "lucide-react";
 
 const nav = [
   { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard, testid: "nav-dashboard" },
   { to: "/dossiers", label: "Dossiers", icon: KanbanSquare, testid: "nav-dossiers" },
   { to: "/clients", label: "Clients", icon: Users, testid: "nav-clients" },
+  { to: "/demandes", label: "Demandes à faire", icon: ClipboardList, testid: "nav-demandes" },
   { to: "/agenda", label: "Ordre du jour", icon: CalendarDays, testid: "nav-agenda" },
   { to: "/formulaires", label: "Formulaires", icon: Files, testid: "nav-formulaires" },
 ];

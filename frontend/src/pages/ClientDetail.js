@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Pencil, Trash2, Mail, Phone, MapPin, Briefcase, Users2, AlertTriangle,
   FileText, Upload, Plus, StickyNote, CalendarClock, User, Sparkles, Loader2,
-  Send, ClipboardList, Shield, Eye, Download, BarChart3,
+  Send, ClipboardList, Shield, Eye, Download, BarChart3, ListChecks, AlertTriangle,
 } from "lucide-react";
 
 const ANALYSE_PREVOYANCE_CATEGORY = "Analyse de prévoyance";
@@ -72,6 +72,9 @@ export default function ClientDetail() {
   const navigate = useNavigate();
   const [client, setClient] = useState(null);
   const [notes, setNotes] = useState([]);
+  const [demandes, setDemandes] = useState([]);
+  const [demandeForm, setDemandeForm] = useState({ titre: "", description: "", priorite: "normale" });
+  const [savingDemande, setSavingDemande] = useState(false);
   const [docs, setDocs] = useState([]);
   const [appts, setAppts] = useState([]);
   const [actions, setActions] = useState([]);
@@ -107,15 +110,17 @@ export default function ClientDetail() {
   const [uploadingOffre, setUploadingOffre] = useState(false);
 
   const loadAll = async () => {
-    const [c, n, d, a, h, lib] = await Promise.all([
+    const [c, n, d, a, h, lib, dem] = await Promise.all([
       api.get(`/clients/${id}`),
       api.get(`/clients/${id}/notes`),
       api.get(`/clients/${id}/documents`),
       api.get(`/appointments`, { params: { client_id: id } }),
       api.get(`/clients/${id}/actions`),
       api.get("/form-library").catch(() => ({ data: [] })),
+      api.get(`/clients/${id}/demandes`).catch(() => ({ data: [] })),
     ]);
     setClient(c.data); setNotes(n.data); setDocs(d.data); setAppts(a.data); setActions(h.data);
+    setDemandes(Array.isArray(dem.data) ? dem.data : []);
     setLibraryForms(lib.data || []);
     const savedChecklist = c.data?.document_checklist || {};
     const migratedLpp = savedChecklist["Demande LPP"] || savedChecklist.Procuration || savedChecklist["Formulaire Recherche LPP"];
@@ -187,6 +192,55 @@ export default function ClientDetail() {
     const [n, h] = await Promise.all([api.get(`/clients/${id}/notes`), api.get(`/clients/${id}/actions`)]);
     setNotes(n.data); setActions(h.data);
     toast.success("Note ajoutée");
+  };
+
+  const reloadDemandes = async () => {
+    const res = await api.get(`/clients/${id}/demandes`);
+    setDemandes(Array.isArray(res.data) ? res.data : []);
+  };
+
+  const addDemande = async () => {
+    if (!demandeForm.titre.trim()) {
+      toast.error("Le titre est obligatoire");
+      return;
+    }
+    setSavingDemande(true);
+    try {
+      await api.post(`/clients/${id}/demandes`, {
+        titre: demandeForm.titre.trim(),
+        description: demandeForm.description.trim() || null,
+        priorite: demandeForm.priorite || "normale",
+      });
+      setDemandeForm({ titre: "", description: "", priorite: "normale" });
+      await reloadDemandes();
+      toast.success("Demande ajoutée");
+    } catch {
+      toast.error("Impossible d'ajouter la demande");
+    } finally {
+      setSavingDemande(false);
+    }
+  };
+
+  const toggleDemandeDone = async (demande) => {
+    const nextDone = !demande.done;
+    try {
+      await api.patch(`/demandes/${demande.id}`, { done: nextDone });
+      await reloadDemandes();
+      toast.success(nextDone ? "Demande marquée comme traitée" : "Demande rouverte");
+    } catch {
+      toast.error("Impossible de mettre à jour la demande");
+    }
+  };
+
+  const deleteDemande = async (demandeId) => {
+    if (!window.confirm("Supprimer définitivement cette demande ?")) return;
+    try {
+      await api.delete(`/demandes/${demandeId}`);
+      await reloadDemandes();
+      toast.success("Demande supprimée");
+    } catch {
+      toast.error("Impossible de supprimer la demande");
+    }
   };
 
   const uploadChecklistDoc = async (e) => {
@@ -918,6 +972,7 @@ export default function ClientDetail() {
               <TabsTrigger value="infos" data-testid="tab-infos"><User className="h-4 w-4 mr-1.5" />Infos</TabsTrigger>
               <TabsTrigger value="rdv" data-testid="tab-rdv"><CalendarClock className="h-4 w-4 mr-1.5" />Rendez-vous</TabsTrigger>
               <TabsTrigger value="notes" data-testid="tab-notes"><StickyNote className="h-4 w-4 mr-1.5" />Notes</TabsTrigger>
+              <TabsTrigger value="demandes" data-testid="tab-demandes"><ListChecks className="h-4 w-4 mr-1.5" />Demandes à faire</TabsTrigger>
               <TabsTrigger value="docs" data-testid="tab-docs"><FileText className="h-4 w-4 mr-1.5" />Documents</TabsTrigger>
               <TabsTrigger value="demande-lpp" data-testid="tab-demande-lpp"><ClipboardList className="h-4 w-4 mr-1.5" />Demande LPP</TabsTrigger>
               <TabsTrigger value="demande-avs" data-testid="tab-demande-avs"><Send className="h-4 w-4 mr-1.5" />Demande AVS</TabsTrigger>
@@ -1000,6 +1055,136 @@ export default function ClientDetail() {
                         <p className="text-xs text-muted-foreground mt-2">{n.author} · {fmtDate(n.created_at)}</p>
                       </div>
                     ))}
+                  </div>
+                )}
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="demandes">
+              <Card className="p-6 space-y-5">
+                <div>
+                  <p className="text-sm font-semibold text-[#002FA7]">Demandes à faire</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Actions à réaliser pour ce dossier. Les demandes traitées restent en historique.
+                  </p>
+                </div>
+
+                <div className="space-y-3 p-4 rounded-md border border-border bg-secondary/30">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Titre</Label>
+                    <Input
+                      data-testid="demande-titre-input"
+                      value={demandeForm.titre}
+                      onChange={(e) => setDemandeForm((f) => ({ ...f, titre: e.target.value }))}
+                      placeholder="Ex. Contacter la caisse AVS"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Description (optionnel)</Label>
+                    <Textarea
+                      data-testid="demande-description-input"
+                      value={demandeForm.description}
+                      onChange={(e) => setDemandeForm((f) => ({ ...f, description: e.target.value }))}
+                      placeholder="Détails utiles…"
+                      rows={2}
+                      className="resize-none"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Priorité</Label>
+                      <Select
+                        value={demandeForm.priorite}
+                        onValueChange={(v) => setDemandeForm((f) => ({ ...f, priorite: v }))}
+                      >
+                        <SelectTrigger data-testid="demande-priorite-select" className="w-[160px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="normale">Normale</SelectItem>
+                          <SelectItem value="haute">Haute</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      onClick={addDemande}
+                      disabled={savingDemande}
+                      data-testid="add-demande-btn"
+                      className="bg-[#002FA7] hover:bg-[#00248a] gap-1.5"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {savingDemande ? "…" : "Ajouter la demande"}
+                    </Button>
+                  </div>
+                </div>
+
+                {demandes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">Aucune demande pour ce dossier.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {["ouvertes", "traitees"].map((section) => {
+                      const items = section === "ouvertes"
+                        ? demandes.filter((d) => !d.done)
+                        : demandes.filter((d) => d.done);
+                      if (items.length === 0) return null;
+                      return (
+                        <div key={section}>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                            {section === "ouvertes" ? `À faire (${items.length})` : `Traitées (${items.length})`}
+                          </p>
+                          <div className="space-y-2">
+                            {items.map((d) => (
+                              <div
+                                key={d.id}
+                                data-testid={`demande-${d.id}`}
+                                className={`flex items-start gap-3 p-3 rounded-md border border-border ${d.done ? "bg-secondary/20 opacity-80" : "bg-card"}`}
+                              >
+                                <div className="flex items-center gap-2 pt-0.5">
+                                  <Checkbox
+                                    checked={!!d.done}
+                                    onCheckedChange={() => toggleDemandeDone(d)}
+                                    data-testid={`demande-check-${d.id}`}
+                                  />
+                                  <span className="text-xs text-muted-foreground hidden sm:inline">Traité</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-medium ${d.done ? "line-through text-muted-foreground" : ""}`}>
+                                    {d.titre}
+                                  </p>
+                                  {d.description ? (
+                                    <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">{d.description}</p>
+                                  ) : null}
+                                  <div className="flex items-center gap-2 mt-2 flex-wrap text-xs text-muted-foreground">
+                                    {d.priorite === "haute" && !d.done && (
+                                      <span className="inline-flex items-center gap-1 font-medium text-red-700 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded">
+                                        <AlertTriangle className="h-3 w-3" /> Haute
+                                      </span>
+                                    )}
+                                    <span>Créé le {fmtDate(d.created_at)}</span>
+                                    {d.author && <span>· {d.author}</span>}
+                                    {d.done && d.done_at && (
+                                      <span>
+                                        · Traité le {fmtDate(d.done_at)}
+                                        {d.done_by_name ? ` par ${d.done_by_name}` : ""}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => deleteDemande(d.id)}
+                                  className="h-8 w-8 text-destructive hover:text-destructive shrink-0"
+                                  data-testid={`demande-delete-${d.id}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </Card>
