@@ -475,6 +475,15 @@ async def get_client(client_id: str, user: User = Depends(get_current_user)):
     c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
     if not c:
         raise HTTPException(status_code=404, detail="Client introuvable")
+    try:
+        # Nettoyage "strict" côté lecture : évite que d'anciennes lignes erronées restent visibles
+        # si l'utilisateur n'a pas re-upload/supprimé un document depuis.
+        lines = c.get("echeances_3p")
+        if isinstance(lines, list) and len(lines) > 0:
+            await _reconcile_echeances_3p_lines(user.user_id, client_id)
+            c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    except Exception:
+        logger.exception("Reconciliation echeances_3p échouée (get_client)")
     return c
 
 @api_router.get("/dossiers/{dossier_id}")
