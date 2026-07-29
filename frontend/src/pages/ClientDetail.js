@@ -1106,7 +1106,7 @@ export default function ClientDetail() {
                           <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">N° de police</th>
                           <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">Date d&apos;échéance</th>
                           <th className="pb-2 font-medium text-muted-foreground whitespace-nowrap">Statut</th>
-                          <th className="pb-2 font-medium text-muted-foreground whitespace-nowrap"> </th>
+                          <th className="pb-2 font-medium text-muted-foreground whitespace-nowrap">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
