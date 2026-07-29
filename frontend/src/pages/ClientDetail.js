@@ -550,6 +550,23 @@ export default function ClientDetail() {
     }
   };
 
+  const applyEcheancesFromClient = (clientData) => {
+    const rawLines = Array.isArray(clientData?.echeances_3p) ? clientData.echeances_3p : null;
+    if (rawLines && rawLines.length > 0) {
+      setEcheances3p(
+        rawLines.map((l) => ({
+          ...l,
+          echeance_3p: l?.echeance_3p ? String(l.echeance_3p).split("T")[0] : null,
+        }))
+      );
+    } else {
+      const legacy = clientData?.echeance_3p ? String(clientData.echeance_3p).split("T")[0] : null;
+      setEcheances3p(
+        legacy ? [{ id: "legacy-3p", company: null, policy_number: null, echeance_3p: legacy, detected: true }] : []
+      );
+    }
+  };
+
   const saveEcheance3pLine = async (lineId) => {
     const line = echeances3p.find((l) => l?.id === lineId) || {};
     const draft = echeance3pDraftById[lineId] || {};
@@ -569,22 +586,7 @@ export default function ClientDetail() {
       const res = await api.patch(`/clients/${id}/echeances-3p/${lineId}`, payload);
       const updated = res.data;
       setClient(updated);
-
-      const rawLines = Array.isArray(updated?.echeances_3p) ? updated.echeances_3p : null;
-      if (rawLines && rawLines.length > 0) {
-        setEcheances3p(
-          rawLines.map((l) => ({
-            ...l,
-            echeance_3p: l?.echeance_3p ? String(l.echeance_3p).split("T")[0] : null,
-          }))
-        );
-      } else {
-        const legacy = updated?.echeance_3p ? String(updated.echeance_3p).split("T")[0] : null;
-        setEcheances3p(
-          legacy ? [{ id: "legacy-3p", company: null, policy_number: null, echeance_3p: legacy, detected: true }] : []
-        );
-      }
-
+      applyEcheancesFromClient(updated);
       setEcheance3pDraftById((m) => ({ ...m, [lineId]: {} }));
       setEditingEcheance3pLineId(null);
       toast.success("Échéance 3e pilier enregistrée");
@@ -605,6 +607,53 @@ export default function ClientDetail() {
       },
     });
     setEditingEcheance3pLineId(line.id);
+  };
+
+  const addEcheance3pLine = async () => {
+    setSavingEcheance3p(true);
+    try {
+      const res = await api.post(`/clients/${id}/echeances-3p`, {
+        company: null,
+        policy_number: null,
+        echeance_3p: null,
+      });
+      const updated = res.data;
+      setClient(updated);
+      applyEcheancesFromClient(updated);
+      const lines = Array.isArray(updated?.echeances_3p) ? updated.echeances_3p : [];
+      const created = lines[lines.length - 1];
+      if (created?.id) {
+        startEditEcheance3pLine({
+          id: created.id,
+          company: created.company || "",
+          policy_number: created.policy_number || "",
+          echeance_3p: created.echeance_3p ? String(created.echeance_3p).split("T")[0] : "",
+        });
+      }
+      toast.success("Ligne 3e pilier ajoutée — complète les informations");
+    } catch (err) {
+      toast.error("Impossible d'ajouter une ligne");
+    } finally {
+      setSavingEcheance3p(false);
+    }
+  };
+
+  const deleteEcheance3pLine = async (lineId) => {
+    if (!window.confirm("Supprimer ce contrat 3e pilier ? Si une police PDF est liée, elle sera aussi retirée des Documents.")) return;
+    setSavingEcheance3p(true);
+    try {
+      const res = await api.delete(`/clients/${id}/echeances-3p/${lineId}`);
+      const updated = res.data;
+      setClient(updated);
+      applyEcheancesFromClient(updated);
+      if (editingEcheance3pLineId === lineId) setEditingEcheance3pLineId(null);
+      toast.success("Contrat 3e pilier supprimé");
+      await loadAll();
+    } catch (err) {
+      toast.error("Impossible de supprimer la ligne");
+    } finally {
+      setSavingEcheance3p(false);
+    }
   };
 
   const isWithinOneYear = (dateStr) => {
@@ -1209,11 +1258,28 @@ export default function ClientDetail() {
 
             <TabsContent value="echeance3p">
               <Card className="p-6 space-y-4">
-                <p className="text-sm font-semibold text-[#002FA7]">Échéance 3e pilier</p>
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-sm font-semibold text-[#002FA7]">Échéance 3e pilier</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Une ligne par police PDF (Documents → Police 3e pilier), ou saisie manuelle.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={addEcheance3pLine}
+                    disabled={savingEcheance3p}
+                    data-testid="add-echeance-3p-btn"
+                    className="h-8 gap-1.5 bg-[#002FA7] hover:bg-[#00248a]"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Ajouter un 3e pilier
+                  </Button>
+                </div>
 
                 {echeances3p.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    Aucun contrat 3e pilier détecté pour l’instant. Ajoute une « Police 3e pilier » dans Documents.
+                    Aucun contrat 3e pilier pour l’instant. Ajoute une police dans Documents, ou clique sur « Ajouter un 3e pilier ».
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1224,7 +1290,7 @@ export default function ClientDetail() {
                           <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">N° de police</th>
                           <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">Date d&apos;échéance</th>
                           <th className="pb-2 font-medium text-muted-foreground whitespace-nowrap">Statut</th>
-                          <th className="pb-2 font-medium text-muted-foreground whitespace-nowrap">Actions</th>
+                          <th className="pb-2 font-medium text-muted-foreground whitespace-nowrap text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1315,27 +1381,39 @@ export default function ClientDetail() {
                                 </span>
                               </td>
                               <td className="py-3 whitespace-nowrap text-right">
-                                {isEditing ? (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => saveEcheance3pLine(line.id)}
-                                    disabled={savingEcheance3p}
-                                    data-testid={`echeance-3p-line-save-${line.id}`}
-                                    className="bg-[#002FA7] hover:bg-[#00248a]"
-                                  >
-                                    {savingEcheance3p ? "…" : "✔ Enregistrer"}
-                                  </Button>
-                                ) : (
+                                <div className="inline-flex items-center gap-1 justify-end">
+                                  {isEditing ? (
+                                    <Button
+                                      size="sm"
+                                      onClick={() => saveEcheance3pLine(line.id)}
+                                      disabled={savingEcheance3p}
+                                      data-testid={`echeance-3p-line-save-${line.id}`}
+                                      className="bg-[#002FA7] hover:bg-[#00248a]"
+                                    >
+                                      {savingEcheance3p ? "…" : "✔ Enregistrer"}
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => startEditEcheance3pLine(line)}
+                                      disabled={savingEcheance3p}
+                                      data-testid={`echeance-3p-line-edit-${line.id}`}
+                                    >
+                                      ✏️ Modifier
+                                    </Button>
+                                  )}
                                   <Button
                                     size="sm"
                                     variant="ghost"
-                                    onClick={() => startEditEcheance3pLine(line)}
+                                    onClick={() => deleteEcheance3pLine(line.id)}
                                     disabled={savingEcheance3p}
-                                    data-testid={`echeance-3p-line-edit-${line.id}`}
+                                    className="text-destructive hover:text-destructive"
+                                    data-testid={`echeance-3p-line-delete-${line.id}`}
                                   >
-                                    ✏️ Modifier
+                                    🗑 Supprimer
                                   </Button>
-                                )}
+                                </div>
                               </td>
                             </tr>
                           );

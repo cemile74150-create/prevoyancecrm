@@ -2066,6 +2066,11 @@ def extract_3p_contracts_from_pdf(pdf_bytes: bytes) -> List[dict]:
         ("Banque Cantonale Vaudoise", r"Banque\s+Cantonale\s+Vaudoise"),
         ("Zurich", r"Zurich"),
         ("Vontobel", r"Vontobel"),
+        ("Bâloise", r"B[aâ]loise"),
+        ("Fortuna", r"Fortuna|3B\s*Fortuna"),
+        ("Allianz", r"Allianz"),
+        ("Mobilière", r"Mobili[eè]re|La\s+Mobili[eè]re"),
+        ("Vaudoise", r"\bVaudoise\b"),
     ]
 
     def _detect_company(window: str) -> Optional[str]:

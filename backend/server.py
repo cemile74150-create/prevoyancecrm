@@ -173,6 +173,11 @@ class Echeance3PLineUpdate(BaseModel):
     company: Optional[str] = None
     policy_number: Optional[str] = None
 
+class Echeance3PLineCreate(BaseModel):
+    company: Optional[str] = None
+    policy_number: Optional[str] = None
+    echeance_3p: Optional[str] = None
+
 class LppCaisseTrackingUpdate(BaseModel):
     lpp_caisse_tracking: List[dict] = Field(default_factory=list)
 
@@ -327,48 +332,60 @@ def _echeance_3p_line_identity(line: dict) -> tuple:
     return (company, policy, None, str(line.get("source_doc_id") or ""))
 
 def _merge_echeances_3p_lines(existing_lines: Optional[List[dict]], new_lines: List[dict]) -> List[dict]:
-    previous = list(existing_lines or [])
-
-    def _contract_pair_key(l: dict):
-        company = _normalize_3p_str(l.get("company"))
-        policy = _normalize_3p_str(l.get("policy_number"))
-        # Si on peut identifier le contrat (compagnie + n°), on met à jour la ligne existante.
-        if company or policy:
-            return (company, policy)
-        # Sinon on utilise l'id du document source (évite de fusionner des inconnus).
-        return ("", "", str(l.get("source_doc_id") or ""))
-
-    by_contract = {}
-    for l in previous:
-        if isinstance(l, dict):
-            by_contract[_contract_pair_key(l)] = l
-
-    merged = previous[:]
+    """Fusionne en respectant : 1 source_doc_id = 1 ligne. Les lignes manuelles (sans source) sont conservées."""
+    previous = [l for l in (existing_lines or []) if isinstance(l, dict)]
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    for line in new_lines:
-        key = _contract_pair_key(line)
-        if key in by_contract:
-            existing = by_contract[key]
-            # Mise à jour compagnie / n° / source doc (remplacement de version)
-            existing["company"] = line.get("company")
-            existing["policy_number"] = line.get("policy_number")
-            existing["source_doc_id"] = line.get("source_doc_id")
-            existing["raw_date"] = line.get("raw_date") or existing.get("raw_date")
-            existing["updated_at"] = now_iso
+    by_source = {}
+    manual = []
+    for l in previous:
+        sid = l.get("source_doc_id")
+        if sid:
+            by_source[str(sid)] = l
+        else:
+            manual.append(l)
 
-            # Si une date est détectée maintenant, on l'applique.
-            # On ne "supprime" pas une date détectée si la nouvelle extraction est vide.
-            new_date = line.get("echeance_3p")
-            if new_date:
-                existing["echeance_3p"] = new_date
-                existing["detected"] = True
+    for line in new_lines or []:
+        if not isinstance(line, dict):
             continue
+        sid = line.get("source_doc_id")
+        if sid:
+            key = str(sid)
+            if key in by_source:
+                existing = by_source[key]
+                existing["company"] = line.get("company")
+                existing["policy_number"] = line.get("policy_number")
+                existing["source_doc_id"] = sid
+                existing["raw_date"] = line.get("raw_date") or existing.get("raw_date")
+                existing["updated_at"] = now_iso
+                new_date = line.get("echeance_3p")
+                if new_date:
+                    existing["echeance_3p"] = new_date
+                    existing["detected"] = True
+                elif "detected" in line:
+                    existing["detected"] = bool(line.get("detected"))
+            else:
+                by_source[key] = line
+        else:
+            manual.append(line)
 
-        merged.append(line)
-        by_contract[key] = line
+    return manual + list(by_source.values())
 
-    return merged
+
+def _echeance_line_from_extraction(entry: Optional[dict], source_doc_id: str, now_iso: str) -> dict:
+    entry = entry or {}
+    return {
+        "id": str(uuid.uuid4()),
+        "company": entry.get("company") or None,
+        "policy_number": entry.get("policy_number") or None,
+        "echeance_3p": entry.get("expiry_date") or entry.get("echeance_3p"),
+        "detected": bool(entry.get("detected")),
+        "raw_date": entry.get("raw_date"),
+        "source_doc_id": source_doc_id,
+        "manual": False,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
 
 async def _upsert_echeance_3p_line_reminder(user_id: str, client: dict, line: dict):
     """Create or update a 3P reminder for a single contract line."""
@@ -732,11 +749,11 @@ async def list_documents(client_id: str, user: User = Depends(get_current_user))
 
 async def _reconcile_echeances_3p_lines(user_id: str, client_id: str) -> None:
     """
-    Synchronisation stricte (1 document PDF 3e pilier => 1 ligne Échéance 3P).
-
-    - Supprime les lignes orphelines (source_doc_id non présent parmi les documents actuels)
-    - Collapse les doublons (plusieurs lignes pour le même source_doc_id) => garde la plus récente
-    - Recalcule les tâches (rappels) non terminées à partir des lignes restantes
+    Synchronisation stricte :
+    - 1 document PDF « Police 3e pilier » = 1 ligne Échéance 3P
+    - Les lignes manuelles (sans source_doc_id) sont conservées
+    - Pour chaque PDF 3P sans ligne, crée une ligne (extraction si possible)
+    - Supprime les lignes liées à des documents disparus
     """
     client = await db.clients.find_one({"id": client_id, "user_id": user_id}, {"_id": 0})
     if not client:
@@ -753,39 +770,76 @@ async def _reconcile_echeances_3p_lines(user_id: str, client_id: str) -> None:
                 {"category": {"$in": three_p_labels}},
             ],
         },
-        {"_id": 0, "id": 1},
+        {"_id": 0},
     ).to_list(1000)
-    doc_ids = {d.get("id") for d in docs if d.get("id")}
+    docs_by_id = {d.get("id"): d for d in docs if d.get("id")}
+    doc_ids = set(docs_by_id.keys())
 
     lines = client.get("echeances_3p") or []
     if not isinstance(lines, list):
         lines = []
 
-    filtered = [l for l in lines if isinstance(l, dict) and l.get("source_doc_id") in doc_ids]
-
-    # Collapse : 1 ligne par source_doc_id (garder la plus récente).
+    now_iso = datetime.now(timezone.utc).isoformat()
+    manual_lines = []
     best_by_source = {}
-    for l in filtered:
+
+    for l in lines:
+        if not isinstance(l, dict):
+            continue
         sid = l.get("source_doc_id")
         if not sid:
+            # Ligne saisie manuellement
+            manual_lines.append(l)
+            continue
+        if sid not in doc_ids:
             continue
         updated = l.get("updated_at") or l.get("created_at") or ""
         prev = best_by_source.get(sid)
         prev_updated = (prev.get("updated_at") or prev.get("created_at") or "") if prev else ""
         if (not prev) or (updated >= prev_updated):
             best_by_source[sid] = l
-    reconciled_lines = list(best_by_source.values())
 
+    # Créer une ligne pour chaque PDF 3P qui n'en a pas encore.
+    for doc_id, doc in docs_by_id.items():
+        if doc_id in best_by_source:
+            continue
+
+        entry = None
+        extracted = doc.get("extracted_echeances_3p") or []
+        if isinstance(extracted, list) and extracted:
+            entry = extracted[0] if isinstance(extracted[0], dict) else None
+        else:
+            # Tentative d'extraction à la volée (une fois).
+            storage_path = doc.get("storage_path")
+            ctype = (doc.get("content_type") or "").lower()
+            fname = (doc.get("original_filename") or "").lower()
+            if storage_path and (ctype == "application/pdf" or fname.endswith(".pdf")):
+                try:
+                    data = _read_storage_bytes(storage_path)
+                    detected = extract_3p_contracts_from_pdf(data) or []
+                    entry = detected[0] if detected else {}
+                    await db.documents.update_one(
+                        {"id": doc_id},
+                        {"$set": {
+                            "extracted_echeances_3p": detected,
+                            "extracted_echeance_3p": (entry or {}).get("expiry_date"),
+                        }},
+                    )
+                except Exception:
+                    logger.exception("Re-extraction 3P échouée pour doc %s", doc_id)
+                    entry = {}
+
+        best_by_source[doc_id] = _echeance_line_from_extraction(entry, doc_id, now_iso)
+
+    reconciled_lines = manual_lines + list(best_by_source.values())
     detected_dates = [l.get("echeance_3p") for l in reconciled_lines if isinstance(l, dict) and l.get("echeance_3p")]
     new_first = min(detected_dates) if detected_dates else None
-    now_iso = datetime.now(timezone.utc).isoformat()
 
     await db.clients.update_one(
         {"id": client_id, "user_id": user_id},
         {"$set": {"echeances_3p": reconciled_lines, "echeance_3p": new_first, "updated_at": now_iso}},
     )
 
-    # Rappels : on supprime uniquement les non terminées, puis on recrée.
     await db.tasks.delete_many(
         {"user_id": user_id, "client_id": client_id, "type": "echeance_3p", "done": False}
     )
@@ -838,38 +892,20 @@ async def upload_document(
     is_3p_police = checklist_item in {"Police 3e pilier", "Police de 3e pilier"} or category in {"Police 3e pilier", "Police de 3e pilier"}
     if is_3p_police and (ext == "pdf" or ctype == "application/pdf"):
         try:
-            detected_echeances = extract_3p_contracts_from_pdf(data)
+            detected_echeances = extract_3p_contracts_from_pdf(data) or []
         except Exception:
             logger.exception("Extraction contrats 3P échouée")
+            detected_echeances = []
 
-        # Convertir la détection en lignes persistées (multi-contrats).
+        # Règle stricte : 1 document PDF = 1 ligne (prendre le meilleur candidat uniquement).
         now_iso = datetime.now(timezone.utc).isoformat()
-        new_lines = []
-        for entry in detected_echeances or []:
-            new_lines.append({
-                "id": str(uuid.uuid4()),
-                "company": entry.get("company") or None,
-                "policy_number": entry.get("policy_number") or None,
-                "echeance_3p": entry.get("expiry_date"),  # YYYY-MM-DD ou None
-                "detected": bool(entry.get("detected")),
-                "raw_date": entry.get("raw_date"),
-                "source_doc_id": doc["id"],
-                "created_at": now_iso,
-                "updated_at": now_iso,
-            })
+        entry = detected_echeances[0] if detected_echeances else {}
+        new_line = _echeance_line_from_extraction(entry, doc["id"], now_iso)
+        new_lines = [new_line]
 
         existing_lines = c.get("echeances_3p") or []
-        existing_by_contract = {}
-        for l in existing_lines:
-            if isinstance(l, dict):
-                pair = (_normalize_3p_str(l.get("company")), _normalize_3p_str(l.get("policy_number")))
-                # Si on n'a ni compagnie ni n° => on ne peut pas faire de mise à jour “remplacement”
-                if pair[0] or pair[1]:
-                    existing_by_contract[pair] = l
-
         merged_lines = _merge_echeances_3p_lines(existing_lines, new_lines)
 
-        # Compat : conserver aussi le champ historique unique (prend la plus proche échéance).
         detected_dates = [l.get("echeance_3p") for l in merged_lines if l.get("echeance_3p")]
         if detected_dates:
             detected_first_echeance = min(detected_dates)
@@ -883,35 +919,16 @@ async def upload_document(
             }},
         )
 
-        # Mettre à jour / créer les rappels selon les changements de date.
-        for line in new_lines:
-            pair = (_normalize_3p_str(line.get("company")), _normalize_3p_str(line.get("policy_number")))
-            old_line = existing_by_contract.get(pair) if (pair[0] or pair[1]) else None
-            old_date = (old_line or {}).get("echeance_3p")
-            new_date = line.get("echeance_3p")
-
-            # Si on remplace un contrat avec une nouvelle échéance, fermer l’ancien rappel ouvert.
-            if old_date and new_date and old_date != new_date:
-                old_key = _echeance_3p_contract_key(old_line.get("company"), old_line.get("policy_number"), old_date)
-                await db.tasks.delete_many({
-                    "user_id": user.user_id,
-                    "client_id": client_id,
-                    "type": "echeance_3p",
-                    "echeance_3p_key": old_key,
-                    "done": False,
-                })
-
-            await _upsert_echeance_3p_line_reminder(user.user_id, c, line)
+        await _upsert_echeance_3p_line_reminder(user.user_id, c, new_line)
 
         await db.documents.update_one(
             {"id": doc["id"]},
             {"$set": {
-                "extracted_echeances_3p": detected_echeances,
+                "extracted_echeances_3p": detected_echeances[:1] if detected_echeances else [entry],
                 "extracted_echeance_3p": detected_first_echeance,
             }},
         )
         doc["extracted_echeance_3p"] = detected_first_echeance
-        # Synchronisation stricte : 1 ligne par document 3e pilier.
         await _reconcile_echeances_3p_lines(user.user_id, client_id)
     await log_action(user.user_id, client_id, f"Document ajouté: {file.filename} ({category})")
     doc.pop("_id", None)
@@ -1633,6 +1650,48 @@ async def update_echeance_3p(client_id: str, payload: Echeance3PUpdate, user: Us
     await log_action(user.user_id, client_id, f"Échéance 3P mise à jour: {payload.echeance_3p or '—'}")
     return await db.clients.find_one({"id": client_id}, {"_id": 0})
 
+@api_router.post("/clients/{client_id}/echeances-3p")
+async def create_echeance_3p_line(client_id: str, payload: Echeance3PLineCreate, user: User = Depends(get_current_user)):
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    company = payload.company.strip() if isinstance(payload.company, str) and payload.company.strip() else None
+    policy_number = payload.policy_number.strip() if isinstance(payload.policy_number, str) and payload.policy_number.strip() else None
+    echeance = payload.echeance_3p or None
+
+    new_line = {
+        "id": str(uuid.uuid4()),
+        "company": company,
+        "policy_number": policy_number,
+        "echeance_3p": echeance,
+        "detected": False,
+        "raw_date": None,
+        "source_doc_id": None,
+        "manual": True,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+
+    lines = list(c.get("echeances_3p") or [])
+    if not isinstance(lines, list):
+        lines = []
+    lines.append(new_line)
+
+    detected_dates = [l.get("echeance_3p") for l in lines if isinstance(l, dict) and l.get("echeance_3p")]
+    new_first = min(detected_dates) if detected_dates else None
+
+    await db.clients.update_one(
+        {"id": client_id, "user_id": user.user_id},
+        {"$set": {"echeances_3p": lines, "echeance_3p": new_first, "updated_at": now_iso}},
+    )
+    if echeance:
+        await _upsert_echeance_3p_line_reminder(user.user_id, c, new_line)
+    await log_action(user.user_id, client_id, "Contrat 3e pilier ajouté manuellement")
+    return await db.clients.find_one({"id": client_id}, {"_id": 0})
+
+
 @api_router.patch("/clients/{client_id}/echeances-3p/{line_id}")
 async def update_echeance_3p_line(client_id: str, line_id: str, payload: Echeance3PLineUpdate, user: User = Depends(get_current_user)):
     c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
@@ -1666,7 +1725,7 @@ async def update_echeance_3p_line(client_id: str, line_id: str, payload: Echeanc
     target["company"] = new_company
     target["policy_number"] = new_policy_number
     target["echeance_3p"] = new_date
-    target["detected"] = bool(new_date)
+    target["detected"] = bool(new_date) if target.get("manual") else bool(new_date)
     target["updated_at"] = now_iso
 
     detected_dates = [l.get("echeance_3p") for l in lines if isinstance(l, dict) and l.get("echeance_3p")]
@@ -1691,8 +1750,60 @@ async def update_echeance_3p_line(client_id: str, line_id: str, payload: Echeanc
     if new_date:
         await _upsert_echeance_3p_line_reminder(user.user_id, c, target)
 
-    await log_action(user.user_id, client_id, "Échéance 3P complétée (ligne)")
+    await log_action(user.user_id, client_id, "Échéance 3P mise à jour (ligne)")
     return await db.clients.find_one({"id": client_id}, {"_id": 0})
+
+
+@api_router.delete("/clients/{client_id}/echeances-3p/{line_id}")
+async def delete_echeance_3p_line(client_id: str, line_id: str, user: User = Depends(get_current_user)):
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+
+    lines = c.get("echeances_3p") or []
+    if not isinstance(lines, list):
+        lines = []
+
+    target = None
+    remaining = []
+    for line in lines:
+        if isinstance(line, dict) and line.get("id") == line_id:
+            target = line
+        else:
+            remaining.append(line)
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Ligne d'échéance introuvable")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    old_date = target.get("echeance_3p")
+    if old_date:
+        old_key = _echeance_3p_contract_key(target.get("company"), target.get("policy_number"), old_date)
+        await db.tasks.delete_many({
+            "user_id": user.user_id,
+            "client_id": client_id,
+            "type": "echeance_3p",
+            "echeance_3p_key": old_key,
+            "done": False,
+        })
+
+    # Si la ligne était liée à un document, on le soft-supprime pour éviter qu'elle soit recréée.
+    source_doc_id = target.get("source_doc_id")
+    if source_doc_id:
+        await db.documents.update_one(
+            {"id": source_doc_id, "user_id": user.user_id, "is_deleted": False},
+            {"$set": {"is_deleted": True}},
+        )
+
+    detected_dates = [l.get("echeance_3p") for l in remaining if isinstance(l, dict) and l.get("echeance_3p")]
+    new_first = min(detected_dates) if detected_dates else None
+    await db.clients.update_one(
+        {"id": client_id, "user_id": user.user_id},
+        {"$set": {"echeances_3p": remaining, "echeance_3p": new_first, "updated_at": now_iso}},
+    )
+    await log_action(user.user_id, client_id, "Contrat 3e pilier supprimé")
+    return await db.clients.find_one({"id": client_id}, {"_id": 0})
+
 
 @api_router.get("/echeances-3p")
 async def list_echeances_3p(user: User = Depends(get_current_user)):
