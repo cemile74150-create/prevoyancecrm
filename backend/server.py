@@ -530,6 +530,8 @@ async def get_client(client_id: str, user: User = Depends(get_current_user)):
             c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
     except Exception:
         logger.exception("Reconciliation echeances_3p échouée (get_client)")
+    if c:
+        c["statut"] = normalize_statut(c.get("statut"))
     return c
 
 @api_router.get("/dossiers/{dossier_id}")
