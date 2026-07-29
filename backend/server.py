@@ -2047,17 +2047,31 @@ async def list_tasks(client_id: Optional[str] = None, user: User = Depends(get_c
         query["client_id"] = client_id
     tasks = await db.tasks.find(query, {"_id": 0}).sort("echeance", 1).to_list(1000)
 
-    # Enrichir avec le nom du client si manquant.
-    missing_ids = {t.get("client_id") for t in tasks if t.get("client_id") and not t.get("client_name")}
-    if missing_ids:
+    # Enrichir avec le nom du client si manquant / met à jour les anciens titres 3P.
+    client_ids = {t.get("client_id") for t in tasks if t.get("client_id")}
+    by_id = {}
+    if client_ids:
         clients = await db.clients.find(
-            {"user_id": user.user_id, "id": {"$in": list(missing_ids)}},
+            {"user_id": user.user_id, "id": {"$in": list(client_ids)}},
             {"_id": 0, "id": 1, "prenom": 1, "nom": 1},
         ).to_list(1000)
         by_id = {c["id"]: f"{c.get('prenom', '')} {c.get('nom', '')}".strip() for c in clients}
-        for t in tasks:
-            if t.get("client_id") and not t.get("client_name"):
-                t["client_name"] = by_id.get(t["client_id"]) or None
+
+    for t in tasks:
+        cid = t.get("client_id")
+        if not cid:
+            continue
+        name = t.get("client_name") or by_id.get(cid)
+        if name:
+            t["client_name"] = name
+        if t.get("type") == "echeance_3p" and name:
+            titre = str(t.get("titre") or "")
+            if name not in titre:
+                cleaned = titre.lstrip("⚠ ").strip()
+                # Retirer la date inline des anciens titres (affichée séparément).
+                cleaned = re.sub(r"\s*arrivant à échéance le\s+\d{1,2}[./]\d{1,2}[./]\d{2,4}\s*$", "", cleaned, flags=re.IGNORECASE).strip()
+                cleaned = cleaned.replace("Contrat 3e pilier — ", "Contrat 3e pilier ")
+                t["titre"] = f"⚠ {name} — {cleaned}"
     return tasks
 
 @api_router.post("/tasks")
