@@ -3,11 +3,11 @@ export function getDashboardTarget(key) {
     case 'nouveaux':
       return { path: '/dossiers', search: '?statut=Nouveau' };
     case 'attente-docs':
-      return { path: '/dossiers', search: '?statut=Documents%20demandés' };
+      return { path: '/dossiers', search: '?statut=Documents%20en%20attente' };
     case 'analyse':
       return { path: '/dossiers', search: '?statut=Analyse%20en%20cours' };
     case 'presenter':
-      return { path: '/dossiers', search: '?statut=%C3%80%20pr%C3%A9senter%20au%20client' };
+      return { path: '/dossiers', search: '?statut=%C3%80%20pr%C3%A9senter' };
     case 'termines':
       return { path: '/dossiers', search: '?statut=Cl%C3%B4tur%C3%A9' };
     case 'urgent':

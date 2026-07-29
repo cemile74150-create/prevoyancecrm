@@ -71,7 +71,7 @@ export default function Dashboard() {
   if (!stats) return <Layout><div className="animate-pulse text-muted-foreground">Chargement…</div></Layout>;
 
   const pieData = stats.statuts.map((s) => ({ name: s, value: stats.by_statut[s] })).filter((d) => d.value > 0);
-  const pieColors = ["#3b82f6", "#f59e0b", "#10b981", "#a855f7", "#ec4899", "#06b6d4", "#94a3b8"];
+  const pieColors = ["#10b981", "#f59e0b", "#3b82f6", "#a855f7", "#64748b"];
 
   const goToDashboardTarget = (key) => {
     const target = getDashboardTarget(key);
@@ -94,9 +94,9 @@ export default function Dashboard() {
         {/* KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <KPI testid="kpi-nouveaux" icon={FilePlus2} label="Nouveaux dossiers" value={stats.nouveaux} accent="bg-blue-100 text-blue-700" onClick={() => goToDashboardTarget("nouveaux")} />
-          <KPI testid="kpi-attente-docs" icon={Clock} label="En attente de documents" value={stats.en_attente_docs} accent="bg-amber-100 text-amber-700" onClick={() => goToDashboardTarget("attente-docs")} />
-          <KPI testid="kpi-analyse" icon={FileSearch} label="En cours d'analyse" value={stats.en_analyse} accent="bg-purple-100 text-purple-700" onClick={() => goToDashboardTarget("analyse")} />
-          <KPI testid="kpi-presenter" icon={Presentation} label="Prêts à présenter" value={stats.a_presenter} accent="bg-cyan-100 text-cyan-700" onClick={() => goToDashboardTarget("presenter")} />
+          <KPI testid="kpi-attente-docs" icon={Clock} label="Documents en attente" value={stats.en_attente_docs} accent="bg-amber-100 text-amber-700" onClick={() => goToDashboardTarget("attente-docs")} />
+          <KPI testid="kpi-analyse" icon={FileSearch} label="Analyse en cours" value={stats.en_analyse} accent="bg-blue-100 text-blue-700" onClick={() => goToDashboardTarget("analyse")} />
+          <KPI testid="kpi-presenter" icon={Presentation} label="À présenter" value={stats.a_presenter} accent="bg-purple-100 text-purple-700" onClick={() => goToDashboardTarget("presenter")} />
           <KPI testid="kpi-termines" icon={CheckCircle2} label="Dossiers terminés" value={stats.termines} accent="bg-emerald-100 text-emerald-700" onClick={() => goToDashboardTarget("termines")} />
           <KPI testid="kpi-urgents" icon={AlertTriangle} label="Dossiers urgents" value={stats.urgent} accent="bg-red-100 text-red-700" onClick={() => goToDashboardTarget("urgent")} />
           <KPI testid="kpi-total" icon={FolderKanban} label="Total des dossiers" value={stats.total} accent="bg-slate-100 text-slate-700" onClick={() => goToDashboardTarget("total")} />

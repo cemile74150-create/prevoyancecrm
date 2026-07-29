@@ -88,9 +88,28 @@ def get_object(path: str):
 
 # ---------------- Constants ----------------
 STATUTS = [
-    "Nouveau", "Documents demandés", "Documents reçus", "Analyse en cours",
-    "Rapport en préparation", "À présenter au client", "Clôturé",
+    "Nouveau",
+    "Documents en attente",
+    "Analyse en cours",
+    "À présenter",
+    "Clôturé",
 ]
+
+# Anciens libellés → workflow simplifié
+STATUT_LEGACY_MAP = {
+    "Documents demandés": "Documents en attente",
+    "Documents reçus": "Analyse en cours",
+    "Rapport en préparation": "Analyse en cours",
+    "À présenter au client": "À présenter",
+}
+
+
+def normalize_statut(statut: Optional[str]) -> str:
+    if not statut:
+        return "Nouveau"
+    if statut in STATUTS:
+        return statut
+    return STATUT_LEGACY_MAP.get(statut, statut)
 
 # ---------------- Models ----------------
 class User(BaseModel):
@@ -465,9 +484,12 @@ def _lpp_tracking_from_funds(funds: List[dict], existing: Optional[List[dict]] =
 @api_router.get("/clients")
 async def list_clients(q: Optional[str] = None, statut: Optional[str] = None, user: User = Depends(get_current_user)):
     query = {"user_id": user.user_id}
-    if statut:
-        query["statut"] = statut
+    wanted = normalize_statut(statut) if statut else None
     clients = await db.clients.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    for c in clients:
+        c["statut"] = normalize_statut(c.get("statut"))
+    if wanted:
+        clients = [c for c in clients if c.get("statut") == wanted]
     if q:
         ql = q.lower()
         clients = [c for c in clients if ql in (c.get("prenom", "") + " " + c.get("nom", "")).lower()
@@ -481,6 +503,7 @@ async def create_client(payload: ClientCreate, user: User = Depends(get_current_
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["user_id"] = user.user_id
+    doc["statut"] = normalize_statut(doc.get("statut"))
     doc["numero_dossier"] = await next_dossier_number(user.user_id)
     doc["dossier_id"] = doc["id"]
     etat = (doc.get("etat_civil") or "").casefold()
@@ -580,6 +603,7 @@ async def update_client(client_id: str, payload: ClientCreate, user: User = Depe
     if not c:
         raise HTTPException(status_code=404, detail="Client introuvable")
     update = payload.model_dump()
+    update["statut"] = normalize_statut(update.get("statut"))
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.clients.update_one({"id": client_id}, {"$set": update})
     await log_action(user.user_id, client_id, "Fiche client mise à jour")
@@ -587,13 +611,14 @@ async def update_client(client_id: str, payload: ClientCreate, user: User = Depe
 
 @api_router.patch("/clients/{client_id}/statut")
 async def update_statut(client_id: str, payload: StatutUpdate, user: User = Depends(get_current_user)):
-    if payload.statut not in STATUTS:
+    statut = normalize_statut(payload.statut)
+    if statut not in STATUTS:
         raise HTTPException(status_code=400, detail="Statut invalide")
     c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
     if not c:
         raise HTTPException(status_code=404, detail="Client introuvable")
-    await db.clients.update_one({"id": client_id}, {"$set": {"statut": payload.statut, "updated_at": datetime.now(timezone.utc).isoformat()}})
-    await log_action(user.user_id, client_id, f"Statut changé: {c.get('statut')} → {payload.statut}")
+    await db.clients.update_one({"id": client_id}, {"$set": {"statut": statut, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    await log_action(user.user_id, client_id, f"Statut changé: {c.get('statut')} → {statut}")
     return await db.clients.find_one({"id": client_id}, {"_id": 0})
 
 @api_router.patch("/clients/{client_id}/document-checklist")
@@ -2124,7 +2149,7 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
         # Majorité du statut, tie-break sur l'ordre STATUTS.
         counts = {}
         for m in members:
-            st = m.get("statut", "Nouveau")
+            st = normalize_statut(m.get("statut", "Nouveau"))
             counts[st] = counts.get(st, 0) + 1
 
         best = None
@@ -2156,7 +2181,7 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
             by_statut[dossier_statut] += 1
 
         # Urgent : au moins un membre urgent et pas clôturé.
-        if any(m.get("priorite") == "urgent" and m.get("statut") != "Clôturé" for m in members):
+        if any(m.get("priorite") == "urgent" and normalize_statut(m.get("statut")) != "Clôturé" for m in members):
             urgent += 1
 
     today = datetime.now(timezone.utc).date().isoformat()
@@ -2176,7 +2201,7 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
         report_count = sum(
             1
             for did, updated_at in dossier_updated_map.items()
-            if (updated_at or "").startswith(key) and dossier_statut_map.get(did) in ["À présenter au client", "Clôturé"]
+            if (updated_at or "").startswith(key) and dossier_statut_map.get(did) in ["À présenter", "Clôturé"]
         )
         monthly.append({"mois": label, "dossiers": dossiers_count, "rendezvous": appt_count, "rapports": report_count})
 
@@ -2187,9 +2212,9 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
         "total": len(dossiers),
         "urgent": urgent,
         "nouveaux": by_statut.get("Nouveau", 0),
-        "en_attente_docs": by_statut.get("Documents demandés", 0),
+        "en_attente_docs": by_statut.get("Documents en attente", 0),
         "en_analyse": by_statut.get("Analyse en cours", 0),
-        "a_presenter": by_statut.get("À présenter au client", 0),
+        "a_presenter": by_statut.get("À présenter", 0),
         "termines": by_statut.get("Clôturé", 0),
         "today_appointments": today_appts,
         "monthly": monthly,
@@ -2312,6 +2337,18 @@ async def _migrate_couple_dossiers(user_id: Optional[str] = None):
     return merged
 
 
+async def _migrate_simplified_statuts():
+    """Migre les anciens libellés de statut vers le workflow simplifié."""
+    updated = 0
+    for old, new in STATUT_LEGACY_MAP.items():
+        result = await db.clients.update_many(
+            {"statut": old},
+            {"$set": {"statut": new, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        updated += int(getattr(result, "modified_count", 0) or 0)
+    return updated
+
+
 @app.on_event("startup")
 async def startup():
     try:
@@ -2330,6 +2367,12 @@ async def startup():
             logger.info("Startup migration: %d couple dossier(s) merged", merged)
     except Exception as e:
         logger.error("Startup couple migration failed: %s", e)
+    try:
+        migrated = await _migrate_simplified_statuts()
+        if migrated:
+            logger.info("Startup migration: %d statut(s) simplifié(s)", migrated)
+    except Exception as e:
+        logger.error("Startup statut migration failed: %s", e)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

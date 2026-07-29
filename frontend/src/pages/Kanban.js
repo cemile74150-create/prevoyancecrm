@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import ClientFormDialog from "@/components/ClientFormDialog";
-import { STATUTS, STATUT_DOT } from "@/lib/constants";
+import { STATUTS, STATUT_DOT, normalizeStatut } from "@/lib/constants";
 import { Plus, AlertTriangle, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 
@@ -15,16 +15,16 @@ function isMarriedEtat(etat) {
 
 function pickGroupStatut(members) {
   if (!members?.length) return "";
-  if (members.length === 1) return members[0].statut;
+  if (members.length === 1) return normalizeStatut(members[0].statut);
 
   // Priorité : le statut le plus fréquent, tie-break sur le plus "ancien" (ordre STATUTS).
   const counts = members.reduce((acc, m) => {
-    const key = m.statut || "";
+    const key = normalizeStatut(m.statut);
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
 
-  let bestStatut = members[0].statut;
+  let bestStatut = normalizeStatut(members[0].statut);
   let bestCount = -1;
   Object.entries(counts).forEach(([statut, count]) => {
     if (count > bestCount) {
@@ -88,7 +88,7 @@ function buildKanbanGroups(clients) {
         dossier_label: null,
         numero_dossier: c.numero_dossier,
         priorite: c.priorite,
-        statut: c.statut,
+        statut: normalizeStatut(c.statut),
         memberIds: [c.id],
         representativeId: c.id,
         members: [c],

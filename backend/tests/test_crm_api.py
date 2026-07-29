@@ -74,9 +74,9 @@ class TestClients:
 
     def test_patch_statut(self, client_id):
         r = requests.patch(f"{API}/clients/{client_id}/statut", headers=HEADERS,
-                           json={"statut": "Documents demandés"})
+                           json={"statut": "Documents en attente"})
         assert r.status_code == 200
-        assert r.json()["statut"] == "Documents demandés"
+        assert r.json()["statut"] == "Documents en attente"
 
     def test_patch_statut_invalid(self, client_id):
         r = requests.patch(f"{API}/clients/{client_id}/statut", headers=HEADERS,

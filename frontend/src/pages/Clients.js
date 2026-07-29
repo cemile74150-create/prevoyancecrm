@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import ClientFormDialog from "@/components/ClientFormDialog";
-import { STATUT_COLORS } from "@/lib/constants";
+import { STATUT_COLORS, normalizeStatut } from "@/lib/constants";
 import { Plus, Search, Mail, Phone, AlertTriangle, ChevronRight, FolderOpen, User } from "lucide-react";
 
 /**
@@ -147,7 +147,7 @@ export default function Clients() {
                       {c.email && <p className="flex items-center gap-1.5 truncate"><Mail className="h-3 w-3" />{c.email}</p>}
                       {c.telephone && <p className="flex items-center gap-1.5"><Phone className="h-3 w-3" />{c.telephone}</p>}
                     </div>
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUT_COLORS[c.statut]}`}>{c.statut}</span>
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUT_COLORS[normalizeStatut(c.statut)]}`}>{normalizeStatut(c.statut)}</span>
                     <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
                   </button>
                 </Card>
@@ -200,7 +200,7 @@ export default function Clients() {
                         {member.email && <p className="flex items-center gap-1.5 truncate"><Mail className="h-3 w-3" />{member.email}</p>}
                         {member.telephone && <p className="flex items-center gap-1.5"><Phone className="h-3 w-3" />{member.telephone}</p>}
                       </div>
-                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUT_COLORS[member.statut]}`}>{member.statut}</span>
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUT_COLORS[normalizeStatut(member.statut)]}`}>{normalizeStatut(member.statut)}</span>
                       <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
                     </button>
                   ))}

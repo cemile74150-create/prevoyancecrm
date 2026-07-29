@@ -1,31 +1,48 @@
 export const STATUTS = [
   "Nouveau",
-  "Documents demandés",
-  "Documents reçus",
+  "Documents en attente",
   "Analyse en cours",
-  "Rapport en préparation",
-  "À présenter au client",
+  "À présenter",
   "Clôturé",
 ];
 
+/** Mappe les anciens libellés vers le workflow simplifié. */
+export const STATUT_LEGACY_MAP = {
+  "Documents demandés": "Documents en attente",
+  "Documents reçus": "Analyse en cours",
+  "Rapport en préparation": "Analyse en cours",
+  "À présenter au client": "À présenter",
+};
+
+export function normalizeStatut(statut) {
+  if (!statut) return "Nouveau";
+  if (STATUTS.includes(statut)) return statut;
+  return STATUT_LEGACY_MAP[statut] || statut;
+}
+
 export const STATUT_COLORS = {
-  "Nouveau": "bg-blue-100 text-blue-800 border-blue-200",
-  "Documents demandés": "bg-amber-100 text-amber-800 border-amber-200",
-  "Documents reçus": "bg-emerald-100 text-emerald-800 border-emerald-200",
-  "Analyse en cours": "bg-purple-100 text-purple-800 border-purple-200",
-  "Rapport en préparation": "bg-pink-100 text-pink-800 border-pink-200",
-  "À présenter au client": "bg-cyan-100 text-cyan-800 border-cyan-200",
+  "Nouveau": "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "Documents en attente": "bg-amber-100 text-amber-800 border-amber-200",
+  "Analyse en cours": "bg-blue-100 text-blue-800 border-blue-200",
+  "À présenter": "bg-purple-100 text-purple-800 border-purple-200",
   "Clôturé": "bg-slate-100 text-slate-700 border-slate-200",
+  // Compat anciens libellés encore présents en cache
+  "Documents demandés": "bg-amber-100 text-amber-800 border-amber-200",
+  "Documents reçus": "bg-blue-100 text-blue-800 border-blue-200",
+  "Rapport en préparation": "bg-blue-100 text-blue-800 border-blue-200",
+  "À présenter au client": "bg-purple-100 text-purple-800 border-purple-200",
 };
 
 export const STATUT_DOT = {
-  "Nouveau": "bg-blue-500",
+  "Nouveau": "bg-emerald-500",
+  "Documents en attente": "bg-amber-500",
+  "Analyse en cours": "bg-blue-500",
+  "À présenter": "bg-purple-500",
+  "Clôturé": "bg-slate-500",
   "Documents demandés": "bg-amber-500",
-  "Documents reçus": "bg-emerald-500",
-  "Analyse en cours": "bg-purple-500",
-  "Rapport en préparation": "bg-pink-500",
-  "À présenter au client": "bg-cyan-500",
-  "Clôturé": "bg-slate-400",
+  "Documents reçus": "bg-blue-500",
+  "Rapport en préparation": "bg-blue-500",
+  "À présenter au client": "bg-purple-500",
 };
 
 export const DOC_CATEGORIES = [
