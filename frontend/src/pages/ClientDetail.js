@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import ClientFormDialog from "@/components/ClientFormDialog";
-import { STATUTS } from "@/lib/constants";
+import { STATUTS, normalizeStatut } from "@/lib/constants";
 import { DOCUMENT_CHECKLIST_ITEMS, getInitialDocumentChecklistState, getNextDocumentStatus } from "@/lib/documentChecklist";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -886,7 +886,7 @@ export default function ClientDetail() {
 
             <div className="mt-4">
               <Label className="text-xs text-muted-foreground">Statut du dossier</Label>
-              <Select value={client.statut} onValueChange={changeStatut}>
+              <Select value={normalizeStatut(client.statut)} onValueChange={changeStatut}>
                 <SelectTrigger data-testid="detail-statut-select" className="mt-1.5"><SelectValue /></SelectTrigger>
                 <SelectContent>{STATUTS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
               </Select>
@@ -950,7 +950,7 @@ export default function ClientDetail() {
                     <Info label="Conseiller" value={client.conseiller} />
                     <Info label="Agent apporteur" value={client.agent_apporteur} />
                     <Info label="N° dossier" value={client.numero_dossier} />
-                    <Info label="Statut" value={client.statut} />
+                    <Info label="Statut" value={normalizeStatut(client.statut)} />
                     <Info label="Priorité" value={client.priorite} />
                   </div>
                 </div>
