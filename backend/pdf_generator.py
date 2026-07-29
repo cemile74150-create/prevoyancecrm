@@ -2017,3 +2017,138 @@ def extract_3p_expiry_from_pdf(pdf_bytes: bytes) -> Optional[str]:
         if iso:
             return iso
     return None
+
+
+def extract_3p_contracts_from_pdf(pdf_bytes: bytes) -> List[dict]:
+    """
+    Détecte plusieurs contrats 3e pilier dans un PDF.
+
+    Retourne une liste de lignes avec :
+    - company (si détectée)
+    - policy_number (si détecté)
+    - expiry_date (YYYY-MM-DD) si détectée, sinon None
+
+    Le moteur est volontairement heuristique et basé sur des patterns génériques
+    (mots-clés "échéance/expiry", numéros de police, et liste initiale de compagnies).
+    L'objectif est d'être facilement améliorable : il suffit d'ajouter des patterns.
+    """
+    text = _extract_pdf_text(pdf_bytes)
+    if not text:
+        return []
+
+    flat = re.sub(r"[ \t]+", " ", text)
+
+    def _to_iso(raw: str) -> Optional[str]:
+        raw = (raw or "").strip()
+        for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%d.%m.%y", "%d/%m/%y"):
+            try:
+                dt = datetime.strptime(raw, fmt)
+                if dt.year < 100:
+                    dt = dt.replace(year=dt.year + 2000)
+                # Eviter des dates manifestement incohérentes.
+                if dt.year < 1990 or dt.year > 2100:
+                    return None
+                return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        return None
+
+    # Liste initiale de compagnies (facilement extensible).
+    company_patterns = [
+        ("Swiss Life", r"Swiss\s*Life"),
+        ("Helvetia", r"Helvetia"),
+        ("Generali", r"Generali"),
+        ("AXA", r"\bAXA\b"),
+        ("Pictet", r"Pictet"),
+        ("BCV", r"\bBCV\b|Banque\s+Cantonale\s+Vaudoise|Banque\s+Cantonale\s+de\s+Vaud"),
+        ("Retraites Populaires", r"Retraites?\s*Populaires"),
+        ("Banque Cantonale Vaudoise", r"Banque\s+Cantonale\s+Vaudoise"),
+        ("Zurich", r"Zurich"),
+        ("Vontobel", r"Vontobel"),
+    ]
+
+    def _detect_company(window: str) -> Optional[str]:
+        for company, pat in company_patterns:
+            if re.search(pat, window, flags=re.IGNORECASE):
+                return company
+        return None
+
+    # Patterns "numéro de police" génériques.
+    policy_patterns = [
+        r"(?:num(?:éro)?\s*(?:de\s*)?police|n[°º]?\s*(?:de\s*)?police|police\s*(?:n[°º]|num(?:éro)?)|pol\.\s*n[°º]?)\s*[:\-]?\s*([A-Z0-9\-]{3,20})",
+        r"(?:contract\s*(?:no\.?|number)|contrat\s*n[°º]?)\s*[:\-]?\s*([A-Z0-9\-]{3,20})",
+    ]
+
+    def _detect_policy(window: str) -> Optional[str]:
+        for pat in policy_patterns:
+            m = re.search(pat, window, flags=re.IGNORECASE)
+            if m:
+                return (m.group(1) or "").strip()
+        # fallback : cherche un gros bloc de chiffres autour de "police" ou "contrat"
+        m = re.search(r"(?:police|contrat)[^\n]{0,40}?[:\-]?\s*([0-9]{5,20})", window, flags=re.IGNORECASE)
+        if m:
+            return (m.group(1) or "").strip()
+        return None
+
+    expiry_patterns = [
+        r"(?:date\s+d[e']?\s*)?(?:echeance|échéance)(?:\s+du\s+contrat)?(?:\s*:|\s+au|\s+le)?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        r"(?:echeance|échéance|ablauf|expiry)(?:\s*:|\s+au|\s+le|\s+am)?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        r"(?:echeance|échéance|ablauf|expiry)[^\n]{0,60}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+    ]
+
+    matches: List[tuple] = []  # (start_index, raw_date)
+    for pat in expiry_patterns:
+        for m in re.finditer(pat, flat, flags=re.IGNORECASE):
+            raw_date = (m.group(1) or "").strip()
+            if raw_date:
+                matches.append((m.start(), raw_date))
+
+    matches.sort(key=lambda x: x[0])
+
+    results: List[dict] = []
+    for start, raw in matches:
+        expiry_iso = _to_iso(raw)
+        if not expiry_iso:
+            continue
+        # Fenêtre autour du candidat pour détecter compagnie & n° de police.
+        window = flat[max(0, start - 650): min(len(flat), start + 250)]
+        company = _detect_company(window)
+        policy_number = _detect_policy(window)
+        results.append({
+            "company": company,
+            "policy_number": policy_number,
+            "expiry_date": expiry_iso,
+            "detected": True,
+            "raw_date": raw,
+        })
+
+    # Si aucune échéance n'a été trouvée, on retourne une ligne "non détectée"
+    # afin d'afficher un tableau et permettre une saisie manuelle.
+    if not results:
+        company = _detect_company(flat)
+        policy_number = _detect_policy(flat)
+        return [{
+            "company": company,
+            "policy_number": policy_number,
+            "expiry_date": None,
+            "detected": False,
+            "raw_date": None,
+        }]
+
+    # Déduplication.
+    seen = set()
+    deduped: List[dict] = []
+    for item in results:
+        key = (
+            (item.get("company") or "").casefold(),
+            (item.get("policy_number") or "").casefold(),
+            item.get("expiry_date"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+
+    # Tri par échéance.
+    deduped.sort(key=lambda x: (x.get("expiry_date") or "9999-12-31"))
+    return deduped

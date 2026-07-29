@@ -75,8 +75,9 @@ export default function ClientDetail() {
   const [editDialog, setEditDialog] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [documentChecklist, setDocumentChecklist] = useState({});
-  const [echeance3p, setEcheance3p] = useState("");
+  const [echeances3p, setEcheances3p] = useState([]);
   const [savingEcheance3p, setSavingEcheance3p] = useState(false);
+  const [echeance3pDraftById, setEcheance3pDraftById] = useState({});
   const [generatingDemand, setGeneratingDemand] = useState(null);
   const [lppFunds, setLppFunds] = useState([]);
   const [lppCaisseTracking, setLppCaisseTracking] = useState([]);
@@ -118,7 +119,23 @@ export default function ClientDetail() {
     if (migratedLpp && !savedChecklist["Demande LPP"]) {
       api.patch(`/clients/${id}/document-checklist`, { document_checklist: nextChecklist }).catch(() => {});
     }
-    setEcheance3p(c.data?.echeance_3p ? c.data.echeance_3p.split("T")[0] : "");
+    // Multi-contrats 3P : on affiche les lignes si présentes, sinon compat champ unique.
+    const rawLines = Array.isArray(c.data?.echeances_3p) ? c.data.echeances_3p : null;
+    if (rawLines && rawLines.length > 0) {
+      setEcheances3p(
+        rawLines.map((l) => ({
+          ...l,
+          echeance_3p: l?.echeance_3p ? String(l.echeance_3p).split("T")[0] : null,
+        }))
+      );
+    } else {
+      const legacy = c.data?.echeance_3p ? String(c.data.echeance_3p).split("T")[0] : null;
+      setEcheances3p(
+        legacy
+          ? [{ id: "legacy-3p", company: null, policy_number: null, echeance_3p: legacy, detected: true }]
+          : []
+      );
+    }
     setLppCaisseTracking(c.data?.lpp_caisse_tracking || []);
     const forms = lib.data || [];
     setSelectedLibraryForm((prev) => {
@@ -174,15 +191,37 @@ export default function ClientDetail() {
     fd.append("category", documentName);
     try {
       const res = await api.post(`/clients/${id}/documents`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      if (res.data?.echeance_3p_detected) {
-        setEcheance3p(res.data.echeance_3p);
-        setClient((current) => ({ ...current, echeance_3p: res.data.echeance_3p }));
-        toast.success(`Échéance 3e pilier détectée : ${new Date(`${res.data.echeance_3p}T00:00:00`).toLocaleDateString("fr-CH")}`);
+      if (res.data?.echeance_3p_detected && res.data?.echeance_3p) {
+        const date = res.data.echeance_3p;
+        toast.success(`Échéance 3e pilier détectée : ${new Date(`${date}T00:00:00`).toLocaleDateString("fr-CH")}`);
       } else {
         toast.success("Document téléversé");
       }
-      const [d, h] = await Promise.all([api.get(`/clients/${id}/documents`), api.get(`/clients/${id}/actions`)]);
-      setDocs(d.data); setActions(h.data);
+      const [d, h, cl] = await Promise.all([
+        api.get(`/clients/${id}/documents`),
+        api.get(`/clients/${id}/actions`),
+        api.get(`/clients/${id}`),
+      ]);
+      setDocs(d.data);
+      setActions(h.data);
+      setClient(cl.data);
+
+      const rawLines = Array.isArray(cl.data?.echeances_3p) ? cl.data.echeances_3p : null;
+      if (rawLines && rawLines.length > 0) {
+        setEcheances3p(
+          rawLines.map((l) => ({
+            ...l,
+            echeance_3p: l?.echeance_3p ? String(l.echeance_3p).split("T")[0] : null,
+          }))
+        );
+      } else {
+        const legacy = cl.data?.echeance_3p ? String(cl.data.echeance_3p).split("T")[0] : null;
+        setEcheances3p(
+          legacy
+            ? [{ id: "legacy-3p", company: null, policy_number: null, echeance_3p: legacy, detected: true }]
+            : []
+        );
+      }
     } catch (err) {
       toast.error("Échec du téléversement");
     }
@@ -460,11 +499,31 @@ export default function ClientDetail() {
     }
   };
 
-  const saveEcheance3p = async () => {
+  const updateEcheance3pLineDate = async (lineId) => {
+    const draft = echeance3pDraftById[lineId] || "";
+    const nextDate = draft ? draft : null;
     setSavingEcheance3p(true);
     try {
-      const res = await api.patch(`/clients/${id}/echeance-3p`, { echeance_3p: echeance3p || null });
-      setClient(res.data);
+      const res = await api.patch(`/clients/${id}/echeances-3p/${lineId}`, { echeance_3p: nextDate });
+      const updated = res.data;
+      setClient(updated);
+
+      const rawLines = Array.isArray(updated?.echeances_3p) ? updated.echeances_3p : null;
+      if (rawLines && rawLines.length > 0) {
+        setEcheances3p(
+          rawLines.map((l) => ({
+            ...l,
+            echeance_3p: l?.echeance_3p ? String(l.echeance_3p).split("T")[0] : null,
+          }))
+        );
+      } else {
+        const legacy = updated?.echeance_3p ? String(updated.echeance_3p).split("T")[0] : null;
+        setEcheances3p(
+          legacy ? [{ id: "legacy-3p", company: null, policy_number: null, echeance_3p: legacy, detected: true }] : []
+        );
+      }
+
+      setEcheance3pDraftById((m) => ({ ...m, [lineId]: "" }));
       toast.success("Échéance 3e pilier enregistrée");
     } catch (err) {
       toast.error("Impossible d'enregistrer l'échéance");
@@ -1007,38 +1066,87 @@ export default function ClientDetail() {
             <TabsContent value="echeance3p">
               <Card className="p-6 space-y-4">
                 <p className="text-sm font-semibold text-[#002FA7]">Échéance 3e pilier</p>
-                {echeance3p && (
-                  <div className="rounded-md border border-[#002FA7]/20 bg-[#002FA7]/5 px-4 py-3">
-                    <p className="text-xs text-muted-foreground">Date détectée / enregistrée</p>
-                    <p className="font-display text-xl font-black text-[#002FA7]">{new Date(`${echeance3p}T00:00:00`).toLocaleDateString("fr-CH")}</p>
+
+                {echeances3p.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Aucun contrat 3e pilier détecté pour l’instant. Ajoute une « Police 3e pilier » dans Documents.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left">
+                          <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">Compagnie</th>
+                          <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">N° de police</th>
+                          <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">Date d&apos;échéance</th>
+                          <th className="pb-2 font-medium text-muted-foreground whitespace-nowrap">Statut</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {echeances3p.map((line) => {
+                          const iso = line?.echeance_3p;
+                          const company = line?.company || "Compagnie non détectée";
+                          const policy = line?.policy_number || "—";
+
+                          const dueDate = iso ? new Date(`${iso}T00:00:00`) : null;
+                          const now = new Date();
+                          now.setHours(0, 0, 0, 0);
+                          const daysLeft = dueDate ? Math.floor((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+                          let statusLabel = "—";
+                          if (!iso) {
+                            statusLabel = "⚠ Date d’échéance non détectée";
+                          } else if (typeof daysLeft === "number" && daysLeft < 0) {
+                            statusLabel = "⚠ Échéance passée";
+                          } else if (typeof daysLeft === "number" && 0 <= daysLeft && daysLeft <= 365) {
+                            statusLabel = "⚠ Échéance dans moins d’un an";
+                          } else {
+                            statusLabel = "✅ À jour";
+                          }
+
+                          const draftValue = echeance3pDraftById[line.id] || "";
+
+                          return (
+                            <tr key={line.id} className="border-t border-border">
+                              <td className="py-3 pr-3 whitespace-nowrap">{company}</td>
+                              <td className="py-3 pr-3 whitespace-nowrap">{policy}</td>
+
+                              <td className="py-3 pr-3 whitespace-nowrap">
+                                {iso ? (
+                                  new Date(`${iso}T00:00:00`).toLocaleDateString("fr-CH")
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      type="date"
+                                      data-testid={`echeance-3p-line-date-${line.id}`}
+                                      value={draftValue}
+                                      onChange={(e) => setEcheance3pDraftById((m) => ({ ...m, [line.id]: e.target.value }))}
+                                    />
+                                    <Button
+                                      size="sm"
+                                      onClick={() => updateEcheance3pLineDate(line.id)}
+                                      disabled={savingEcheance3p}
+                                      data-testid={`echeance-3p-line-save-${line.id}`}
+                                      className="bg-[#002FA7] hover:bg-[#00248a]"
+                                    >
+                                      {savingEcheance3p ? "…" : "Enregistrer"}
+                                    </Button>
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="py-3 whitespace-nowrap">
+                                <span className={statusLabel.startsWith("✅") ? "text-emerald-700" : "text-amber-700"}>
+                                  {statusLabel}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
-                {isWithinOneYear(echeance3p) && (
-                  <Alert className="border-amber-200 bg-amber-50/50">
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                    <AlertTitle className="text-amber-800">Échéance proche</AlertTitle>
-                    <AlertDescription className="text-amber-700">
-                      L&apos;échéance 3e pilier est dans moins d&apos;un an ({new Date(echeance3p).toLocaleDateString("fr-CH")}).
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <div className="space-y-1.5 max-w-xs">
-                  <Label className="text-xs text-muted-foreground">Date d&apos;échéance</Label>
-                  <Input
-                    type="date"
-                    data-testid="echeance-3p-input"
-                    value={echeance3p}
-                    onChange={(e) => setEcheance3p(e.target.value)}
-                  />
-                </div>
-                <Button
-                  onClick={saveEcheance3p}
-                  disabled={savingEcheance3p}
-                  data-testid="save-echeance-3p-btn"
-                  className="bg-[#002FA7] hover:bg-[#00248a]"
-                >
-                  {savingEcheance3p ? "Enregistrement…" : "Enregistrer"}
-                </Button>
               </Card>
             </TabsContent>
 

@@ -22,6 +22,7 @@ from pdf_generator import (
     get_template,
     extract_pension_funds_from_pdf,
     extract_3p_expiry_from_pdf,
+    extract_3p_contracts_from_pdf,
     fill_pdf_bytes_with_client,
     prepare_library_form_pdf,
     render_pdf_page_png,
@@ -123,6 +124,8 @@ class ClientBase(BaseModel):
     dossier_id: Optional[str] = None
     dossier_label: Optional[str] = None
     echeance_3p: Optional[str] = None
+    # Multi-contrats 3e pilier : une ligne par contrat (compagnie + n° + échéance)
+    echeances_3p: Optional[List[dict]] = None
     statut: str = "Nouveau"
     priorite: str = "normale"
 
@@ -162,6 +165,10 @@ class GenerateDecompteRequest(BaseModel):
     funds: List[dict] = Field(default_factory=list)
 
 class Echeance3PUpdate(BaseModel):
+    echeance_3p: Optional[str] = None
+
+class Echeance3PLineUpdate(BaseModel):
+    # Permet de compléter une ligne quand la date n'a pas été détectée.
     echeance_3p: Optional[str] = None
 
 class LppCaisseTrackingUpdate(BaseModel):
@@ -296,6 +303,92 @@ async def _upsert_echeance_3p_reminder(user_id: str, client: dict, echeance_iso:
             "id": str(uuid.uuid4()), "user_id": user_id, "client_id": client["id"],
             "titre": titre, "echeance": echeance_iso, "priorite": "haute",
             "type": "echeance_3p", "done": False, "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+def _normalize_3p_str(v: Optional[str]) -> str:
+    return str(v or "").strip().casefold()
+
+def _echeance_3p_contract_key(company: Optional[str], policy_number: Optional[str], echeance_iso: Optional[str]) -> str:
+    # Identifiant stable pour éviter les doublons de rappels.
+    return "|".join([
+        _normalize_3p_str(company),
+        _normalize_3p_str(policy_number),
+        str(echeance_iso or ""),
+    ])
+
+def _echeance_3p_line_identity(line: dict) -> tuple:
+    company = _normalize_3p_str(line.get("company"))
+    policy = _normalize_3p_str(line.get("policy_number"))
+    date = line.get("echeance_3p")
+    if date:
+        return (company, policy, str(date))
+    return (company, policy, None, str(line.get("source_doc_id") or ""))
+
+def _merge_echeances_3p_lines(existing_lines: Optional[List[dict]], new_lines: List[dict]) -> List[dict]:
+    previous = list(existing_lines or [])
+    by_identity = {_echeance_3p_line_identity(l): l for l in previous if isinstance(l, dict)}
+
+    merged = previous[:]
+    for line in new_lines:
+        identity = _echeance_3p_line_identity(line)
+        if identity in by_identity:
+            # Si une ligne existante n'avait pas de date (non détectée),
+            # et qu'on récupère une date maintenant, on met à jour.
+            existing = by_identity[identity]
+            if not existing.get("echeance_3p") and line.get("echeance_3p"):
+                existing["echeance_3p"] = line.get("echeance_3p")
+                existing["detected"] = True
+                existing["updated_at"] = datetime.now(timezone.utc).isoformat()
+            continue
+        merged.append(line)
+        by_identity[identity] = line
+    return merged
+
+async def _upsert_echeance_3p_line_reminder(user_id: str, client: dict, line: dict):
+    """Create or update a 3P reminder for a single contract line."""
+    echeance_iso = line.get("echeance_3p")
+    if not echeance_iso:
+        return
+    try:
+        due = datetime.fromisoformat(str(echeance_iso)[:10])
+        days_left = (due - datetime.now()).days
+    except (TypeError, ValueError):
+        return
+    if not 0 <= days_left <= 365:
+        return
+
+    key = _echeance_3p_contract_key(line.get("company"), line.get("policy_number"), echeance_iso)
+    existing = await db.tasks.find_one({
+        "user_id": user_id,
+        "client_id": client["id"],
+        "type": "echeance_3p",
+        "echeance_3p_key": key,
+        "done": False,
+    }, {"_id": 0})
+
+    company = str(line.get("company") or "").strip() or "Compagnie inconnue"
+    policy = str(line.get("policy_number") or "").strip()
+    policy_part = f" (N° {policy})" if policy else ""
+    due_display = due.strftime("%d.%m.%Y")
+    titre = f"⚠ Contrat 3e pilier — {company}{policy_part} arrivant à échéance le {due_display}"
+
+    if existing:
+        await db.tasks.update_one(
+            {"id": existing["id"]},
+            {"$set": {"echeance": echeance_iso, "titre": titre}},
+        )
+    else:
+        await db.tasks.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "client_id": client["id"],
+            "titre": titre,
+            "echeance": echeance_iso,
+            "priorite": "haute",
+            "type": "echeance_3p",
+            "echeance_3p_key": key,
+            "done": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
 def _lpp_tracking_from_funds(funds: List[dict], existing: Optional[List[dict]] = None) -> List[dict]:
@@ -639,24 +732,63 @@ async def upload_document(
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.documents.insert_one(doc)
-    detected_echeance = None
+    detected_echeances: List[dict] = []
+    detected_first_echeance: Optional[str] = None
     is_3p_police = checklist_item in {"Police 3e pilier", "Police de 3e pilier"} or category in {"Police 3e pilier", "Police de 3e pilier"}
     if is_3p_police and (ext == "pdf" or ctype == "application/pdf"):
         try:
-            detected_echeance = extract_3p_expiry_from_pdf(data)
+            detected_echeances = extract_3p_contracts_from_pdf(data)
         except Exception:
-            logger.exception("Extraction échéance 3P échouée")
-        if detected_echeance:
-            await db.clients.update_one({"id": client_id, "user_id": user.user_id}, {"$set": {
-                "echeance_3p": detected_echeance, "updated_at": datetime.now(timezone.utc).isoformat(),
-            }})
-            await _upsert_echeance_3p_reminder(user.user_id, c, detected_echeance)
-            await db.documents.update_one({"id": doc["id"]}, {"$set": {"extracted_echeance_3p": detected_echeance}})
-            doc["extracted_echeance_3p"] = detected_echeance
+            logger.exception("Extraction contrats 3P échouée")
+
+        # Convertir la détection en lignes persistées (multi-contrats).
+        now_iso = datetime.now(timezone.utc).isoformat()
+        new_lines = []
+        for entry in detected_echeances or []:
+            new_lines.append({
+                "id": str(uuid.uuid4()),
+                "company": entry.get("company") or None,
+                "policy_number": entry.get("policy_number") or None,
+                "echeance_3p": entry.get("expiry_date"),  # YYYY-MM-DD ou None
+                "detected": bool(entry.get("detected")),
+                "raw_date": entry.get("raw_date"),
+                "source_doc_id": doc["id"],
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            })
+
+        merged_lines = _merge_echeances_3p_lines(c.get("echeances_3p"), new_lines)
+
+        # Compat : conserver aussi le champ historique unique (prend la plus proche échéance).
+        detected_dates = [l.get("echeance_3p") for l in merged_lines if l.get("echeance_3p")]
+        if detected_dates:
+            detected_first_echeance = min(detected_dates)
+
+        await db.clients.update_one(
+            {"id": client_id, "user_id": user.user_id},
+            {"$set": {
+                "echeances_3p": merged_lines,
+                "echeance_3p": detected_first_echeance,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+
+        # Créer les rappels pour toutes les lignes nouvellement détectées avec une date.
+        for line in new_lines:
+            await _upsert_echeance_3p_line_reminder(user.user_id, c, line)
+
+        await db.documents.update_one(
+            {"id": doc["id"]},
+            {"$set": {
+                "extracted_echeances_3p": detected_echeances,
+                "extracted_echeance_3p": detected_first_echeance,
+            }},
+        )
+        doc["extracted_echeance_3p"] = detected_first_echeance
     await log_action(user.user_id, client_id, f"Document ajouté: {file.filename} ({category})")
     doc.pop("_id", None)
-    doc["echeance_3p"] = detected_echeance
-    doc["echeance_3p_detected"] = bool(detected_echeance)
+    doc["echeance_3p"] = detected_first_echeance
+    doc["echeance_3p_detected"] = bool(detected_first_echeance)
     return doc
 
 @api_router.get("/document-templates")
@@ -1373,25 +1505,110 @@ async def update_echeance_3p(client_id: str, payload: Echeance3PUpdate, user: Us
     await log_action(user.user_id, client_id, f"Échéance 3P mise à jour: {payload.echeance_3p or '—'}")
     return await db.clients.find_one({"id": client_id}, {"_id": 0})
 
+@api_router.patch("/clients/{client_id}/echeances-3p/{line_id}")
+async def update_echeance_3p_line(client_id: str, line_id: str, payload: Echeance3PLineUpdate, user: User = Depends(get_current_user)):
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+
+    lines = c.get("echeances_3p") or []
+    if not isinstance(lines, list):
+        lines = []
+
+    target = None
+    for i, line in enumerate(lines):
+        if isinstance(line, dict) and line.get("id") == line_id:
+            target = line
+            break
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Ligne d'échéance introuvable")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    old_date = target.get("echeance_3p")
+    company = target.get("company")
+    policy_number = target.get("policy_number")
+
+    new_date = payload.echeance_3p or None
+    target["echeance_3p"] = new_date
+    target["detected"] = bool(new_date)
+    target["updated_at"] = now_iso
+
+    detected_dates = [l.get("echeance_3p") for l in lines if isinstance(l, dict) and l.get("echeance_3p")]
+    new_first = min(detected_dates) if detected_dates else None
+
+    await db.clients.update_one(
+        {"id": client_id, "user_id": user.user_id},
+        {"$set": {"echeances_3p": lines, "echeance_3p": new_first, "updated_at": now_iso}},
+    )
+
+    # Mettre à jour / créer la tâche si la date est valide.
+    if new_date:
+        await _upsert_echeance_3p_line_reminder(user.user_id, c, target)
+    else:
+        # Si on efface la date, on ferme les rappels ouverts existants.
+        if old_date:
+            old_key = _echeance_3p_contract_key(company, policy_number, old_date)
+            await db.tasks.update_many(
+                {"user_id": user.user_id, "client_id": client_id, "type": "echeance_3p", "echeance_3p_key": old_key, "done": False},
+                {"$set": {"done": True}},
+            )
+
+    await log_action(user.user_id, client_id, "Échéance 3P complétée (ligne)")
+    return await db.clients.find_one({"id": client_id}, {"_id": 0})
+
 @api_router.get("/echeances-3p")
 async def list_echeances_3p(user: User = Depends(get_current_user)):
     clients = await db.clients.find(
-        {"user_id": user.user_id, "echeance_3p": {"$ne": None, "$exists": True}},
-        {"_id": 0, "id": 1, "prenom": 1, "nom": 1, "echeance_3p": 1, "numero_dossier": 1},
+        {
+            "user_id": user.user_id,
+            "$or": [
+                {"echeances_3p": {"$exists": True}},
+                {"echeance_3p": {"$ne": None, "$exists": True}},
+            ],
+        },
+        {"_id": 0, "id": 1, "prenom": 1, "nom": 1, "numero_dossier": 1, "echeances_3p": 1, "echeance_3p": 1},
     ).to_list(1000)
+
     now = datetime.now()
-    items = []
+    items: List[dict] = []
+
     for c in clients:
-        try:
-            due = datetime.fromisoformat(str(c["echeance_3p"])[:10])
-        except Exception:
-            continue
-        days_left = (due - now).days
-        items.append({
-            **c,
-            "days_left": days_left,
-            "alert": 0 <= days_left <= 365,
-        })
+        lines = c.get("echeances_3p") or []
+        if not isinstance(lines, list) or len(lines) == 0:
+            # Compat anciens clients (champ unique).
+            if c.get("echeance_3p"):
+                lines = [{
+                    "company": None,
+                    "policy_number": None,
+                    "echeance_3p": c.get("echeance_3p"),
+                }]
+            else:
+                continue
+
+        for line in lines:
+            due_raw = line.get("echeance_3p")
+            if not due_raw:
+                continue
+            try:
+                due = datetime.fromisoformat(str(due_raw)[:10])
+            except Exception:
+                continue
+
+            days_left = (due - now).days
+            items.append({
+                "id": c.get("id"),
+                "client_id": c.get("id"),
+                "prenom": c.get("prenom"),
+                "nom": c.get("nom"),
+                "numero_dossier": c.get("numero_dossier"),
+                "company": line.get("company") or None,
+                "policy_number": line.get("policy_number") or None,
+                "echeance_3p": str(due)[:10],
+                "days_left": days_left,
+                "alert": 0 <= days_left <= 365,
+            })
+
     items.sort(key=lambda x: x.get("days_left", 99999))
     return items
 

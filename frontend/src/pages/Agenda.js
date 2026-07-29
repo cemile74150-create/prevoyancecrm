@@ -92,7 +92,16 @@ export default function Agenda() {
                     onClick={() => navigate(`/clients/${e.client_id || e.id}`)}
                     className="text-sm px-3 py-1.5 rounded-md border border-amber-200 bg-white hover:border-[#002FA7] hover:text-[#002FA7] transition-colors"
                   >
-                    {e.prenom} {e.nom}
+                    {e.company ? (
+                      <>
+                        {e.company}
+                        {e.policy_number ? <span className="text-muted-foreground ml-1">— N° {e.policy_number}</span> : null}
+                      </>
+                    ) : (
+                      <>
+                        {e.prenom} {e.nom}
+                      </>
+                    )}
                     {e.echeance_3p && (
                       <span className="text-muted-foreground ml-1.5">
                         — {new Date(e.echeance_3p).toLocaleDateString("fr-CH")}
