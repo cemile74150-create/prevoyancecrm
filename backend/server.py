@@ -827,6 +827,8 @@ async def upload_document(
         "content_type": ctype, "size": size,
         "category": category,
         "checklist_item": checklist_item or category,
+        "author": getattr(user, "name", None) or None,
+        "uploaded_by": getattr(user, "user_id", None) or None,
         "is_deleted": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }

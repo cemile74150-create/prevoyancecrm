@@ -19,8 +19,10 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Pencil, Trash2, Mail, Phone, MapPin, Briefcase, Users2, AlertTriangle,
   FileText, Upload, Plus, StickyNote, History, CalendarClock, User, Sparkles, Loader2,
-  Send, ClipboardList, Shield,
+  Send, ClipboardList, Shield, Eye, Download, BarChart3,
 } from "lucide-react";
+
+const ANALYSE_PREVOYANCE_CATEGORY = "Analyse de prévoyance";
 
 const Info = ({ label, value }) => (
   <div>
@@ -98,6 +100,8 @@ export default function ClientDetail() {
   const uploadTargetRef = useRef(null);
   const lppResponseRef = useRef();
   const otherFileRef = useRef();
+  const analyseFileRef = useRef();
+  const [uploadingAnalyse, setUploadingAnalyse] = useState(false);
 
   const loadAll = async () => {
     const [c, n, d, a, h, lib] = await Promise.all([
@@ -247,6 +251,32 @@ export default function ClientDetail() {
     e.target.value = "";
   };
 
+  const uploadAnalyseDocs = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setUploadingAnalyse(true);
+    let ok = 0;
+    try {
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("category", ANALYSE_PREVOYANCE_CATEGORY);
+        fd.append("checklist_item", ANALYSE_PREVOYANCE_CATEGORY);
+        await api.post(`/clients/${id}/documents`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+        ok += 1;
+      }
+      toast.success(ok > 1 ? `${ok} analyses ajoutées` : "Analyse ajoutée");
+      const [d, h] = await Promise.all([api.get(`/clients/${id}/documents`), api.get(`/clients/${id}/actions`)]);
+      setDocs(d.data);
+      setActions(h.data);
+    } catch (err) {
+      toast.error(ok > 0 ? `${ok} fichier(s) ajouté(s), puis échec` : "Échec du téléversement");
+    } finally {
+      setUploadingAnalyse(false);
+      e.target.value = "";
+    }
+  };
+
   const triggerChecklistUpload = (documentName) => {
     uploadTargetRef.current = documentName;
     checklistFileRef.current?.click();
@@ -257,6 +287,11 @@ export default function ClientDetail() {
     setDocs((prev) => prev.filter((x) => x.id !== docId));
     toast.success("Document supprimé");
     await loadAll();
+  };
+
+  const deleteAnalyseDoc = async (docId) => {
+    if (!window.confirm("Supprimer cette analyse de prévoyance ?")) return;
+    await deleteDoc(docId);
   };
 
   const deleteClient = async () => {
@@ -645,6 +680,16 @@ export default function ClientDetail() {
   const isMarried = ((client.etat_civil || "").toLowerCase().includes("mari") || (client.etat_civil || "").toLowerCase().includes("partenariat"));
   const fmtDate = (s) => s ? new Date(s).toLocaleString("fr-CH", { dateStyle: "medium", timeStyle: "short" }) : "";
 
+  const isAnalysePrevoyanceDoc = (d) =>
+    d?.category === ANALYSE_PREVOYANCE_CATEGORY || d?.checklist_item === ANALYSE_PREVOYANCE_CATEGORY;
+
+  const analyseDocs = docs
+    .filter(isAnalysePrevoyanceDoc)
+    .slice()
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+
+  const otherDocs = docs.filter((d) => !isAnalysePrevoyanceDoc(d));
+
   return (
     <Layout>
       <button
@@ -739,7 +784,7 @@ export default function ClientDetail() {
         {/* Right tabs */}
         <div className="lg:col-span-8">
           <Tabs defaultValue="infos">
-            <TabsList className="mb-4">
+            <TabsList className="mb-4 flex flex-wrap h-auto gap-1">
               <TabsTrigger value="infos" data-testid="tab-infos"><User className="h-4 w-4 mr-1.5" />Infos</TabsTrigger>
               <TabsTrigger value="rdv" data-testid="tab-rdv"><CalendarClock className="h-4 w-4 mr-1.5" />Rendez-vous</TabsTrigger>
               <TabsTrigger value="notes" data-testid="tab-notes"><StickyNote className="h-4 w-4 mr-1.5" />Notes</TabsTrigger>
@@ -747,6 +792,7 @@ export default function ClientDetail() {
               <TabsTrigger value="demande-lpp" data-testid="tab-demande-lpp"><ClipboardList className="h-4 w-4 mr-1.5" />Demande LPP</TabsTrigger>
               <TabsTrigger value="demande-avs" data-testid="tab-demande-avs"><Send className="h-4 w-4 mr-1.5" />Demande AVS</TabsTrigger>
               <TabsTrigger value="echeance3p" data-testid="tab-echeance3p"><Shield className="h-4 w-4 mr-1.5" />Échéance 3P</TabsTrigger>
+              <TabsTrigger value="analyse-prevoyance" data-testid="tab-analyse-prevoyance"><BarChart3 className="h-4 w-4 mr-1.5" />Analyse de prévoyance</TabsTrigger>
               <TabsTrigger value="hist" data-testid="tab-hist"><History className="h-4 w-4 mr-1.5" />Historique</TabsTrigger>
             </TabsList>
 
@@ -900,11 +946,11 @@ export default function ClientDetail() {
 
                 <div className="border-t border-border pt-4">
                   <p className="text-sm font-semibold mb-3">Fichiers du dossier</p>
-                  {docs.length === 0 ? (
+                  {otherDocs.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-2">Aucun document pour le moment.</p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {docs.map((d) => (
+                      {otherDocs.map((d) => (
                         <div key={d.id} className="flex items-center gap-1">
                           <FileChip doc={d} />
                           <Button size="icon" variant="ghost" onClick={() => deleteDoc(d.id)} className="h-6 w-6 text-destructive hover:text-destructive" data-testid={`doc-delete-${d.id}`}>
@@ -1222,6 +1268,127 @@ export default function ClientDetail() {
                             </tr>
                           );
                         })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="analyse-prevoyance">
+              <Card className="p-6 space-y-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-sm font-semibold text-[#002FA7]">Analyse de prévoyance</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Centralisez ici les analyses PDF. Chaque nouvel ajout conserve les versions précédentes.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => analyseFileRef.current?.click()}
+                    disabled={uploadingAnalyse}
+                    data-testid="upload-analyse-prevoyance-btn"
+                    className="h-8 gap-1.5 bg-[#002FA7] hover:bg-[#00248a]"
+                  >
+                    {uploadingAnalyse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    Ajouter une analyse
+                  </Button>
+                  <input
+                    ref={analyseFileRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    multiple
+                    className="hidden"
+                    onChange={uploadAnalyseDocs}
+                    data-testid="analyse-prevoyance-file-input"
+                  />
+                </div>
+
+                {analyseDocs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">
+                    Aucune analyse enregistrée pour l’instant.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left">
+                          <th className="pb-2 pr-3 font-medium text-muted-foreground">Nom du fichier</th>
+                          <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">Date d&apos;ajout</th>
+                          <th className="pb-2 pr-3 font-medium text-muted-foreground">Auteur</th>
+                          <th className="pb-2 font-medium text-muted-foreground text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analyseDocs.map((d, index) => (
+                          <tr key={d.id} className="border-t border-border">
+                            <td className="py-3 pr-3">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <FileText className="h-4 w-4 text-[#002FA7] shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="truncate font-medium" title={d.original_filename}>
+                                    {d.original_filename || "Analyse"}
+                                  </p>
+                                  {index === 0 && (
+                                    <p className="text-[11px] text-emerald-700">Version la plus récente</p>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 pr-3 whitespace-nowrap text-muted-foreground">
+                              {fmtDate(d.created_at)}
+                            </td>
+                            <td className="py-3 pr-3 whitespace-nowrap text-muted-foreground">
+                              {d.author || "—"}
+                            </td>
+                            <td className="py-3">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  asChild
+                                  className="h-8 w-8"
+                                  title="Ouvrir"
+                                >
+                                  <a
+                                    href={`${apiBaseUrl}/documents/${d.id}/download`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    data-testid={`analyse-open-${d.id}`}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </a>
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  asChild
+                                  className="h-8 w-8"
+                                  title="Télécharger"
+                                >
+                                  <a
+                                    href={`${apiBaseUrl}/documents/${d.id}/download`}
+                                    download={d.original_filename || "analyse.pdf"}
+                                    data-testid={`analyse-download-${d.id}`}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </a>
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => deleteAnalyseDoc(d.id)}
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  title="Supprimer"
+                                  data-testid={`analyse-delete-${d.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
