@@ -168,8 +168,10 @@ class Echeance3PUpdate(BaseModel):
     echeance_3p: Optional[str] = None
 
 class Echeance3PLineUpdate(BaseModel):
-    # Permet de compléter une ligne quand la date n'a pas été détectée.
+    # Permet de corriger manuellement compagnie / n° de police / date
     echeance_3p: Optional[str] = None
+    company: Optional[str] = None
+    policy_number: Optional[str] = None
 
 class LppCaisseTrackingUpdate(BaseModel):
     lpp_caisse_tracking: List[dict] = Field(default_factory=list)
@@ -1575,10 +1577,17 @@ async def update_echeance_3p_line(client_id: str, line_id: str, payload: Echeanc
 
     now_iso = datetime.now(timezone.utc).isoformat()
     old_date = target.get("echeance_3p")
-    company = target.get("company")
-    policy_number = target.get("policy_number")
+    old_company = target.get("company")
+    old_policy_number = target.get("policy_number")
 
     new_date = payload.echeance_3p or None
+
+    # Conversion : '' -> None (clear)
+    new_company = payload.company.strip() if isinstance(payload.company, str) and payload.company.strip() else None
+    new_policy_number = payload.policy_number.strip() if isinstance(payload.policy_number, str) and payload.policy_number.strip() else None
+
+    target["company"] = new_company
+    target["policy_number"] = new_policy_number
     target["echeance_3p"] = new_date
     target["detected"] = bool(new_date)
     target["updated_at"] = now_iso
@@ -1591,17 +1600,19 @@ async def update_echeance_3p_line(client_id: str, line_id: str, payload: Echeanc
         {"$set": {"echeances_3p": lines, "echeance_3p": new_first, "updated_at": now_iso}},
     )
 
-    # Mettre à jour / créer la tâche si la date est valide.
+    # Recalcul des rappels : fermer l'ancien rappel (si présent) puis recréer (si < 1 an)
+    if old_date:
+        old_key = _echeance_3p_contract_key(old_company, old_policy_number, old_date)
+        await db.tasks.delete_many({
+            "user_id": user.user_id,
+            "client_id": client_id,
+            "type": "echeance_3p",
+            "echeance_3p_key": old_key,
+            "done": False,
+        })
+
     if new_date:
         await _upsert_echeance_3p_line_reminder(user.user_id, c, target)
-    else:
-        # Si on efface la date, on ferme les rappels ouverts existants.
-        if old_date:
-            old_key = _echeance_3p_contract_key(company, policy_number, old_date)
-            await db.tasks.update_many(
-                {"user_id": user.user_id, "client_id": client_id, "type": "echeance_3p", "echeance_3p_key": old_key, "done": False},
-                {"$set": {"done": True}},
-            )
 
     await log_action(user.user_id, client_id, "Échéance 3P complétée (ligne)")
     return await db.clients.find_one({"id": client_id}, {"_id": 0})
@@ -1866,35 +1877,89 @@ async def delete_task(task_id: str, user: User = Depends(get_current_user)):
 @api_router.get("/dashboard/stats")
 async def dashboard_stats(user: User = Depends(get_current_user)):
     clients = await db.clients.find({"user_id": user.user_id}, {"_id": 0}).to_list(5000)
-    by_statut = {s: 0 for s in STATUTS}
+    dossiers = {}  # dossier_id -> {members, created_at_min, updated_at_max}
+
     for c in clients:
-        st = c.get("statut", "Nouveau")
-        if st in by_statut:
-            by_statut[st] += 1
-    urgent = sum(1 for c in clients if c.get("priorite") == "urgent" and c.get("statut") != "Clôturé")
+        dossier_id = c.get("dossier_id") or c.get("id")
+        if not dossier_id:
+            continue
+        key = str(dossier_id)
+        d = dossiers.setdefault(key, {"members": [], "created_at_min": None, "updated_at_max": None})
+        d["members"].append(c)
+
+        created_at = c.get("created_at")
+        updated_at = c.get("updated_at")
+
+        if created_at:
+            d["created_at_min"] = min(filter(None, [d["created_at_min"], created_at])) if d["created_at_min"] else created_at
+        if updated_at:
+            d["updated_at_max"] = max(filter(None, [d["updated_at_max"], updated_at])) if d["updated_at_max"] else updated_at
+
+    def pick_dossier_statut(members: list) -> str:
+        # Majorité du statut, tie-break sur l'ordre STATUTS.
+        counts = {}
+        for m in members:
+            st = m.get("statut", "Nouveau")
+            counts[st] = counts.get(st, 0) + 1
+
+        best = None
+        best_count = -1
+        for st, count in counts.items():
+            if count > best_count:
+                best = st
+                best_count = count
+            elif count == best_count:
+                if best in STATUTS and st in STATUTS and STATUTS.index(st) < STATUTS.index(best):
+                    best = st
+        return best or "Nouveau"
+
+    by_statut = {s: 0 for s in STATUTS}
+    urgent = 0
+
+    dossier_statut_map = {}
+    dossier_created_map = {}
+    dossier_updated_map = {}
+
+    for did, d in dossiers.items():
+        members = d.get("members") or []
+        dossier_statut = pick_dossier_statut(members)
+        dossier_statut_map[did] = dossier_statut
+        dossier_created_map[did] = d.get("created_at_min")
+        dossier_updated_map[did] = d.get("updated_at_max")
+
+        if dossier_statut in by_statut:
+            by_statut[dossier_statut] += 1
+
+        # Urgent : au moins un membre urgent et pas clôturé.
+        if any(m.get("priorite") == "urgent" and m.get("statut") != "Clôturé" for m in members):
+            urgent += 1
 
     today = datetime.now(timezone.utc).date().isoformat()
     appts = await db.appointments.find({"user_id": user.user_id}, {"_id": 0}).to_list(5000)
     today_appts = [a for a in appts if (a.get("date") or "").startswith(today)]
     today_appts.sort(key=lambda a: a.get("date", ""))
 
-    # monthly stats last 6 months
+    # monthly stats last 6 months (dossiers uniques)
     now = datetime.now(timezone.utc)
     monthly = []
     for i in range(5, -1, -1):
         ref = now - timedelta(days=30 * i)
         key = ref.strftime("%Y-%m")
         label = ref.strftime("%b")
-        dossiers_count = sum(1 for c in clients if (c.get("created_at") or "").startswith(key))
+        dossiers_count = sum(1 for did, created_at in dossier_created_map.items() if (created_at or "").startswith(key))
         appt_count = sum(1 for a in appts if (a.get("date") or "").startswith(key))
-        report_count = sum(1 for c in clients if c.get("statut") in ["À présenter au client", "Clôturé"] and (c.get("updated_at") or "").startswith(key))
+        report_count = sum(
+            1
+            for did, updated_at in dossier_updated_map.items()
+            if (updated_at or "").startswith(key) and dossier_statut_map.get(did) in ["À présenter au client", "Clôturé"]
+        )
         monthly.append({"mois": label, "dossiers": dossiers_count, "rendezvous": appt_count, "rapports": report_count})
 
     tasks = await db.tasks.find({"user_id": user.user_id, "done": False}, {"_id": 0}).to_list(1000)
 
     return {
         "by_statut": by_statut,
-        "total": len(clients),
+        "total": len(dossiers),
         "urgent": urgent,
         "nouveaux": by_statut.get("Nouveau", 0),
         "en_attente_docs": by_statut.get("Documents demandés", 0),

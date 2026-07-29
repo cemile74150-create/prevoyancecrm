@@ -500,12 +500,23 @@ export default function ClientDetail() {
     }
   };
 
-  const updateEcheance3pLineDate = async (lineId) => {
-    const draft = echeance3pDraftById[lineId] || "";
-    const nextDate = draft ? draft : null;
+  const saveEcheance3pLine = async (lineId) => {
+    const line = echeances3p.find((l) => l?.id === lineId) || {};
+    const draft = echeance3pDraftById[lineId] || {};
+
+    const nextCompany = (draft.company !== undefined ? draft.company : line.company) || "";
+    const nextPolicy = (draft.policy_number !== undefined ? draft.policy_number : line.policy_number) || "";
+    const nextDate = (draft.date !== undefined ? draft.date : line.echeance_3p) || "";
+
+    const payload = {
+      company: nextCompany.trim() ? nextCompany.trim() : null,
+      policy_number: nextPolicy.trim() ? nextPolicy.trim() : null,
+      echeance_3p: nextDate ? nextDate : null,
+    };
+
     setSavingEcheance3p(true);
     try {
-      const res = await api.patch(`/clients/${id}/echeances-3p/${lineId}`, { echeance_3p: nextDate });
+      const res = await api.patch(`/clients/${id}/echeances-3p/${lineId}`, payload);
       const updated = res.data;
       setClient(updated);
 
@@ -524,10 +535,10 @@ export default function ClientDetail() {
         );
       }
 
-      setEcheance3pDraftById((m) => ({ ...m, [lineId]: "" }));
+      setEcheance3pDraftById((m) => ({ ...m, [lineId]: {} }));
       toast.success("Échéance 3e pilier enregistrée");
     } catch (err) {
-      toast.error("Impossible d'enregistrer l'échéance");
+      toast.error("Impossible d'enregistrer la ligne");
     } finally {
       setSavingEcheance3p(false);
     }
@@ -1085,17 +1096,20 @@ export default function ClientDetail() {
                       </thead>
                       <tbody>
                         {echeances3p.map((line) => {
+                          const draft = echeance3pDraftById[line.id] || {};
                           const iso = line?.echeance_3p;
-                          const company = line?.company || "Compagnie non détectée";
-                          const policy = line?.policy_number || "—";
 
-                          const dueDate = iso ? new Date(`${iso}T00:00:00`) : null;
+                          const effectiveIso = draft.date !== undefined ? draft.date : iso;
+                          const effectiveCompany = draft.company !== undefined ? draft.company : (line?.company || "");
+                          const effectivePolicy = draft.policy_number !== undefined ? draft.policy_number : (line?.policy_number || "");
+
+                          const dueDate = effectiveIso ? new Date(`${effectiveIso}T00:00:00`) : null;
                           const now = new Date();
                           now.setHours(0, 0, 0, 0);
                           const daysLeft = dueDate ? Math.floor((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
 
                           let statusLabel = "—";
-                          if (!iso) {
+                          if (!effectiveIso) {
                             statusLabel = "⚠ Date d’échéance non détectée";
                           } else if (typeof daysLeft === "number" && daysLeft < 0) {
                             statusLabel = "⚠ Échéance passée";
@@ -1105,35 +1119,56 @@ export default function ClientDetail() {
                             statusLabel = "✅ À jour";
                           }
 
-                          const draftValue = echeance3pDraftById[line.id] || "";
-
                           return (
                             <tr key={line.id} className="border-t border-border">
-                              <td className="py-3 pr-3 whitespace-nowrap">{company}</td>
-                              <td className="py-3 pr-3 whitespace-nowrap">{policy}</td>
+                              <td className="py-3 pr-3 whitespace-nowrap">
+                                <Input
+                                  data-testid={`echeance-3p-line-company-${line.id}`}
+                                  value={effectiveCompany}
+                                  onChange={(e) =>
+                                    setEcheance3pDraftById((m) => ({
+                                      ...m,
+                                      [line.id]: { ...(m[line.id] || {}), company: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </td>
+                              <td className="py-3 pr-3 whitespace-nowrap">
+                                <Input
+                                  data-testid={`echeance-3p-line-policy-${line.id}`}
+                                  value={effectivePolicy}
+                                  onChange={(e) =>
+                                    setEcheance3pDraftById((m) => ({
+                                      ...m,
+                                      [line.id]: { ...(m[line.id] || {}), policy_number: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </td>
 
                               <td className="py-3 pr-3 whitespace-nowrap">
-                                {iso ? (
-                                  new Date(`${iso}T00:00:00`).toLocaleDateString("fr-CH")
-                                ) : (
-                                  <div className="flex items-center gap-2">
-                                    <Input
-                                      type="date"
-                                      data-testid={`echeance-3p-line-date-${line.id}`}
-                                      value={draftValue}
-                                      onChange={(e) => setEcheance3pDraftById((m) => ({ ...m, [line.id]: e.target.value }))}
-                                    />
-                                    <Button
-                                      size="sm"
-                                      onClick={() => updateEcheance3pLineDate(line.id)}
-                                      disabled={savingEcheance3p}
-                                      data-testid={`echeance-3p-line-save-${line.id}`}
-                                      className="bg-[#002FA7] hover:bg-[#00248a]"
-                                    >
-                                      {savingEcheance3p ? "…" : "Enregistrer"}
-                                    </Button>
-                                  </div>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="date"
+                                    data-testid={`echeance-3p-line-date-${line.id}`}
+                                    value={effectiveIso || ""}
+                                    onChange={(e) =>
+                                      setEcheance3pDraftById((m) => ({
+                                        ...m,
+                                        [line.id]: { ...(m[line.id] || {}), date: e.target.value },
+                                      }))
+                                    }
+                                  />
+                                  <Button
+                                    size="sm"
+                                    onClick={() => saveEcheance3pLine(line.id)}
+                                    disabled={savingEcheance3p}
+                                    data-testid={`echeance-3p-line-save-${line.id}`}
+                                    className="bg-[#002FA7] hover:bg-[#00248a]"
+                                  >
+                                    {savingEcheance3p ? "…" : "Enregistrer"}
+                                  </Button>
+                                </div>
                               </td>
 
                               <td className="py-3 whitespace-nowrap">
