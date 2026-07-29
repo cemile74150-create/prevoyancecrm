@@ -78,6 +78,7 @@ export default function ClientDetail() {
   const [echeances3p, setEcheances3p] = useState([]);
   const [savingEcheance3p, setSavingEcheance3p] = useState(false);
   const [echeance3pDraftById, setEcheance3pDraftById] = useState({});
+  const [editingEcheance3pLineId, setEditingEcheance3pLineId] = useState(null);
   const [generatingDemand, setGeneratingDemand] = useState(null);
   const [lppFunds, setLppFunds] = useState([]);
   const [lppCaisseTracking, setLppCaisseTracking] = useState([]);
@@ -536,12 +537,25 @@ export default function ClientDetail() {
       }
 
       setEcheance3pDraftById((m) => ({ ...m, [lineId]: {} }));
+      setEditingEcheance3pLineId(null);
       toast.success("Échéance 3e pilier enregistrée");
     } catch (err) {
       toast.error("Impossible d'enregistrer la ligne");
     } finally {
       setSavingEcheance3p(false);
     }
+  };
+
+  const startEditEcheance3pLine = (line) => {
+    if (!line?.id) return;
+    setEcheance3pDraftById({
+      [line.id]: {
+        company: line?.company || "",
+        policy_number: line?.policy_number || "",
+        date: line?.echeance_3p || "",
+      },
+    });
+    setEditingEcheance3pLineId(line.id);
   };
 
   const isWithinOneYear = (dateStr) => {
@@ -1092,6 +1106,7 @@ export default function ClientDetail() {
                           <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">N° de police</th>
                           <th className="pb-2 pr-3 font-medium text-muted-foreground whitespace-nowrap">Date d&apos;échéance</th>
                           <th className="pb-2 font-medium text-muted-foreground whitespace-nowrap">Statut</th>
+                          <th className="pb-2 font-medium text-muted-foreground whitespace-nowrap"> </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1102,6 +1117,7 @@ export default function ClientDetail() {
                           const effectiveIso = draft.date !== undefined ? draft.date : iso;
                           const effectiveCompany = draft.company !== undefined ? draft.company : (line?.company || "");
                           const effectivePolicy = draft.policy_number !== undefined ? draft.policy_number : (line?.policy_number || "");
+                          const isEditing = editingEcheance3pLineId === line.id;
 
                           const dueDate = effectiveIso ? new Date(`${effectiveIso}T00:00:00`) : null;
                           const now = new Date();
@@ -1122,43 +1138,66 @@ export default function ClientDetail() {
                           return (
                             <tr key={line.id} className="border-t border-border">
                               <td className="py-3 pr-3 whitespace-nowrap">
-                                <Input
-                                  data-testid={`echeance-3p-line-company-${line.id}`}
-                                  value={effectiveCompany}
-                                  onChange={(e) =>
-                                    setEcheance3pDraftById((m) => ({
-                                      ...m,
-                                      [line.id]: { ...(m[line.id] || {}), company: e.target.value },
-                                    }))
-                                  }
-                                />
+                                {isEditing ? (
+                                  <Input
+                                    data-testid={`echeance-3p-line-company-${line.id}`}
+                                    value={effectiveCompany}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      setEcheance3pDraftById((m) => ({
+                                        ...m,
+                                        [line.id]: { ...(m[line.id] || {}), company: value },
+                                      }));
+                                    }}
+                                  />
+                                ) : (
+                                  <span>{effectiveCompany || "Compagnie non détectée"}</span>
+                                )}
                               </td>
                               <td className="py-3 pr-3 whitespace-nowrap">
-                                <Input
-                                  data-testid={`echeance-3p-line-policy-${line.id}`}
-                                  value={effectivePolicy}
-                                  onChange={(e) =>
-                                    setEcheance3pDraftById((m) => ({
-                                      ...m,
-                                      [line.id]: { ...(m[line.id] || {}), policy_number: e.target.value },
-                                    }))
-                                  }
-                                />
+                                {isEditing ? (
+                                  <Input
+                                    data-testid={`echeance-3p-line-policy-${line.id}`}
+                                    value={effectivePolicy}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      setEcheance3pDraftById((m) => ({
+                                        ...m,
+                                        [line.id]: { ...(m[line.id] || {}), policy_number: value },
+                                      }));
+                                    }}
+                                  />
+                                ) : (
+                                  <span>{effectivePolicy || "—"}</span>
+                                )}
                               </td>
-
                               <td className="py-3 pr-3 whitespace-nowrap">
-                                <div className="flex items-center gap-2">
+                                {isEditing ? (
                                   <Input
                                     type="date"
                                     data-testid={`echeance-3p-line-date-${line.id}`}
                                     value={effectiveIso || ""}
-                                    onChange={(e) =>
+                                    onChange={(e) => {
+                                      const value = e.target.value;
                                       setEcheance3pDraftById((m) => ({
                                         ...m,
-                                        [line.id]: { ...(m[line.id] || {}), date: e.target.value },
-                                      }))
-                                    }
+                                        [line.id]: { ...(m[line.id] || {}), date: value },
+                                      }));
+                                    }}
                                   />
+                                ) : (
+                                  <span>
+                                    {iso ? new Date(`${iso}T00:00:00`).toLocaleDateString("fr-CH") : "—"}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 whitespace-nowrap">
+                                <span className={statusLabel.startsWith("✅") ? "text-emerald-700" : "text-amber-700"}>
+                                  {statusLabel}
+                                </span>
+                              </td>
+                              <td className="py-3 whitespace-nowrap text-right">
+                                {isEditing ? (
                                   <Button
                                     size="sm"
                                     onClick={() => saveEcheance3pLine(line.id)}
@@ -1166,15 +1205,19 @@ export default function ClientDetail() {
                                     data-testid={`echeance-3p-line-save-${line.id}`}
                                     className="bg-[#002FA7] hover:bg-[#00248a]"
                                   >
-                                    {savingEcheance3p ? "…" : "Enregistrer"}
+                                    {savingEcheance3p ? "…" : "✔ Enregistrer"}
                                   </Button>
-                                </div>
-                              </td>
-
-                              <td className="py-3 whitespace-nowrap">
-                                <span className={statusLabel.startsWith("✅") ? "text-emerald-700" : "text-amber-700"}>
-                                  {statusLabel}
-                                </span>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => startEditEcheance3pLine(line)}
+                                    disabled={savingEcheance3p}
+                                    data-testid={`echeance-3p-line-edit-${line.id}`}
+                                  >
+                                    ✏️ Modifier
+                                  </Button>
+                                )}
                               </td>
                             </tr>
                           );
