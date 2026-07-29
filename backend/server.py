@@ -720,6 +720,70 @@ async def list_documents(client_id: str, user: User = Depends(get_current_user))
     }
     return await db.documents.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
+
+async def _reconcile_echeances_3p_lines(user_id: str, client_id: str) -> None:
+    """
+    Synchronisation stricte (1 document PDF 3e pilier => 1 ligne Échéance 3P).
+
+    - Supprime les lignes orphelines (source_doc_id non présent parmi les documents actuels)
+    - Collapse les doublons (plusieurs lignes pour le même source_doc_id) => garde la plus récente
+    - Recalcule les tâches (rappels) non terminées à partir des lignes restantes
+    """
+    client = await db.clients.find_one({"id": client_id, "user_id": user_id}, {"_id": 0})
+    if not client:
+        return
+
+    three_p_labels = ["Police 3e pilier", "Police de 3e pilier"]
+    docs = await db.documents.find(
+        {
+            "user_id": user_id,
+            "client_id": client_id,
+            "is_deleted": False,
+            "$or": [
+                {"checklist_item": {"$in": three_p_labels}},
+                {"category": {"$in": three_p_labels}},
+            ],
+        },
+        {"_id": 0, "id": 1},
+    ).to_list(1000)
+    doc_ids = {d.get("id") for d in docs if d.get("id")}
+
+    lines = client.get("echeances_3p") or []
+    if not isinstance(lines, list):
+        lines = []
+
+    filtered = [l for l in lines if isinstance(l, dict) and l.get("source_doc_id") in doc_ids]
+
+    # Collapse : 1 ligne par source_doc_id (garder la plus récente).
+    best_by_source = {}
+    for l in filtered:
+        sid = l.get("source_doc_id")
+        if not sid:
+            continue
+        updated = l.get("updated_at") or l.get("created_at") or ""
+        prev = best_by_source.get(sid)
+        prev_updated = (prev.get("updated_at") or prev.get("created_at") or "") if prev else ""
+        if (not prev) or (updated >= prev_updated):
+            best_by_source[sid] = l
+    reconciled_lines = list(best_by_source.values())
+
+    detected_dates = [l.get("echeance_3p") for l in reconciled_lines if isinstance(l, dict) and l.get("echeance_3p")]
+    new_first = min(detected_dates) if detected_dates else None
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    await db.clients.update_one(
+        {"id": client_id, "user_id": user_id},
+        {"$set": {"echeances_3p": reconciled_lines, "echeance_3p": new_first, "updated_at": now_iso}},
+    )
+
+    # Rappels : on supprime uniquement les non terminées, puis on recrée.
+    await db.tasks.delete_many(
+        {"user_id": user_id, "client_id": client_id, "type": "echeance_3p", "done": False}
+    )
+    for line in reconciled_lines:
+        await _upsert_echeance_3p_line_reminder(user_id, client, line)
+
+
 @api_router.post("/clients/{client_id}/documents")
 async def upload_document(
     client_id: str,
@@ -836,6 +900,8 @@ async def upload_document(
             }},
         )
         doc["extracted_echeance_3p"] = detected_first_echeance
+        # Synchronisation stricte : 1 ligne par document 3e pilier.
+        await _reconcile_echeances_3p_lines(user.user_id, client_id)
     await log_action(user.user_id, client_id, f"Document ajouté: {file.filename} ({category})")
     doc.pop("_id", None)
     doc["echeance_3p"] = detected_first_echeance
@@ -1802,6 +1868,10 @@ async def delete_document(doc_id: str, user: User = Depends(get_current_user)):
         {"id": client_id, "user_id": user.user_id},
         {"$set": {"echeances_3p": remaining_lines, "echeance_3p": new_first, "updated_at": now_iso}},
     )
+
+    # Synchronisation stricte : enlever les lignes orphelines/doublons
+    # (notamment si des anciennes lignes ont été générées sans source_doc_id).
+    await _reconcile_echeances_3p_lines(user.user_id, client_id)
 
     return {"ok": True, "removed_lines": len(removed_lines)}
 
