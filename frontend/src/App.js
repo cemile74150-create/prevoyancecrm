@@ -13,6 +13,7 @@ import Agenda from "@/pages/Agenda";
 import Demandes from "@/pages/Demandes";
 import Formulaires from "@/pages/Formulaires";
 import Utilisateurs from "@/pages/Utilisateurs";
+import Echeances3P from "@/pages/Echeances3P";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -46,6 +47,7 @@ function AppRoutes() {
       <Route path="/dossiers/:dossierId" element={<Protected><DossierHub /></Protected>} />
       <Route path="/demandes" element={<Protected><Demandes /></Protected>} />
       <Route path="/agenda" element={<Protected><Agenda /></Protected>} />
+      <Route path="/echeances-3p" element={<Protected><Echeances3P /></Protected>} />
       <Route path="/formulaires" element={<Protected><Formulaires /></Protected>} />
       <Route path="/utilisateurs" element={<Protected><Utilisateurs /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
