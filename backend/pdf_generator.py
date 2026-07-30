@@ -366,6 +366,8 @@ def _resolve_field_name(existing: Dict[str, Any], wanted: str) -> Optional[str]:
 
 def _map_recherche_lpp(values: Dict[str, str], options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     options = options or {}
+    # Champ Adresse du formulaire officiel = 1 ligne (h≈22pt) : ne pas injecter de sauts.
+    adresse = re.sub(r"\s+", " ", (values.get("adresse_complete") or values.get("adresse") or "").replace("\r", " ").replace("\n", " ")).strip()
     mapping: Dict[str, Any] = {
         "Nom": values["nom"],
         "Nom 2": "",
@@ -373,7 +375,7 @@ def _map_recherche_lpp(values: Dict[str, str], options: Optional[Dict[str, Any]]
         "Prénom 2": "",
         "Date de naissance": values["date_naissance"],
         "AVS": values["avs"],
-        "Adresse": values["adresse_complete"],
+        "Adresse": adresse,
         "numero de tel": values["telephone"],
         "Texte10": values["email"] or values["agent_full"],
     }
@@ -1424,7 +1426,9 @@ def _fill_acroform(
                 text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r")
             text_values[actual] = text
 
-    # Activer le flag Multiline (bit 13) + élargir le champ Adresse caisse
+    # Activer Multiline si besoin. Ne JAMAIS redimensionner les champs Adresse
+    # génériques (ex. formulaire Recherche LPP) — seul « Adresse caisse » de la
+    # lettre de décompte a besoin d'une zone destinataire élargie.
     MULTILINE = 1 << 12
     adresse_rect = None
     for page in writer.pages:
@@ -1439,23 +1443,28 @@ def _fill_acroform(
             if name is None:
                 continue
             name_s = str(name)
-            if name_s in multiline_names or name_s.lower().startswith("adresse"):
+            name_low = name_s.casefold()
+            is_decompte_adresse = (
+                template_id == "lettre_decompte_lpp"
+                and "adresse" in name_low
+                and "caisse" in name_low
+            )
+            if name_s in multiline_names or is_decompte_adresse:
                 ff = int(obj.get("/Ff", 0) or 0) | MULTILINE
                 obj[NameObject("/Ff")] = NumberObject(ff)
-                # Élargir la zone destinataire pour éviter toute troncature visuelle
-                if "adresse" in name_s.lower():
-                    rect = obj.get("/Rect")
-                    if rect is not None and len(rect) >= 4:
-                        from pypdf.generic import ArrayObject, FloatObject
-                        x0, y0, x1, y1 = [float(v) for v in rect[:4]]
-                        x0 = min(x0, 300.0)
-                        y0 = min(y0, 575.0)
-                        x1 = max(x1, 540.0)
-                        y1 = max(y1, 705.0)
-                        obj[NameObject("/Rect")] = ArrayObject([
-                            FloatObject(x0), FloatObject(y0), FloatObject(x1), FloatObject(y1)
-                        ])
-                        adresse_rect = (x0, y0, x1, y1)
+            if is_decompte_adresse:
+                rect = obj.get("/Rect")
+                if rect is not None and len(rect) >= 4:
+                    from pypdf.generic import ArrayObject, FloatObject
+                    x0, y0, x1, y1 = [float(v) for v in rect[:4]]
+                    x0 = min(x0, 300.0)
+                    y0 = min(y0, 575.0)
+                    x1 = max(x1, 540.0)
+                    y1 = max(y1, 705.0)
+                    obj[NameObject("/Rect")] = ArrayObject([
+                        FloatObject(x0), FloatObject(y0), FloatObject(x1), FloatObject(y1)
+                    ])
+                    adresse_rect = (x0, y0, x1, y1)
 
     for page in writer.pages:
         if text_values:
