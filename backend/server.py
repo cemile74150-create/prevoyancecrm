@@ -2942,7 +2942,7 @@ async def startup():
     try:
         created = await ensure_bootstrap_admin(db)
         if created:
-            logger.info("Bootstrap admin créé (%s)", os.environ.get("ADMIN_EMAIL") or "admin@prevoyancecrm.local")
+            logger.info("Bootstrap admin créé (%s)", os.environ.get("ADMIN_EMAIL") or "cdemirtas@agencemendes.ch")
     except Exception as e:
         logger.error("Bootstrap admin failed: %s", e)
     try:
