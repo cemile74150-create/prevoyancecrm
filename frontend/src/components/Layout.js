@@ -4,8 +4,8 @@ import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
 import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, ShieldCheck, Menu, ClipboardList, Settings2, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import PasswordInput from "@/components/PasswordInput";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -195,8 +195,7 @@ export default function Layout({ children }) {
           <div className="space-y-3 py-1">
             <div className="space-y-1.5">
               <Label className="text-xs">Mot de passe actuel</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 autoComplete="current-password"
@@ -204,8 +203,7 @@ export default function Layout({ children }) {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Nouveau mot de passe</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 autoComplete="new-password"
@@ -213,8 +211,7 @@ export default function Layout({ children }) {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Confirmer</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
+import { ShieldCheck, ArrowRight, Loader2, Eye, EyeOff } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -78,16 +79,27 @@ export default function Login() {
               <label className="text-xs font-medium text-muted-foreground" htmlFor="login-password">
                 Mot de passe
               </label>
-              <input
-                id="login-password"
-                data-testid="login-password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1.5 w-full h-11 px-3 rounded-md border border-border bg-white text-sm outline-none focus:border-[#002FA7] focus:ring-2 focus:ring-[#002FA7]/20"
-                placeholder="••••••••"
-              />
+              <div className="relative mt-1.5">
+                <input
+                  id="login-password"
+                  data-testid="login-password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full h-11 pl-3 pr-11 rounded-md border border-border bg-white text-sm outline-none focus:border-[#002FA7] focus:ring-2 focus:ring-[#002FA7]/20"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  aria-label={showPassword ? "Masquer" : "Afficher"}
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
             <button
               type="submit"

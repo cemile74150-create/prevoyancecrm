@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, KeyRound, UserX, UserCheck, Pencil, Settings2 } from "lucide-react";
+import PasswordInput from "@/components/PasswordInput";
 
 const emptyForm = {
   prenom: "",
@@ -246,7 +247,11 @@ export default function Utilisateurs() {
             {!editing && (
               <div className="space-y-1.5 col-span-2">
                 <Label className="text-xs">Mot de passe *</Label>
-                <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                <PasswordInput
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  autoComplete="new-password"
+                />
               </div>
             )}
             <div className="space-y-1.5">
@@ -296,11 +301,11 @@ export default function Utilisateurs() {
             <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">{pwdDialog?.name}</p>
-          <Input
-            type="password"
+          <PasswordInput
             placeholder="Nouveau mot de passe"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setPwdDialog(null)}>Annuler</Button>
