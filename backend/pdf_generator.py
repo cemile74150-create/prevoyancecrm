@@ -364,10 +364,94 @@ def _resolve_field_name(existing: Dict[str, Any], wanted: str) -> Optional[str]:
     return None
 
 
+def _compose_address_lines(values: Dict[str, str]) -> List[str]:
+    """
+    Compose une adresse suisse lisible :
+    - ligne 1 : rue (+ n°)
+    - ligne 2 : NPA + localité
+    """
+    street = _safe(values.get("rue") or values.get("adresse"))
+    num = _safe(values.get("numero_rue"))
+    if street and num and not re.search(rf"\b{re.escape(num)}\b", street):
+        street = f"{street} {num}".strip()
+    npa = _safe(values.get("npa"))
+    ville = _safe(values.get("ville"))
+    npa_ville = " ".join(p for p in (npa, ville) if p).strip()
+
+    if street and npa_ville:
+        return [street, npa_ville]
+
+    raw = _safe(values.get("adresse_complete") or street or npa_ville)
+    if not raw:
+        return []
+    # "Rue 12, 1202 Genève" → 2 lignes
+    m = re.match(r"^(.+?),\s*(\d{4}\b.*)$", raw)
+    if m:
+        return [m.group(1).strip(), m.group(2).strip()]
+    return [re.sub(r"\s+", " ", raw).strip()]
+
+
+def _fit_text_in_box(
+    preferred_lines: List[str],
+    box_w: float,
+    box_h: float,
+    *,
+    font_name: str = "Helvetica",
+    max_font: float = 11.0,
+    min_font: float = 6.0,
+) -> tuple[float, float, List[str]]:
+    """
+    Choisit fontSize + leading + lignes finales pour tenir dans (box_w x box_h).
+    Préfère 1 ligne si ça rentre, sinon les lignes préférées, sinon word-wrap.
+    """
+    try:
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        from reportlab.lib.utils import simpleSplit
+    except Exception:
+        text = "\n".join(preferred_lines)
+        return 9.0, 11.0, (text.splitlines() or [text])[:3]
+
+    prefs = [re.sub(r"\s+", " ", ln).strip() for ln in preferred_lines if _safe(ln)]
+    if not prefs:
+        return max_font, max_font + 2, [""]
+
+    size = float(max_font)
+    while size >= min_font:
+        leading = size + 2.0
+        max_lines = max(1, int((box_h - 2) // leading))
+        pad_w = max(8.0, box_w - 4.0)
+
+        # 1) Tout sur une ligne si possible
+        joined = ", ".join(prefs)
+        if stringWidth(joined, font_name, size) <= pad_w and max_lines >= 1:
+            return size, leading, [joined]
+
+        # 2) Lignes préférées (rue / NPA ville) si chacune tient
+        if len(prefs) <= max_lines and all(stringWidth(ln, font_name, size) <= pad_w for ln in prefs):
+            return size, leading, prefs
+
+        # 3) Word-wrap sur les lignes préférées
+        wrapped: List[str] = []
+        for para in prefs:
+            wrapped.extend(simpleSplit(para, font_name, size, pad_w) or [""])
+        if len(wrapped) <= max_lines and len(wrapped) * leading <= box_h - 2:
+            return size, leading, wrapped
+
+        size -= 0.5
+
+    # Dernier recours : wrap agressif à min_font
+    leading = min_font + 2.0
+    max_lines = max(1, int((box_h - 2) // leading))
+    pad_w = max(8.0, box_w - 4.0)
+    wrapped = []
+    for para in prefs:
+        wrapped.extend(simpleSplit(para, font_name, min_font, pad_w) or [""])
+    return min_font, leading, wrapped[:max_lines]
+
+
 def _map_recherche_lpp(values: Dict[str, str], options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     options = options or {}
-    # Champ Adresse du formulaire officiel = 1 ligne (h≈22pt) : ne pas injecter de sauts.
-    adresse = re.sub(r"\s+", " ", (values.get("adresse_complete") or values.get("adresse") or "").replace("\r", " ").replace("\n", " ")).strip()
+    # Adresse dessinée via overlay (fit police + wrap) — champ vidé pour éviter le double rendu.
     mapping: Dict[str, Any] = {
         "Nom": values["nom"],
         "Nom 2": "",
@@ -375,7 +459,7 @@ def _map_recherche_lpp(values: Dict[str, str], options: Optional[Dict[str, Any]]
         "Prénom 2": "",
         "Date de naissance": values["date_naissance"],
         "AVS": values["avs"],
-        "Adresse": adresse,
+        "Adresse": "",
         "numero de tel": values["telephone"],
         "Texte10": values["email"] or values["agent_full"],
     }
@@ -1431,6 +1515,7 @@ def _fill_acroform(
     # lettre de décompte a besoin d'une zone destinataire élargie.
     MULTILINE = 1 << 12
     adresse_rect = None
+    recherche_adresse_rect = None
     for page in writer.pages:
         annots = page.get("/Annots")
         if not annots:
@@ -1465,6 +1550,11 @@ def _fill_acroform(
                         FloatObject(x0), FloatObject(y0), FloatObject(x1), FloatObject(y1)
                     ])
                     adresse_rect = (x0, y0, x1, y1)
+            # Capturer le cadre Adresse du formulaire Recherche LPP (sans le déformer)
+            if template_id == "recherche_avoirs_lpp" and name_low == "adresse":
+                rect = obj.get("/Rect")
+                if rect is not None and len(rect) >= 4:
+                    recherche_adresse_rect = tuple(float(v) for v in rect[:4])
 
     for page in writer.pages:
         if text_values:
@@ -1506,15 +1596,38 @@ def _fill_acroform(
                 addr.replace("\r", "\n"),
                 rect=adresse_rect or (300.0, 575.0, 540.0, 705.0),
             )
+
+    # Adresse Recherche LPP : fit police + wrap intelligent dans le cadre (évent. 2 lignes)
+    if template_id == "recherche_avoirs_lpp" and recherche_adresse_rect:
+        lines = _compose_address_lines(values)
+        if lines:
+            x0, y0, x1, y1 = recherche_adresse_rect
+            # Le widget PDF est souvent trop bas (≈22pt) pour 2 lignes lisibles :
+            # on étend légèrement vers le bas uniquement pour le dessin, sans toucher
+            # aux autres champs (téléphone ≈ y=39–61).
+            draw_h = max(y1 - y0, 36.0)
+            draw_y0 = max(70.0, y1 - draw_h)
+            pdf_bytes = _overlay_fitted_text(
+                pdf_bytes,
+                lines,
+                rect=(x0, draw_y0, x1, y1),
+                max_font=10.0,
+                min_font=6.5,
+            )
     return pdf_bytes
 
 
-def _overlay_multiline_text(pdf_bytes: bytes, text: str, rect: tuple[float, float, float, float]) -> bytes:
-    """Dessine un bloc texte multi-lignes (wrap) par-dessus le champ formulaire."""
+def _overlay_fitted_text(
+    pdf_bytes: bytes,
+    preferred_lines: List[str],
+    rect: tuple[float, float, float, float],
+    *,
+    max_font: float = 11.0,
+    min_font: float = 6.0,
+) -> bytes:
+    """Dessine un texte adapté (fontSize + wrap) entièrement dans rect."""
     try:
         from reportlab.pdfgen.canvas import Canvas
-        from reportlab.lib.utils import simpleSplit
-        from pypdf.generic import IndirectObject
     except Exception:
         return pdf_bytes
 
@@ -1526,33 +1639,21 @@ def _overlay_multiline_text(pdf_bytes: bytes, text: str, rect: tuple[float, floa
     page_h = float(page0.mediabox.height)
     x0, y0, x1, y1 = rect
     box_w = max(40.0, x1 - x0)
-    box_h = max(40.0, y1 - y0)
+    box_h = max(14.0, y1 - y0)
+
+    font_size, leading, lines = _fit_text_in_box(
+        preferred_lines, box_w, box_h, max_font=max_font, min_font=min_font
+    )
 
     packet = io.BytesIO()
     canvas = Canvas(packet, pagesize=(page_w, page_h))
-    # Fond blanc pour masquer une éventuelle apparence tronquée du champ
     canvas.setFillColorRGB(1, 1, 1)
-    canvas.rect(x0 - 1, y0 - 1, box_w + 2, box_h + 2, fill=1, stroke=0)
+    canvas.rect(x0 - 0.5, y0 - 0.5, box_w + 1, box_h + 1, fill=1, stroke=0)
     canvas.setFillColorRGB(0, 0, 0)
-
-    font_size = 10
-    leading = font_size + 2
-    # Réduire la police si trop de lignes
-    lines: List[str] = []
-    while font_size >= 8:
-        lines = []
-        leading = font_size + 2
-        for para in (text or "").splitlines() or [""]:
-            wrapped = simpleSplit(para, "Helvetica", font_size, box_w - 4) or [""]
-            lines.extend(wrapped)
-        if len(lines) * leading <= box_h - 4:
-            break
-        font_size -= 1
-
     canvas.setFont("Helvetica", font_size)
-    y = y1 - font_size - 2
+    y = y1 - font_size - 1.5
     for line in lines:
-        if y < y0:
+        if y < y0 - 0.5:
             break
         canvas.drawString(x0 + 2, y, line)
         y -= leading
@@ -1568,6 +1669,11 @@ def _overlay_multiline_text(pdf_bytes: bytes, text: str, rect: tuple[float, floa
     writer.write(out)
     return out.getvalue()
 
+
+def _overlay_multiline_text(pdf_bytes: bytes, text: str, rect: tuple[float, float, float, float]) -> bytes:
+    """Dessine un bloc texte multi-lignes (wrap + auto font) par-dessus le champ formulaire."""
+    preferred = [ln for ln in (text or "").replace("\r", "\n").split("\n")]
+    return _overlay_fitted_text(pdf_bytes, preferred or [""], rect, max_font=10.0, min_font=6.0)
 
 def generate_document_pdf(
     template_id: str,
