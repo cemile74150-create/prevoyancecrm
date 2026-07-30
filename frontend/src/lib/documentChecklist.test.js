@@ -11,8 +11,12 @@ describe('document checklist helpers', () => {
 
   it('uses a single Demande LPP checklist item', () => {
     expect(DOCUMENT_CHECKLIST_ITEMS).toContain('Demande LPP');
+    expect(DOCUMENT_CHECKLIST_ITEMS).toContain('Déclaration fiscale');
     expect(DOCUMENT_CHECKLIST_ITEMS).not.toContain('Procuration');
     expect(DOCUMENT_CHECKLIST_ITEMS).not.toContain('Formulaire Recherche LPP');
+    expect(DOCUMENT_CHECKLIST_ITEMS.indexOf('Déclaration fiscale')).toBeLessThan(
+      DOCUMENT_CHECKLIST_ITEMS.indexOf('Autre formulaire')
+    );
   });
 
   it('merges saved checklist values when provided', () => {

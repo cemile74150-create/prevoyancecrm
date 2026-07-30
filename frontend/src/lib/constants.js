@@ -66,11 +66,13 @@ export const STATUT_DOT = {
 export const DOC_CATEGORIES = [
   "Certificat LPP",
   "Déclaration d'impôt",
+  "Déclaration fiscale",
   "Pièce d'identité",
   "Fiches de salaire",
   "Contrats",
   "Procuration",
   "Formulaire AVS",
   "Formulaire de recherche LPP",
+  "Police 3e pilier",
   "Autre",
 ];
