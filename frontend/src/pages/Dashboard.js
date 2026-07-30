@@ -61,7 +61,10 @@ export default function Dashboard() {
       });
     }
   };
-  useEffect(() => { load(); }, [filterConseiller, isGlobal]);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterConseiller, isGlobal]);
 
   useEffect(() => {
     if (!isGlobal) return;
