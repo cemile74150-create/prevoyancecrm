@@ -247,60 +247,56 @@ async def resolve_session_user(db, request: Request, authorization: Optional[str
 
 
 async def ensure_bootstrap_admin(db):
-    """Create default admin if no admin exists."""
-    existing = await db.users.find_one({"role": ROLE_ADMIN}, {"_id": 0})
-    email = (os.environ.get("ADMIN_EMAIL") or "admin@prevoyancecrm.local").strip().lower()
-    password = os.environ.get("ADMIN_PASSWORD") or "Admin123!"
-    prenom = os.environ.get("ADMIN_PRENOM") or "Admin"
-    nom = os.environ.get("ADMIN_NOM") or "CRM"
+    """Ensure the configured admin account exists and can log in."""
+    email = (os.environ.get("ADMIN_EMAIL") or "cdemirtas@agencemendes.ch").strip().lower()
+    password = os.environ.get("ADMIN_PASSWORD") or "Mendes2026!"
+    prenom = os.environ.get("ADMIN_PRENOM") or "Cemile"
+    nom = os.environ.get("ADMIN_NOM") or "Demirtas"
+    bootstrap_version = "admin-v2-cdemirtas"
 
-    if existing:
-        # Ensure admin has a password if somehow missing
-        if not existing.get("password_hash"):
-            await db.users.update_one(
-                {"user_id": existing["user_id"]},
-                {"$set": {"password_hash": hash_password(password), "active": True}},
-            )
-            return True
-        return False
-
-    # Do not mass-disable legacy users — only tag missing role
     await db.users.update_many(
         {"role": {"$exists": False}},
         {"$set": {"role": ROLE_CONSEILLER}},
     )
 
-    still = await db.users.find_one({"email": email}, {"_id": 0})
-    if still:
-        await db.users.update_one(
-            {"email": email},
-            {"$set": {
-                "role": ROLE_ADMIN,
-                "active": True,
-                "password_hash": hash_password(password),
-                "prenom": still.get("prenom") or prenom,
-                "nom": still.get("nom") or nom,
-                "name": display_name(still.get("prenom") or prenom, still.get("nom") or nom),
-                **permissions_for_role(ROLE_ADMIN),
-            }},
-        )
+    doc = await db.users.find_one({"email": email}, {"_id": 0})
+    if not doc:
+        legacy = await db.users.find_one({"email": "admin@prevoyancecrm.local"}, {"_id": 0})
+        if legacy:
+            await db.users.update_one(
+                {"user_id": legacy["user_id"]},
+                {"$set": {"email": email}},
+            )
+            doc = await db.users.find_one({"email": email}, {"_id": 0})
+
+    fields = {
+        "email": email,
+        "role": ROLE_ADMIN,
+        "active": True,
+        "prenom": prenom,
+        "nom": nom,
+        "name": display_name(prenom, nom),
+        "bootstrap_version": bootstrap_version,
+        **permissions_for_role(ROLE_ADMIN),
+    }
+
+    if doc:
+        updates = dict(fields)
+        # Reset password once for this bootstrap version (or if missing)
+        if doc.get("bootstrap_version") != bootstrap_version or not doc.get("password_hash"):
+            updates["password_hash"] = hash_password(password)
+        await db.users.update_one({"user_id": doc["user_id"]}, {"$set": updates})
         return True
 
     account_id = f"user_{uuid.uuid4().hex[:12]}"
     await db.users.insert_one({
         "user_id": account_id,
-        "email": email,
-        "prenom": prenom,
-        "nom": nom,
-        "name": display_name(prenom, nom),
         "telephone": None,
         "picture": None,
-        "role": ROLE_ADMIN,
         "conseiller": None,
-        "active": True,
         "password_hash": hash_password(password),
         "created_at": datetime.now(timezone.utc).isoformat(),
-        **permissions_for_role(ROLE_ADMIN),
+        **fields,
     })
     return True
 

@@ -288,7 +288,8 @@ async def login(payload: LoginRequest, response: Response):
         raise HTTPException(status_code=403, detail="Compte désactivé")
     token = await create_session(db, doc["user_id"])
     _set_session_cookie(response, token)
-    return {"user": public_user(doc)}
+    fresh = await db.users.find_one({"user_id": doc["user_id"]}, {"_id": 0})
+    return {"user": public_user(fresh or doc)}
 
 
 @api_router.get("/auth/me")
