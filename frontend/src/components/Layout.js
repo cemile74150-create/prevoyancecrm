@@ -2,7 +2,14 @@ import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
-import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, ShieldCheck, Menu, ClipboardList, Settings2 } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, ShieldCheck, Menu, ClipboardList, Settings2, KeyRound } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 const nav = [
   { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard, testid: "nav-dashboard" },
@@ -20,6 +27,11 @@ export default function Layout({ children }) {
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [pwdOpen, setPwdOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [savingPwd, setSavingPwd] = useState(false);
 
   const navItems = isAdmin
     ? [...nav, { to: "/utilisateurs", label: "Utilisateurs", icon: Settings2, testid: "nav-users" }]
@@ -34,6 +46,37 @@ export default function Layout({ children }) {
     }, 250);
     return () => clearTimeout(t);
   }, [q]);
+
+  const changePassword = async () => {
+    if (!currentPassword || !newPassword) {
+      toast.error("Remplissez tous les champs");
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast.error("Nouveau mot de passe trop court (min. 6)");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("La confirmation ne correspond pas");
+      return;
+    }
+    setSavingPwd(true);
+    try {
+      await api.post("/auth/change-password", {
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+      toast.success("Mot de passe modifié");
+      setPwdOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Modification impossible");
+    } finally {
+      setSavingPwd(false);
+    }
+  };
 
   const SidebarInner = () => (
     <div className="flex flex-col h-full">
@@ -62,7 +105,7 @@ export default function Layout({ children }) {
         ))}
       </nav>
       <div className="p-3 border-t border-border">
-        <div className="flex items-center gap-3 px-2 py-2">
+        <div className="flex items-center gap-2 px-2 py-2">
           {user?.picture ? (
             <img src={user.picture} alt="" className="h-9 w-9 rounded-full object-cover" />
           ) : (
@@ -76,6 +119,14 @@ export default function Layout({ children }) {
               {user?.role_label || user?.role || user?.email}
             </p>
           </div>
+          <button
+            title="Changer mon mot de passe"
+            data-testid="change-password-btn"
+            onClick={() => setPwdOpen(true)}
+            className="p-2 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <KeyRound className="h-4 w-4" />
+          </button>
           <button data-testid="logout-btn" onClick={logout} className="p-2 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors">
             <LogOut className="h-4 w-4" />
           </button>
@@ -86,12 +137,10 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sidebar desktop */}
       <aside className="hidden lg:flex fixed inset-y-0 left-0 w-64 bg-card border-r border-border flex-col z-30">
         <SidebarInner />
       </aside>
 
-      {/* Mobile sidebar */}
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
@@ -102,7 +151,6 @@ export default function Layout({ children }) {
       )}
 
       <div className="lg:pl-64">
-        {/* Header */}
         <header className="sticky top-0 z-20 h-16 bg-card/90 backdrop-blur border-b border-border flex items-center gap-4 px-4 lg:px-8">
           <button className="lg:hidden p-2" onClick={() => setMobileOpen(true)} data-testid="mobile-menu-btn">
             <Menu className="h-5 w-5" />
@@ -138,6 +186,49 @@ export default function Layout({ children }) {
 
         <main className="p-4 lg:p-8">{children}</main>
       </div>
+
+      <Dialog open={pwdOpen} onOpenChange={setPwdOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Changer mon mot de passe</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Mot de passe actuel</Label>
+              <Input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nouveau mot de passe</Label>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Confirmer</Label>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPwdOpen(false)}>Annuler</Button>
+            <Button onClick={changePassword} disabled={savingPwd} className="bg-[#002FA7] hover:bg-[#00248a]">
+              {savingPwd ? "Enregistrement…" : "Enregistrer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

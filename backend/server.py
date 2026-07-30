@@ -19,6 +19,7 @@ from access_control import (
     UserCreate,
     UserUpdate,
     PasswordReset,
+    ChangePasswordRequest,
     TENANT_USER_ID,
     ROLES,
     ROLE_LABELS,
@@ -306,6 +307,27 @@ async def logout(response: Response, request: Request):
     if token:
         await db.user_sessions.delete_one({"session_token": token})
     response.delete_cookie("session_token", path="/")
+    return {"ok": True}
+
+
+@api_router.post("/auth/change-password")
+async def change_own_password(payload: ChangePasswordRequest, user: User = Depends(get_current_user)):
+    """Chaque utilisateur peut modifier son propre mot de passe."""
+    doc = await db.users.find_one({"user_id": user.account_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    if not verify_password(payload.current_password, doc.get("password_hash") or ""):
+        raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+    if len(payload.new_password or "") < 6:
+        raise HTTPException(status_code=400, detail="Nouveau mot de passe trop court (min. 6)")
+    if payload.current_password == payload.new_password:
+        raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit être différent")
+    await db.users.update_one(
+        {"user_id": user.account_id},
+        {"$set": {"password_hash": hash_password(payload.new_password)}},
+    )
+    # Invalider les autres sessions sauf celle en cours n'est pas simple sans token ici ;
+    # on garde la session actuelle pour ne pas déconnecter l'utilisateur.
     return {"ok": True}
 
 
