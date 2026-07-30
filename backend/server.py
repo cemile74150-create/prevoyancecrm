@@ -13,6 +13,36 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
+from access_control import (
+    User,
+    LoginRequest,
+    UserCreate,
+    UserUpdate,
+    PasswordReset,
+    TENANT_USER_ID,
+    ROLES,
+    ROLE_LABELS,
+    ROLE_ADMIN,
+    ROLE_CEO,
+    ROLE_CONSEILLER,
+    DEFAULT_CONSEILLERS,
+    hash_password,
+    verify_password,
+    display_name,
+    permissions_for_role,
+    user_from_doc,
+    public_user,
+    is_global_viewer,
+    can_access_client,
+    require_admin,
+    require_settings,
+    clients_base_query,
+    force_conseiller_on_write,
+    create_session,
+    resolve_session_user,
+    ensure_bootstrap_admin,
+    accessible_client_ids,
+)
 from pdf_generator import (
     list_templates,
     list_demand_packs,
@@ -114,12 +144,6 @@ def normalize_statut(statut: Optional[str]) -> str:
     return STATUT_LEGACY_MAP.get(statut, statut)
 
 # ---------------- Models ----------------
-class User(BaseModel):
-    user_id: str
-    email: str
-    name: str
-    picture: Optional[str] = None
-
 class ClientBase(BaseModel):
     prenom: str = ""
     nom: str = ""
@@ -239,48 +263,41 @@ class TaskCreate(BaseModel):
 
 # ---------------- Auth ----------------
 async def get_current_user(request: Request, authorization: Optional[str] = Header(None)) -> User:
-    return User(
-        user_id="local-dev",
-        email="demo@prevoyancecrm.local",
-        name="Démonstration",
-        picture=None
+    return await resolve_session_user(db, request, authorization)
+
+
+def _set_session_cookie(response: Response, token: str):
+    response.set_cookie(
+        key="session_token",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",
+        max_age=7 * 24 * 60 * 60,
     )
 
-@api_router.post("/auth/session")
-async def process_session(response: Response, x_session_id: Optional[str] = Header(None)):
-    if not x_session_id:
-        raise HTTPException(status_code=400, detail="session_id manquant")
-    resp = requests.get(
-        "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-        headers={"X-Session-ID": x_session_id}, timeout=30,
-    )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=401, detail="Session invalide")
-    data = resp.json()
-    email = data["email"]
-    existing = await db.users.find_one({"email": email}, {"_id": 0})
-    if existing:
-        user_id = existing["user_id"]
-        await db.users.update_one({"user_id": user_id}, {"$set": {"name": data.get("name"), "picture": data.get("picture")}})
-    else:
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        await db.users.insert_one({
-            "user_id": user_id, "email": email, "name": data.get("name"),
-            "picture": data.get("picture"), "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-    session_token = data["session_token"]
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-    await db.user_sessions.insert_one({
-        "user_id": user_id, "session_token": session_token,
-        "expires_at": expires_at.isoformat(), "created_at": datetime.now(timezone.utc).isoformat(),
-    })
-    response.set_cookie(key="session_token", value=session_token, httponly=True, secure=True, samesite="none", path="/", max_age=7*24*60*60)
-    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    return {"user": User(**user_doc)}
+
+@api_router.post("/auth/login")
+async def login(payload: LoginRequest, response: Response):
+    email = payload.email.strip().lower()
+    doc = await db.users.find_one({"email": email}, {"_id": 0})
+    if not doc or not verify_password(payload.password, doc.get("password_hash") or ""):
+        raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
+    if doc.get("active") is False:
+        raise HTTPException(status_code=403, detail="Compte désactivé")
+    token = await create_session(db, doc["user_id"])
+    _set_session_cookie(response, token)
+    return {"user": public_user(doc)}
+
 
 @api_router.get("/auth/me")
 async def auth_me(user: User = Depends(get_current_user)):
-    return user
+    doc = await db.users.find_one({"user_id": user.account_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=401, detail="Utilisateur introuvable")
+    return public_user(doc)
+
 
 @api_router.post("/auth/logout")
 async def logout(response: Response, request: Request):
@@ -290,7 +307,159 @@ async def logout(response: Response, request: Request):
     response.delete_cookie("session_token", path="/")
     return {"ok": True}
 
+
+# ---------------- Users (admin) ----------------
+@api_router.get("/users/roles")
+async def list_roles(user: User = Depends(get_current_user)):
+    require_admin(user)
+    return [{"id": r, "label": ROLE_LABELS[r]} for r in ROLES]
+
+
+@api_router.get("/users/conseillers")
+async def list_conseiller_names(user: User = Depends(get_current_user)):
+    """Liste des noms de conseillers (pour attribution dossiers)."""
+    names = set(DEFAULT_CONSEILLERS)
+    async for u in db.users.find({"role": ROLE_CONSEILLER, "active": {"$ne": False}}, {"conseiller": 1, "name": 1, "prenom": 1, "nom": 1}):
+        n = (u.get("conseiller") or u.get("name") or display_name(u.get("prenom") or "", u.get("nom") or "")).strip()
+        if n:
+            names.add(n)
+    async for c in db.clients.find({"user_id": TENANT_USER_ID, "conseiller": {"$nin": [None, ""]}}, {"conseiller": 1}):
+        n = (c.get("conseiller") or "").strip()
+        if n:
+            names.add(n)
+    return sorted(names, key=lambda x: x.lower())
+
+
+@api_router.get("/users")
+async def list_users(user: User = Depends(get_current_user)):
+    require_admin(user)
+    rows = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
+    rows.sort(key=lambda u: ((u.get("nom") or "").lower(), (u.get("prenom") or "").lower()))
+    return [public_user({**r, "password_hash": ""}) for r in rows]
+
+
+@api_router.post("/users")
+async def create_user(payload: UserCreate, user: User = Depends(get_current_user)):
+    require_admin(user)
+    role = payload.role if payload.role in ROLES else ROLE_CONSEILLER
+    email = payload.email.strip().lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Cet e-mail est déjà utilisé")
+    if len(payload.password or "") < 6:
+        raise HTTPException(status_code=400, detail="Mot de passe trop court (min. 6)")
+    name = display_name(payload.prenom, payload.nom)
+    conseiller = (payload.conseiller or "").strip() or (name if role == ROLE_CONSEILLER else None)
+    account_id = f"user_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "user_id": account_id,
+        "email": email,
+        "prenom": payload.prenom.strip(),
+        "nom": payload.nom.strip(),
+        "name": name,
+        "telephone": (payload.telephone or "").strip() or None,
+        "picture": None,
+        "role": role,
+        "conseiller": conseiller,
+        "active": True,
+        "password_hash": hash_password(payload.password),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        **permissions_for_role(role),
+    }
+    await db.users.insert_one(doc)
+    return public_user(doc)
+
+
+@api_router.put("/users/{account_id}")
+async def update_user(account_id: str, payload: UserUpdate, user: User = Depends(get_current_user)):
+    require_admin(user)
+    doc = await db.users.find_one({"user_id": account_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    updates = {}
+    if payload.prenom is not None:
+        updates["prenom"] = payload.prenom.strip()
+    if payload.nom is not None:
+        updates["nom"] = payload.nom.strip()
+    if payload.email is not None:
+        email = payload.email.strip().lower()
+        other = await db.users.find_one({"email": email, "user_id": {"$ne": account_id}})
+        if other:
+            raise HTTPException(status_code=400, detail="Cet e-mail est déjà utilisé")
+        updates["email"] = email
+    if payload.telephone is not None:
+        updates["telephone"] = payload.telephone.strip() or None
+    if payload.role is not None:
+        if payload.role not in ROLES:
+            raise HTTPException(status_code=400, detail="Rôle invalide")
+        updates["role"] = payload.role
+        updates.update(permissions_for_role(payload.role))
+    if payload.conseiller is not None:
+        updates["conseiller"] = payload.conseiller.strip() or None
+    if payload.active is not None:
+        if account_id == user.account_id and payload.active is False:
+            raise HTTPException(status_code=400, detail="Vous ne pouvez pas désactiver votre propre compte")
+        updates["active"] = payload.active
+    prenom = updates.get("prenom", doc.get("prenom") or "")
+    nom = updates.get("nom", doc.get("nom") or "")
+    updates["name"] = display_name(prenom, nom)
+    role = updates.get("role", doc.get("role"))
+    if role == ROLE_CONSEILLER and not updates.get("conseiller", doc.get("conseiller")):
+        updates["conseiller"] = updates["name"]
+    await db.users.update_one({"user_id": account_id}, {"$set": updates})
+    fresh = await db.users.find_one({"user_id": account_id}, {"_id": 0})
+    return public_user(fresh)
+
+
+@api_router.post("/users/{account_id}/reset-password")
+async def reset_user_password(account_id: str, payload: PasswordReset, user: User = Depends(get_current_user)):
+    require_admin(user)
+    if len(payload.password or "") < 6:
+        raise HTTPException(status_code=400, detail="Mot de passe trop court (min. 6)")
+    res = await db.users.update_one(
+        {"user_id": account_id},
+        {"$set": {"password_hash": hash_password(payload.password)}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    await db.user_sessions.delete_many({"user_id": account_id})
+    return {"ok": True}
+
+
+@api_router.post("/users/{account_id}/deactivate")
+async def deactivate_user(account_id: str, user: User = Depends(get_current_user)):
+    require_admin(user)
+    if account_id == user.account_id:
+        raise HTTPException(status_code=400, detail="Vous ne pouvez pas désactiver votre propre compte")
+    res = await db.users.update_one({"user_id": account_id}, {"$set": {"active": False}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    await db.user_sessions.delete_many({"user_id": account_id})
+    return {"ok": True}
+
+
 # ---------------- Helpers ----------------
+async def require_client(client_id: str, user: User) -> dict:
+    c = await require_client(client_id, user)
+    if not can_access_client(user, c):
+        raise HTTPException(status_code=403, detail="Accès non autorisé à ce dossier")
+    return c
+
+
+async def require_resource_client(resource: dict, user: User, label: str = "Ressource"):
+    cid = resource.get("client_id")
+    if cid:
+        await require_client(cid, user)
+        return
+    if is_global_viewer(user):
+        return
+    assigned = (resource.get("conseiller") or "").strip()
+    if assigned and assigned == (user.conseiller or "").strip():
+        return
+    if resource.get("created_by") == user.account_id:
+        return
+    raise HTTPException(status_code=403, detail=f"Accès non autorisé — {label}")
+
+
 async def log_action(user_id: str, client_id: str, description: str, dossier_id: Optional[str] = None):
     await db.actions.insert_one({
         "id": str(uuid.uuid4()), "user_id": user_id, "client_id": client_id,
@@ -532,8 +701,13 @@ def _lpp_tracking_from_funds(funds: List[dict], existing: Optional[List[dict]] =
 
 # ---------------- Clients ----------------
 @api_router.get("/clients")
-async def list_clients(q: Optional[str] = None, statut: Optional[str] = None, user: User = Depends(get_current_user)):
-    query = {"user_id": user.user_id}
+async def list_clients(
+    q: Optional[str] = None,
+    statut: Optional[str] = None,
+    conseiller: Optional[str] = None,
+    user: User = Depends(get_current_user),
+):
+    query = clients_base_query(user, conseiller=conseiller)
     wanted = normalize_statut(statut) if statut else None
     # Inclure aussi les anciens libellés si le filtre correspond à un statut migré.
     if wanted:
@@ -555,6 +729,7 @@ async def create_client(payload: ClientCreate, user: User = Depends(get_current_
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["user_id"] = user.user_id
+    doc["conseiller"] = force_conseiller_on_write(user, doc.get("conseiller"))
     doc["statut"] = normalize_statut(doc.get("statut"))
     doc["numero_dossier"] = await next_dossier_number(user.user_id)
     doc["dossier_id"] = doc["id"]
@@ -570,16 +745,14 @@ async def create_client(payload: ClientCreate, user: User = Depends(get_current_
 
 @api_router.get("/clients/{client_id}")
 async def get_client(client_id: str, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     try:
         # Nettoyage "strict" côté lecture : évite que d'anciennes lignes erronées restent visibles
         # si l'utilisateur n'a pas re-upload/supprimé un document depuis.
         lines = c.get("echeances_3p")
         if isinstance(lines, list) and len(lines) > 0:
             await _reconcile_echeances_3p_lines(user.user_id, client_id)
-            c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+            c = await require_client(client_id, user)
     except Exception:
         logger.exception("Reconciliation echeances_3p échouée (get_client)")
     if c:
@@ -596,6 +769,8 @@ async def get_dossier(dossier_id: str, user: User = Depends(get_current_user)):
         primary = await db.clients.find_one({"id": dossier_id, "user_id": user.user_id}, {"_id": 0})
         if not primary:
             raise HTTPException(status_code=404, detail="Dossier introuvable")
+        if not can_access_client(user, primary):
+            raise HTTPException(status_code=403, detail="Accès non autorisé à ce dossier")
         members = [primary]
         spouse_id = primary.get("linked_spouse_id")
         if spouse_id:
@@ -618,6 +793,13 @@ async def get_dossier(dossier_id: str, user: User = Depends(get_current_user)):
             m["dossier_id"] = dossier_id
             m["dossier_label"] = dossier_label
             m["numero_dossier"] = primary.get("numero_dossier")
+    else:
+        if not any(can_access_client(user, m) for m in members):
+            raise HTTPException(status_code=403, detail="Accès non autorisé à ce dossier")
+        if not is_global_viewer(user):
+            members = [m for m in members if can_access_client(user, m)]
+            if not members:
+                raise HTTPException(status_code=403, detail="Accès non autorisé à ce dossier")
     primary = members[0]
     scope_id = primary.get("dossier_id") or dossier_id
     member_ids = [m["id"] for m in members]
@@ -653,10 +835,9 @@ async def get_dossier(dossier_id: str, user: User = Depends(get_current_user)):
 
 @api_router.put("/clients/{client_id}")
 async def update_client(client_id: str, payload: ClientCreate, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     update = payload.model_dump()
+    update["conseiller"] = force_conseiller_on_write(user, update.get("conseiller"))
     update["statut"] = normalize_statut(update.get("statut"))
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.clients.update_one({"id": client_id}, {"$set": update})
@@ -668,9 +849,7 @@ async def update_statut(client_id: str, payload: StatutUpdate, user: User = Depe
     statut = normalize_statut(payload.statut)
     if statut not in STATUTS:
         raise HTTPException(status_code=400, detail="Statut invalide")
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
 
     # Statut commun au dossier familial : tous les membres avancent ensemble.
     scope = await _dossier_scope(user.user_id, c)
@@ -690,9 +869,7 @@ async def update_statut(client_id: str, payload: StatutUpdate, user: User = Depe
 
 @api_router.patch("/clients/{client_id}/document-checklist")
 async def update_document_checklist(client_id: str, payload: DocumentChecklistUpdate, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     await db.clients.update_one(
         {"id": client_id, "user_id": user.user_id},
         {"$set": {
@@ -704,9 +881,7 @@ async def update_document_checklist(client_id: str, payload: DocumentChecklistUp
 
 @api_router.patch("/clients/{client_id}/lpp-caisse-tracking")
 async def update_lpp_caisse_tracking(client_id: str, payload: LppCaisseTrackingUpdate, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     tracking = [
         {**entry, "id": entry.get("id") or str(uuid.uuid4()), "sent": bool(entry.get("sent")), "received": bool(entry.get("received"))}
         for entry in payload.lpp_caisse_tracking if entry.get("name")
@@ -718,9 +893,7 @@ async def update_lpp_caisse_tracking(client_id: str, payload: LppCaisseTrackingU
 
 @api_router.delete("/clients/{client_id}")
 async def delete_client(client_id: str, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     spouse_id = c.get("linked_spouse_id")
     if spouse_id:
         await db.clients.update_one(
@@ -735,9 +908,7 @@ async def delete_client(client_id: str, user: User = Depends(get_current_user)):
 # ---------------- Notes ----------------
 @api_router.get("/clients/{client_id}/notes")
 async def list_notes(client_id: str, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     scope = await _dossier_scope(user.user_id, c)
     query = {
         "user_id": user.user_id,
@@ -750,9 +921,7 @@ async def list_notes(client_id: str, user: User = Depends(get_current_user)):
 
 @api_router.post("/clients/{client_id}/notes")
 async def add_note(client_id: str, payload: NoteCreate, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     scope = await _dossier_scope(user.user_id, c)
     doc = {
         "id": str(uuid.uuid4()),
@@ -796,10 +965,12 @@ async def _enrich_demande_with_client(demande: dict) -> dict:
 @api_router.get("/demandes")
 async def list_all_demandes(
     done: Optional[bool] = Query(False),
+    conseiller: Optional[str] = None,
     user: User = Depends(get_current_user),
 ):
     """Liste globale des demandes. Par défaut : non traitées uniquement."""
-    query: dict = {"user_id": user.user_id}
+    client_ids = await accessible_client_ids(db, user, conseiller=conseiller)
+    query: dict = {"user_id": user.user_id, "client_id": {"$in": client_ids}}
     if done is not None:
         query["done"] = bool(done)
     demandes = await db.demandes.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
@@ -814,9 +985,7 @@ async def list_all_demandes(
 
 @api_router.get("/clients/{client_id}/demandes")
 async def list_client_demandes(client_id: str, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     scope = await _dossier_scope(user.user_id, c)
     query = {
         "user_id": user.user_id,
@@ -835,9 +1004,7 @@ async def list_client_demandes(client_id: str, user: User = Depends(get_current_
 
 @api_router.post("/clients/{client_id}/demandes")
 async def create_demande(client_id: str, payload: DemandeCreate, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     titre = (payload.titre or "").strip()
     if not titre:
         raise HTTPException(status_code=400, detail="Titre obligatoire")
@@ -853,7 +1020,8 @@ async def create_demande(client_id: str, payload: DemandeCreate, user: User = De
         "priorite": _normalize_demande_priorite(payload.priorite),
         "done": False,
         "author": getattr(user, "name", None) or None,
-        "created_by": getattr(user, "user_id", None) or None,
+        "created_by": user.account_id,
+        "conseiller": c.get("conseiller"),
         "created_at": now_iso,
         "done_at": None,
         "done_by": None,
@@ -870,6 +1038,7 @@ async def update_demande(demande_id: str, payload: DemandeUpdate, user: User = D
     d = await db.demandes.find_one({"id": demande_id, "user_id": user.user_id}, {"_id": 0})
     if not d:
         raise HTTPException(status_code=404, detail="Demande introuvable")
+    await require_resource_client(d, user, "demande")
 
     updates: dict = {}
     if payload.titre is not None:
@@ -888,7 +1057,7 @@ async def update_demande(demande_id: str, payload: DemandeUpdate, user: User = D
         updates["done"] = new_done
         if new_done and not was_done:
             updates["done_at"] = datetime.now(timezone.utc).isoformat()
-            updates["done_by"] = getattr(user, "user_id", None) or None
+            updates["done_by"] = user.account_id
             updates["done_by_name"] = getattr(user, "name", None) or None
         elif not new_done and was_done:
             updates["done_at"] = None
@@ -904,17 +1073,17 @@ async def update_demande(demande_id: str, payload: DemandeUpdate, user: User = D
 
 @api_router.delete("/demandes/{demande_id}")
 async def delete_demande(demande_id: str, user: User = Depends(get_current_user)):
-    res = await db.demandes.delete_one({"id": demande_id, "user_id": user.user_id})
-    if res.deleted_count == 0:
+    d = await db.demandes.find_one({"id": demande_id, "user_id": user.user_id}, {"_id": 0})
+    if not d:
         raise HTTPException(status_code=404, detail="Demande introuvable")
+    await require_resource_client(d, user, "demande")
+    await db.demandes.delete_one({"id": demande_id, "user_id": user.user_id})
     return {"ok": True}
 
 # ---------------- Actions history ----------------
 @api_router.get("/clients/{client_id}/actions")
 async def list_actions(client_id: str, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     scope = await _dossier_scope(user.user_id, c)
     query = {
         "user_id": user.user_id,
@@ -971,9 +1140,7 @@ async def _store_pdf_bytes(user_id: str, pdf_bytes: bytes, meta: dict, client_id
 
 @api_router.get("/clients/{client_id}/documents")
 async def list_documents(client_id: str, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     scope = await _dossier_scope(user.user_id, c)
     query = {
         "user_id": user.user_id,
@@ -1208,9 +1375,7 @@ async def upload_document(
     checklist_item: Optional[str] = Form(None),
     user: User = Depends(get_current_user),
 ):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
     path = f"{APP_NAME}/uploads/{user.user_id}/{uuid.uuid4()}.{ext}"
     data = await file.read()
@@ -1485,6 +1650,7 @@ async def upload_form_library(
     file: UploadFile = File(...),
     name: str = Form(...),
 ):
+    require_settings(user)
     label = (name or "").strip()
     if not label:
         raise HTTPException(status_code=400, detail="Nom du formulaire requis")
@@ -1542,6 +1708,7 @@ async def update_form_library(
     payload: UpdateFormLibraryRequest,
     user: User = Depends(get_current_user),
 ):
+    require_settings(user)
     record = await db.form_library.find_one(
         {"id": form_id, "user_id": user.user_id, "is_deleted": {"$ne": True}},
         {"_id": 0},
@@ -1585,6 +1752,7 @@ async def update_form_library(
 
 @api_router.delete("/form-library/{form_id}")
 async def delete_form_library(form_id: str, user: User = Depends(get_current_user)):
+    require_settings(user)
     res = await db.form_library.update_one(
         {"id": form_id, "user_id": user.user_id},
         {"$set": {"is_deleted": True}},
@@ -1691,9 +1859,7 @@ async def generate_library_form_for_client(
     payload: GenerateLibraryFormRequest,
     user: User = Depends(get_current_user),
 ):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     form = await db.form_library.find_one(
         {"id": payload.library_form_id, "user_id": user.user_id, "is_deleted": {"$ne": True}},
         {"_id": 0},
@@ -1751,9 +1917,7 @@ async def generate_library_form_for_client(
 
 @api_router.post("/clients/{client_id}/generate-document")
 async def generate_client_document(client_id: str, payload: GenerateDocumentRequest, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     try:
         get_template(payload.template_id)
     except KeyError:
@@ -1784,9 +1948,7 @@ async def generate_client_document(client_id: str, payload: GenerateDocumentRequ
 
 @api_router.post("/clients/{client_id}/generate-demand")
 async def generate_client_demand(client_id: str, payload: GenerateDemandRequest, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     if payload.pack_id not in DEMAND_PACKS:
         raise HTTPException(status_code=400, detail="Type de demande inconnu")
     try:
@@ -1806,9 +1968,7 @@ async def generate_client_demand(client_id: str, payload: GenerateDemandRequest,
 
 @api_router.post("/clients/{client_id}/parse-lpp-response")
 async def parse_lpp_response(client_id: str, file: UploadFile = File(...), user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     data = await file.read()
     path = f"{APP_NAME}/uploads/{user.user_id}/{uuid.uuid4()}.pdf"
     try:
@@ -1867,9 +2027,7 @@ async def parse_lpp_response(client_id: str, file: UploadFile = File(...), user:
 @api_router.post("/clients/{client_id}/reparse-lpp-response/{doc_id}")
 async def reparse_lpp_response(client_id: str, doc_id: str, user: User = Depends(get_current_user)):
     """Relance l'OCR sur une réponse LPP déjà téléversée."""
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     doc = await db.documents.find_one(
         {"id": doc_id, "client_id": client_id, "user_id": user.user_id, "is_deleted": False},
         {"_id": 0},
@@ -1908,9 +2066,7 @@ async def reparse_lpp_response(client_id: str, doc_id: str, user: User = Depends
 
 @api_router.post("/clients/{client_id}/generate-decompte-letters")
 async def generate_decompte_for_funds(client_id: str, payload: GenerateDecompteRequest, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     if not payload.funds:
         raise HTTPException(status_code=400, detail="Sélectionnez au moins une caisse")
     try:
@@ -1929,9 +2085,7 @@ async def generate_decompte_for_funds(client_id: str, payload: GenerateDecompteR
 
 @api_router.post("/clients/{client_id}/create-spouse")
 async def create_spouse(client_id: str, payload: CreateSpouseRequest, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     if c.get("linked_spouse_id"):
         existing = await db.clients.find_one({"id": c["linked_spouse_id"], "user_id": user.user_id}, {"_id": 0})
         if existing:
@@ -1995,9 +2149,7 @@ async def create_spouse(client_id: str, payload: CreateSpouseRequest, user: User
 
 @api_router.patch("/clients/{client_id}/echeance-3p")
 async def update_echeance_3p(client_id: str, payload: Echeance3PUpdate, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
     await db.clients.update_one(
         {"id": client_id, "user_id": user.user_id},
         {"$set": {"echeance_3p": payload.echeance_3p, "updated_at": datetime.now(timezone.utc).isoformat()}},
@@ -2008,9 +2160,7 @@ async def update_echeance_3p(client_id: str, payload: Echeance3PUpdate, user: Us
 
 @api_router.post("/clients/{client_id}/echeances-3p")
 async def create_echeance_3p_line(client_id: str, payload: Echeance3PLineCreate, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
 
     now_iso = datetime.now(timezone.utc).isoformat()
     company = payload.company.strip() if isinstance(payload.company, str) and payload.company.strip() else None
@@ -2052,9 +2202,7 @@ async def create_echeance_3p_line(client_id: str, payload: Echeance3PLineCreate,
 
 @api_router.patch("/clients/{client_id}/echeances-3p/{line_id}")
 async def update_echeance_3p_line(client_id: str, line_id: str, payload: Echeance3PLineUpdate, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
 
     lines = c.get("echeances_3p") or []
     if not isinstance(lines, list):
@@ -2118,9 +2266,7 @@ async def update_echeance_3p_line(client_id: str, line_id: str, payload: Echeanc
 
 @api_router.delete("/clients/{client_id}/echeances-3p/{line_id}")
 async def delete_echeance_3p_line(client_id: str, line_id: str, user: User = Depends(get_current_user)):
-    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Client introuvable")
+    c = await require_client(client_id, user)
 
     lines = c.get("echeances_3p") or []
     if not isinstance(lines, list):
@@ -2168,15 +2314,21 @@ async def delete_echeance_3p_line(client_id: str, line_id: str, user: User = Dep
 
 
 @api_router.get("/echeances-3p")
-async def list_echeances_3p(user: User = Depends(get_current_user)):
+async def list_echeances_3p(conseiller: Optional[str] = None, user: User = Depends(get_current_user)):
+    base = clients_base_query(user, conseiller=conseiller)
+    query = {
+        "$and": [
+            base,
+            {
+                "$or": [
+                    {"echeances_3p": {"$exists": True}},
+                    {"echeance_3p": {"$ne": None, "$exists": True}},
+                ]
+            },
+        ]
+    }
     clients = await db.clients.find(
-        {
-            "user_id": user.user_id,
-            "$or": [
-                {"echeances_3p": {"$exists": True}},
-                {"echeance_3p": {"$ne": None, "$exists": True}},
-            ],
-        },
+        query,
         {"_id": 0, "id": 1, "prenom": 1, "nom": 1, "numero_dossier": 1, "echeances_3p": 1, "echeance_3p": 1},
     ).to_list(1000)
 
@@ -2227,6 +2379,7 @@ async def download_document(doc_id: str, user: User = Depends(get_current_user))
     record = await db.documents.find_one({"id": doc_id, "user_id": user.user_id, "is_deleted": False}, {"_id": 0})
     if not record:
         raise HTTPException(status_code=404, detail="Document introuvable")
+    await require_resource_client(record, user, "document")
     storage_path = record["storage_path"]
     if storage_path.startswith("local://"):
         local_path = ROOT_DIR / storage_path.replace("local://", "", 1)
@@ -2250,6 +2403,7 @@ async def delete_document(doc_id: str, user: User = Depends(get_current_user)):
     )
     if not record:
         raise HTTPException(status_code=404, detail="Document introuvable")
+    await require_resource_client(record, user, "document")
 
     client_id = record.get("client_id")
     await db.documents.update_one({"id": doc_id, "user_id": user.user_id}, {"$set": {"is_deleted": True}})
@@ -2361,10 +2515,27 @@ async def delete_document(doc_id: str, user: User = Depends(get_current_user)):
 
 # ---------------- Appointments ----------------
 @api_router.get("/appointments")
-async def list_appointments(client_id: Optional[str] = None, user: User = Depends(get_current_user)):
-    query = {"user_id": user.user_id}
+async def list_appointments(
+    client_id: Optional[str] = None,
+    conseiller: Optional[str] = None,
+    user: User = Depends(get_current_user),
+):
     if client_id:
-        query["client_id"] = client_id
+        await require_client(client_id, user)
+        query = {"user_id": user.user_id, "client_id": client_id}
+    elif is_global_viewer(user) and (not conseiller or conseiller == "all"):
+        query = {"user_id": user.user_id}
+    else:
+        ids = await accessible_client_ids(db, user, conseiller=conseiller)
+        cons_name = conseiller if (conseiller and conseiller != "all") else (user.conseiller or "")
+        query = {
+            "user_id": user.user_id,
+            "$or": [
+                {"client_id": {"$in": ids}},
+                {"conseiller": cons_name},
+                {"created_by": user.account_id},
+            ],
+        }
     return await db.appointments.find(query, {"_id": 0}).sort("date", 1).to_list(1000)
 
 @api_router.post("/appointments")
@@ -2374,10 +2545,14 @@ async def create_appointment(payload: AppointmentCreate, user: User = Depends(ge
     doc["user_id"] = user.user_id
     doc["done"] = False
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    doc["created_by"] = user.account_id
     if doc.get("client_id"):
-        c = await db.clients.find_one({"id": doc["client_id"], "user_id": user.user_id}, {"_id": 0})
+        c = await require_client(doc["client_id"], user)
         doc["client_name"] = f"{c.get('prenom','')} {c.get('nom','')}".strip() if c else None
+        doc["conseiller"] = c.get("conseiller")
         await log_action(user.user_id, doc["client_id"], f"Rendez-vous planifié: {doc['titre']}")
+    else:
+        doc["conseiller"] = force_conseiller_on_write(user, user.conseiller)
     await db.appointments.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -2387,20 +2562,42 @@ async def toggle_appointment(appt_id: str, user: User = Depends(get_current_user
     a = await db.appointments.find_one({"id": appt_id, "user_id": user.user_id}, {"_id": 0})
     if not a:
         raise HTTPException(status_code=404, detail="Rendez-vous introuvable")
+    await require_resource_client(a, user, "rendez-vous")
     await db.appointments.update_one({"id": appt_id}, {"$set": {"done": not a.get("done", False)}})
     return await db.appointments.find_one({"id": appt_id}, {"_id": 0})
 
 @api_router.delete("/appointments/{appt_id}")
 async def delete_appointment(appt_id: str, user: User = Depends(get_current_user)):
+    a = await db.appointments.find_one({"id": appt_id, "user_id": user.user_id}, {"_id": 0})
+    if not a:
+        raise HTTPException(status_code=404, detail="Rendez-vous introuvable")
+    await require_resource_client(a, user, "rendez-vous")
     await db.appointments.delete_one({"id": appt_id, "user_id": user.user_id})
     return {"ok": True}
 
 # ---------------- Tasks ----------------
 @api_router.get("/tasks")
-async def list_tasks(client_id: Optional[str] = None, user: User = Depends(get_current_user)):
-    query = {"user_id": user.user_id}
+async def list_tasks(
+    client_id: Optional[str] = None,
+    conseiller: Optional[str] = None,
+    user: User = Depends(get_current_user),
+):
     if client_id:
-        query["client_id"] = client_id
+        await require_client(client_id, user)
+        query = {"user_id": user.user_id, "client_id": client_id}
+    elif is_global_viewer(user) and (not conseiller or conseiller == "all"):
+        query = {"user_id": user.user_id}
+    else:
+        ids = await accessible_client_ids(db, user, conseiller=conseiller)
+        cons_name = conseiller if (conseiller and conseiller != "all") else (user.conseiller or "")
+        query = {
+            "user_id": user.user_id,
+            "$or": [
+                {"client_id": {"$in": ids}},
+                {"conseiller": cons_name},
+                {"created_by": user.account_id},
+            ],
+        }
     tasks = await db.tasks.find(query, {"_id": 0}).sort("echeance", 1).to_list(1000)
 
     # Enrichir avec le nom du client si manquant / met à jour les anciens titres 3P.
@@ -2437,6 +2634,13 @@ async def create_task(payload: TaskCreate, user: User = Depends(get_current_user
     doc["user_id"] = user.user_id
     doc["done"] = False
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    doc["created_by"] = user.account_id
+    if doc.get("client_id"):
+        c = await require_client(doc["client_id"], user)
+        doc["conseiller"] = c.get("conseiller")
+        doc["client_name"] = f"{c.get('prenom','')} {c.get('nom','')}".strip()
+    else:
+        doc["conseiller"] = force_conseiller_on_write(user, user.conseiller)
     await db.tasks.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -2446,18 +2650,23 @@ async def toggle_task(task_id: str, user: User = Depends(get_current_user)):
     t = await db.tasks.find_one({"id": task_id, "user_id": user.user_id}, {"_id": 0})
     if not t:
         raise HTTPException(status_code=404, detail="Tâche introuvable")
+    await require_resource_client(t, user, "tâche")
     await db.tasks.update_one({"id": task_id}, {"$set": {"done": not t.get("done", False)}})
     return await db.tasks.find_one({"id": task_id}, {"_id": 0})
 
 @api_router.delete("/tasks/{task_id}")
 async def delete_task(task_id: str, user: User = Depends(get_current_user)):
+    t = await db.tasks.find_one({"id": task_id, "user_id": user.user_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Tâche introuvable")
+    await require_resource_client(t, user, "tâche")
     await db.tasks.delete_one({"id": task_id, "user_id": user.user_id})
     return {"ok": True}
 
 # ---------------- Dashboard ----------------
 @api_router.get("/dashboard/stats")
-async def dashboard_stats(user: User = Depends(get_current_user)):
-    clients = await db.clients.find({"user_id": user.user_id}, {"_id": 0}).to_list(5000)
+async def dashboard_stats(conseiller: Optional[str] = None, user: User = Depends(get_current_user)):
+    clients = await db.clients.find(clients_base_query(user, conseiller=conseiller), {"_id": 0}).to_list(5000)
     dossiers = {}  # dossier_id -> {members, created_at_min, updated_at_max}
 
     for c in clients:
@@ -2540,7 +2749,19 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
         key=lambda x: (x["name"] == "Non attribué", -x["total"], x["name"].lower()),
     )
     today = datetime.now(timezone.utc).date().isoformat()
-    appts = await db.appointments.find({"user_id": user.user_id}, {"_id": 0}).to_list(5000)
+    scoped_ids = [m["id"] for d in dossiers.values() for m in (d.get("members") or []) if m.get("id")]
+    if is_global_viewer(user) and (not conseiller or conseiller == "all"):
+        appts = await db.appointments.find({"user_id": user.user_id}, {"_id": 0}).to_list(5000)
+        tasks = await db.tasks.find({"user_id": user.user_id, "done": False}, {"_id": 0}).to_list(1000)
+    else:
+        appt_q = {"user_id": user.user_id, "$or": [{"client_id": {"$in": scoped_ids}}, {"conseiller": user.conseiller if user.role == ROLE_CONSEILLER else {"$in": [conseiller] if conseiller else []}}]}
+        if conseiller and is_global_viewer(user):
+            appt_q = {"user_id": user.user_id, "client_id": {"$in": scoped_ids}}
+        appts = await db.appointments.find(appt_q, {"_id": 0}).to_list(5000)
+        tasks = await db.tasks.find(
+            {"user_id": user.user_id, "done": False, "client_id": {"$in": scoped_ids}},
+            {"_id": 0},
+        ).to_list(1000)
     today_appts = [a for a in appts if (a.get("date") or "").startswith(today)]
     today_appts.sort(key=lambda a: a.get("date", ""))
 
@@ -2560,8 +2781,6 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
         )
         monthly.append({"mois": label, "dossiers": dossiers_count, "rendezvous": appt_count, "rapports": report_count})
 
-    tasks = await db.tasks.find({"user_id": user.user_id, "done": False}, {"_id": 0}).to_list(1000)
-
     return {
         "by_statut": by_statut,
         "total": len(dossiers),
@@ -2577,7 +2796,13 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
         "pending_tasks": len(tasks),
         "tasks": tasks,
         "statuts": STATUTS,
-        "by_conseiller": conseiller_list,
+        "by_conseiller": conseiller_list if is_global_viewer(user) else [],
+        "scope": {
+            "role": user.role,
+            "conseiller": user.conseiller,
+            "filter_conseiller": conseiller,
+            "is_global": is_global_viewer(user),
+        },
     }
 
 @api_router.get("/")
@@ -2587,6 +2812,7 @@ async def root():
 @api_router.post("/admin/merge-couple-dossiers")
 async def merge_couple_dossiers(user: User = Depends(get_current_user)):
     """Migration manuelle : fusionne tous les dossiers couple de l'utilisateur."""
+    require_admin(user)
     merged = await _migrate_couple_dossiers(user_id=user.user_id)
     return {"merged": merged, "message": f"{merged} couple(s) fusionné(s)"}
 
@@ -2712,6 +2938,12 @@ async def startup():
         logger.info("startup frontend_build_exists=%s mongo_set=%s", FRONTEND_BUILD.exists(), bool(os.environ.get("MONGO_URL")))
     except Exception:
         pass
+    try:
+        created = await ensure_bootstrap_admin(db)
+        if created:
+            logger.info("Bootstrap admin créé (%s)", os.environ.get("ADMIN_EMAIL") or "admin@prevoyancecrm.local")
+    except Exception as e:
+        logger.error("Bootstrap admin failed: %s", e)
     try:
         init_storage()
         logger.info("Storage initialized")

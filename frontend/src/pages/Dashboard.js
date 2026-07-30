@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import ClientFormDialog from "@/components/ClientFormDialog";
 import { STATUT_DOT, STATUTS } from "@/lib/constants";
+import { useAuth } from "@/context/AuthContext";
 import {
   FilePlus2, Clock, FileSearch, Presentation, CheckCircle2, AlertTriangle,
   FolderKanban, Plus, CalendarClock, ListTodo, PauseCircle, User,
@@ -15,6 +16,7 @@ import {
   PieChart, Pie, Cell,
 } from "recharts";
 import { getDashboardTarget } from "@/lib/dashboardRoutes";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const KPI = ({ icon: Icon, label, value, accent, testid, onClick }) => (
   <Card
@@ -35,14 +37,21 @@ const KPI = ({ icon: Icon, label, value, accent, testid, onClick }) => (
 );
 
 export default function Dashboard() {
+  const { user, isGlobal } = useAuth();
   const [stats, setStats] = useState(null);
   const [dialog, setDialog] = useState(false);
   const [openConseiller, setOpenConseiller] = useState(null);
+  const [filterConseiller, setFilterConseiller] = useState("all");
+  const [conseillerNames, setConseillerNames] = useState([]);
   const navigate = useNavigate();
 
   const load = async () => {
     try {
-      const res = await api.get("/dashboard/stats");
+      const params = {};
+      if (isGlobal && filterConseiller && filterConseiller !== "all") {
+        params.conseiller = filterConseiller;
+      }
+      const res = await api.get("/dashboard/stats", { params });
       setStats(res.data);
     } catch (e) {
       setStats({
@@ -52,7 +61,12 @@ export default function Dashboard() {
       });
     }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [filterConseiller, isGlobal]);
+
+  useEffect(() => {
+    if (!isGlobal) return;
+    api.get("/users/conseillers").then((r) => setConseillerNames(r.data || [])).catch(() => {});
+  }, [isGlobal]);
 
   if (!stats) return <Layout><div className="animate-pulse text-muted-foreground">Chargement…</div></Layout>;
 
@@ -65,17 +79,39 @@ export default function Dashboard() {
     navigate(`${target.path}${target.search || ""}`);
   };
 
+  const subtitle = isGlobal
+    ? (filterConseiller !== "all"
+      ? `Vue filtrée — ${filterConseiller}`
+      : "Vue globale de l'activité du cabinet")
+    : `Espace de ${user?.conseiller || user?.name || "travail"}`;
+
   return (
     <Layout>
       <div className="animate-fade-up">
         <div className="flex items-center justify-between flex-wrap gap-4 mb-8">
           <div>
             <h1 className="font-display font-black text-3xl sm:text-4xl tracking-tight">Tableau de bord</h1>
-            <p className="text-muted-foreground mt-1">Vue d'ensemble de votre activité de conseil</p>
+            <p className="text-muted-foreground mt-1">{subtitle}</p>
           </div>
-          <Button data-testid="new-dossier-btn" onClick={() => setDialog(true)} className="bg-[#002FA7] hover:bg-[#00248a] gap-2">
-            <Plus className="h-4 w-4" /> Nouveau dossier
-          </Button>
+          <div className="flex items-center gap-3 flex-wrap">
+            {isGlobal && (
+              <Select value={filterConseiller} onValueChange={setFilterConseiller}>
+                <SelectTrigger className="w-[220px]" data-testid="filter-conseiller">
+                  <SelectValue placeholder="Tous les conseillers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les conseillers</SelectItem>
+                  <SelectItem value="Non attribué">Non attribué</SelectItem>
+                  {conseillerNames.map((n) => (
+                    <SelectItem key={n} value={n}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Button data-testid="new-dossier-btn" onClick={() => setDialog(true)} className="bg-[#002FA7] hover:bg-[#00248a] gap-2">
+              <Plus className="h-4 w-4" /> Nouveau dossier
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -149,6 +185,7 @@ export default function Dashboard() {
           )}
         </Card>
 
+        {isGlobal && (
         <Card className="p-5" data-testid="conseiller-repartition">
           <h2 className="font-display font-bold text-lg tracking-tight mb-1">Répartition par conseiller</h2>
           <p className="text-xs text-muted-foreground mb-4">Cliquez sur le nombre de dossiers pour voir où ils en sont</p>
@@ -205,6 +242,7 @@ export default function Dashboard() {
             </div>
           )}
         </Card>
+        )}
       </div>
 
       <ClientFormDialog

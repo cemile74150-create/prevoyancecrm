@@ -1,10 +1,9 @@
 import React from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { AuthProvider } from "@/context/AuthContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { Toaster } from "@/components/ui/sonner";
 import Login from "@/pages/Login";
-import AuthCallback from "@/pages/AuthCallback";
 import Dashboard from "@/pages/Dashboard";
 import Kanban from "@/pages/Kanban";
 import Clients from "@/pages/Clients";
@@ -13,21 +12,32 @@ import DossierHub from "@/pages/DossierHub";
 import Agenda from "@/pages/Agenda";
 import Demandes from "@/pages/Demandes";
 import Formulaires from "@/pages/Formulaires";
-// Visual PDF field mapping editor (FormMappingEditor) — 2026-07-28
+import Utilisateurs from "@/pages/Utilisateurs";
 
 function Protected({ children }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
+        Chargement…
+      </div>
+    );
+  }
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
   return children;
 }
 
 function AppRoutes() {
-  const location = useLocation();
-  // Handle OAuth callback: session_id arrives in URL fragment
-  if (location.hash?.includes("session_id=")) {
-    return <AuthCallback />;
-  }
+  const { user, loading } = useAuth();
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
+      <Route
+        path="/login"
+        element={loading ? null : user ? <Navigate to="/dashboard" replace /> : <Login />}
+      />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/dossiers" element={<Protected><Kanban /></Protected>} />
@@ -37,6 +47,7 @@ function AppRoutes() {
       <Route path="/demandes" element={<Protected><Demandes /></Protected>} />
       <Route path="/agenda" element={<Protected><Agenda /></Protected>} />
       <Route path="/formulaires" element={<Protected><Formulaires /></Protected>} />
+      <Route path="/utilisateurs" element={<Protected><Utilisateurs /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
@@ -45,12 +56,12 @@ function AppRoutes() {
 function App() {
   return (
     <div className="App">
-    <BrowserRouter>
-  <AuthProvider>
-    <AppRoutes />
-    <Toaster position="top-right" richColors />
-  </AuthProvider>
-</BrowserRouter>  
+      <BrowserRouter>
+        <AuthProvider>
+          <AppRoutes />
+          <Toaster position="top-right" richColors />
+        </AuthProvider>
+      </BrowserRouter>
     </div>
   );
 }

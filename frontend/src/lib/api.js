@@ -37,5 +37,18 @@ const api = axios.create({
   withCredentials: true,
 });
 
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    if (error?.response?.status === 401) {
+      const path = typeof window !== "undefined" ? window.location.pathname : "";
+      if (path && path !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export { apiBaseUrl };
 export default api;

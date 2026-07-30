@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
-import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, ShieldCheck, Menu, ClipboardList } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, ShieldCheck, Menu, ClipboardList, Settings2 } from "lucide-react";
 
 const nav = [
   { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard, testid: "nav-dashboard" },
@@ -14,12 +14,16 @@ const nav = [
 ];
 
 export default function Layout({ children }) {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const navItems = isAdmin
+    ? [...nav, { to: "/utilisateurs", label: "Utilisateurs", icon: Settings2, testid: "nav-users" }]
+    : nav;
 
   useEffect(() => {
     if (!q.trim()) { setResults([]); return; }
@@ -40,7 +44,7 @@ export default function Layout({ children }) {
         <span className="font-display font-black tracking-tight">Prévoyance<span className="text-[#002FA7]">CRM</span></span>
       </div>
       <nav className="flex-1 px-3 py-5 space-y-1">
-        {nav.map((n) => (
+        {navItems.map((n) => (
           <NavLink
             key={n.to}
             to={n.to}
@@ -68,7 +72,9 @@ export default function Layout({ children }) {
           )}
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{user?.name}</p>
-            <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {user?.role_label || user?.role || user?.email}
+            </p>
           </div>
           <button data-testid="logout-btn" onClick={logout} className="p-2 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors">
             <LogOut className="h-4 w-4" />

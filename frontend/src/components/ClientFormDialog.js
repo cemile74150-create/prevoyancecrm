@@ -4,9 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { STATUTS } from "@/lib/constants";
+import { STATUTS, CONSEILLERS } from "@/lib/constants";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 
 function Field({ label, k, type = "text", placeholder, form, setField, testId }) {
   return (
@@ -44,19 +45,34 @@ function isMarriedEtat(etat) {
 }
 
 export default function ClientFormDialog({ open, onOpenChange, client, onSaved }) {
+  const { user, isGlobal } = useAuth();
   const [form, setForm] = useState(empty);
   const [spouseForm, setSpouseForm] = useState(emptySpouse);
   const [createSpouseFiche, setCreateSpouseFiche] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [conseillerOptions, setConseillerOptions] = useState(CONSEILLERS);
   const isEdit = !!client;
   const showSpouseBlock = !isEdit && isMarriedEtat(form.etat_civil);
 
   useEffect(() => {
     if (client) setForm({ ...empty, ...client, salaire_annuel: client.salaire_annuel ?? "" });
-    else setForm(empty);
+    else {
+      const defaultCons = user?.role === "conseiller"
+        ? (user.conseiller || user.name || "")
+        : "";
+      setForm({ ...empty, conseiller: defaultCons });
+    }
     setSpouseForm(emptySpouse);
     setCreateSpouseFiche(true);
-  }, [client, open]);
+  }, [client, open, user]);
+
+  useEffect(() => {
+    if (!open) return;
+    api.get("/users/conseillers").then((res) => {
+      const names = Array.isArray(res.data) ? res.data : [];
+      setConseillerOptions(Array.from(new Set([...CONSEILLERS, ...names])));
+    }).catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     if (!showSpouseBlock) return;
@@ -171,7 +187,32 @@ export default function ClientFormDialog({ open, onOpenChange, client, onSaved }
               <Field label="Adresse" k="adresse" form={form} setField={setField} />
               <Field label="NPA" k="npa" form={form} setField={setField} />
               <Field label="Ville" k="ville" form={form} setField={setField} />
-              <Field label="Conseiller" k="conseiller" form={form} setField={setField} />
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Conseiller</Label>
+                {isGlobal ? (
+                  <Select
+                    value={form.conseiller || ""}
+                    onValueChange={(v) => setField("conseiller", v)}
+                    disabled={user?.role === "conseiller"}
+                  >
+                    <SelectTrigger data-testid="client-field-conseiller">
+                      <SelectValue placeholder="Sélectionner" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {conseillerOptions.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    data-testid="client-field-conseiller"
+                    value={form.conseiller || user?.conseiller || user?.name || ""}
+                    disabled
+                    readOnly
+                  />
+                )}
+              </div>
               <Field label="Agent apporteur" k="agent_apporteur" form={form} setField={setField} />
             </div>
           </div>

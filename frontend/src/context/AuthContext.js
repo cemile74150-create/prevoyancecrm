@@ -21,22 +21,26 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    // CRITICAL: If returning from OAuth callback, skip the /me check.
-    if (window.location.hash?.includes("session_id=")) {
-      setLoading(false);
-      return;
-    }
     checkAuth();
   }, [checkAuth]);
 
   const logout = async () => {
-    await api.post("/auth/logout");
+    try {
+      await api.post("/auth/logout");
+    } catch (e) {
+      /* ignore */
+    }
     setUser(null);
-    window.location.href = "/";
+    window.location.href = "/login";
   };
 
+  const isAdmin = user?.role === "admin" || user?.can_manage_users;
+  const isGlobal = user?.role === "admin" || user?.role === "ceo";
+
   return (
-    <AuthContext.Provider value={{ user, setUser, loading, checkAuth, logout }}>
+    <AuthContext.Provider
+      value={{ user, setUser, loading, checkAuth, logout, isAdmin, isGlobal }}
+    >
       {children}
     </AuthContext.Provider>
   );
