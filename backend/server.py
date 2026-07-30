@@ -462,7 +462,9 @@ async def deactivate_user(account_id: str, user: User = Depends(get_current_user
 
 # ---------------- Helpers ----------------
 async def require_client(client_id: str, user: User) -> dict:
-    c = await require_client(client_id, user)
+    c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Client introuvable")
     if not can_access_client(user, c):
         raise HTTPException(status_code=403, detail="Accès non autorisé à ce dossier")
     return c

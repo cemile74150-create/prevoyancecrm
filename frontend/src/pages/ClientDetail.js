@@ -71,6 +71,8 @@ export default function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [client, setClient] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [notes, setNotes] = useState([]);
   const [demandes, setDemandes] = useState([]);
   const [demandeForm, setDemandeForm] = useState({ titre: "", description: "", priorite: "normale" });
@@ -110,69 +112,92 @@ export default function ClientDetail() {
   const [uploadingOffre, setUploadingOffre] = useState(false);
 
   const loadAll = async () => {
-    const [c, n, d, a, h, lib, dem] = await Promise.all([
-      api.get(`/clients/${id}`),
-      api.get(`/clients/${id}/notes`),
-      api.get(`/clients/${id}/documents`),
-      api.get(`/appointments`, { params: { client_id: id } }),
-      api.get(`/clients/${id}/actions`),
-      api.get("/form-library").catch(() => ({ data: [] })),
-      api.get(`/clients/${id}/demandes`).catch(() => ({ data: [] })),
-    ]);
-    setClient(c.data); setNotes(n.data); setDocs(d.data); setAppts(a.data); setActions(h.data);
-    setDemandes(Array.isArray(dem.data) ? dem.data : []);
-    setLibraryForms(lib.data || []);
-    const savedChecklist = c.data?.document_checklist || {};
-    const migratedLpp = savedChecklist["Demande LPP"] || savedChecklist.Procuration || savedChecklist["Formulaire Recherche LPP"];
-    const nextChecklist = getInitialDocumentChecklistState(DOCUMENT_CHECKLIST_ITEMS, {
-      ...savedChecklist,
-      ...(migratedLpp ? { "Demande LPP": migratedLpp } : {}),
-    });
-    setDocumentChecklist(nextChecklist);
-    if (migratedLpp && !savedChecklist["Demande LPP"]) {
-      api.patch(`/clients/${id}/document-checklist`, { document_checklist: nextChecklist }).catch(() => {});
-    }
-    // Multi-contrats 3P : on affiche les lignes si présentes, sinon compat champ unique.
-    const rawLines = Array.isArray(c.data?.echeances_3p) ? c.data.echeances_3p : null;
-    if (rawLines && rawLines.length > 0) {
-      setEcheances3p(
-        rawLines.map((l) => ({
-          ...l,
-          echeance_3p: l?.echeance_3p ? String(l.echeance_3p).split("T")[0] : null,
-        }))
-      );
-    } else {
-      const legacy = c.data?.echeance_3p ? String(c.data.echeance_3p).split("T")[0] : null;
-      setEcheances3p(
-        legacy
-          ? [{ id: "legacy-3p", company: null, policy_number: null, echeance_3p: legacy, detected: true }]
-          : []
-      );
-    }
-    setLppCaisseTracking(c.data?.lpp_caisse_tracking || []);
-    const forms = lib.data || [];
-    setSelectedLibraryForm((prev) => {
-      if (prev && forms.some((f) => f.id === prev)) return prev;
-      return forms[0]?.id || "";
-    });
-
-    // Restaurer caisses LPP déjà détectées (document ou fiche client)
-    const docsList = Array.isArray(d.data) ? d.data : [];
-    const withFunds = docsList.find(
-      (doc) =>
-        (doc.category === "Réponse recherche LPP" || doc.checklist_item === "Formulaire Recherche LPP") &&
-        Array.isArray(doc.detected_funds) &&
-        doc.detected_funds.length > 0
-    );
-    const restored = withFunds?.detected_funds || c.data?.lpp_detected_funds || [];
-    if (Array.isArray(restored) && restored.length > 0) {
-      setLppFunds(restored);
-      setSelectedFunds(restored.map((_, i) => i));
-      if (withFunds) setLppResponseDoc(withFunds);
-      else if (c.data?.lpp_response_doc_id) {
-        const match = docsList.find((doc) => doc.id === c.data.lpp_response_doc_id);
-        if (match) setLppResponseDoc(match);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const c = await api.get(`/clients/${id}`);
+      const [n, d, a, h, lib, dem] = await Promise.all([
+        api.get(`/clients/${id}/notes`).catch(() => ({ data: [] })),
+        api.get(`/clients/${id}/documents`).catch(() => ({ data: [] })),
+        api.get(`/appointments`, { params: { client_id: id } }).catch(() => ({ data: [] })),
+        api.get(`/clients/${id}/actions`).catch(() => ({ data: [] })),
+        api.get("/form-library").catch(() => ({ data: [] })),
+        api.get(`/clients/${id}/demandes`).catch(() => ({ data: [] })),
+      ]);
+      setClient(c.data);
+      setNotes(n.data); setDocs(d.data); setAppts(a.data); setActions(h.data);
+      setDemandes(Array.isArray(dem.data) ? dem.data : []);
+      setLibraryForms(lib.data || []);
+      const savedChecklist = c.data?.document_checklist || {};
+      const migratedLpp = savedChecklist["Demande LPP"] || savedChecklist.Procuration || savedChecklist["Formulaire Recherche LPP"];
+      const nextChecklist = getInitialDocumentChecklistState(DOCUMENT_CHECKLIST_ITEMS, {
+        ...savedChecklist,
+        ...(migratedLpp ? { "Demande LPP": migratedLpp } : {}),
+      });
+      setDocumentChecklist(nextChecklist);
+      if (migratedLpp && !savedChecklist["Demande LPP"]) {
+        api.patch(`/clients/${id}/document-checklist`, { document_checklist: nextChecklist }).catch(() => {});
       }
+      // Multi-contrats 3P : on affiche les lignes si présentes, sinon compat champ unique.
+      const rawLines = Array.isArray(c.data?.echeances_3p) ? c.data.echeances_3p : null;
+      if (rawLines && rawLines.length > 0) {
+        setEcheances3p(
+          rawLines.map((l) => ({
+            ...l,
+            echeance_3p: l?.echeance_3p ? String(l.echeance_3p).split("T")[0] : null,
+          }))
+        );
+      } else {
+        const legacy = c.data?.echeance_3p ? String(c.data.echeance_3p).split("T")[0] : null;
+        setEcheances3p(
+          legacy
+            ? [{ id: "legacy-3p", company: null, policy_number: null, echeance_3p: legacy, detected: true }]
+            : []
+        );
+      }
+      setLppCaisseTracking(c.data?.lpp_caisse_tracking || []);
+      const forms = lib.data || [];
+      setSelectedLibraryForm((prev) => {
+        if (prev && forms.some((f) => f.id === prev)) return prev;
+        return forms[0]?.id || "";
+      });
+
+      // Restaurer caisses LPP déjà détectées (document ou fiche client)
+      const docsList = Array.isArray(d.data) ? d.data : [];
+      const withFunds = docsList.find(
+        (doc) =>
+          (doc.category === "Réponse recherche LPP" || doc.checklist_item === "Formulaire Recherche LPP") &&
+          Array.isArray(doc.detected_funds) &&
+          doc.detected_funds.length > 0
+      );
+      const restored = withFunds?.detected_funds || c.data?.lpp_detected_funds || [];
+      if (Array.isArray(restored) && restored.length > 0) {
+        setLppFunds(restored);
+        setSelectedFunds(restored.map((_, i) => i));
+        if (withFunds) setLppResponseDoc(withFunds);
+        else if (c.data?.lpp_response_doc_id) {
+          const match = docsList.find((doc) => doc.id === c.data.lpp_response_doc_id);
+          if (match) setLppResponseDoc(match);
+        }
+      }
+    } catch (e) {
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail;
+      const message =
+        typeof detail === "string"
+          ? detail
+          : status === 404
+            ? "Client introuvable"
+            : status === 403
+              ? "Accès non autorisé à ce dossier"
+              : status === 401
+                ? "Session expirée — reconnectez-vous"
+                : "Impossible de charger cette fiche client";
+      setClient(null);
+      setLoadError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
     }
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -801,7 +826,39 @@ export default function ClientDetail() {
       );
     });
 
-  if (!client) return <Layout><div className="animate-pulse text-muted-foreground">Chargement…</div></Layout>;
+  if (loading) {
+    return (
+      <Layout>
+        <div className="animate-pulse text-muted-foreground">Chargement…</div>
+      </Layout>
+    );
+  }
+
+  if (loadError || !client) {
+    return (
+      <Layout>
+        <Card className="p-8 max-w-lg">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <h1 className="font-display font-bold text-xl tracking-tight mb-1">Fiche inaccessible</h1>
+              <p className="text-sm text-muted-foreground mb-4">
+                {loadError || "Client introuvable"}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => navigate(-1)} className="gap-1.5">
+                  <ArrowLeft className="h-4 w-4" /> Retour
+                </Button>
+                <Button onClick={() => loadAll()} className="bg-[#002FA7] hover:bg-[#00248a]">
+                  Réessayer
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </Layout>
+    );
+  }
 
   const isMarried = ((client.etat_civil || "").toLowerCase().includes("mari") || (client.etat_civil || "").toLowerCase().includes("partenariat"));
   const fmtDate = (s) => s ? new Date(s).toLocaleString("fr-CH", { dateStyle: "medium", timeStyle: "short" }) : "";
