@@ -2496,10 +2496,21 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
 
     by_statut = {s: 0 for s in STATUTS}
     urgent = 0
+    by_conseiller: dict = {}  # name -> { total, by_statut }
 
     dossier_statut_map = {}
     dossier_created_map = {}
     dossier_updated_map = {}
+
+    def pick_dossier_conseiller(members: list) -> str:
+        names = [(m.get("conseiller") or "").strip() for m in members]
+        names = [n for n in names if n]
+        if not names:
+            return "Non attribué"
+        counts = {}
+        for n in names:
+            counts[n] = counts.get(n, 0) + 1
+        return sorted(counts.items(), key=lambda x: (-x[1], x[0].lower()))[0][0]
 
     for did, d in dossiers.items():
         members = d.get("members") or []
@@ -2515,6 +2526,19 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
         if any(m.get("priorite") == "urgent" and normalize_statut(m.get("statut")) != "Clôturé" for m in members):
             urgent += 1
 
+        cons = pick_dossier_conseiller(members)
+        entry = by_conseiller.setdefault(
+            cons,
+            {"name": cons, "total": 0, "by_statut": {s: 0 for s in STATUTS}},
+        )
+        entry["total"] += 1
+        if dossier_statut in entry["by_statut"]:
+            entry["by_statut"][dossier_statut] += 1
+
+    conseiller_list = sorted(
+        by_conseiller.values(),
+        key=lambda x: (x["name"] == "Non attribué", -x["total"], x["name"].lower()),
+    )
     today = datetime.now(timezone.utc).date().isoformat()
     appts = await db.appointments.find({"user_id": user.user_id}, {"_id": 0}).to_list(5000)
     today_appts = [a for a in appts if (a.get("date") or "").startswith(today)]
@@ -2553,6 +2577,7 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
         "pending_tasks": len(tasks),
         "tasks": tasks,
         "statuts": STATUTS,
+        "by_conseiller": conseiller_list,
     }
 
 @api_router.get("/")
