@@ -6,6 +6,8 @@ export function getDashboardTarget(key) {
       return { path: '/dossiers', search: '?statut=Documents%20en%20attente' };
     case 'analyse':
       return { path: '/dossiers', search: '?statut=Analyse%20en%20cours' };
+    case 'stand-by':
+      return { path: '/dossiers', search: '?statut=Stand-by' };
     case 'presenter':
       return { path: '/dossiers', search: '?statut=%C3%80%20pr%C3%A9senter' };
     case 'termines':

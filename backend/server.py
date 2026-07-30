@@ -92,6 +92,7 @@ STATUTS = [
     "Nouveau",
     "Documents en attente",
     "Analyse en cours",
+    "Stand-by",
     "À présenter",
     "Clôturé",
 ]
@@ -2544,6 +2545,7 @@ async def dashboard_stats(user: User = Depends(get_current_user)):
         "nouveaux": by_statut.get("Nouveau", 0),
         "en_attente_docs": by_statut.get("Documents en attente", 0),
         "en_analyse": by_statut.get("Analyse en cours", 0),
+        "stand_by": by_statut.get("Stand-by", 0),
         "a_presenter": by_statut.get("À présenter", 0),
         "termines": by_statut.get("Clôturé", 0),
         "today_appointments": today_appts,

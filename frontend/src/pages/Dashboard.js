@@ -8,7 +8,7 @@ import ClientFormDialog from "@/components/ClientFormDialog";
 import { STATUT_DOT } from "@/lib/constants";
 import {
   FilePlus2, Clock, FileSearch, Presentation, CheckCircle2, AlertTriangle,
-  FolderKanban, Plus, CalendarClock, ListTodo,
+  FolderKanban, Plus, CalendarClock, ListTodo, PauseCircle,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -60,7 +60,7 @@ export default function Dashboard() {
       }).catch(() => {});
       // #endregion
       setStats({
-        nouveaux: 0, en_attente_docs: 0, en_analyse: 0, a_presenter: 0, termines: 0,
+        nouveaux: 0, en_attente_docs: 0, en_analyse: 0, stand_by: 0, a_presenter: 0, termines: 0,
         urgent: 0, total: 0, pending_tasks: 0, statuts: [], by_statut: {}, monthly: [],
         today_appointments: [], upcoming_tasks: [],
       });
@@ -71,7 +71,7 @@ export default function Dashboard() {
   if (!stats) return <Layout><div className="animate-pulse text-muted-foreground">Chargement…</div></Layout>;
 
   const pieData = stats.statuts.map((s) => ({ name: s, value: stats.by_statut[s] })).filter((d) => d.value > 0);
-  const pieColors = ["#10b981", "#f59e0b", "#3b82f6", "#a855f7", "#64748b"];
+  const pieColors = ["#10b981", "#f59e0b", "#3b82f6", "#f97316", "#a855f7", "#64748b"];
 
   const goToDashboardTarget = (key) => {
     const target = getDashboardTarget(key);
@@ -96,6 +96,7 @@ export default function Dashboard() {
           <KPI testid="kpi-nouveaux" icon={FilePlus2} label="Nouveaux dossiers" value={stats.nouveaux} accent="bg-blue-100 text-blue-700" onClick={() => goToDashboardTarget("nouveaux")} />
           <KPI testid="kpi-attente-docs" icon={Clock} label="Documents en attente" value={stats.en_attente_docs} accent="bg-amber-100 text-amber-700" onClick={() => goToDashboardTarget("attente-docs")} />
           <KPI testid="kpi-analyse" icon={FileSearch} label="Analyse en cours" value={stats.en_analyse} accent="bg-blue-100 text-blue-700" onClick={() => goToDashboardTarget("analyse")} />
+          <KPI testid="kpi-stand-by" icon={PauseCircle} label="Stand-by" value={stats.stand_by || 0} accent="bg-orange-100 text-orange-700" onClick={() => goToDashboardTarget("stand-by")} />
           <KPI testid="kpi-presenter" icon={Presentation} label="À présenter" value={stats.a_presenter} accent="bg-purple-100 text-purple-700" onClick={() => goToDashboardTarget("presenter")} />
           <KPI testid="kpi-termines" icon={CheckCircle2} label="Dossiers terminés" value={stats.termines} accent="bg-emerald-100 text-emerald-700" onClick={() => goToDashboardTarget("termines")} />
           <KPI testid="kpi-urgents" icon={AlertTriangle} label="Dossiers urgents" value={stats.urgent} accent="bg-red-100 text-red-700" onClick={() => goToDashboardTarget("urgent")} />
