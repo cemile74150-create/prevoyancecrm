@@ -1770,12 +1770,26 @@ def _ocr_pdf_text(pdf_bytes: bytes) -> str:
 
 
 def _extract_pdf_text(pdf_bytes: bytes) -> str:
+    """
+    Extrait le texte de toutes les pages. Si le texte natif est trop pauvre,
+    bascule sur OCR. Si le texte natif existe mais contient très peu de dates,
+    fusionne avec l'OCR (cas PDF hybrides / tableaux scannés).
+    """
     reader = PdfReader(io.BytesIO(pdf_bytes))
     text = "\n".join((page.extract_text() or "") for page in reader.pages)
-    if len(re.sub(r"\s+", "", text)) >= 80:
-        return text
-    ocr_text = _ocr_pdf_text(pdf_bytes)
-    return ocr_text if ocr_text.strip() else text
+    compact_len = len(re.sub(r"\s+", "", text))
+    date_hits = len(re.findall(r"\d{1,2}[./]\d{1,2}[./]\d{2,4}", text or ""))
+
+    if compact_len < 80:
+        ocr_text = _ocr_pdf_text(pdf_bytes)
+        return ocr_text if ocr_text.strip() else text
+
+    # Texte présent mais peu de dates → tenter OCR en complément (tableaux AXA, etc.)
+    if date_hits < 2:
+        ocr_text = _ocr_pdf_text(pdf_bytes)
+        if ocr_text and len(re.sub(r"\s+", "", ocr_text)) > compact_len * 0.5:
+            return text + "\n" + ocr_text
+    return text
 
 
 def _parse_funds_from_text(text: str) -> List[Dict[str, str]]:
@@ -2144,67 +2158,285 @@ def _detect_3p_policy(text: str) -> Optional[str]:
     return None
 
 
+_DATE_TOKEN_RE = re.compile(r"(\d{1,2}[./]\d{1,2}[./]\d{2,4})")
+
+# Libellés d'échéance (du plus spécifique au plus générique).
+# Priorité basse = plus important.
+_EXPIRY_LABEL_SPECS: List[tuple] = [
+    (0, "Échéance du contrat de la prestation",
+     r"(?:echeance|échéance)\s+du\s+contrat\s+de\s+la\s+prestation"),
+    (1, "Échéance de la prestation",
+     r"(?:echeance|échéance)\s+de\s+la\s+prestation"),
+    (2, "Échéance de l'assurance",
+     r"(?:echeance|échéance)\s+de\s+l['’]?\s*assurance"),
+    (3, "Échéance du contrat",
+     r"(?:echeance|échéance)\s+du\s+contrat"),
+    (4, "Échéance de la police",
+     r"(?:echeance|échéance)\s+(?:de\s+la\s+)?police"),
+    (5, "Échéance police",
+     r"(?:echeance|échéance)\s+police"),
+    (6, "Date d'échéance",
+     r"date\s+d['’]?(?:echeance|échéance)"),
+    (7, "Fin du contrat",
+     r"fin\s+du\s+contrat"),
+    (8, "Date de fin",
+     r"date\s+de\s+fin"),
+    (9, "Contrat jusqu'au",
+     r"contrat\s+jusqu['’]?\s*au"),
+    (10, "Maturité",
+     r"maturit[ée]|maturity(?:\s+date)?"),
+    (11, "Terme",
+     r"\bterme\b|vertragsende|ablauf(?:datum)?"),
+    (12, "En cas de vie au",
+     r"en\s+cas\s+de\s+vie\s+au"),
+    (13, "Capital en cas de vie à l'échéance",
+     r"capital\s+en\s+cas\s+de\s+vie\s+[àa]\s+l['’]?(?:echeance|échéance)"),
+    (14, "Échéance",
+     r"(?<![a-zàâäéèêëïîôöùûüç])(?:echeance|échéance)(?!\s+de\s+prime)(?!\s+annuelle)"),
+    (15, "Expiry",
+     r"expiry(?:\s+date)?|final\s+maturity"),
+]
+
+_EXCLUDE_DATE_CTX = re.compile(
+    r"(?:naissance|n[ée]e?\s+le|geburtsdatum|date\s+de\s+naissance|"
+    r"date\s+du\s+courrier|courrier\s+du|lettre\s+du|"
+    r"imprim[ée]?|impression|date\s+d['’]?impression|druckdatum|printed|"
+    r"date\s+d['’]?[ée]dition|[ée]dit[ée]\s+le|ausstellungsdatum|"
+    r"signature|sign[ée]|date\s+d['’]?effet|effet\s+au|entr[ée]e\s+en\s+vigueur|"
+    r"d[ée]but\s+(?:du\s+)?contrat|beginn|"
+    r"[ée]ch[ée]ance\s+de\s+prime|prime\s+annuelle|"
+    r"valable\s+(?:au|jusqu)|situation\s+au|au\s+\d{1,2}[./]\d{1,2}[./]\d{2,4}\s*$)",
+    flags=re.IGNORECASE,
+)
+
+_TABLE_CTX_RE = re.compile(
+    r"(?:echeance|échéance|contrat|prestation|valeur\s+de\s+rachat|"
+    r"police|tarif|technique|capital|rachat|ablauf|maturity)",
+    flags=re.IGNORECASE,
+)
+
+
+def _first_date_in_text(chunk: str) -> Optional[tuple]:
+    """Retourne (iso, raw) de la première date valide dans chunk."""
+    for m in _DATE_TOKEN_RE.finditer(chunk or ""):
+        raw = m.group(1)
+        iso = _3p_date_to_iso(raw)
+        if iso:
+            return iso, raw
+    return None
+
+
+def _iter_text_lines(text: str) -> List[str]:
+    lines = []
+    for ln in (text or "").splitlines():
+        cleaned = re.sub(r"[ \t]+", " ", ln).strip()
+        if cleaned:
+            lines.append(cleaned)
+    return lines
+
+
+def _find_expiry_near_labels(text: str) -> Optional[tuple]:
+    """
+    Étape 1 : pour chaque libellé d'échéance, prendre la date sur la même ligne
+    ou sur les 1–2 lignes suivantes (cas tableaux AXA).
+    Retourne (iso, raw, label) ou None.
+    """
+    lines = _iter_text_lines(text)
+    if not lines:
+        # Texte aplati sans newlines
+        lines = [re.sub(r"\s+", " ", text or "").strip()]
+
+    best = None  # (priority, line_idx, iso, raw, label)
+
+    for i, line in enumerate(lines):
+        for priority, label, pat in _EXPIRY_LABEL_SPECS:
+            m = re.search(pat, line, flags=re.IGNORECASE)
+            if not m:
+                continue
+            # 1) Date après le libellé sur la même ligne
+            after = line[m.end():]
+            found = _first_date_in_text(after)
+            # 2) Sinon date n'importe où sur la ligne (colonne à droite avant le libellé OCR)
+            if not found:
+                found = _first_date_in_text(line)
+                # Si la seule date est clairement avant un contexte exclu, ignorer
+                if found and _EXCLUDE_DATE_CTX.search(line[: max(0, m.start())]):
+                    # date probablement liée à autre chose avant le libellé
+                    after_found = _first_date_in_text(after)
+                    found = after_found
+            # 3) Sinon lignes suivantes (tableau : libellé / valeur)
+            if not found:
+                for j in range(1, 3):
+                    if i + j >= len(lines):
+                        break
+                    nxt = lines[i + j]
+                    # Ne pas sauter à une autre rubrique trop longue sans date
+                    found = _first_date_in_text(nxt)
+                    if found:
+                        break
+                    # Ligne suivante = suite du libellé + date (AXA wrap)
+                    combined = line + " " + nxt
+                    if re.search(pat, combined, flags=re.IGNORECASE):
+                        found = _first_date_in_text(combined[m.start():] if m.start() < len(combined) else combined)
+                        if found:
+                            break
+
+            if not found:
+                continue
+            iso, raw = found
+            ctx = line
+            if _EXCLUDE_DATE_CTX.search(ctx) and not re.search(
+                r"(?:echeance|échéance)\s+(?:du\s+contrat|de\s+la\s+prestation|de\s+l['’]?assurance|police)|"
+                r"fin\s+du\s+contrat|maturit",
+                ctx,
+                re.I,
+            ):
+                continue
+            cand = (priority, i, iso, raw, label)
+            if best is None or cand[0] < best[0] or (cand[0] == best[0] and cand[1] < best[1]):
+                best = cand
+
+    if best:
+        return best[2], best[3], best[4]
+
+    # Passe 2 : texte aplati — fenêtre large après chaque libellé (jusqu'à 160 car. / 1 date)
+    flat = re.sub(r"\s+", " ", text or "")
+    for priority, label, pat in _EXPIRY_LABEL_SPECS:
+        for m in re.finditer(pat, flat, flags=re.IGNORECASE):
+            window = flat[m.end(): m.end() + 160]
+            found = _first_date_in_text(window)
+            if not found:
+                continue
+            iso, raw = found
+            ctx = flat[max(0, m.start() - 40): m.end() + 80]
+            if _EXCLUDE_DATE_CTX.search(ctx) and priority > 5:
+                continue
+            return iso, raw, label
+
+    return None
+
+
+def _collect_all_dates_with_context(text: str) -> List[dict]:
+    """Toutes les dates du document avec contexte local."""
+    lines = _iter_text_lines(text)
+    if not lines:
+        lines = [re.sub(r"\s+", " ", text or "").strip()]
+
+    results = []
+    seen = set()
+    for i, line in enumerate(lines):
+        for m in _DATE_TOKEN_RE.finditer(line):
+            raw = m.group(1)
+            iso = _3p_date_to_iso(raw)
+            if not iso:
+                continue
+            key = (iso, i, m.start())
+            if key in seen:
+                continue
+            seen.add(key)
+            prev_line = lines[i - 1] if i > 0 else ""
+            next_line = lines[i + 1] if i + 1 < len(lines) else ""
+            ctx = f"{prev_line} {line} {next_line}"
+            results.append({
+                "iso": iso,
+                "raw": raw,
+                "line_idx": i,
+                "line": line,
+                "ctx": ctx,
+                "in_table": bool(_TABLE_CTX_RE.search(ctx)),
+            })
+    return results
+
+
+def _fallback_expiry_from_all_dates(text: str) -> Optional[tuple]:
+    """
+    Stratégie de secours :
+    1) toutes les dates
+    2) exclure naissance / courrier / édition / effet
+    3) privilégier dates dans un contexte tableau (Échéance, Contrat, Prestation…)
+    4) sinon date future la plus éloignée
+    """
+    today = datetime.now().date()
+    candidates = _collect_all_dates_with_context(text)
+    if not candidates:
+        return None
+
+    kept = []
+    for c in candidates:
+        ctx = c["ctx"]
+        if _EXCLUDE_DATE_CTX.search(ctx):
+            # Garder si le contexte contient aussi un vrai libellé d'échéance fort
+            if not re.search(
+                r"(?:echeance|échéance)\s+(?:du\s+contrat|de\s+la\s+prestation|de\s+l['’]?assurance)|"
+                r"fin\s+du\s+contrat|maturit",
+                ctx,
+                re.I,
+            ):
+                continue
+        try:
+            d = datetime.strptime(c["iso"], "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        # Dates de naissance typiques : plus de ~16 ans dans le passé et < aujourd'hui
+        # déjà partiellement filtrées ; exclure aussi dates très anciennes (< 2000) hors table
+        if d.year < 2000 and not c["in_table"]:
+            continue
+        c["date"] = d
+        kept.append(c)
+
+    if not kept:
+        kept = []
+        for c in candidates:
+            try:
+                c["date"] = datetime.strptime(c["iso"], "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            kept.append(c)
+    if not kept:
+        return None
+
+    # 3) Dates en contexte tableau / mots-clés techniques
+    table_hits = [c for c in kept if c["in_table"]]
+    future_table = [c for c in table_hits if c["date"] >= today]
+    if future_table:
+        best = max(future_table, key=lambda c: c["date"])
+        return best["iso"], best["raw"], "Secours tableau (date future la plus éloignée)"
+
+    if table_hits:
+        best = max(table_hits, key=lambda c: c["date"])
+        return best["iso"], best["raw"], "Secours tableau"
+
+    # 4) Date future la plus éloignée du document
+    future = [c for c in kept if c["date"] >= today]
+    if future:
+        best = max(future, key=lambda c: c["date"])
+        return best["iso"], best["raw"], "Secours date future la plus éloignée"
+
+    # Aucune date future : ne pas inventer une échéance passée comme échéance contrat
+    return None
+
+
 def _extract_3p_expiry_from_text(flat: str, document_type: str) -> tuple:
     """
     Cherche une date d'échéance selon le type de document.
     Retourne (iso_date|None, raw_date|None, pattern_label|None).
+
+    Parcourt tout le texte (libellés + secours), pas seulement la 1re date.
     """
     if document_type in _NO_EXPIRY_DOC_TYPES:
         return None, None, None
 
-    # Ordre de priorité demandé (plus le rang est bas, plus c'est prioritaire).
-    priority_patterns: List[tuple] = [
-        (0, "Échéance de l'assurance", r"(?:echeance|échéance)\s+de\s+l['’]?\s*assurance[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
-        (1, "Échéance", r"(?<![a-zàâäéèêëïîôöùûüç])(?:echeance|échéance)(?!\s+de\s+prime)(?!\s+annuelle)[^\d]{0,30}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
-        (2, "Échéance du contrat", r"(?:echeance|échéance)\s+du\s+contrat[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
-        (3, "Date d'échéance", r"date\s+d['’]?(?:echeance|échéance)[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
-        (4, "Fin du contrat", r"(?:fin\s+du\s+contrat|date\s+de\s+fin|contrat\s+jusqu['’]?\s*au)[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
-        (5, "En cas de vie au", r"en\s+cas\s+de\s+vie\s+au[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
-        (6, "Capital en cas de vie à l'échéance", r"capital\s+en\s+cas\s+de\s+vie\s+[àa]\s+l['’]?(?:echeance|échéance)[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
-        (7, "Objectif", r"objectif[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
-        # Compléments utiles (valeur de rachat / DE/EN)
-        (8, "Ablauf / Maturity", r"(?:ablauf(?:datum)?|maturity(?:\s+date)?|expiry(?:\s+date)?|vertragsende)[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
-    ]
+    # Étape 1 — libellés robustes (même ligne / lignes suivantes / fenêtre large)
+    found = _find_expiry_near_labels(flat)
+    if found:
+        return found
 
-    # Pour valeurs de rachat : patterns spécifiques un peu plus tôt.
-    if document_type in {"Valeur de rachat", "Valeur de libération"}:
-        priority_patterns = [
-            (0, "Échéance de l'assurance", priority_patterns[0][2]),
-            (1, "Échéance du contrat", priority_patterns[2][2]),
-            (2, "Échéance", priority_patterns[1][2]),
-            (3, "Contrat jusqu'au", r"contrat\s+jusqu['’]?\s*au[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
-            (4, "Date de fin", r"date\s+de\s+fin[^\d]{0,40}?(\d{1,2}[./]\d{1,2}[./]\d{2,4})"),
-            (5, "Fin du contrat", priority_patterns[4][2]),
-            (6, "Ablauf / Maturity", priority_patterns[8][2]),
-        ]
+    # Étape 2 — stratégies de secours sur toutes les dates
+    fallback = _fallback_expiry_from_all_dates(flat)
+    if fallback:
+        return fallback
 
-    excluded_ctx = re.compile(
-        r"(signature|sign[ée]|effet|date\s+d['’]?effet|d[ée]but|imprim|impression|date\s+d['’]?impression|"
-        r"entr[ée]e\s+en\s+vigueur|entry\s+into\s+force|druck|printed|date\s+du\s+courrier|"
-        r"[ée]ch[ée]ance\s+de\s+prime|prime\s+annuelle)\b",
-        flags=re.IGNORECASE,
-    )
-
-    best = None  # (priority, start, iso, raw, label)
-    for priority, label, pat in priority_patterns:
-        for m in re.finditer(pat, flat, flags=re.IGNORECASE):
-            raw = (m.group(1) or "").strip()
-            iso = _3p_date_to_iso(raw)
-            if not iso:
-                continue
-            ctx = flat[max(0, m.start() - 180): min(len(flat), m.start() + 120)]
-            if excluded_ctx.search(ctx):
-                continue
-            # « Objectif » seul : n'accepter que si le contexte évoque clairement une échéance/contrat
-            if label == "Objectif" and not re.search(r"echeance|échéance|contrat|fin|vie", ctx, re.I):
-                continue
-            cand = (priority, m.start(), iso, raw, label)
-            if best is None or cand[0] < best[0] or (cand[0] == best[0] and cand[1] < best[1]):
-                best = cand
-
-    if not best:
-        return None, None, None
-    return best[2], best[3], best[4]
+    return None, None, None
 
 
 def extract_3p_expiry_from_pdf(pdf_bytes: bytes) -> Optional[str]:
@@ -2242,18 +2474,19 @@ def extract_3p_contracts_from_pdf(pdf_bytes: bytes) -> List[dict]:
             "expiry_label": None,
         }]
 
-    flat = re.sub(r"[ \t]+", " ", text)
-    document_type = classify_3p_document_type(flat)
+    # Conserver les sauts de ligne (essentiel pour tableaux AXA) ;
+    # n'aplatir que les espaces / tabs.
+    structured = re.sub(r"[ \t]+", " ", text)
+    document_type = classify_3p_document_type(structured)
 
-    company = _detect_3p_company(flat)
-    policy_number = _detect_3p_policy(flat)
-    expiry_iso, raw_date, expiry_label = _extract_3p_expiry_from_text(flat, document_type)
+    company = _detect_3p_company(structured)
+    policy_number = _detect_3p_policy(structured)
+    expiry_iso, raw_date, expiry_label = _extract_3p_expiry_from_text(structured, document_type)
 
-    # Si une date est trouvée près d'un libellé fort, affiner compagnie/police autour du match.
     if expiry_iso and raw_date:
-        m = re.search(re.escape(raw_date), flat)
+        m = re.search(re.escape(raw_date), structured)
         if m:
-            window = flat[max(0, m.start() - 700): min(len(flat), m.start() + 250)]
+            window = structured[max(0, m.start() - 700): min(len(structured), m.start() + 250)]
             company = _detect_3p_company(window) or company
             policy_number = _detect_3p_policy(window) or policy_number
 

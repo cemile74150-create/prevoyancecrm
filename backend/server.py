@@ -1107,13 +1107,58 @@ async def _reconcile_echeances_3p_lines(user_id: str, client_id: str) -> None:
                                 existing_line["document_type"] = "Autre document"
                     elif not existing_line.get("document_type"):
                         existing_line["document_type"] = "Autre document"
+            # Re-extraction échéance manquante avec le moteur robuste (une seule fois / doc).
+            doc_type = existing_line.get("document_type") or "Autre document"
+            needs_expiry_refresh = (
+                not existing_line.get("echeance_3p")
+                and doc_type not in {"Résiliation", "Rachat", "Libre passage"}
+                and doc.get("extracted_expiry_engine") != "v2-robust"
+            )
+            if needs_expiry_refresh:
+                storage_path = doc.get("storage_path")
+                ctype = (doc.get("content_type") or "").lower()
+                fname = (doc.get("original_filename") or "").lower()
+                if storage_path and (ctype == "application/pdf" or fname.endswith(".pdf")):
+                    try:
+                        data = _read_storage_bytes(storage_path)
+                        detected = extract_3p_contracts_from_pdf(data) or []
+                        entry = detected[0] if detected else {}
+                        await db.documents.update_one(
+                            {"id": doc_id},
+                            {"$set": {
+                                "extracted_echeances_3p": detected,
+                                "extracted_echeance_3p": (entry or {}).get("expiry_date"),
+                                "extracted_document_type": (entry or {}).get("document_type"),
+                                "extracted_expiry_engine": "v2-robust",
+                            }},
+                        )
+                        if entry.get("document_type") and not existing_line.get("document_type"):
+                            existing_line["document_type"] = _normalize_document_type_3p(entry.get("document_type"))
+                        if not existing_line.get("company") and entry.get("company"):
+                            existing_line["company"] = entry.get("company")
+                        if not existing_line.get("policy_number") and entry.get("policy_number"):
+                            existing_line["policy_number"] = entry.get("policy_number")
+                        if entry.get("expiry_date"):
+                            existing_line["echeance_3p"] = entry.get("expiry_date")
+                            existing_line["detected"] = True
+                            existing_line["raw_date"] = entry.get("raw_date")
+                            existing_line["updated_at"] = now_iso
+                    except Exception:
+                        logger.exception("Re-extraction échéance robuste échouée pour doc %s", doc_id)
+                        await db.documents.update_one(
+                            {"id": doc_id},
+                            {"$set": {"extracted_expiry_engine": "v2-robust"}},
+                        )
             continue
 
         entry = None
         extracted = doc.get("extracted_echeances_3p") or []
         if isinstance(extracted, list) and extracted:
             entry = extracted[0] if isinstance(extracted[0], dict) else None
-        else:
+            # Cache ancien sans échéance → forcer le nouveau moteur
+            if (not entry or not entry.get("expiry_date")) and doc.get("extracted_expiry_engine") != "v2-robust":
+                entry = None
+        if entry is None:
             # Tentative d'extraction à la volée (une fois).
             storage_path = doc.get("storage_path")
             ctype = (doc.get("content_type") or "").lower()
@@ -1129,6 +1174,7 @@ async def _reconcile_echeances_3p_lines(user_id: str, client_id: str) -> None:
                             "extracted_echeances_3p": detected,
                             "extracted_echeance_3p": (entry or {}).get("expiry_date"),
                             "extracted_document_type": (entry or {}).get("document_type"),
+                            "extracted_expiry_engine": "v2-robust",
                         }},
                     )
                 except Exception:
@@ -1233,6 +1279,7 @@ async def upload_document(
                 "extracted_echeances_3p": detected_echeances[:1] if detected_echeances else [entry],
                 "extracted_echeance_3p": new_line.get("echeance_3p"),
                 "extracted_document_type": new_line.get("document_type"),
+                "extracted_expiry_engine": "v2-robust",
             }},
         )
         doc["extracted_echeance_3p"] = new_line.get("echeance_3p")
