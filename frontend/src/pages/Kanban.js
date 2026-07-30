@@ -1,11 +1,17 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import api from "@/lib/api";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ClientFormDialog from "@/components/ClientFormDialog";
-import { STATUTS, STATUT_DOT, normalizeStatut } from "@/lib/constants";
-import { Plus, AlertTriangle, MoreHorizontal, Folder, User } from "lucide-react";
+import {
+  STATUTS, STATUT_DOT, normalizeStatut, CONSEILLERS, UNASSIGNED_CONSEILLER,
+} from "@/lib/constants";
+import {
+  Plus, AlertTriangle, MoreHorizontal, Folder, User, Users, Trophy, UserX,
+} from "lucide-react";
 import { toast } from "sonner";
 
 function isMarriedEtat(etat) {
@@ -46,6 +52,27 @@ function pickVille(members) {
   return "";
 }
 
+function normalizeConseillerName(raw) {
+  const name = (raw || "").trim();
+  if (!name) return UNASSIGNED_CONSEILLER;
+  const known = CONSEILLERS.find((c) => c.casefold?.() === name.casefold() || c.toLowerCase() === name.toLowerCase());
+  return known || name;
+}
+
+function pickGroupConseiller(members) {
+  const names = (members || [])
+    .map((m) => (m?.conseiller || "").trim())
+    .filter(Boolean);
+  if (!names.length) return UNASSIGNED_CONSEILLER;
+  // Plus fréquent, sinon premier non vide
+  const counts = {};
+  names.forEach((n) => {
+    const key = normalizeConseillerName(n);
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+}
+
 function buildKanbanGroups(clients) {
   const byId = {};
   (clients || []).forEach((c) => { byId[c.id] = c; });
@@ -82,6 +109,7 @@ function buildKanbanGroups(clients) {
         numero_dossier: members[0]?.numero_dossier || c.numero_dossier || spouse.numero_dossier,
         priorite: urgent ? "urgent" : (members[0]?.priorite || "normale"),
         statut: groupStatut,
+        conseiller: pickGroupConseiller(members),
         ville: pickVille(members),
         memberIds: members.map((m) => m.id),
         members,
@@ -96,6 +124,7 @@ function buildKanbanGroups(clients) {
         numero_dossier: c.numero_dossier,
         priorite: c.priorite,
         statut: normalizeStatut(c.statut),
+        conseiller: normalizeConseillerName(c.conseiller),
         ville: c.ville || "",
         memberIds: [c.id],
         representativeId: c.id,
@@ -106,6 +135,68 @@ function buildKanbanGroups(clients) {
 
   return Object.values(groups);
 }
+
+function buildConseillerStats(groups) {
+  const byName = {};
+  (groups || []).forEach((g) => {
+    const name = g.conseiller || UNASSIGNED_CONSEILLER;
+    if (!byName[name]) {
+      byName[name] = {
+        name,
+        total: 0,
+        byStatut: Object.fromEntries(STATUTS.map((s) => [s, 0])),
+      };
+    }
+    byName[name].total += 1;
+    const st = normalizeStatut(g.statut);
+    if (byName[name].byStatut[st] !== undefined) byName[name].byStatut[st] += 1;
+  });
+
+  // Toujours afficher les conseillers connus même à 0
+  CONSEILLERS.forEach((name) => {
+    if (!byName[name]) {
+      byName[name] = {
+        name,
+        total: 0,
+        byStatut: Object.fromEntries(STATUTS.map((s) => [s, 0])),
+      };
+    }
+  });
+  if (!byName[UNASSIGNED_CONSEILLER]) {
+    byName[UNASSIGNED_CONSEILLER] = {
+      name: UNASSIGNED_CONSEILLER,
+      total: 0,
+      byStatut: Object.fromEntries(STATUTS.map((s) => [s, 0])),
+    };
+  }
+
+  const list = Object.values(byName).sort((a, b) => {
+    if (a.name === UNASSIGNED_CONSEILLER) return 1;
+    if (b.name === UNASSIGNED_CONSEILLER) return -1;
+    if (b.total !== a.total) return b.total - a.total;
+    return a.name.localeCompare(b.name, "fr");
+  });
+
+  const assigned = list.filter((c) => c.name !== UNASSIGNED_CONSEILLER);
+  const top = assigned.reduce((best, cur) => (!best || cur.total > best.total ? cur : best), null);
+  const unassigned = byName[UNASSIGNED_CONSEILLER]?.total || 0;
+
+  return {
+    list,
+    total: (groups || []).length,
+    top,
+    unassigned,
+  };
+}
+
+const STATUT_EMOJI = {
+  "Nouveau": "🟢",
+  "Documents en attente": "🟡",
+  "Analyse en cours": "🔵",
+  "Stand-by": "🟠",
+  "À présenter": "🟣",
+  "Clôturé": "⚫",
+};
 
 export default function Kanban() {
   const [clients, setClients] = useState([]);
@@ -124,12 +215,30 @@ export default function Kanban() {
   const params = new URLSearchParams(location.search);
   const selectedStatut = params.get("statut");
   const selectedPriority = params.get("priorite");
+  const selectedConseiller = params.get("conseiller") || "Tous";
 
-  const groups = buildKanbanGroups(clients);
+  const setConseillerFilter = (value) => {
+    const next = new URLSearchParams(location.search);
+    if (!value || value === "Tous") next.delete("conseiller");
+    else next.set("conseiller", value);
+    const qs = next.toString();
+    navigate(`/dossiers${qs ? `?${qs}` : ""}`, { replace: true });
+  };
+
+  const groups = useMemo(() => buildKanbanGroups(clients), [clients]);
+  const conseillerStats = useMemo(() => buildConseillerStats(groups), [groups]);
+
+  const conseillerOptions = useMemo(() => {
+    const fromData = groups
+      .map((g) => g.conseiller)
+      .filter((n) => n && n !== UNASSIGNED_CONSEILLER);
+    return Array.from(new Set([...CONSEILLERS, ...fromData])).sort((a, b) => a.localeCompare(b, "fr"));
+  }, [groups]);
 
   const filteredGroups = groups.filter((g) => {
     if (selectedStatut && g.statut !== selectedStatut) return false;
     if (selectedPriority && g.priorite !== selectedPriority) return false;
+    if (selectedConseiller && selectedConseiller !== "Tous" && g.conseiller !== selectedConseiller) return false;
     return true;
   });
 
@@ -164,9 +273,108 @@ export default function Kanban() {
         </Button>
       </div>
 
-      {(selectedStatut || selectedPriority) && (
-        <div className="mb-3 rounded-md border border-[#002FA7]/20 bg-[#002FA7]/5 px-3 py-2 text-xs text-[#002FA7]">
-          Affichage filtré : {selectedStatut || `priorité ${selectedPriority}`}
+      {/* Résumé charge conseillers */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3" data-testid="conseiller-summary">
+        <Card className="p-3 border-border/80">
+          <p className="text-[11px] text-muted-foreground">Total dossiers</p>
+          <p className="font-display font-bold text-xl tabular-nums mt-0.5">{conseillerStats.total}</p>
+        </Card>
+        <Card className="p-3 border-border/80">
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Users className="h-3 w-3" /> Conseillers actifs</p>
+          <p className="font-display font-bold text-xl tabular-nums mt-0.5">
+            {conseillerStats.list.filter((c) => c.name !== UNASSIGNED_CONSEILLER && c.total > 0).length}
+          </p>
+        </Card>
+        <Card className="p-3 border-border/80">
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Trophy className="h-3 w-3" /> Plus de dossiers</p>
+          <p className="font-semibold text-sm mt-1 truncate" title={conseillerStats.top?.name}>
+            {conseillerStats.top && conseillerStats.top.total > 0
+              ? `${conseillerStats.top.name} (${conseillerStats.top.total})`
+              : "—"}
+          </p>
+        </Card>
+        <Card className="p-3 border-border/80">
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1"><UserX className="h-3 w-3" /> Non attribués</p>
+          <p className="font-display font-bold text-xl tabular-nums mt-0.5">{conseillerStats.unassigned}</p>
+        </Card>
+      </div>
+
+      <div className="mb-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+          <h2 className="text-sm font-semibold text-[#002FA7]">Répartition des dossiers par conseiller</h2>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Conseiller</span>
+            <Select value={selectedConseiller} onValueChange={setConseillerFilter}>
+              <SelectTrigger data-testid="conseiller-filter" className="h-8 w-[200px] text-xs">
+                <SelectValue placeholder="Tous" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Tous">Tous</SelectItem>
+                {conseillerOptions.map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+                <SelectItem value={UNASSIGNED_CONSEILLER}>{UNASSIGNED_CONSEILLER}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5" data-testid="conseiller-cards">
+          {conseillerStats.list.filter((c) => c.total > 0 || CONSEILLERS.includes(c.name)).map((c) => {
+            const active = selectedConseiller === c.name;
+            return (
+              <button
+                key={c.name}
+                type="button"
+                data-testid={`conseiller-card-${c.name}`}
+                onClick={() => setConseillerFilter(active ? "Tous" : c.name)}
+                className={`text-left rounded-lg border bg-card p-3 transition-all hover:border-[#002FA7]/40 hover:shadow-sm ${
+                  active ? "border-[#002FA7] ring-1 ring-[#002FA7]/30" : "border-border/80"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="h-7 w-7 rounded-full bg-secondary flex items-center justify-center text-xs font-semibold shrink-0">
+                      {(c.name === UNASSIGNED_CONSEILLER ? "?" : c.name.split(" ").map((p) => p[0]).join("").slice(0, 2)).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{c.name}</p>
+                      <p className="text-[11px] text-muted-foreground">📂 {c.total} dossier{c.total === 1 ? "" : "s"}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2.5 grid grid-cols-2 gap-x-2 gap-y-1">
+                  {STATUTS.map((s) => (
+                    <div key={s} className="flex items-center justify-between gap-1 text-[11px]">
+                      <span className="text-muted-foreground truncate">
+                        <span className="mr-1">{STATUT_EMOJI[s]}</span>
+                        {s === "Documents en attente" ? "Docs attente" : s === "Analyse en cours" ? "Analyse" : s === "À présenter" ? "Présenter" : s === "Clôturé" ? "Clôturés" : s}
+                      </span>
+                      <span className="font-medium tabular-nums">{c.byStatut[s] || 0}</span>
+                    </div>
+                  ))}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {(selectedStatut || selectedPriority || (selectedConseiller && selectedConseiller !== "Tous")) && (
+        <div className="mb-3 rounded-md border border-[#002FA7]/20 bg-[#002FA7]/5 px-3 py-2 text-xs text-[#002FA7] flex items-center justify-between gap-2 flex-wrap">
+          <span>
+            Affichage filtré :
+            {[selectedConseiller && selectedConseiller !== "Tous" ? selectedConseiller : null, selectedStatut, selectedPriority ? `priorité ${selectedPriority}` : null]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+          <button
+            type="button"
+            className="underline underline-offset-2"
+            onClick={() => navigate("/dossiers", { replace: true })}
+          >
+            Réinitialiser
+          </button>
         </div>
       )}
 

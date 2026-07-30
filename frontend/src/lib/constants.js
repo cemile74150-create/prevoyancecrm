@@ -7,6 +7,16 @@ export const STATUTS = [
   "Clôturé",
 ];
 
+/** Conseillers connus du cabinet (complétés dynamiquement par les données). */
+export const CONSEILLERS = [
+  "Alberto Mendes",
+  "Valentin Lugnier",
+  "Emric Laugerette",
+  "Tony D'Andrea",
+];
+
+export const UNASSIGNED_CONSEILLER = "Non attribué";
+
 /** Mappe les anciens libellés vers le workflow simplifié. */
 export const STATUT_LEGACY_MAP = {
   "Documents demandés": "Documents en attente",
