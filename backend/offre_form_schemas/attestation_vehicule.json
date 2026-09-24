@@ -1,0 +1,372 @@
+{
+  "id": "attestation_vehicule",
+  "label": "Demande attestation véhicule",
+  "category": "Véhicule",
+  "title": "Demande d'attestation véhicule",
+  "gravity_form_id": 110,
+  "source_file": "Texte collé (8).txt",
+  "fields_count": 31,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Étape 1"
+    }
+  ],
+  "page_count": 1,
+  "fields": [
+    {
+      "id": "110_134",
+      "gf_field_id": 134,
+      "name": "input_134",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "Demande d"
+    },
+    {
+      "id": "110_146",
+      "gf_field_id": 146,
+      "name": "input_146",
+      "label": "Raison de l'attestation",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Nouvelle immatriculation",
+        "Changement de véhicule",
+        "Changement d'assurance",
+        "Changement de détenteur"
+      ],
+      "page": 1
+    },
+    {
+      "id": "110_122",
+      "gf_field_id": 122,
+      "name": "input_122",
+      "label": "Canton",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "110_143",
+      "gf_field_id": 143,
+      "name": "input_143",
+      "label": "Nº de plaques",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "110_147",
+      "gf_field_id": 147,
+      "name": "input_147",
+      "label": "Cession du jeu de plaques ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1,
+      "disabled": true
+    },
+    {
+      "id": "110_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Informations sur le véhicule",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "110_67",
+      "gf_field_id": 67,
+      "name": "input_67",
+      "label": "Type de véhicule",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Véhicule de tourisme",
+        "Utilitaire",
+        "Deux-roues et trois-roues",
+        "Véhicule de collection",
+        "Remorques",
+        "Autre"
+      ],
+      "page": 1,
+      "disabled": true
+    },
+    {
+      "id": "110_142",
+      "gf_field_id": 142,
+      "name": "input_142",
+      "label": "Marque du véhicule",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "110_123",
+      "gf_field_id": 123,
+      "name": "input_123",
+      "label": "Modele du véhicule",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Merci d'être le plus précis possible."
+    },
+    {
+      "id": "110_136",
+      "gf_field_id": 136,
+      "name": "input_136",
+      "label": "Date de première mise en circulation du véhicule",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj/mm/aaaa"
+    },
+    {
+      "id": "110_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "Numéro de matricule",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "110_50",
+      "gf_field_id": 50,
+      "name": "input_50",
+      "label": "Numéro d'homologation / RType",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "description": "Inscrit sur la carte grise, à nous indiquer le plus souvent possible pour trouver le bon véhicule."
+    },
+    {
+      "id": "110_102",
+      "gf_field_id": 102,
+      "name": "input_102",
+      "label": "Envoyer une copie de la carte grise",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "110_140",
+      "gf_field_id": 140,
+      "name": "input_140",
+      "label": "Informations sur le détenteur du véhicule",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "110_149",
+      "gf_field_id": 149,
+      "name": "input_149",
+      "label": "Civilité :",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Mr",
+        "Mme"
+      ],
+      "page": 1
+    },
+    {
+      "id": "110_151",
+      "gf_field_id": 151,
+      "name": "input_151",
+      "label": "Prénom :",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "110_150",
+      "gf_field_id": 150,
+      "name": "input_150",
+      "label": "Nom :",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "110_154",
+      "gf_field_id": 154,
+      "name": "input_154",
+      "label": "Date de naissance :",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj/mm/aaaa"
+    },
+    {
+      "id": "110_157",
+      "gf_field_id": 157,
+      "name": "input_157",
+      "label": "Nationalité :",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "110_158",
+      "gf_field_id": 158,
+      "name": "input_158",
+      "label": "Permis de séjour :",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Aucun permis",
+        "Permis B",
+        "Permis C",
+        "Permis L",
+        "Permis G"
+      ],
+      "page": 1
+    },
+    {
+      "id": "110_159_1",
+      "gf_field_id": 159,
+      "name": "input_159.1",
+      "label": "Adresse postale",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "110_159_3",
+      "gf_field_id": 159,
+      "name": "input_159.3",
+      "label": "Ville",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "110_159_4",
+      "gf_field_id": 159,
+      "name": "input_159.4",
+      "label": "NPA / Code postal",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "110_159_5",
+      "gf_field_id": 159,
+      "name": "input_159.5",
+      "label": "Canton",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "110_159_6",
+      "gf_field_id": 159,
+      "name": "input_159.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "110_155",
+      "gf_field_id": 155,
+      "name": "input_155",
+      "label": "Date du permis de conduire",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj/mm/aaaa"
+    },
+    {
+      "id": "110_148",
+      "gf_field_id": 148,
+      "name": "input_148",
+      "label": "Informations sur la demande",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "110_144",
+      "gf_field_id": 144,
+      "name": "input_144",
+      "label": "La demande d'attestation doit être faite auprès de la compagnie suivante :",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "AXA",
+        "Generali (Romandie Courtage uniquement)",
+        "La Mobilière",
+        "Zurich",
+        "Allianz",
+        "Helvetia",
+        "La Vaudoise",
+        "Smile Direct",
+        "Automate"
+      ],
+      "page": 1
+    },
+    {
+      "id": "110_139",
+      "gf_field_id": 139,
+      "name": "input_139",
+      "label": "Date souhaitée pour l'immatriculation",
+      "type": "date",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj/mm/aaaa"
+    },
+    {
+      "id": "110_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Vous recevrez la confirmation du traitement de votre demande d'attestation véhicule à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Merci d'indiquer une adresse email valide pour que le service des offres puisse répondre à votre demande. | Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée."
+    },
+    {
+      "id": "110_34",
+      "gf_field_id": 34,
+      "name": "input_34",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 1
+    }
+  ]
+}

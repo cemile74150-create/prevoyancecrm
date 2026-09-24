@@ -1,0 +1,789 @@
+{
+  "id": "entreprise_28",
+  "label": "LAAF / LAAC",
+  "category": "Entreprise",
+  "title": "LAAF / LAAC",
+  "gravity_form_id": 28,
+  "source_file": "Texte collé (6)(1).txt",
+  "fields_count": 51,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Étape 1"
+    },
+    {
+      "page": 2,
+      "label": "Étape 2"
+    },
+    {
+      "page": 3,
+      "label": "Étape 3"
+    },
+    {
+      "page": 4,
+      "label": "Étape 4"
+    }
+  ],
+  "page_count": 4,
+  "fields": [
+    {
+      "id": "28_95",
+      "gf_field_id": 95,
+      "name": "input_95",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "LAAF / LAAC"
+    },
+    {
+      "id": "28_99",
+      "gf_field_id": 99,
+      "name": "input_99",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "28_100",
+      "gf_field_id": 100,
+      "name": "input_100",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "28_97",
+      "gf_field_id": 97,
+      "name": "input_97",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "28_98_3",
+      "gf_field_id": 98,
+      "name": "input_98.3",
+      "label": "Prénom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "28_98_6",
+      "gf_field_id": 98,
+      "name": "input_98.6",
+      "label": "Nom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "28_3",
+      "gf_field_id": 3,
+      "name": "input_3",
+      "label": "Renseignements généraux",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "28_4",
+      "gf_field_id": 4,
+      "name": "input_4",
+      "label": "Nom de l'entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "28_5",
+      "gf_field_id": 5,
+      "name": "input_5",
+      "label": "Activité de l'entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Description exacte de l'activité, le registre du commerce ne suffit pas."
+    },
+    {
+      "id": "28_6",
+      "gf_field_id": 6,
+      "name": "input_6",
+      "label": "Forme de la société",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "SA",
+        "SARL",
+        "Société",
+        "Raison individuelle",
+        "Société en nom collectif"
+      ],
+      "page": 1
+    },
+    {
+      "id": "28_7",
+      "gf_field_id": 7,
+      "name": "input_7",
+      "label": "Nouvelle création ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "28_93",
+      "gf_field_id": 93,
+      "name": "input_93",
+      "label": "Date d'installation comme indépendant",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj/mm/aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_7",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_81",
+      "gf_field_id": 81,
+      "name": "input_81",
+      "label": "Ancien assureur ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_7",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_82",
+      "gf_field_id": 82,
+      "name": "input_82",
+      "label": "Nom de l'ancienne compagnie ?",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_7",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_85",
+      "gf_field_id": 85,
+      "name": "input_85",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_7",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_8_1",
+      "gf_field_id": 8,
+      "name": "input_8.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "28_8_3",
+      "gf_field_id": 8,
+      "name": "input_8.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "28_8_5",
+      "gf_field_id": 8,
+      "name": "input_8.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "28_8_6",
+      "gf_field_id": 8,
+      "name": "input_8.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden"
+    },
+    {
+      "id": "28_70",
+      "gf_field_id": 70,
+      "name": "input_70",
+      "label": "Canton",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "28_89",
+      "gf_field_id": 89,
+      "name": "input_89",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "28_90",
+      "gf_field_id": 90,
+      "name": "input_90",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "28_87",
+      "gf_field_id": 87,
+      "name": "input_87",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 1
+    },
+    {
+      "id": "28_10",
+      "gf_field_id": 10,
+      "name": "input_10",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "28_11",
+      "gf_field_id": 11,
+      "name": "input_11",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "28_12",
+      "gf_field_id": 12,
+      "name": "input_12",
+      "label": "Permis de séjour",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_7",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_21",
+      "gf_field_id": 21,
+      "name": "input_21",
+      "label": "LAA Facultative",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "28_22",
+      "gf_field_id": 22,
+      "name": "input_22",
+      "label": "Ajouter une LAA facultative ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "28_80",
+      "gf_field_id": 80,
+      "name": "input_80",
+      "label": "Date d'effet",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_22",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_107",
+      "gf_field_id": 107,
+      "name": "input_107",
+      "label": "Salaire annuel à assurer",
+      "type": "number",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Minimum 66 690 CHF",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_22",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_25",
+      "gf_field_id": 25,
+      "name": "input_25",
+      "label": "LAA Complémentaire",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "28_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Ajouter une LAA complémentaire ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "28_79",
+      "gf_field_id": 79,
+      "name": "input_79",
+      "label": "Date d'effet",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_92",
+      "gf_field_id": 92,
+      "name": "input_92",
+      "label": "Frais de guérison en privée ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non",
+        "Autre"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_84",
+      "gf_field_id": 84,
+      "name": "input_84",
+      "label": "Délai d'attente",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_63",
+      "gf_field_id": 63,
+      "name": "input_63",
+      "label": "Registre du commerce",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "28_64",
+      "gf_field_id": 64,
+      "name": "input_64",
+      "label": "Merci de nous inclure la copie du registre du commerce",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "description": "Extrait du registre de commerce à inclure Zefix https://www.zefix.ch/fr/search/entity/welcome | - IMPORTANT : Sans ce document, les compagnies d'assurance ne seront pas en mesure de vous faire une offre. -"
+    },
+    {
+      "id": "28_68",
+      "gf_field_id": 68,
+      "name": "input_68",
+      "label": "Validation de la demande",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "28_65",
+      "gf_field_id": 65,
+      "name": "input_65",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "Allianz",
+        "Axa",
+        "Generali (Romandie Courtage uniquement)",
+        "La Mobilière",
+        "Zurich",
+        "Helvetia",
+        "CSS",
+        "Pax",
+        "Vaudoise",
+        "Envoi du formulaire"
+      ],
+      "page": 4,
+      "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois à nous communiquer une offre, voire ne pas l'envoyer du tout.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_102",
+      "gf_field_id": 102,
+      "name": "input_102",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "Allianz",
+        "Axa",
+        "Generali (Romandie Courtage uniquement)",
+        "La Mobilière",
+        "Zurich",
+        "CSS",
+        "Pax",
+        "Vaudoise",
+        "Envoi du formulaire"
+      ],
+      "page": 4,
+      "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois à nous communiquer une offre, voire ne pas l'envoyer du tout.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_103",
+      "gf_field_id": 103,
+      "name": "input_103",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "Allianz",
+        "Axa",
+        "Generali (Romandie Courtage uniquement)",
+        "La Mobilière",
+        "Zurich",
+        "Helvetia",
+        "CSS",
+        "Pax",
+        "Vaudoise",
+        "Envoi du formulaire"
+      ],
+      "page": 4,
+      "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois à nous communiquer une offre, voire ne pas l'envoyer du tout.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_96",
+      "gf_field_id": 96,
+      "name": "input_96",
+      "label": "Date de création de l'entreprise (ou d'installation comme indépendant)",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "description": "La Mobilière a rendu ce renseignement obligatoire.",
+      "placeholder": "jj/mm/aaaa"
+    },
+    {
+      "id": "28_94",
+      "gf_field_id": 94,
+      "name": "input_94",
+      "label": "Numéro UID",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "description": "Generali a rendu ce renseignement obligatoire. Pour le trouver, rendez-vous sur ce lien : https://links.agencemendes.ch/DmfC",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_67",
+      "gf_field_id": 67,
+      "name": "input_67",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "28_83",
+      "gf_field_id": 83,
+      "name": "input_83",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4
+    },
+    {
+      "id": "28_66",
+      "gf_field_id": 66,
+      "name": "input_66",
+      "label": "Date du rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "28_86",
+      "gf_field_id": 86,
+      "name": "input_86",
+      "label": "Autre(s) document(s) à inclure",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "28_101",
+      "gf_field_id": 101,
+      "name": "input_101",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_83",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "28_88",
+      "gf_field_id": 88,
+      "name": "input_88",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "28_91",
+      "gf_field_id": 91,
+      "name": "input_91",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 4,
+      "default": "Français"
+    },
+    {
+      "id": "28_2",
+      "gf_field_id": 2,
+      "name": "input_2",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir une copie à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}

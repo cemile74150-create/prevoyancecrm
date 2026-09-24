@@ -1,0 +1,721 @@
+{
+  "id": "protection_juridique_particulier",
+  "label": "Protection juridique privé",
+  "category": "Protection juridique",
+  "title": "Protection juridique privé",
+  "gravity_form_id": 35,
+  "source_file": "Texte collé (11).txt",
+  "fields_count": 48,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Renseignements généraux"
+    },
+    {
+      "page": 2,
+      "label": "Couverture & envoi"
+    }
+  ],
+  "page_count": 2,
+  "fields": [
+    {
+      "id": "35_54",
+      "gf_field_id": 54,
+      "name": "input_54",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "Protection juridique privé"
+    },
+    {
+      "id": "35_56",
+      "gf_field_id": 56,
+      "name": "input_56",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "35_57_3",
+      "gf_field_id": 57,
+      "name": "input_57.3",
+      "label": "Prénom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "35_57_6",
+      "gf_field_id": 57,
+      "name": "input_57.6",
+      "label": "Nom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "35_58",
+      "gf_field_id": 58,
+      "name": "input_58",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "35_59",
+      "gf_field_id": 59,
+      "name": "input_59",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "35_1",
+      "gf_field_id": 1,
+      "name": "input_1",
+      "label": "Situation du preneur d'assurance",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "35_55",
+      "gf_field_id": 55,
+      "name": "input_55",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 1
+    },
+    {
+      "id": "35_47",
+      "gf_field_id": 47,
+      "name": "input_47",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "35_48",
+      "gf_field_id": 48,
+      "name": "input_48",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "35_5",
+      "gf_field_id": 5,
+      "name": "input_5",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "35_4",
+      "gf_field_id": 4,
+      "name": "input_4",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "35_6",
+      "gf_field_id": 6,
+      "name": "input_6",
+      "label": "Permis de séjour",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "35_3_1",
+      "gf_field_id": 3,
+      "name": "input_3.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "35_3_2",
+      "gf_field_id": 3,
+      "name": "input_3.2",
+      "label": "Adresse ligne 2",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "35_3_3",
+      "gf_field_id": 3,
+      "name": "input_3.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "35_3_4",
+      "gf_field_id": 3,
+      "name": "input_3.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "35_3_5",
+      "gf_field_id": 3,
+      "name": "input_3.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "35_3_6",
+      "gf_field_id": 3,
+      "name": "input_3.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "35_50",
+      "gf_field_id": 50,
+      "name": "input_50",
+      "label": "Le demandeur possède-t-il déjà une protection juridique ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "35_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "Une assurance protection juridique a-t-elle résilié son contrat ou celui d'une personne coassurée au cours des 5 dernières années ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "35_52",
+      "gf_field_id": 52,
+      "name": "input_52",
+      "label": "Combien de litiges ou de procédures administratives a eu, le demandeur ou la personne coassurée, au cours de ces 3 dernières années ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "0",
+        "1",
+        "2",
+        "Plus de 2"
+      ],
+      "page": 1
+    },
+    {
+      "id": "35_53",
+      "gf_field_id": 53,
+      "name": "input_53",
+      "label": "Le demandeur exerce-t-il un travail à son compte ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "35_28",
+      "gf_field_id": 28,
+      "name": "input_28",
+      "label": "Est-il propriétaire d'un immeuble ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "35_31",
+      "gf_field_id": 31,
+      "name": "input_31",
+      "label": "Combien d'appartements faut-il assurer ?",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_28",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "35_29",
+      "gf_field_id": 29,
+      "name": "input_29",
+      "label": "Est-il propriétaire d'une résidence secondaire ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "35_7",
+      "gf_field_id": 7,
+      "name": "input_7",
+      "label": "Autre(s) personne(s) à assurer",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "35_8",
+      "gf_field_id": 8,
+      "name": "input_8",
+      "label": "Il s'agit",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "d'une personne seule",
+        "d'une famille"
+      ],
+      "page": 1
+    },
+    {
+      "id": "35_34",
+      "gf_field_id": 34,
+      "name": "input_34",
+      "label": "Combien d'adultes (personnes âgées de plus de 18 ans) vivent dans le logement?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "+ de 10"
+      ],
+      "page": 1,
+      "description": "Nombre d'adulte(s) Preneur d'assurance non inclu.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_29",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "35_35",
+      "gf_field_id": 35,
+      "name": "input_35",
+      "label": "Combien d'enfants (personnes âgées de moins de 18 ans) vivent dans le logement?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "+ de 10"
+      ],
+      "page": 1,
+      "description": "Nombre d'enfant(s)",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_29",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "35_46",
+      "gf_field_id": 46,
+      "name": "input_46",
+      "label": "Personnes à assurer",
+      "type": "list",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Merci d’indiquer les informations nécessaires pour TOUS les membres à assurer. Ajouter une nouvelle ligne en cliquant sur le +",
+      "columns": [
+        "Prénom",
+        "Nom",
+        "Date de naissance"
+      ],
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_29",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "35_18",
+      "gf_field_id": 18,
+      "name": "input_18",
+      "label": "Choix des couvertures",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "35_19",
+      "gf_field_id": 19,
+      "name": "input_19",
+      "label": "Type de couverture",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Protection juridique circulation",
+        "Protection juridique privée",
+        "Protection juridique combinée (circulation+privée)"
+      ],
+      "page": 2
+    },
+    {
+      "id": "35_20",
+      "gf_field_id": 20,
+      "name": "input_20",
+      "label": "Date d'effet du contrat",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "35_21",
+      "gf_field_id": 21,
+      "name": "input_21",
+      "label": "Durée du contrat",
+      "type": "select",
+      "required": true,
+      "options": [
+        "1 an",
+        "3 ans",
+        "5 ans",
+        "8 ans"
+      ],
+      "page": 2
+    },
+    {
+      "id": "35_23",
+      "gf_field_id": 23,
+      "name": "input_23",
+      "label": "Quelles compagnies ?",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Dextra",
+        "Fortuna",
+        "ARAG (Romandie Courtage uniquement)",
+        "CAP (Romandie Courtage uniquement)",
+        "Orion (Romandie Courtage uniquement)",
+        "Coop (Privé uniquement)",
+        "Envoi du formulaire"
+      ],
+      "page": 2,
+      "description": "3 compagnies maximum. Pour Protekta et Fortuna, merci d'utiliser les formulaires disponibles dans \"documents\""
+    },
+    {
+      "id": "35_22",
+      "gf_field_id": 22,
+      "name": "input_22",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "35_30",
+      "gf_field_id": 30,
+      "name": "input_30",
+      "label": "OPTIONS SPÉCIFIQUES À AXA",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Domicile et vie quotidienne",
+        "Circulation et voyages",
+        "Santé et assurance de personnes",
+        "Travail",
+        "Partenariat et famille",
+        "Impôts",
+        "Conseil juridique PLUS"
+      ],
+      "page": 2,
+      "description": "Modules souhaités :",
+      "disabled": true
+    },
+    {
+      "id": "35_40",
+      "gf_field_id": 40,
+      "name": "input_40",
+      "label": "Options spécifiques à COOP",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Coop (Privé uniquement)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "35_44",
+      "gf_field_id": 44,
+      "name": "input_44",
+      "label": "Quelle est la formule souhaitée ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Standard \"PAQUET\"",
+        "Modules à sélectionner"
+      ],
+      "page": 2,
+      "description": "PAQUET = Circulation routière + Travail + Bail et propriété + Privé + Santé",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Coop (Privé uniquement)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "35_43",
+      "gf_field_id": 43,
+      "name": "input_43",
+      "label": "Sommes d'assurances (en CHF)",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "ECO : jusqu'à 500'000",
+        "COMFORT : jusqu'à 750'000",
+        "DELUXE : jusqu'à 1'000'000"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Coop (Privé uniquement)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "35_42",
+      "gf_field_id": 42,
+      "name": "input_42",
+      "label": "Modules complémentaires souhaités :",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Circulation routière",
+        "Travail",
+        "Bail",
+        "Propriété",
+        "Propriété élargie"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Coop (Privé uniquement)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "35_45",
+      "gf_field_id": 45,
+      "name": "input_45",
+      "label": "Options de prestations souhaitées",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Libre accès à l'avocat",
+        "Franchise contractuelle 20%"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Coop (Privé uniquement)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "35_37",
+      "gf_field_id": 37,
+      "name": "input_37",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "35_49",
+      "gf_field_id": 49,
+      "name": "input_49",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 2,
+      "default": "Français"
+    },
+    {
+      "id": "35_24",
+      "gf_field_id": 24,
+      "name": "input_24",
+      "label": "Date du RDV avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "35_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "35_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}

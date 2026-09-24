@@ -1,0 +1,2105 @@
+{
+  "id": "pilier3",
+  "label": "3ème pilier",
+  "category": "3ème pilier",
+  "title": "3ÈME PILIER",
+  "gravity_form_id": 6,
+  "source_file": "Texte collé(20260922-122651).txt",
+  "fields_count": 104,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Agent & preneur"
+    },
+    {
+      "page": 2,
+      "label": "Contrat, compagnies & envoi"
+    }
+  ],
+  "page_count": 2,
+  "fields": [
+    {
+      "id": "6_119",
+      "gf_field_id": 119,
+      "name": "input_119",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "3ÈME PILIER"
+    },
+    {
+      "id": "6_122",
+      "gf_field_id": 122,
+      "name": "input_122",
+      "label": "Agent Demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "6_123_3",
+      "gf_field_id": 123,
+      "name": "input_123.3",
+      "label": "Prénom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "6_123_6",
+      "gf_field_id": 123,
+      "name": "input_123.6",
+      "label": "Nom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "6_124",
+      "gf_field_id": 124,
+      "name": "input_124",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "6_125",
+      "gf_field_id": 125,
+      "name": "input_125",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "6_4",
+      "gf_field_id": 4,
+      "name": "input_4",
+      "label": "Preneur d'assurance",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "6_100",
+      "gf_field_id": 100,
+      "name": "input_100",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Madame",
+        "Monsieur"
+      ],
+      "page": 1
+    },
+    {
+      "id": "6_45",
+      "gf_field_id": 45,
+      "name": "input_45",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "6_46",
+      "gf_field_id": 46,
+      "name": "input_46",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "6_47",
+      "gf_field_id": 47,
+      "name": "input_47",
+      "label": "Sexe",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Masculin",
+        "Féminin"
+      ],
+      "page": 1
+    },
+    {
+      "id": "6_7",
+      "gf_field_id": 7,
+      "name": "input_7",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "6_22",
+      "gf_field_id": 22,
+      "name": "input_22",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "6_23",
+      "gf_field_id": 23,
+      "name": "input_23",
+      "label": "Permis",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Aucun permis",
+        "Permis B",
+        "Permis C",
+        "Permis G",
+        "Permis L"
+      ],
+      "page": 1
+    },
+    {
+      "id": "6_58",
+      "gf_field_id": 58,
+      "name": "input_58",
+      "label": "Date du permis de séjour",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "isnot",
+            "value": "Aucun permis"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_59",
+      "gf_field_id": 59,
+      "name": "input_59",
+      "label": "Impôts à la source ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "isnot",
+            "value": "Aucun permis"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_6_1",
+      "gf_field_id": 6,
+      "name": "input_6.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "6_6_3",
+      "gf_field_id": 6,
+      "name": "input_6.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "6_6_4",
+      "gf_field_id": 6,
+      "name": "input_6.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "6_6_5",
+      "gf_field_id": 6,
+      "name": "input_6.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "6_6_6",
+      "gf_field_id": 6,
+      "name": "input_6.6",
+      "label": "Pays",
+      "required": true,
+      "options": [
+        "Afghanistan",
+        "Afrique du Sud",
+        "Albanie",
+        "Algérie",
+        "Allemagne",
+        "Andorre",
+        "Angola",
+        "Anguilla",
+        "Antarctique",
+        "Antigua-et-Barbuda",
+        "Arabie Saoudite",
+        "Argentine",
+        "Arménie",
+        "Aruba",
+        "Australie",
+        "Autriche",
+        "Azerbaïdjan",
+        "Bahamas",
+        "Bahreïn",
+        "Bangladesh",
+        "Belarus",
+        "Belgique",
+        "Belize",
+        "Bermudes",
+        "Bhoutan",
+        "Bolivie",
+        "Bonaire, Saint-Eustache et Saba",
+        "Bosnie-Herzégovine",
+        "Botswana",
+        "Brunei Darussalam",
+        "Brésil",
+        "Bulgarie",
+        "Burkina Faso",
+        "Burundi",
+        "Bénin",
+        "Cambodge",
+        "Cameroun",
+        "Canada",
+        "Cap-Vert",
+        "Chili",
+        "Chine",
+        "Chypre",
+        "Colombie",
+        "Comores",
+        "Congo",
+        "Corée (République de)",
+        "Corée (République populaire démocratique de)",
+        "Costa Rica",
+        "Croatie",
+        "Cuba",
+        "Curaçao",
+        "Côte d’Ivoire",
+        "Danemark",
+        "Djibouti",
+        "Dominique",
+        "Espagne",
+        "Estonie",
+        "Eswatini",
+        "Fidji",
+        "Finlande",
+        "France",
+        "Fédération Russe",
+        "Gabon",
+        "Gambie",
+        "Ghana",
+        "Gibraltar",
+        "Grenade",
+        "Groenland",
+        "Grèce",
+        "Guadeloupe",
+        "Guam",
+        "Guatemala",
+        "Guernsey",
+        "Guinée",
+        "Guinée équatoriale",
+        "Guinée-Bissau",
+        "Guyane",
+        "Géorgie",
+        "Géorgie du Sud et Îles Sandwich du Sud",
+        "Haïti",
+        "Honduras",
+        "Hong Kong",
+        "Hongrie",
+        "Inde",
+        "Indonésie",
+        "Irak",
+        "Iran",
+        "Irlande",
+        "Islande",
+        "Israël",
+        "Italie",
+        "Jamaïque",
+        "Japon",
+        "Jersey",
+        "Jordanie",
+        "Kazakhstan",
+        "Kenya",
+        "Kirghizistan",
+        "Kiribati",
+        "Koweït",
+        "La Barbade",
+        "La Réunion",
+        "Lesotho",
+        "Lettonie",
+        "Liban",
+        "Liberia",
+        "Libye",
+        "Liechtenstein",
+        "Lituanie",
+        "Luxembourg",
+        "Macao",
+        "Macédoine du Nord",
+        "Madagascar",
+        "Malaisie",
+        "Malawi",
+        "Maldives",
+        "Mali",
+        "Malte",
+        "Maroc",
+        "Martinique",
+        "Mauritanie",
+        "Mayotte",
+        "Mexique",
+        "Micronésie",
+        "Moldavie",
+        "Monaco",
+        "Mongolie",
+        "Montserrat",
+        "Monténégro",
+        "Mozambique",
+        "Myanmar",
+        "Namibie",
+        "Nauru",
+        "Nicaragua",
+        "Niger",
+        "Nigéria",
+        "Niué",
+        "Norvège",
+        "Nouvelle-Calédonie",
+        "Nouvelle-Zélande",
+        "Népal",
+        "Oman",
+        "Ouganda",
+        "Ouzbékistan",
+        "Pakistan",
+        "Palau",
+        "Panama",
+        "Papouasie-Nouvelle-Guinée",
+        "Paraguay",
+        "Pays-Bas",
+        "Philippines",
+        "Pologne",
+        "Polynésie française",
+        "Porto Rico",
+        "Portugal",
+        "Pérou",
+        "Qatar",
+        "Roumanie",
+        "Royaume-Uni",
+        "Rwanda",
+        "République Dominicaine",
+        "République Tchèque",
+        "République arabe syrienne",
+        "République centrafricaine",
+        "République démocratique du Congo",
+        "République démocratique populaire du Laos",
+        "Sahara occidental",
+        "Saint Barthélemy",
+        "Saint Martin",
+        "Saint Pierre et Miquelon",
+        "Saint-Christophe-et-Nevis",
+        "Saint-Marin",
+        "Saint-Siège",
+        "Saint-Vincent-et-les Grenadines",
+        "Sainte-Hélène, Ascension et Tristan da Cunha",
+        "Sainte-Lucie",
+        "Salvador",
+        "Samoa",
+        "Samoa américaines",
+        "Sao Tomé et Principe",
+        "Serbie",
+        "Seychelles",
+        "Sierra Leone",
+        "Singapour",
+        "Sint Maarten",
+        "Slovaquie",
+        "Slovénie",
+        "Somalie",
+        "Soudan",
+        "Soudan du Sud",
+        "Sri Lanka",
+        "Suisse",
+        "Suriname",
+        "Suède",
+        "Sénégal",
+        "Tadjikistan",
+        "Tanzanie (République-Unie de)",
+        "Taïwan",
+        "Tchad",
+        "Terres Australes Françaises",
+        "Territoire britannique de l’océan Indien",
+        "Thaïlande",
+        "Timor oriental",
+        "Togo",
+        "Tokelau",
+        "Tonga",
+        "Trinité et Tobago",
+        "Tunisie",
+        "Turkménistan",
+        "Turquie",
+        "Tuvalu",
+        "Ukraine",
+        "Uruguay",
+        "Vanuatu",
+        "Venezuela",
+        "Vietnam",
+        "Wallis et Futuna",
+        "Yémen",
+        "Zambie",
+        "Zimbabwe",
+        "Égypte",
+        "Émirats arabes unis",
+        "Équateur",
+        "Érythrée",
+        "État palestinien",
+        "États-Unis",
+        "Éthiopie",
+        "Île Bouvet",
+        "Île Christmas",
+        "Île Maurice",
+        "Île Norfolk",
+        "Île de Man",
+        "Îles Cayman",
+        "Îles Cocos",
+        "Îles Cook",
+        "Îles Falkland",
+        "Îles Féroé",
+        "Îles Heard et McDonald",
+        "Îles Mariannes du Nord",
+        "Îles Marshall",
+        "Îles Pitcairn",
+        "Îles Salomon",
+        "Îles Turques et Caïques",
+        "Îles Vierges américaines",
+        "Îles Vierges britanniques",
+        "Îles de Svalbard et Jan Mayen",
+        "Îles mineures américaines",
+        "Îles Åland"
+      ],
+      "page": 1,
+      "type": "select"
+    },
+    {
+      "id": "6_48",
+      "gf_field_id": 48,
+      "name": "input_48",
+      "label": "Canton de l'employeur",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "isnot",
+            "value": "Aucun permis"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_24",
+      "gf_field_id": 24,
+      "name": "input_24",
+      "label": "Statut professionnel",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Salarié",
+        "Indépendant",
+        "Pas d'activité lucrative"
+      ],
+      "page": 1
+    },
+    {
+      "id": "6_25",
+      "gf_field_id": 25,
+      "name": "input_25",
+      "label": "Profession",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "6_118",
+      "gf_field_id": 118,
+      "name": "input_118",
+      "label": "Travaille-t il plus de 80% dans un bureau (activité administrative) ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "6_99",
+      "gf_field_id": 99,
+      "name": "input_99",
+      "label": "Est-il affilié à une LPP ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "6_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Fumeur",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "6_56",
+      "gf_field_id": 56,
+      "name": "input_56",
+      "label": "Situation",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Célibataire",
+        "Marié(e)",
+        "Veuf/Veuve"
+      ],
+      "page": 1
+    },
+    {
+      "id": "6_65",
+      "gf_field_id": 65,
+      "name": "input_65",
+      "label": "Pratique d'activité(s) à risque ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1,
+      "default": "Oui"
+    },
+    {
+      "id": "6_93",
+      "gf_field_id": 93,
+      "name": "input_93",
+      "label": "Si oui, quelle(s) activité(s) ?",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Alpinisme - escalade",
+        "Aviation (civile)",
+        "Canyoning",
+        "Deltaplane - parapente",
+        "Equitation",
+        "Kitesurf",
+        "Parachustisme",
+        "Plongée subaquatique sportive",
+        "Ski - Snowboarding",
+        "Spéléologie",
+        "Sport de combat",
+        "Sports mécaniques",
+        "Voile",
+        "Vol à voile"
+      ],
+      "page": 1,
+      "description": "Plusieurs choix possibles.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_65",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_8",
+      "gf_field_id": 8,
+      "name": "input_8",
+      "label": "Caractéristiques du contrat",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "6_29",
+      "gf_field_id": 29,
+      "name": "input_29",
+      "label": "Type de pilier",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Pilier lié 3a",
+        "Pilier libre 3b"
+      ],
+      "page": 2
+    },
+    {
+      "id": "6_30",
+      "gf_field_id": 30,
+      "name": "input_30",
+      "label": "Date de début",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "6_54",
+      "gf_field_id": 54,
+      "name": "input_54",
+      "label": "Périodicité de la prime",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Annuel",
+        "Semestriel",
+        "Trimestriel",
+        "Mensuel",
+        "Prime unique"
+      ],
+      "page": 2
+    },
+    {
+      "id": "6_31",
+      "gf_field_id": 31,
+      "name": "input_31",
+      "label": "Montant de la prime",
+      "type": "number",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "6_55",
+      "gf_field_id": 55,
+      "name": "input_55",
+      "label": "Le client a-t-il déjà des troisièmes piliers chez PAX ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "6_104",
+      "gf_field_id": 104,
+      "name": "input_104",
+      "label": "Types de troisième pilier et montants assurés :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_55",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_103",
+      "gf_field_id": 103,
+      "name": "input_103",
+      "label": "Type de paiement",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "BVR",
+        "Débit direct",
+        "LSV",
+        "Compte de dépôt de prime fermé",
+        "Compte de dépôt de prime ouvert",
+        "Prime unique"
+      ],
+      "page": 2
+    },
+    {
+      "id": "6_34",
+      "gf_field_id": 34,
+      "name": "input_34",
+      "label": "Durée du contrat",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "6_35",
+      "gf_field_id": 35,
+      "name": "input_35",
+      "label": "Âge de terme",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "6_36",
+      "gf_field_id": 36,
+      "name": "input_36",
+      "label": "Exonération du paiement des primes",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "3 mois",
+        "6 mois",
+        "12 mois",
+        "24 mois",
+        "Aucun"
+      ],
+      "page": 2
+    },
+    {
+      "id": "6_37",
+      "gf_field_id": 37,
+      "name": "input_37",
+      "label": "Rente d'invalidité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "description": "Uniquement assurance de sommes pour Allianz"
+    },
+    {
+      "id": "6_38",
+      "gf_field_id": 38,
+      "name": "input_38",
+      "label": "Montant de la rente",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_37",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Niveau d'étude",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_37",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_57",
+      "gf_field_id": 57,
+      "name": "input_57",
+      "label": "Diplôme",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Ecole supérieure spécialisée (ESS)",
+        "Diplômes spécialisés ou professionnels supérieurs",
+        "Hautes Ecoles Spécialisées (HES)",
+        "Apprentissage",
+        "CFC ou équivalent"
+      ],
+      "page": 2
+    },
+    {
+      "id": "6_39",
+      "gf_field_id": 39,
+      "name": "input_39",
+      "label": "Avec accident",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_37",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_40",
+      "gf_field_id": 40,
+      "name": "input_40",
+      "label": "Délai d'attente",
+      "type": "select",
+      "required": false,
+      "options": [
+        "3 mois",
+        "6 mois",
+        "9 mois",
+        "12 mois",
+        "24 mois"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_37",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_62",
+      "gf_field_id": 62,
+      "name": "input_62",
+      "label": "Adaptation automatique des primes",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "6_41",
+      "gf_field_id": 41,
+      "name": "input_41",
+      "label": "Risque pure",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "6_49",
+      "gf_field_id": 49,
+      "name": "input_49",
+      "label": "Taille",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "6_50",
+      "gf_field_id": 50,
+      "name": "input_50",
+      "label": "Poids",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "6_52",
+      "gf_field_id": 52,
+      "name": "input_52",
+      "label": "Capital",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_41",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_53",
+      "gf_field_id": 53,
+      "name": "input_53",
+      "label": "Cholesterol ou hyper tension",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_41",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_12",
+      "gf_field_id": 12,
+      "name": "input_12",
+      "label": "Renseignements complémentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "6_13",
+      "gf_field_id": 13,
+      "name": "input_13",
+      "label": "Compagnie",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "6_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Axa",
+        "Allianz",
+        "CCAP",
+        "Generali",
+        "La Mobilière",
+        "Pax",
+        "Helvetia",
+        "Zurich",
+        "Rentes genevoises",
+        "Liechtenstein Life",
+        "Retraites populaires",
+        "Swisslife",
+        "Vaudoise",
+        "Envoi du formulaire"
+      ],
+      "page": 2,
+      "description": "3 compagnies maximum. Pour les compagnies principales, vous avez vos accès à utiliser pour faire les offres."
+    },
+    {
+      "id": "6_120",
+      "gf_field_id": 120,
+      "name": "input_120",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "6_60",
+      "gf_field_id": 60,
+      "name": "input_60",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "6_121",
+      "gf_field_id": 121,
+      "name": "input_121",
+      "label": "Fichier(s) à inclure",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "6_128",
+      "gf_field_id": 128,
+      "name": "input_128",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document."
+    },
+    {
+      "id": "6_44",
+      "gf_field_id": 44,
+      "name": "input_44",
+      "label": "Date du prochain rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "6_66",
+      "gf_field_id": 66,
+      "name": "input_66",
+      "label": "Questions pour AXA",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_67",
+      "gf_field_id": 67,
+      "name": "input_67",
+      "label": "Des propositions d'assurance ont-elles été refusées, ajournées ou soumises avec des conditions aggravées ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_81",
+      "gf_field_id": 81,
+      "name": "input_81",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_67",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_68",
+      "gf_field_id": 68,
+      "name": "input_68",
+      "label": "L'assuré pratique-t-il des sports, activités ou loisirs particuliers, ou a-t-il l'intention d'en pratiquer ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_82",
+      "gf_field_id": 82,
+      "name": "input_82",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_68",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_69",
+      "gf_field_id": 69,
+      "name": "input_69",
+      "label": "Au cours des 12 prochains mois, l'assuré prévoit-il des voyages ou des séjours dans des régions en guerre ou en crise ou compte-t-il séjourner plus de douze mois à l'étranger (hormis dans les pays limitrophes de la Suisse) ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_83",
+      "gf_field_id": 83,
+      "name": "input_83",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_69",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_70",
+      "gf_field_id": 70,
+      "name": "input_70",
+      "label": "Un médecin ou un thérapeute est-il informé de l'état de santé de l'assuré ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_71",
+      "gf_field_id": 71,
+      "name": "input_71",
+      "label": "Nom du médecin",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_72_1",
+      "gf_field_id": 72,
+      "name": "input_72.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_72_3",
+      "gf_field_id": 72,
+      "name": "input_72.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_72_4",
+      "gf_field_id": 72,
+      "name": "input_72.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_72_5",
+      "gf_field_id": 72,
+      "name": "input_72.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_72_6",
+      "gf_field_id": 72,
+      "name": "input_72.6",
+      "label": "Pays",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_73",
+      "gf_field_id": 73,
+      "name": "input_73",
+      "label": "Date de la dernière consultation",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_95",
+      "gf_field_id": 95,
+      "name": "input_95",
+      "label": "L'assuré souhaite souscrire à l'option \"rendements garantis\" ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_96",
+      "gf_field_id": 96,
+      "name": "input_96",
+      "label": "L'assuré souhaite souscrire à l'option \"gestion de l'échéance\" ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_97",
+      "gf_field_id": 97,
+      "name": "input_97",
+      "label": "L'assuré souhaite souscrire à l'option \"atteindre automatiquement la limite 3e\" ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_98",
+      "gf_field_id": 98,
+      "name": "input_98",
+      "label": "Prestation intégrée en cas de décès",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Avec couverture décés constante",
+        "Avec remboursement des primes",
+        "Sans couverture risque (couverture décès minimum)"
+      ],
+      "page": 2,
+      "description": "(Un seul choix possible)",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_74",
+      "gf_field_id": 74,
+      "name": "input_74",
+      "label": "Etat de santé",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_75",
+      "gf_field_id": 75,
+      "name": "input_75",
+      "label": "L'assuré a-t-il (ou a-t-il eu) un ou plusieurs troubles de santé ou atteintes à la santé, ou anomalie congénitale ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_80",
+      "gf_field_id": 80,
+      "name": "input_80",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_75",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_76",
+      "gf_field_id": 76,
+      "name": "input_76",
+      "label": "L'assuré prend-t-il (ou a-t-il pris) régulièrement des médicaments ou des drogues; des médicaments lui ont-ils été prescrits pour des affections durant plus de sept jours (hormis pour une simple grippe) ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_84",
+      "gf_field_id": 84,
+      "name": "input_84",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_76",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_77",
+      "gf_field_id": 77,
+      "name": "input_77",
+      "label": "L'assuré a-t-il subi des examens dont le résultat a révélé une anomalie (ne pas indiquer les examens génétiques) ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_85",
+      "gf_field_id": 85,
+      "name": "input_85",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_77",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_78",
+      "gf_field_id": 78,
+      "name": "input_78",
+      "label": "L'assuré a-t-il subi (ou prévoit-il de subir) une opération ou une intervention a-t-elle été recommandée ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_86",
+      "gf_field_id": 86,
+      "name": "input_86",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_78",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_79",
+      "gf_field_id": 79,
+      "name": "input_79",
+      "label": "L'assuré est-il actuellement en incapacité de travail ou de gain partielle ou totale. A-t-il dû interrompre son activité, même partiellement, durant plu de deux semaines en raison de maladies ou d'accidents ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_87",
+      "gf_field_id": 87,
+      "name": "input_87",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_79",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_101",
+      "gf_field_id": 101,
+      "name": "input_101",
+      "label": "Questions pour Allianz",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Allianz"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_117",
+      "gf_field_id": 117,
+      "name": "input_117",
+      "label": "Le(s) produit(s) Allianz souhaité(s) :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Smart Invest",
+        "Rente IG",
+        "Enfants"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Allianz"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_108",
+      "gf_field_id": 108,
+      "name": "input_108",
+      "label": "Capital garanti pour Smart Invest",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "90%",
+        "70%",
+        "50%",
+        "30%",
+        "10%"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Allianz"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_112",
+      "gf_field_id": 112,
+      "name": "input_112",
+      "label": "Capital décès pour Smart Invest",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Allianz"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_113",
+      "gf_field_id": 113,
+      "name": "input_113",
+      "label": "Montant en CHF du capital décès pour Smart Invest",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Allianz"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_109",
+      "gf_field_id": 109,
+      "name": "input_109",
+      "label": "Fonds choisis pour Smart Invest",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Pour plus de détails concernant les fonds d'investissement d'Allianz, merci de vous rendre sur la page déidée : https://www.allianz.ch/fr/clients-prives/services/calculateurs-performance/performance-des-fonds-seul-fonds/informations.html",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Allianz"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_111",
+      "gf_field_id": 111,
+      "name": "input_111",
+      "label": "Fonds choisis pour Balance Invest",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Pour plus de détails concernant les fonds d'investissement d'Allianz, merci de vous rendre sur la page déidée : https://www.allianz.ch/fr/clients-prives/services/calculateurs-performance/performance-des-fonds-seul-fonds/informations.html",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Allianz"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_115",
+      "gf_field_id": 115,
+      "name": "input_115",
+      "label": "Capital choisi pour Balance Invest (de 60% à 90%)",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Merci d'indiquer le capital souhaité entre 60% et 90%.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Allianz"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_126",
+      "gf_field_id": 126,
+      "name": "input_126",
+      "label": "Retraites Populaires",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Retraites populaires"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_127",
+      "gf_field_id": 127,
+      "name": "input_127",
+      "label": "Attestation LBA datée de moins de deux ans",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Les Retraites Populaires demandent désormais ce document pour toute demande d'offre.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Retraites populaires"
+          }
+        ]
+      }
+    },
+    {
+      "id": "6_106",
+      "gf_field_id": 106,
+      "name": "input_106",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "6_105",
+      "gf_field_id": 105,
+      "name": "input_105",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 2,
+      "default": "Français"
+    },
+    {
+      "id": "6_3",
+      "gf_field_id": 3,
+      "name": "input_3",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}

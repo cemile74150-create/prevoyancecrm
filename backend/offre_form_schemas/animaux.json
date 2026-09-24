@@ -1,0 +1,715 @@
+{
+  "id": "animaux",
+  "label": "Animaux",
+  "category": "Particulier",
+  "title": "Animaux",
+  "gravity_form_id": 47,
+  "source_file": "Texte collé (9).txt",
+  "fields_count": 52,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Étape 1"
+    }
+  ],
+  "page_count": 1,
+  "fields": [
+    {
+      "id": "47_43",
+      "gf_field_id": 43,
+      "name": "input_43",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "Animaux"
+    },
+    {
+      "id": "47_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "Statut :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_54",
+      "gf_field_id": 54,
+      "name": "input_54",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_55_3",
+      "gf_field_id": 55,
+      "name": "input_55.3",
+      "label": "Votre prénom et nom — Prénom",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "47_55_6",
+      "gf_field_id": 55,
+      "name": "input_55.6",
+      "label": "Votre prénom et nom — Nom",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "47_56",
+      "gf_field_id": 56,
+      "name": "input_56",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_57",
+      "gf_field_id": 57,
+      "name": "input_57",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "47_3",
+      "gf_field_id": 3,
+      "name": "input_3",
+      "label": "Renseignement généraux",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_39",
+      "gf_field_id": 39,
+      "name": "input_39",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_41",
+      "gf_field_id": 41,
+      "name": "input_41",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_5",
+      "gf_field_id": 5,
+      "name": "input_5",
+      "label": "Sexe",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Masculin",
+        "Féminin"
+      ],
+      "page": 1
+    },
+    {
+      "id": "47_6_1",
+      "gf_field_id": 6,
+      "name": "input_6.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "47_6_3",
+      "gf_field_id": 6,
+      "name": "input_6.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "47_6_4",
+      "gf_field_id": 6,
+      "name": "input_6.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "47_6_5",
+      "gf_field_id": 6,
+      "name": "input_6.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "47_6_6",
+      "gf_field_id": 6,
+      "name": "input_6.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "47_7",
+      "gf_field_id": 7,
+      "name": "input_7",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj/mm/aaaa"
+    },
+    {
+      "id": "47_9",
+      "gf_field_id": 9,
+      "name": "input_9",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_10",
+      "gf_field_id": 10,
+      "name": "input_10",
+      "label": "Permis de séjour",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_11",
+      "gf_field_id": 11,
+      "name": "input_11",
+      "label": "Renseignement sur l'animal",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_12_6",
+      "gf_field_id": 12,
+      "name": "input_12.6",
+      "label": "Nom de l'animal — Nom",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "47_13",
+      "gf_field_id": 13,
+      "name": "input_13",
+      "label": "Espèce",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Chien",
+        "Chat"
+      ],
+      "page": 1
+    },
+    {
+      "id": "47_38",
+      "gf_field_id": 38,
+      "name": "input_38",
+      "label": "Le chat est un chat :",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "D'intérieur",
+        "D'extérieur"
+      ],
+      "page": 1,
+      "disabled": true
+    },
+    {
+      "id": "47_17",
+      "gf_field_id": 17,
+      "name": "input_17",
+      "label": "Sexe",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Mâle",
+        "Femelle"
+      ],
+      "page": 1
+    },
+    {
+      "id": "47_33",
+      "gf_field_id": 33,
+      "name": "input_33",
+      "label": "Race de l'animal",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_14",
+      "gf_field_id": 14,
+      "name": "input_14",
+      "label": "Date de naissance de l'animal",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj/mm/aaaa"
+    },
+    {
+      "id": "47_34",
+      "gf_field_id": 34,
+      "name": "input_34",
+      "label": "Identification",
+      "type": "number",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Merci d'indiquer le numéro de la puce ou du tatouage (obligatoire)."
+    },
+    {
+      "id": "47_15",
+      "gf_field_id": 15,
+      "name": "input_15",
+      "label": "L'animal a-t-il été en traitement médical au cours des 6 derniers mois ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "47_18",
+      "gf_field_id": 18,
+      "name": "input_18",
+      "label": "Si oui, pour quelle(s) cause(s)",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_15",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "47_19",
+      "gf_field_id": 19,
+      "name": "input_19",
+      "label": "Nom et adresse du vétérinaire traitant :",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_20",
+      "gf_field_id": 20,
+      "name": "input_20",
+      "label": "Nom et adresse du vétérinaire habituel :",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_21",
+      "gf_field_id": 21,
+      "name": "input_21",
+      "label": "L'animal est-il atteint de maladies chroniques",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "47_23",
+      "gf_field_id": 23,
+      "name": "input_23",
+      "label": "Si oui, lesquelles ?",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_21",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "47_45",
+      "gf_field_id": 45,
+      "name": "input_45",
+      "label": "Auprès de quelle(s) compagnie(s) souhaitez-vous obtenir une offre ?",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "Animalia",
+        "Epona",
+        "Simpego"
+      ],
+      "page": 1
+    },
+    {
+      "id": "47_22",
+      "gf_field_id": 22,
+      "name": "input_22",
+      "label": "Couvertures prétendues",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_29",
+      "gf_field_id": 29,
+      "name": "input_29",
+      "label": "Couvertures souhaitées ?",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "COUVERTURE DE BASE (accident seul + assistance)",
+        "MALADIES (toutes les maladies)",
+        "FRAIS DE PRÉVENTION ET DÉPISTAGE"
+      ],
+      "page": 1
+    },
+    {
+      "id": "47_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Franchise souhaitée ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "200.-",
+        "400.-",
+        "500.-",
+        "600.-",
+        "1000.-"
+      ],
+      "page": 1
+    },
+    {
+      "id": "47_31",
+      "gf_field_id": 31,
+      "name": "input_31",
+      "label": "Mode de paiement",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Annuel",
+        "Semestriel"
+      ],
+      "page": 1
+    },
+    {
+      "id": "47_37",
+      "gf_field_id": 37,
+      "name": "input_37",
+      "label": "Questions spécifiques pour SIMPEGO",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_45",
+            "op": "is",
+            "value": "Simpego"
+          }
+        ]
+      }
+    },
+    {
+      "id": "47_52",
+      "gf_field_id": 52,
+      "name": "input_52",
+      "label": "Quel est le type de race de l'animal ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Pedigree",
+        "Croisée",
+        "Mixte"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_45",
+            "op": "is",
+            "value": "Simpego"
+          }
+        ]
+      }
+    },
+    {
+      "id": "47_53",
+      "gf_field_id": 53,
+      "name": "input_53",
+      "label": "L'animal est-il stérilisé ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_45",
+            "op": "is",
+            "value": "Simpego"
+          }
+        ]
+      }
+    },
+    {
+      "id": "47_46",
+      "gf_field_id": 46,
+      "name": "input_46",
+      "label": "Franchise souhaitée chez SIMPEGO ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "0.-",
+        "300.-",
+        "500.-",
+        "1000.-",
+        "2000.-"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_45",
+            "op": "is",
+            "value": "Simpego"
+          }
+        ]
+      }
+    },
+    {
+      "id": "47_47",
+      "gf_field_id": 47,
+      "name": "input_47",
+      "label": "Prise en charge des coûts",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "100%",
+        "80%"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_45",
+            "op": "is",
+            "value": "Simpego"
+          }
+        ]
+      }
+    },
+    {
+      "id": "47_48",
+      "gf_field_id": 48,
+      "name": "input_48",
+      "label": "Choix des couvertures supplémentaires",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Conditiions préexistantes",
+        "Protection mondiale",
+        "Pas de couvertures supplémentaires"
+      ],
+      "page": 1,
+      "description": "Couvre les coûts des affections préexistantes ou des accidents qui ont été traités ou diagnostiqués pour la première fois dans les trois mois précédant la date de début de l'assurance. La somme assurée pour les affections préexistantes est de 1 500 CHF par an. | Franchise : 300 CHF par cas de maladie. | Prise en charge des coûts Calingo : 80 % (de 0 à 7 ans) et 60 % (à partir de l'âge de 8 ans).",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_45",
+            "op": "is",
+            "value": "Simpego"
+          }
+        ]
+      }
+    },
+    {
+      "id": "47_49",
+      "gf_field_id": 49,
+      "name": "input_49",
+      "label": "Choix de la formule",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Base - Protection de base couvrant CHF 3 000.- de frais vétérinaires.",
+        "Régulier - Protection de niveau régulier couvrant CHF 6 000.- de frais vétérinaires.",
+        "Complet - Protection de haut niveau couvrant CHF 12 000.- de frais vétérinaires."
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_45",
+            "op": "is",
+            "value": "Simpego"
+          }
+        ]
+      }
+    },
+    {
+      "id": "47_50",
+      "gf_field_id": 50,
+      "name": "input_50",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "47_30",
+      "gf_field_id": 30,
+      "name": "input_30",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "47_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Date d'effet du contrat ?",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj/mm/aaaa"
+    },
+    {
+      "id": "47_28",
+      "gf_field_id": 28,
+      "name": "input_28",
+      "label": "Date du rendez-vous avec le client ?",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj/mm/aaaa"
+    },
+    {
+      "id": "47_42",
+      "gf_field_id": 42,
+      "name": "input_42",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 1,
+      "default": "Français"
+    },
+    {
+      "id": "47_36",
+      "gf_field_id": 36,
+      "name": "input_36",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    },
+    {
+      "id": "47_40",
+      "gf_field_id": 40,
+      "name": "input_40",
+      "label": "Commentaire :",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 1
+    }
+  ]
+}

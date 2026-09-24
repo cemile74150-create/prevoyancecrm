@@ -1,0 +1,751 @@
+{
+  "id": "entreprise_29",
+  "label": "Rente invalidité",
+  "category": "Entreprise",
+  "title": "Rente d'invalidité",
+  "gravity_form_id": 29,
+  "source_file": "Texte collé (8)(1).txt",
+  "fields_count": 53,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Étape 1"
+    },
+    {
+      "page": 2,
+      "label": "Étape 2"
+    },
+    {
+      "page": 3,
+      "label": "Étape 3"
+    }
+  ],
+  "page_count": 3,
+  "fields": [
+    {
+      "id": "29_90",
+      "gf_field_id": 90,
+      "name": "input_90",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "Rente d"
+    },
+    {
+      "id": "29_92",
+      "gf_field_id": 92,
+      "name": "input_92",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "29_93_3",
+      "gf_field_id": 93,
+      "name": "input_93.3",
+      "label": "Prénom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "29_93_6",
+      "gf_field_id": 93,
+      "name": "input_93.6",
+      "label": "Nom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "29_94",
+      "gf_field_id": 94,
+      "name": "input_94",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "29_95",
+      "gf_field_id": 95,
+      "name": "input_95",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "29_3",
+      "gf_field_id": 3,
+      "name": "input_3",
+      "label": "Renseignements généraux",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "29_4",
+      "gf_field_id": 4,
+      "name": "input_4",
+      "label": "Nom de l'entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "29_5",
+      "gf_field_id": 5,
+      "name": "input_5",
+      "label": "Activité de l'entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Description exacte de l'activité, le registre du commerce ne suffit pas."
+    },
+    {
+      "id": "29_6",
+      "gf_field_id": 6,
+      "name": "input_6",
+      "label": "Forme de la société",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "SA",
+        "SARL",
+        "Société",
+        "Raison individuelle",
+        "Société en nom collectif"
+      ],
+      "page": 1
+    },
+    {
+      "id": "29_7",
+      "gf_field_id": 7,
+      "name": "input_7",
+      "label": "Nouvelle création ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "29_88",
+      "gf_field_id": 88,
+      "name": "input_88",
+      "label": "Date d'installation comme indépendant",
+      "type": "date",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj/mm/aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_7",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_76",
+      "gf_field_id": 76,
+      "name": "input_76",
+      "label": "Ancien assureur",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_7",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_81",
+      "gf_field_id": 81,
+      "name": "input_81",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_7",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_8_1",
+      "gf_field_id": 8,
+      "name": "input_8.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "29_8_3",
+      "gf_field_id": 8,
+      "name": "input_8.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "29_8_5",
+      "gf_field_id": 8,
+      "name": "input_8.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "29_8_6",
+      "gf_field_id": 8,
+      "name": "input_8.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden"
+    },
+    {
+      "id": "29_70",
+      "gf_field_id": 70,
+      "name": "input_70",
+      "label": "Canton",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "29_85",
+      "gf_field_id": 85,
+      "name": "input_85",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "29_86",
+      "gf_field_id": 86,
+      "name": "input_86",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "29_83",
+      "gf_field_id": 83,
+      "name": "input_83",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 1
+    },
+    {
+      "id": "29_10",
+      "gf_field_id": 10,
+      "name": "input_10",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "29_11",
+      "gf_field_id": 11,
+      "name": "input_11",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "29_12",
+      "gf_field_id": 12,
+      "name": "input_12",
+      "label": "Permis de séjour",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_7",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_82",
+      "gf_field_id": 82,
+      "name": "input_82",
+      "label": "Est-il affilié à une LPP ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "29_29",
+      "gf_field_id": 29,
+      "name": "input_29",
+      "label": "Rente d'invalidité",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "29_30",
+      "gf_field_id": 30,
+      "name": "input_30",
+      "label": "Ajouter une rente d'invalidité ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "29_78",
+      "gf_field_id": 78,
+      "name": "input_78",
+      "label": "Date d'effet",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_31",
+      "gf_field_id": 31,
+      "name": "input_31",
+      "label": "Maladie et/ou accident ?",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Maladie",
+        "Accident"
+      ],
+      "page": 2,
+      "description": "Les deux choix sont possibles",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_36",
+      "gf_field_id": 36,
+      "name": "input_36",
+      "label": "Montant à assurer",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_32",
+      "gf_field_id": 32,
+      "name": "input_32",
+      "label": "Délai d'attente",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_71",
+      "gf_field_id": 71,
+      "name": "input_71",
+      "label": "Jusqu'à quel âge ?",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "29_73",
+      "gf_field_id": 73,
+      "name": "input_73",
+      "label": "Libre ou lié ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Libre",
+        "Lié"
+      ],
+      "page": 2
+    },
+    {
+      "id": "29_33",
+      "gf_field_id": 33,
+      "name": "input_33",
+      "label": "Taille",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_34",
+      "gf_field_id": 34,
+      "name": "input_34",
+      "label": "Poids",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_35",
+      "gf_field_id": 35,
+      "name": "input_35",
+      "label": "Fumeur ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_74",
+      "gf_field_id": 74,
+      "name": "input_74",
+      "label": "Niveau d'étude",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "29_79",
+      "gf_field_id": 79,
+      "name": "input_79",
+      "label": "Diplôme",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "29_63",
+      "gf_field_id": 63,
+      "name": "input_63",
+      "label": "Registre du commerce",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "29_64",
+      "gf_field_id": 64,
+      "name": "input_64",
+      "label": "Merci de nous inclure la copie du registre du commerce",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "description": "Copie PDF de Zefix : http://zefix.admin.ch/"
+    },
+    {
+      "id": "29_68",
+      "gf_field_id": 68,
+      "name": "input_68",
+      "label": "Validation de la demande",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "29_65",
+      "gf_field_id": 65,
+      "name": "input_65",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Allianz",
+        "Axa",
+        "Generali (Romandie Courtage uniquement)",
+        "La Mobilière",
+        "Zurich",
+        "Helvetia",
+        "CSS",
+        "Pax",
+        "Vaudoise",
+        "Envoi du formulaire"
+      ],
+      "page": 3,
+      "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois àr nous communiquer une offre, voire ne pas l'envoyer du tout."
+    },
+    {
+      "id": "29_91",
+      "gf_field_id": 91,
+      "name": "input_91",
+      "label": "Date de création de l'entreprise (ou d'installation comme indépendant)",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "La Mobilière a rendu ce renseignement obligatoire.",
+      "placeholder": "jj/mm/aaaa"
+    },
+    {
+      "id": "29_89",
+      "gf_field_id": 89,
+      "name": "input_89",
+      "label": "Numéro UID",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "Generali a rendu ce renseignement obligatoire. Pour le trouver, rendez-vous sur ce lien : https://links.agencemendes.ch/DmfC",
+      "disabled": true
+    },
+    {
+      "id": "29_67",
+      "gf_field_id": 67,
+      "name": "input_67",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "29_80",
+      "gf_field_id": 80,
+      "name": "input_80",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "29_66",
+      "gf_field_id": 66,
+      "name": "input_66",
+      "label": "Date du rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "29_69",
+      "gf_field_id": 69,
+      "name": "input_69",
+      "label": "Autre(s) document(s) à inclure",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "29_96",
+      "gf_field_id": 96,
+      "name": "input_96",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_80",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "29_84",
+      "gf_field_id": 84,
+      "name": "input_84",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "29_87",
+      "gf_field_id": 87,
+      "name": "input_87",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 3,
+      "default": "Français"
+    },
+    {
+      "id": "29_2",
+      "gf_field_id": 2,
+      "name": "input_2",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}

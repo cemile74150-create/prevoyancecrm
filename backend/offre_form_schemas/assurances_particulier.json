@@ -1,0 +1,870 @@
+{
+  "id": "assurances_particulier",
+  "label": "Bâtiment",
+  "category": "Particulier",
+  "title": "Bâtiment",
+  "gravity_form_id": 11,
+  "source_file": "Texte collé (3).txt",
+  "fields_count": 68,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Agent & renseignements généraux"
+    },
+    {
+      "page": 2,
+      "label": "Bâtiment & couvertures"
+    },
+    {
+      "page": 3,
+      "label": "Compagnies & envoi"
+    }
+  ],
+  "page_count": 3,
+  "fields": [
+    {
+      "id": "11_74",
+      "gf_field_id": 74,
+      "name": "input_74",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "Bâtiment"
+    },
+    {
+      "id": "11_80",
+      "gf_field_id": 80,
+      "name": "input_80",
+      "label": "Agent Demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_81_3",
+      "gf_field_id": 81,
+      "name": "input_81.3",
+      "label": "Votre prénom et nom — Prénom",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "11_81_6",
+      "gf_field_id": 81,
+      "name": "input_81.6",
+      "label": "Votre prénom et nom — Nom",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "11_82",
+      "gf_field_id": 82,
+      "name": "input_82",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_83",
+      "gf_field_id": 83,
+      "name": "input_83",
+      "label": "Numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "11_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Renseignements généraux",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_71",
+      "gf_field_id": 71,
+      "name": "input_71",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 1
+    },
+    {
+      "id": "11_57",
+      "gf_field_id": 57,
+      "name": "input_57",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_58",
+      "gf_field_id": 58,
+      "name": "input_58",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_2_1",
+      "gf_field_id": 2,
+      "name": "input_2.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "11_2_3",
+      "gf_field_id": 2,
+      "name": "input_2.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "11_2_4",
+      "gf_field_id": 2,
+      "name": "input_2.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "11_2_5",
+      "gf_field_id": 2,
+      "name": "input_2.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "11_2_6",
+      "gf_field_id": 2,
+      "name": "input_2.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden",
+      "default": "Suisse"
+    },
+    {
+      "id": "11_48",
+      "gf_field_id": 48,
+      "name": "input_48",
+      "label": "Canton",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_3",
+      "gf_field_id": 3,
+      "name": "input_3",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "11_4",
+      "gf_field_id": 4,
+      "name": "input_4",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_49",
+      "gf_field_id": 49,
+      "name": "input_49",
+      "label": "Employeur",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "description": "Peut donner droit à des rabais selon les compagnies (PA)."
+    },
+    {
+      "id": "11_33",
+      "gf_field_id": 33,
+      "name": "input_33",
+      "label": "Renseignements sur l'habitation",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_36_1",
+      "gf_field_id": 36,
+      "name": "input_36.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "11_36_3",
+      "gf_field_id": 36,
+      "name": "input_36.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "11_36_4",
+      "gf_field_id": 36,
+      "name": "input_36.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "11_36_5",
+      "gf_field_id": 36,
+      "name": "input_36.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "11_36_6",
+      "gf_field_id": 36,
+      "name": "input_36.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden",
+      "default": "Suisse"
+    },
+    {
+      "id": "11_37",
+      "gf_field_id": 37,
+      "name": "input_37",
+      "label": "Valeur de l'immeuble",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "Estimation faite par :",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Architecte",
+        "Assurance cantonale des bâtiments",
+        "Expert ASA",
+        "Proposant"
+      ],
+      "page": 1,
+      "default": "Expert ASA"
+    },
+    {
+      "id": "11_38",
+      "gf_field_id": 38,
+      "name": "input_38",
+      "label": "Année de l'estimation",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_64",
+      "gf_field_id": 64,
+      "name": "input_64",
+      "label": "Année de construction",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_7",
+      "gf_field_id": 7,
+      "name": "input_7",
+      "label": "Usage",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Propriétaire",
+        "Locataire"
+      ],
+      "page": 1
+    },
+    {
+      "id": "11_6",
+      "gf_field_id": 6,
+      "name": "input_6",
+      "label": "Taille de la maison",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Une famille",
+        "Plusieurs familles",
+        "Immeuble (Appartement)",
+        "Maison mitoyenne"
+      ],
+      "page": 1
+    },
+    {
+      "id": "11_67",
+      "gf_field_id": 67,
+      "name": "input_67",
+      "label": "Nombre d'étages supérieurs, rez-de-chaussée inclus",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_59",
+      "gf_field_id": 59,
+      "name": "input_59",
+      "label": "Ancienneté d'assurance",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Il s'agit d'une première assurance",
+        "Précédent assureur"
+      ],
+      "page": 1
+    },
+    {
+      "id": "11_60",
+      "gf_field_id": 60,
+      "name": "input_60",
+      "label": "Nom du précédent assureur",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true
+    },
+    {
+      "id": "11_78",
+      "gf_field_id": 78,
+      "name": "input_78",
+      "label": "Sinistres déclarés à l'ancien assureur",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Joindre la fiche de sinistralité",
+        "Indiquer les sinistres manuellement"
+      ],
+      "page": 1,
+      "description": "S'il ne s'agit pas d'une première assurance, nous avons impérativement besoin de connaître les sinistres déclarés chez l'ancien assureur. Comment souhaitez-vous procéder ?",
+      "disabled": true
+    },
+    {
+      "id": "11_77",
+      "gf_field_id": 77,
+      "name": "input_77",
+      "label": "Joindre la fiche de sinistralité",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Merci de joindre la fiche de sinistralité du précédent assureur. Attention : s'il ne s'agit pas du bon document, nous ne serons pas en mesure de réaliser l'offre.",
+      "disabled": true
+    },
+    {
+      "id": "11_20",
+      "gf_field_id": 20,
+      "name": "input_20",
+      "label": "Sinistres déclarés",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Merci d'être le plus précis possible : Dates, causes et montants des sinistres.",
+      "disabled": true
+    },
+    {
+      "id": "11_39",
+      "gf_field_id": 39,
+      "name": "input_39",
+      "label": "Hydrant",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "11_40",
+      "gf_field_id": 40,
+      "name": "input_40",
+      "label": "Construction Massive",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "11_41",
+      "gf_field_id": 41,
+      "name": "input_41",
+      "label": "Chauffage au sol",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "11_42",
+      "gf_field_id": 42,
+      "name": "input_42",
+      "label": "Chauffage au plafond",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "11_52",
+      "gf_field_id": 52,
+      "name": "input_52",
+      "label": "Chauffage autre",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Merci de préciser"
+    },
+    {
+      "id": "11_43",
+      "gf_field_id": 43,
+      "name": "input_43",
+      "label": "Toit plat",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "11_65",
+      "gf_field_id": 65,
+      "name": "input_65",
+      "label": "Piscine",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "11_53",
+      "gf_field_id": 53,
+      "name": "input_53",
+      "label": "Année de l'indice de construction",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_63",
+      "gf_field_id": 63,
+      "name": "input_63",
+      "label": "Année de renouvellement des conduites",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "11_24",
+      "gf_field_id": 24,
+      "name": "input_24",
+      "label": "Couvertures Bâtiment",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "11_46",
+      "gf_field_id": 46,
+      "name": "input_46",
+      "label": "RC Immeuble",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "description": "Pas nécessaire si le propriétaire habite le logement à assurer et a une RC privée."
+    },
+    {
+      "id": "11_47",
+      "gf_field_id": 47,
+      "name": "input_47",
+      "label": "Somme RC",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_46",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "11_79",
+      "gf_field_id": 79,
+      "name": "input_79",
+      "label": "RCMO (maitre d’ouvrage pour les travaux)",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "11_44",
+      "gf_field_id": 44,
+      "name": "input_44",
+      "label": "Vitrage du bâtiment",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "description": "Pas nécessaire si déjà couvert par l'assurance bâtiment"
+    },
+    {
+      "id": "11_45",
+      "gf_field_id": 45,
+      "name": "input_45",
+      "label": "Somme du vitrage",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_44",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "11_11",
+      "gf_field_id": 11,
+      "name": "input_11",
+      "label": "Couvertures",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Incendie",
+        "Dégât d'eau",
+        "Casco culture",
+        "Installation technique à la maison",
+        "Automate monnaire",
+        "Ustensile + matériel",
+        "Vol (détérioration)",
+        "Dégâts causés par les animaux",
+        "Couverture étendue",
+        "Tremblement de terre",
+        "Eruption volcanique",
+        "Déterioration du bâtiment"
+      ],
+      "page": 2
+    },
+    {
+      "id": "11_75",
+      "gf_field_id": 75,
+      "name": "input_75",
+      "label": "Souhaitez-vous ajouter la couverture pour les dégâts causés par les guêpes ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_44",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "11_50",
+      "gf_field_id": 50,
+      "name": "input_50",
+      "label": "Franchise",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "100",
+        "200",
+        "500"
+      ],
+      "page": 2
+    },
+    {
+      "id": "11_85",
+      "gf_field_id": 85,
+      "name": "input_85",
+      "label": "Couverture revenus locatifs",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "11_87",
+      "gf_field_id": 87,
+      "name": "input_87",
+      "label": "Montant désiré",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "11_61",
+      "gf_field_id": 61,
+      "name": "input_61",
+      "label": "Date d'effet",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "11_56",
+      "gf_field_id": 56,
+      "name": "input_56",
+      "label": "Intervalle de paiement",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Annuel",
+        "Semestriel",
+        "Trimestriel",
+        "Mensuel"
+      ],
+      "page": 3
+    },
+    {
+      "id": "11_32",
+      "gf_field_id": 32,
+      "name": "input_32",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Axa",
+        "Generali",
+        "La Mobilière",
+        "Zurich",
+        "Allianz",
+        "Helvetia",
+        "Vaudoise",
+        "GVB",
+        "Rouky",
+        "Envoi du formulaire"
+      ],
+      "page": 3,
+      "description": "3 compagnies maximum."
+    },
+    {
+      "id": "11_62",
+      "gf_field_id": 62,
+      "name": "input_62",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "11_34",
+      "gf_field_id": 34,
+      "name": "input_34",
+      "label": "Commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "11_35",
+      "gf_field_id": 35,
+      "name": "input_35",
+      "label": "Date du rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "11_69",
+      "gf_field_id": 69,
+      "name": "input_69",
+      "label": "Fichier",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "11_84",
+      "gf_field_id": 84,
+      "name": "input_84",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document."
+    },
+    {
+      "id": "11_72",
+      "gf_field_id": 72,
+      "name": "input_72",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "11_73",
+      "gf_field_id": 73,
+      "name": "input_73",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 3,
+      "default": "Français"
+    },
+    {
+      "id": "11_70",
+      "gf_field_id": 70,
+      "name": "input_70",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}

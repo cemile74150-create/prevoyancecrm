@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
+import { hasPerm as checkPerm, canSeeAllDossiers } from "@/lib/permissions";
 
 const AuthContext = createContext(null);
 
@@ -34,12 +35,13 @@ export const AuthProvider = ({ children }) => {
     window.location.href = "/login";
   };
 
-  const isAdmin = user?.role === "admin" || user?.can_manage_users;
-  const isGlobal = user?.role === "admin" || user?.role === "ceo";
+  const hasPerm = useCallback((key) => checkPerm(user, key), [user]);
+  const isAdmin = hasPerm("users.manage");
+  const isGlobal = canSeeAllDossiers(user);
 
   return (
     <AuthContext.Provider
-      value={{ user, setUser, loading, checkAuth, logout, isAdmin, isGlobal }}
+      value={{ user, setUser, loading, checkAuth, logout, isAdmin, isGlobal, hasPerm }}
     >
       {children}
     </AuthContext.Provider>

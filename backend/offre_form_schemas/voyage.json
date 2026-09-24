@@ -1,0 +1,1991 @@
+{
+  "id": "voyage",
+  "label": "Véhicule plaques interchangeables",
+  "category": "Véhicule",
+  "title": "Véhicule plaques interchangeables",
+  "gravity_form_id": 12,
+  "source_file": "Texte collé (7).txt",
+  "fields_count": 137,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Agent & renseignements généraux"
+    },
+    {
+      "page": 2,
+      "label": "Véhicule 1"
+    },
+    {
+      "page": 3,
+      "label": "Véhicule 2"
+    },
+    {
+      "page": 4,
+      "label": "Couvertures"
+    },
+    {
+      "page": 5,
+      "label": "Compagnies"
+    },
+    {
+      "page": 6,
+      "label": "Envoi"
+    }
+  ],
+  "page_count": 6,
+  "fields": [
+    {
+      "id": "12_151",
+      "gf_field_id": 151,
+      "name": "input_151",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "Véhicule plaques interchangeables"
+    },
+    {
+      "id": "12_152",
+      "gf_field_id": 152,
+      "name": "input_152",
+      "label": "Prénom et Nom de l'agent",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "12_153_3",
+      "gf_field_id": 153,
+      "name": "input_153.3",
+      "label": "Prénom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "12_153_6",
+      "gf_field_id": 153,
+      "name": "input_153.6",
+      "label": "Nom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "12_154",
+      "gf_field_id": 154,
+      "name": "input_154",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "12_155",
+      "gf_field_id": 155,
+      "name": "input_155",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "12_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Renseignements généraux",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "12_129",
+      "gf_field_id": 129,
+      "name": "input_129",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "12_130",
+      "gf_field_id": 130,
+      "name": "input_130",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "12_136",
+      "gf_field_id": 136,
+      "name": "input_136",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 1
+    },
+    {
+      "id": "12_2_1",
+      "gf_field_id": 2,
+      "name": "input_2.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "12_2_3",
+      "gf_field_id": 2,
+      "name": "input_2.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "12_2_4",
+      "gf_field_id": 2,
+      "name": "input_2.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "12_2_5",
+      "gf_field_id": 2,
+      "name": "input_2.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "12_2_6",
+      "gf_field_id": 2,
+      "name": "input_2.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden",
+      "default": "Suisse"
+    },
+    {
+      "id": "12_126",
+      "gf_field_id": 126,
+      "name": "input_126",
+      "label": "Canton",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "12_3",
+      "gf_field_id": 3,
+      "name": "input_3",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "12_37",
+      "gf_field_id": 37,
+      "name": "input_37",
+      "label": "Date du permis de conduire",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "12_4",
+      "gf_field_id": 4,
+      "name": "input_4",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "12_36",
+      "gf_field_id": 36,
+      "name": "input_36",
+      "label": "Permis de séjour",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Aucun permis",
+        "Permis B",
+        "Permis C",
+        "Permis L",
+        "Permis G"
+      ],
+      "page": 1
+    },
+    {
+      "id": "12_38",
+      "gf_field_id": 38,
+      "name": "input_38",
+      "label": "La conclusion d'une assurance responsabilité civile ou casco automobile vous a-t-elle déjà été refusée ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "12_39",
+      "gf_field_id": 39,
+      "name": "input_39",
+      "label": "Avez-vous (ou avez-vous eu) une assurance automobile ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "12_40",
+      "gf_field_id": 40,
+      "name": "input_40",
+      "label": "Quelle compagnie ?",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_39",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_41",
+      "gf_field_id": 41,
+      "name": "input_41",
+      "label": "Bonus RC",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "12_42",
+      "gf_field_id": 42,
+      "name": "input_42",
+      "label": "Bonus Casco",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "12_43",
+      "gf_field_id": 43,
+      "name": "input_43",
+      "label": "Retrait du permis",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "12_44",
+      "gf_field_id": 44,
+      "name": "input_44",
+      "label": "Motif et durée",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "description": "Merci d'être le plus précis possible",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_43",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_141",
+      "gf_field_id": 141,
+      "name": "input_141",
+      "label": "Avez-vous déclarer un sinistre ces 5 dernières années ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "12_142",
+      "gf_field_id": 142,
+      "name": "input_142",
+      "label": "Précision(s) sur le(s) sinistre(s) déclaré(s) depuis 5 ans",
+      "type": "list",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Précisez le type de sinistre : RC, VOL, BRIS DE GLACE, COLLISION, ou PARC. || Cliquez sur le \"+\" pour déclarer un nouveau sinistre.",
+      "columns": [
+        "Type de sinistre",
+        "Date du sinistre",
+        "Montant du sinistre"
+      ],
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_141",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_79",
+      "gf_field_id": 79,
+      "name": "input_79",
+      "label": "Le conducteur est-il le détenteur ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "12_80",
+      "gf_field_id": 80,
+      "name": "input_80",
+      "label": "Nom du détenteur",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_79",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_81",
+      "gf_field_id": 81,
+      "name": "input_81",
+      "label": "Prénom du détenteur",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_79",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_82",
+      "gf_field_id": 82,
+      "name": "input_82",
+      "label": "Date de naissance du détenteur",
+      "type": "date",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_79",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_84_1",
+      "gf_field_id": 84,
+      "name": "input_84.1",
+      "label": "Adresse postale",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_79",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_84_3",
+      "gf_field_id": 84,
+      "name": "input_84.3",
+      "label": "Ville",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_79",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_84_4",
+      "gf_field_id": 84,
+      "name": "input_84.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_79",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_84_5",
+      "gf_field_id": 84,
+      "name": "input_84.5",
+      "label": "Code postal",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_79",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_84_6",
+      "gf_field_id": 84,
+      "name": "input_84.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_79",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_47",
+      "gf_field_id": 47,
+      "name": "input_47",
+      "label": "Renseignements véhicule 1",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "12_48",
+      "gf_field_id": 48,
+      "name": "input_48",
+      "label": "Marque du véhicule",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "12_49",
+      "gf_field_id": 49,
+      "name": "input_49",
+      "label": "Type du véhicule",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Merci d'être le plus précis possible"
+    },
+    {
+      "id": "12_50",
+      "gf_field_id": 50,
+      "name": "input_50",
+      "label": "Numéro d'homologation / RType",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "description": "Inscrit sur la carte grise, à nous indiquer le plus souvent possible pour trouver le bon véhicule."
+    },
+    {
+      "id": "12_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "Numéro de matricule",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "12_134",
+      "gf_field_id": 134,
+      "name": "input_134",
+      "label": "Type de carburant",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Essence",
+        "Diesel",
+        "Hybride/ Electrique"
+      ],
+      "page": 2
+    },
+    {
+      "id": "12_87",
+      "gf_field_id": 87,
+      "name": "input_87",
+      "label": "Canton",
+      "type": "select",
+      "required": true,
+      "options": [
+        "AG",
+        "AI",
+        "AR",
+        "BE",
+        "BL",
+        "BS",
+        "FR",
+        "GE",
+        "GL",
+        "GR",
+        "JU",
+        "LU",
+        "NE",
+        "NW",
+        "OW",
+        "SG",
+        "SH",
+        "SO",
+        "SZ",
+        "TG",
+        "TI",
+        "UR",
+        "VD",
+        "VS",
+        "ZG",
+        "ZH"
+      ],
+      "page": 2
+    },
+    {
+      "id": "12_52",
+      "gf_field_id": 52,
+      "name": "input_52",
+      "label": "Numéro de plaque",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "12_53",
+      "gf_field_id": 53,
+      "name": "input_53",
+      "label": "Date de première mise en circulation",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "12_54",
+      "gf_field_id": 54,
+      "name": "input_54",
+      "label": "Prix catalogue",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "12_55",
+      "gf_field_id": 55,
+      "name": "input_55",
+      "label": "Prix des options",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "12_56",
+      "gf_field_id": 56,
+      "name": "input_56",
+      "label": "Véhicule en leasing",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "12_57",
+      "gf_field_id": 57,
+      "name": "input_57",
+      "label": "Etablissement de leasing",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_56",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_58",
+      "gf_field_id": 58,
+      "name": "input_58",
+      "label": "Garage",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Garage au domicile",
+        "Place publique",
+        "Garage sur le lieu de travail",
+        "Place privée"
+      ],
+      "page": 2
+    },
+    {
+      "id": "12_59",
+      "gf_field_id": 59,
+      "name": "input_59",
+      "label": "Emploi principal du véhicule",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Trajet pour aller au travail",
+        "Trajets personnels",
+        "Trajets professionnels"
+      ],
+      "page": 2
+    },
+    {
+      "id": "12_133",
+      "gf_field_id": 133,
+      "name": "input_133",
+      "label": "Merci de préciser",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Transport de personnes",
+        "Transport de marchandises",
+        "Taxi / Uber"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_56",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_60",
+      "gf_field_id": 60,
+      "name": "input_60",
+      "label": "Kilométrage actuel",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "12_61",
+      "gf_field_id": 61,
+      "name": "input_61",
+      "label": "Kilométrage annuel",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "12_143",
+      "gf_field_id": 143,
+      "name": "input_143",
+      "label": "Existe-t-il un dommage non réparé sur le véhicule ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "12_62",
+      "gf_field_id": 62,
+      "name": "input_62",
+      "label": "Tous les conducteurs ont plus de 25 ans",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "12_63",
+      "gf_field_id": 63,
+      "name": "input_63",
+      "label": "Merci de préciser",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_62",
+            "op": "is",
+            "value": "Non"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_65",
+      "gf_field_id": 65,
+      "name": "input_65",
+      "label": "Couvertures désirées Véhicule 1",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "12_66",
+      "gf_field_id": 66,
+      "name": "input_66",
+      "label": "Responsabilité civile",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_67",
+      "gf_field_id": 67,
+      "name": "input_67",
+      "label": "RC Protection de bonus",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_66",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_68",
+      "gf_field_id": 68,
+      "name": "input_68",
+      "label": "RC Couverture faute grave",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_66",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_69",
+      "gf_field_id": 69,
+      "name": "input_69",
+      "label": "Casco intégrale",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_70",
+      "gf_field_id": 70,
+      "name": "input_70",
+      "label": "Franchise collision",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_69",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_72",
+      "gf_field_id": 72,
+      "name": "input_72",
+      "label": "Faute grave Casco",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_69",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_73",
+      "gf_field_id": 73,
+      "name": "input_73",
+      "label": "Protection de bonus Collision",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_69",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_71",
+      "gf_field_id": 71,
+      "name": "input_71",
+      "label": "Casco Partielle",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_74",
+      "gf_field_id": 74,
+      "name": "input_74",
+      "label": "Parking",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_122",
+      "gf_field_id": 122,
+      "name": "input_122",
+      "label": "Bris de glace",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_149",
+      "gf_field_id": 149,
+      "name": "input_149",
+      "label": "Jantes et pneus",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_123",
+      "gf_field_id": 123,
+      "name": "input_123",
+      "label": "Phares",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_150",
+      "gf_field_id": 150,
+      "name": "input_150",
+      "label": "Perte et endommagement des clés",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_75",
+      "gf_field_id": 75,
+      "name": "input_75",
+      "label": "Effets de voyage",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_76",
+      "gf_field_id": 76,
+      "name": "input_76",
+      "label": "Montant",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_75",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_77",
+      "gf_field_id": 77,
+      "name": "input_77",
+      "label": "Dépannage",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_86",
+      "gf_field_id": 86,
+      "name": "input_86",
+      "label": "Assurance accident conducteur",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_78",
+      "gf_field_id": 78,
+      "name": "input_78",
+      "label": "Assurance accident occupants",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "12_85",
+      "gf_field_id": 85,
+      "name": "input_85",
+      "label": "Montant pour l'assurance accident",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "12_89",
+      "gf_field_id": 89,
+      "name": "input_89",
+      "label": "Renseignements véhicule 2",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "12_90",
+      "gf_field_id": 90,
+      "name": "input_90",
+      "label": "Marque du véhicule",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "12_91",
+      "gf_field_id": 91,
+      "name": "input_91",
+      "label": "Type de véhicule",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "description": "Merci d'être le plus précis possible"
+    },
+    {
+      "id": "12_92",
+      "gf_field_id": 92,
+      "name": "input_92",
+      "label": "Numéro d'homologation / RType",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 4,
+      "description": "Inscrit sur la carte grise, à nous indiquer le plus souvent possible pour trouver le bon véhicule."
+    },
+    {
+      "id": "12_93",
+      "gf_field_id": 93,
+      "name": "input_93",
+      "label": "Numero de matricule",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "12_135",
+      "gf_field_id": 135,
+      "name": "input_135",
+      "label": "Type de carburant",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Essence",
+        "Diesel",
+        "Hybride/ Electrique"
+      ],
+      "page": 4
+    },
+    {
+      "id": "12_94",
+      "gf_field_id": 94,
+      "name": "input_94",
+      "label": "Canton",
+      "type": "select",
+      "required": true,
+      "options": [
+        "AG",
+        "AI",
+        "AR",
+        "BE",
+        "BL",
+        "BS",
+        "FR",
+        "GE",
+        "GL",
+        "GR",
+        "JU",
+        "LU",
+        "NE",
+        "NW",
+        "OW",
+        "SG",
+        "SH",
+        "SO",
+        "SZ",
+        "TG",
+        "TI",
+        "UR",
+        "VD",
+        "VS",
+        "ZG",
+        "ZH"
+      ],
+      "page": 4
+    },
+    {
+      "id": "12_95",
+      "gf_field_id": 95,
+      "name": "input_95",
+      "label": "Numéro de plaque",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "12_96",
+      "gf_field_id": 96,
+      "name": "input_96",
+      "label": "Date de première mise en circulation",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "12_97",
+      "gf_field_id": 97,
+      "name": "input_97",
+      "label": "Prix catalogue",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "12_98",
+      "gf_field_id": 98,
+      "name": "input_98",
+      "label": "Prix des options",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "12_99",
+      "gf_field_id": 99,
+      "name": "input_99",
+      "label": "Véhicule en leasing",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4
+    },
+    {
+      "id": "12_100",
+      "gf_field_id": 100,
+      "name": "input_100",
+      "label": "Etablissement de leasing",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_99",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_101",
+      "gf_field_id": 101,
+      "name": "input_101",
+      "label": "Garage",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Garage au domicile",
+        "Place publique",
+        "Garage sur le lieu de travail",
+        "Place privée"
+      ],
+      "page": 4
+    },
+    {
+      "id": "12_102",
+      "gf_field_id": 102,
+      "name": "input_102",
+      "label": "Emploi principal du véhicule",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Trajet pour aller au travail",
+        "Trajets personnels",
+        "Trajets professionnels"
+      ],
+      "page": 4
+    },
+    {
+      "id": "12_103",
+      "gf_field_id": 103,
+      "name": "input_103",
+      "label": "Kilométrage actuel",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "12_104",
+      "gf_field_id": 104,
+      "name": "input_104",
+      "label": "Kilométrage annuel",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "12_144",
+      "gf_field_id": 144,
+      "name": "input_144",
+      "label": "Existe-t-il un dommage non réparé sur le véhicule ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4
+    },
+    {
+      "id": "12_106",
+      "gf_field_id": 106,
+      "name": "input_106",
+      "label": "Couvertures désirées Véhicule 2",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 5
+    },
+    {
+      "id": "12_107",
+      "gf_field_id": 107,
+      "name": "input_107",
+      "label": "Responsabilité civile",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5
+    },
+    {
+      "id": "12_108",
+      "gf_field_id": 108,
+      "name": "input_108",
+      "label": "RC Protection de bonus",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_107",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_109",
+      "gf_field_id": 109,
+      "name": "input_109",
+      "label": "RC Couverture faute grave",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_107",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_110",
+      "gf_field_id": 110,
+      "name": "input_110",
+      "label": "Casco intégrale",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5
+    },
+    {
+      "id": "12_111",
+      "gf_field_id": 111,
+      "name": "input_111",
+      "label": "Franchise collision",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 5,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_110",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_112",
+      "gf_field_id": 112,
+      "name": "input_112",
+      "label": "Faute grave Casco",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_110",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_113",
+      "gf_field_id": 113,
+      "name": "input_113",
+      "label": "Protection de bonus Collision",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_110",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_114",
+      "gf_field_id": 114,
+      "name": "input_114",
+      "label": "Casco Partielle",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5
+    },
+    {
+      "id": "12_115",
+      "gf_field_id": 115,
+      "name": "input_115",
+      "label": "Parking",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5
+    },
+    {
+      "id": "12_124",
+      "gf_field_id": 124,
+      "name": "input_124",
+      "label": "Bris de glace",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5
+    },
+    {
+      "id": "12_125",
+      "gf_field_id": 125,
+      "name": "input_125",
+      "label": "Phares",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5
+    },
+    {
+      "id": "12_116",
+      "gf_field_id": 116,
+      "name": "input_116",
+      "label": "Effets de voyage",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5
+    },
+    {
+      "id": "12_117",
+      "gf_field_id": 117,
+      "name": "input_117",
+      "label": "Montant",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 5,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_116",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "12_118",
+      "gf_field_id": 118,
+      "name": "input_118",
+      "label": "Dépannage",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5
+    },
+    {
+      "id": "12_119",
+      "gf_field_id": 119,
+      "name": "input_119",
+      "label": "Assurance accident conducteur",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5
+    },
+    {
+      "id": "12_120",
+      "gf_field_id": 120,
+      "name": "input_120",
+      "label": "Assurance accident occcupants",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5
+    },
+    {
+      "id": "12_121",
+      "gf_field_id": 121,
+      "name": "input_121",
+      "label": "Montant pour l'assurance accident",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 5
+    },
+    {
+      "id": "12_156",
+      "gf_field_id": 156,
+      "name": "input_156",
+      "label": "Date de début de contrat",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "12_131",
+      "gf_field_id": 131,
+      "name": "input_131",
+      "label": "Périodicité de paiement",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Annuel",
+        "Semestriel",
+        "Trimestriel",
+        "Mensuel"
+      ],
+      "page": 6
+    },
+    {
+      "id": "12_127",
+      "gf_field_id": 127,
+      "name": "input_127",
+      "label": "Raison de l'attestation",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "Nouvelle immatriculation",
+        "Changement de véhicule",
+        "Changement d'assurance",
+        "Changement de détenteur"
+      ],
+      "page": 6
+    },
+    {
+      "id": "12_32",
+      "gf_field_id": 32,
+      "name": "input_32",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Axa",
+        "Generali (Romandie Courtage uniquement)",
+        "La Mobilière",
+        "Zurich",
+        "Allianz",
+        "Helvetia",
+        "Vaudoise",
+        "Smile Direct",
+        "Envoi du formulaire"
+      ],
+      "page": 6,
+      "description": "3 compagnies maximum."
+    },
+    {
+      "id": "12_157",
+      "gf_field_id": 157,
+      "name": "input_157",
+      "label": "Quand avez-vous rendez-vous avec le client ?",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "12_158",
+      "gf_field_id": 158,
+      "name": "input_158",
+      "label": "Souhaitez-vous nous adresser des documents ?",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 6
+    },
+    {
+      "id": "12_162",
+      "gf_field_id": 162,
+      "name": "input_162",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 6,
+      "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document."
+    },
+    {
+      "id": "12_159",
+      "gf_field_id": 159,
+      "name": "input_159",
+      "label": "Vos commentaires ?",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 6
+    },
+    {
+      "id": "12_145",
+      "gf_field_id": 145,
+      "name": "input_145",
+      "label": "Questions spécifiques à Smile Direct",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 6
+    },
+    {
+      "id": "12_146",
+      "gf_field_id": 146,
+      "name": "input_146",
+      "label": "E-mail du preneur d'assurance",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "disabled": true
+    },
+    {
+      "id": "12_147",
+      "gf_field_id": 147,
+      "name": "input_147",
+      "label": "Téléphone du preneur d'assurance",
+      "type": "tel",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "disabled": true
+    },
+    {
+      "id": "12_138",
+      "gf_field_id": 138,
+      "name": "input_138",
+      "label": "Questions spécifiques à Zurich",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 6
+    },
+    {
+      "id": "12_139",
+      "gf_field_id": 139,
+      "name": "input_139",
+      "label": "Ajouter la couverture \"protection de l'habitacle\" ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "disabled": true
+    },
+    {
+      "id": "12_140",
+      "gf_field_id": 140,
+      "name": "input_140",
+      "label": "Ajouter la couverture \"protection des jantes et pneus\" ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "disabled": true
+    },
+    {
+      "id": "12_160",
+      "gf_field_id": 160,
+      "name": "input_160",
+      "label": "Date d’acquisition du véhicule 1",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true
+    },
+    {
+      "id": "12_161",
+      "gf_field_id": 161,
+      "name": "input_161",
+      "label": "Date d’acquisition du véhicule 2",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true
+    },
+    {
+      "id": "12_34",
+      "gf_field_id": 34,
+      "name": "input_34",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 6,
+      "disabled": true
+    },
+    {
+      "id": "12_132",
+      "gf_field_id": 132,
+      "name": "input_132",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "disabled": true
+    },
+    {
+      "id": "12_128",
+      "gf_field_id": 128,
+      "name": "input_128",
+      "label": "Ajouter le Help Point Plus ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "disabled": true
+    },
+    {
+      "id": "12_137",
+      "gf_field_id": 137,
+      "name": "input_137",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 6
+    },
+    {
+      "id": "12_148",
+      "gf_field_id": 148,
+      "name": "input_148",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 6,
+      "default": "Français"
+    },
+    {
+      "id": "12_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}

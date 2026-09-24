@@ -1,0 +1,176 @@
+{
+  "title": "Offres",
+  "families": [
+    {
+      "id": "particulier",
+      "label": "Assurances particulier",
+      "icon": "person",
+      "sections": [
+        {
+          "id": "pilier3",
+          "label": "Formulaires 3ème pilier",
+          "items": [
+            {
+              "label": "3ème pilier",
+              "form_type": "pilier3"
+            },
+            {
+              "label": "3ème pilier parent-enfant",
+              "form_type": "pilier3_parent_enfant"
+            },
+            {
+              "label": "3ème pilier risque pur",
+              "form_type": "pilier3_risque_pur"
+            }
+          ]
+        },
+        {
+          "id": "choses",
+          "label": "Formulaires choses",
+          "items": [
+            {
+              "label": "Bâtiment",
+              "form_type": "assurances_particulier"
+            },
+            {
+              "label": "RC seule",
+              "form_type": "menage_rc",
+              "note": "Assurance RC / Ménage (GF1, 6 étapes)"
+            },
+            {
+              "label": "RC-Ménage",
+              "form_type": "menage_rc"
+            },
+            {
+              "label": "Motocycles",
+              "form_type": "motocycle"
+            },
+            {
+              "label": "Véhicule",
+              "form_type": "vehicule"
+            },
+            {
+              "label": "Véhicule plaques interchangeables",
+              "form_type": "voyage",
+              "note": "Schéma GF12 (id historique voyage)"
+            },
+            {
+              "label": "Attestation Véhicule uniquement",
+              "form_type": "attestation_vehicule"
+            }
+          ]
+        },
+        {
+          "id": "autres_particulier",
+          "label": "Autres assurances pour particulier",
+          "items": [
+            {
+              "label": "Maladie (Non CICERO)",
+              "form_type": "pilier3_autre"
+            },
+            {
+              "label": "Animaux",
+              "form_type": "animaux"
+            },
+            {
+              "label": "LAA employée de maison",
+              "form_type": "laa_employee_maison"
+            },
+            {
+              "label": "Protection juridique privé",
+              "form_type": "protection_juridique_particulier"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "professionnelles",
+      "label": "Assurances professionnelles",
+      "icon": "briefcase",
+      "notice": "Nous attirons votre attention sur le fait que le délai de retour pour toutes demandes d'offres professionnelles est au minimum de 5 jours. Ce délai n'est malheureusement pas de notre fait, nous sommes dépendants du temps de réponse des compagnies.",
+      "notice_highlight": "au minimum de 5 jours",
+      "sections": [
+        {
+          "id": "complets",
+          "label": "Formulaires complets",
+          "items": [
+            {
+              "label": "Entreprise COMPLET",
+              "subtitle": "RC pro, assurances choses et assurance de personnes employées",
+              "form_type": "entreprise"
+            },
+            {
+              "label": "Indépendant COMPLET",
+              "subtitle": "RC pro, PGM, LAAF et rente invalidité",
+              "form_type": "formulaire_complet"
+            }
+          ]
+        },
+        {
+          "id": "autres_pro",
+          "label": "Autres formulaires pro",
+          "items": [
+            {
+              "label": "Assurance chef d'entreprise",
+              "form_type": "entreprise_31"
+            },
+            {
+              "label": "Assurance de personne employée",
+              "form_type": "entreprise_32"
+            },
+            {
+              "label": "La prévoyance professionnelle (LPP)",
+              "form_type": "entreprise_46"
+            },
+            {
+              "label": "LAAF / LAAC",
+              "form_type": "entreprise_28"
+            },
+            {
+              "label": "Perte de gain",
+              "form_type": "entreprise_27"
+            },
+            {
+              "label": "Rente invalidité",
+              "form_type": "entreprise_29"
+            },
+            {
+              "label": "Responsabilité civile",
+              "form_type": "rc_entreprise"
+            },
+            {
+              "label": "Assurances choses",
+              "form_type": "entreprise_33"
+            },
+            {
+              "label": "Véhicule entreprise",
+              "form_type": "entreprise_offres"
+            },
+            {
+              "label": "Véhicule entreprise plaques interchangeables",
+              "form_type": "entreprise_50"
+            },
+            {
+              "label": "Protection juridique ENTREPRISE",
+              "form_type": "protection_juridique_entreprise"
+            },
+            {
+              "label": "Protection juridique INDÉPENDANT",
+              "form_type": "protection_juridique_entreprise_2"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "extra_items": [
+    {
+      "family": "particulier",
+      "section": "pilier3",
+      "label": "3ème pilier (wizard CRM actuel)",
+      "form_type": "pilier3_legacy",
+      "hidden_in_menu": true
+    }
+  ]
+}

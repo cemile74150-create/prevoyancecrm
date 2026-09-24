@@ -1,0 +1,110 @@
+{
+  "id": "pilier3_autre",
+  "label": "3ème pilier (variante)",
+  "category": "3ème pilier",
+  "title": "3ème pilier (variante)",
+  "gravity_form_id": 58,
+  "source_file": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-2_.html",
+  "fields_count": 11,
+  "fields": [
+    {
+      "id": "58_18",
+      "gf_field_id": 18,
+      "name": "input_18",
+      "label": "FORMULAIRE RÉSERVÉ AUX AGENTS NON CICERO",
+      "type": "section",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "58_21",
+      "gf_field_id": 21,
+      "name": "input_21",
+      "label": "Champ 21",
+      "type": "text",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "58_1",
+      "gf_field_id": 1,
+      "name": "input_1",
+      "label": "Informations sur le prospect",
+      "type": "section",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "58_4",
+      "gf_field_id": 4,
+      "name": "input_4",
+      "label": "Date de naissance du prospect",
+      "type": "date",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "58_6",
+      "gf_field_id": 6,
+      "name": "input_6",
+      "label": "E-mail du prospect",
+      "type": "email",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "58_8",
+      "gf_field_id": 8,
+      "name": "input_8",
+      "label": "Téléphone du prospect (Nécessaire)",
+      "type": "tel",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "58_9",
+      "gf_field_id": 9,
+      "name": "input_9",
+      "label": "Commentaires / Informations utiles avant la prise de contact",
+      "type": "textarea",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "58_11",
+      "gf_field_id": 11,
+      "name": "input_11",
+      "label": "Informations sur l'Agent",
+      "type": "section",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "58_14",
+      "gf_field_id": 14,
+      "name": "input_14",
+      "label": "ID de l'agent (Nécessaire)",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "58_15",
+      "gf_field_id": 15,
+      "name": "input_15",
+      "label": "Nom de l'agent (Nécessaire)",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "58_17",
+      "gf_field_id": 17,
+      "name": "input_17",
+      "label": "Email de l'agent (Nécessaire)",
+      "type": "email",
+      "required": true,
+      "options": []
+    }
+  ]
+}

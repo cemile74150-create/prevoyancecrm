@@ -1,0 +1,680 @@
+{
+  "id": "entreprise_31",
+  "label": "Assurance chef d'entreprise",
+  "category": "Entreprise",
+  "title": "Assurance chef d'entreprise",
+  "gravity_form_id": 31,
+  "source_file": "Texte collé (3)(1).txt",
+  "fields_count": 49,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Étape 1"
+    },
+    {
+      "page": 2,
+      "label": "Étape 2"
+    },
+    {
+      "page": 3,
+      "label": "Étape 3"
+    }
+  ],
+  "page_count": 3,
+  "fields": [
+    {
+      "id": "31_214",
+      "gf_field_id": 214,
+      "name": "input_214",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "Assurance chef d"
+    },
+    {
+      "id": "31_222",
+      "gf_field_id": 222,
+      "name": "input_222",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "31_223_3",
+      "gf_field_id": 223,
+      "name": "input_223.3",
+      "label": "Prénom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "31_223_6",
+      "gf_field_id": 223,
+      "name": "input_223.6",
+      "label": "Nom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "31_224",
+      "gf_field_id": 224,
+      "name": "input_224",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "31_225",
+      "gf_field_id": 225,
+      "name": "input_225",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "31_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Renseignements généraux",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "31_48",
+      "gf_field_id": 48,
+      "name": "input_48",
+      "label": "Nom de l'entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "31_49",
+      "gf_field_id": 49,
+      "name": "input_49",
+      "label": "Activité de l'entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "31_57",
+      "gf_field_id": 57,
+      "name": "input_57",
+      "label": "Forme de la société",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "SA",
+        "Sàrl",
+        "Société en nom collectif"
+      ],
+      "page": 1
+    },
+    {
+      "id": "31_58",
+      "gf_field_id": 58,
+      "name": "input_58",
+      "label": "Nombre de propriétaires",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true
+    },
+    {
+      "id": "31_64",
+      "gf_field_id": 64,
+      "name": "input_64",
+      "label": "Nouvelle création",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "31_2_1",
+      "gf_field_id": 2,
+      "name": "input_2.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "31_2_3",
+      "gf_field_id": 2,
+      "name": "input_2.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "31_2_5",
+      "gf_field_id": 2,
+      "name": "input_2.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "31_2_6",
+      "gf_field_id": 2,
+      "name": "input_2.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden",
+      "default": "Suisse"
+    },
+    {
+      "id": "31_209",
+      "gf_field_id": 209,
+      "name": "input_209",
+      "label": "Prénom du dirigeant",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "31_211",
+      "gf_field_id": 211,
+      "name": "input_211",
+      "label": "Nom du dirigeant",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "31_204",
+      "gf_field_id": 204,
+      "name": "input_204",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 1
+    },
+    {
+      "id": "31_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "31_208_1",
+      "gf_field_id": 208,
+      "name": "input_208.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "31_208_3",
+      "gf_field_id": 208,
+      "name": "input_208.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "31_208_5",
+      "gf_field_id": 208,
+      "name": "input_208.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "31_208_6",
+      "gf_field_id": 208,
+      "name": "input_208.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden",
+      "default": "Suisse"
+    },
+    {
+      "id": "31_52",
+      "gf_field_id": 52,
+      "name": "input_52",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "31_53",
+      "gf_field_id": 53,
+      "name": "input_53",
+      "label": "Permis de séjour",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_64",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "31_194",
+      "gf_field_id": 194,
+      "name": "input_194",
+      "label": "Assurance chef d'entreprise",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "31_215",
+      "gf_field_id": 215,
+      "name": "input_215",
+      "label": "Assureur précédent ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_64",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "31_216",
+      "gf_field_id": 216,
+      "name": "input_216",
+      "label": "Compagnie :",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_64",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "31_217",
+      "gf_field_id": 217,
+      "name": "input_217",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_64",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "31_198",
+      "gf_field_id": 198,
+      "name": "input_198",
+      "label": "Salaire assuré du dirigeant",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "31_196",
+      "gf_field_id": 196,
+      "name": "input_196",
+      "label": "Y a-t-il un 2ème dirigeant à assurer ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "31_195_3",
+      "gf_field_id": 195,
+      "name": "input_195.3",
+      "label": "2eme dirigeant — Prénom",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_196",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "31_195_6",
+      "gf_field_id": 195,
+      "name": "input_195.6",
+      "label": "2eme dirigeant — Nom",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_196",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "31_205",
+      "gf_field_id": 205,
+      "name": "input_205",
+      "label": "Civilité du 2ème dirigeant",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_196",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "31_197",
+      "gf_field_id": 197,
+      "name": "input_197",
+      "label": "Date de naissance du 2ème dirigeant",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_196",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "31_219",
+      "gf_field_id": 219,
+      "name": "input_219",
+      "label": "Salaire du 2ème dirigeant",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_196",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "31_32",
+      "gf_field_id": 32,
+      "name": "input_32",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Axa",
+        "Generali (Romandie Courtage uniquement)",
+        "La Mobilière (Romandie Courtage uniquement)",
+        "Zurich (Romandie Courtage uniquement)",
+        "Helvetia (Romandie Courtage uniquement)",
+        "Innova (Perte de gain uniquement)",
+        "Allianz (Romandie Courtage uniquement)",
+        "Envoi du formulaire"
+      ],
+      "page": 3,
+      "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois àr nous communiquer une offre, voire ne pas l'envoyer du tout."
+    },
+    {
+      "id": "31_221",
+      "gf_field_id": 221,
+      "name": "input_221",
+      "label": "Date de création de l'entreprise :",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "La Mobilière a rendu ce renseignement obligatoire.",
+      "placeholder": "jj/mm/aaaa",
+      "disabled": true
+    },
+    {
+      "id": "31_213",
+      "gf_field_id": 213,
+      "name": "input_213",
+      "label": "Numéro UID",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "Generali a rendu ce renseignement obligatoire. Pour le trouver, rendez-vous sur ce lien : https://links.agencemendes.ch/DmfC",
+      "disabled": true
+    },
+    {
+      "id": "31_185",
+      "gf_field_id": 185,
+      "name": "input_185",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "31_202",
+      "gf_field_id": 202,
+      "name": "input_202",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "31_35",
+      "gf_field_id": 35,
+      "name": "input_35",
+      "label": "Date du rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "31_189",
+      "gf_field_id": 189,
+      "name": "input_189",
+      "label": "Date d'effet",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "31_203",
+      "gf_field_id": 203,
+      "name": "input_203",
+      "label": "Fichier",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "31_226",
+      "gf_field_id": 226,
+      "name": "input_226",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_202",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "31_207",
+      "gf_field_id": 207,
+      "name": "input_207",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "31_212",
+      "gf_field_id": 212,
+      "name": "input_212",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 3,
+      "default": "Français"
+    },
+    {
+      "id": "31_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}

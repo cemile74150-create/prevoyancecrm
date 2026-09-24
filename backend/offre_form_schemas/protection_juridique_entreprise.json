@@ -1,0 +1,560 @@
+{
+  "id": "protection_juridique_entreprise",
+  "label": "Protection juridique entreprise",
+  "category": "Protection juridique",
+  "title": "Protection juridique Entreprise",
+  "gravity_form_id": 36,
+  "source_file": "Texte collé (14).txt",
+  "fields_count": 49,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Étape 1"
+    },
+    {
+      "page": 2,
+      "label": "Étape 2"
+    }
+  ],
+  "page_count": 2,
+  "fields": [
+    {
+      "id": "36_50",
+      "gf_field_id": 50,
+      "name": "input_50",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "Protection juridique Entreprise"
+    },
+    {
+      "id": "36_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_52_3",
+      "gf_field_id": 52,
+      "name": "input_52.3",
+      "label": "Prénom de l'agent",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_52_6",
+      "gf_field_id": 52,
+      "name": "input_52.6",
+      "label": "Nom de l'agent",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_53",
+      "gf_field_id": 53,
+      "name": "input_53",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_54",
+      "gf_field_id": 54,
+      "name": "input_54",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "36_1",
+      "gf_field_id": 1,
+      "name": "input_1",
+      "label": "Informations générales",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_28",
+      "gf_field_id": 28,
+      "name": "input_28",
+      "label": "Activité de l'entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Merci de joindre une copie du RC."
+    },
+    {
+      "id": "36_29_1",
+      "gf_field_id": 29,
+      "name": "input_29.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_29_2",
+      "gf_field_id": 29,
+      "name": "input_29.2",
+      "label": "Adresse ligne 2",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_29_3",
+      "gf_field_id": 29,
+      "name": "input_29.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_29_5",
+      "gf_field_id": 29,
+      "name": "input_29.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_29_6",
+      "gf_field_id": 29,
+      "name": "input_29.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden"
+    },
+    {
+      "id": "36_38",
+      "gf_field_id": 38,
+      "name": "input_38",
+      "label": "Nombre de succursale",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_39_1",
+      "gf_field_id": 39,
+      "name": "input_39.1",
+      "label": "Adresse postale",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_39_2",
+      "gf_field_id": 39,
+      "name": "input_39.2",
+      "label": "Adresse ligne 2",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_39_3",
+      "gf_field_id": 39,
+      "name": "input_39.3",
+      "label": "Ville",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_39_5",
+      "gf_field_id": 39,
+      "name": "input_39.5",
+      "label": "Code postal",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_39_6",
+      "gf_field_id": 39,
+      "name": "input_39.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden"
+    },
+    {
+      "id": "36_44",
+      "gf_field_id": 44,
+      "name": "input_44",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_45",
+      "gf_field_id": 45,
+      "name": "input_45",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_42",
+      "gf_field_id": 42,
+      "name": "input_42",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 1
+    },
+    {
+      "id": "36_5",
+      "gf_field_id": 5,
+      "name": "input_5",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "36_3_1",
+      "gf_field_id": 3,
+      "name": "input_3.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_3_2",
+      "gf_field_id": 3,
+      "name": "input_3.2",
+      "label": "Adresse ligne 2",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_3_3",
+      "gf_field_id": 3,
+      "name": "input_3.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_3_5",
+      "gf_field_id": 3,
+      "name": "input_3.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "36_3_6",
+      "gf_field_id": 3,
+      "name": "input_3.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden"
+    },
+    {
+      "id": "36_32",
+      "gf_field_id": 32,
+      "name": "input_32",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_33",
+      "gf_field_id": 33,
+      "name": "input_33",
+      "label": "Permis de séjour",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_35",
+      "gf_field_id": 35,
+      "name": "input_35",
+      "label": "Chiffre d'affaire",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_34",
+      "gf_field_id": 34,
+      "name": "input_34",
+      "label": "Nombre d'employés",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_36",
+      "gf_field_id": 36,
+      "name": "input_36",
+      "label": "Masse salariale",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "36_47",
+      "gf_field_id": 47,
+      "name": "input_47",
+      "label": "Une assurance protection juridique a-t-elle déjà été souscrite ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "36_48",
+      "gf_field_id": 48,
+      "name": "input_48",
+      "label": "Une assurance protection juridique a-t-elle résilié le contrat (ou celui d'une personne coassurée) au cours des 5 dernières années ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "36_49",
+      "gf_field_id": 49,
+      "name": "input_49",
+      "label": "Combien de litiges ou de procédures administratives il y a-t-il eu au cours de ces 3 dernières années (incluant ceux d'une personne coassurée)",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "0",
+        "1",
+        "2",
+        "Plus de 2"
+      ],
+      "page": 1
+    },
+    {
+      "id": "36_18",
+      "gf_field_id": 18,
+      "name": "input_18",
+      "label": "Choix des couvertures",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "36_37",
+      "gf_field_id": 37,
+      "name": "input_37",
+      "label": "Choix des couvertures",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Protection juridique entreprise",
+        "Protection juridique circulation",
+        "Protection juridique bailleur"
+      ],
+      "page": 2
+    },
+    {
+      "id": "36_20",
+      "gf_field_id": 20,
+      "name": "input_20",
+      "label": "Date d'effet du contrat",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "36_21",
+      "gf_field_id": 21,
+      "name": "input_21",
+      "label": "Durée du contrat",
+      "type": "select",
+      "required": true,
+      "options": [
+        "1 an",
+        "3 ans",
+        "5 ans",
+        "8 ans"
+      ],
+      "page": 2
+    },
+    {
+      "id": "36_23",
+      "gf_field_id": 23,
+      "name": "input_23",
+      "label": "Quelles compagnies ?",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Dextra",
+        "ARAG (Romandie Courtage uniquement)",
+        "Orion (Romandie Courtage uniquement)",
+        "CAP (Romandie Courtage uniquement)",
+        "Coop (Privé uniquement)",
+        "Envoi du formulaire"
+      ],
+      "page": 2,
+      "description": "3 compagnies maximum. Pour Fortuna, merci de remplir les propositions disponibles dans \"Documents\"."
+    },
+    {
+      "id": "36_22",
+      "gf_field_id": 22,
+      "name": "input_22",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "36_41",
+      "gf_field_id": 41,
+      "name": "input_41",
+      "label": "Fichier(s) à inclure",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "36_40",
+      "gf_field_id": 40,
+      "name": "input_40",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "36_24",
+      "gf_field_id": 24,
+      "name": "input_24",
+      "label": "Date du RDV avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "36_43",
+      "gf_field_id": 43,
+      "name": "input_43",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "36_46",
+      "gf_field_id": 46,
+      "name": "input_46",
+      "label": "En quelle langue souhaitez-vous recevoir des offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 2,
+      "default": "Français"
+    },
+    {
+      "id": "36_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}

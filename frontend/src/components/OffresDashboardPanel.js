@@ -23,7 +23,7 @@ const KPI_DEFS = [
   { key: "brouillons", label: "Brouillons", icon: FilePlus2, accent: "bg-zinc-100 text-zinc-700" },
   { key: "variantes", label: "Variantes sollicitées", icon: Layers, accent: "bg-blue-100 text-blue-700" },
   { key: "attente", label: "En attente", icon: Clock, accent: "bg-amber-100 text-amber-700" },
-  { key: "recues", label: "Offres reçues", icon: FileSearch, accent: "bg-cyan-100 text-cyan-700" },
+  { key: "recues", label: "Offres complètes", icon: FileSearch, accent: "bg-emerald-100 text-emerald-700" },
   { key: "envoyees", label: "Offres envoyées client", icon: FileSpreadsheet, accent: "bg-purple-100 text-purple-700" },
   { key: "signees", label: "Offres signées", icon: CheckCircle2, accent: "bg-emerald-100 text-emerald-700" },
   { key: "refusees", label: "Offres refusées", icon: AlertTriangle, accent: "bg-red-100 text-red-700" },
@@ -61,10 +61,8 @@ function matchesKpi(row, key) {
     case "attente":
       return ["Demande envoyée", "Demande validée", "En attente d'informations"].includes(st);
     case "recues":
-      return [
-        "Offre reçue", "Offres complètes", "Offre complète", "Offre choisie", "En conclusion",
-        "Offre envoyée au client", "Offre signée", "Offre refusée",
-      ].includes(st);
+      // KPI « Offres complètes » — uniquement ce statut (pas « Offre reçue »)
+      return st === "Offres complètes" || st === "Offre complète";
     case "envoyees":
       return ["Offre envoyée au client", "En conclusion", "Offre signée", "Offre refusée"].includes(st);
     case "signees":

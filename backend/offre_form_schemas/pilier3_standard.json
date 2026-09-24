@@ -1,0 +1,170 @@
+{
+  "id": "pilier3_standard",
+  "label": "3ème pilier",
+  "category": "3ème pilier",
+  "title": "3ème pilier",
+  "gravity_form_id": 37,
+  "source_file": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier_.html",
+  "fields_count": 16,
+  "fields": [
+    {
+      "id": "37_25",
+      "gf_field_id": 25,
+      "name": "input_25",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "37_26",
+      "gf_field_id": 26,
+      "name": "input_27.3",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "37_28",
+      "gf_field_id": 28,
+      "name": "input_28",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "37_29",
+      "gf_field_id": 29,
+      "name": "input_29",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "37_1",
+      "gf_field_id": 1,
+      "name": "input_1",
+      "label": "Employeur",
+      "type": "section",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "37_22",
+      "gf_field_id": 22,
+      "name": "input_22",
+      "label": "Prénom de l'employeur",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "37_23",
+      "gf_field_id": 23,
+      "name": "input_23",
+      "label": "Nom de l'employeur",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "37_13",
+      "gf_field_id": 13,
+      "name": "input_13",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "37_4",
+      "gf_field_id": 4,
+      "name": "input_15",
+      "label": "Employée",
+      "type": "section",
+      "required": false,
+      "options": [
+        "Plus de 8 heures par semaine",
+        "Moins de 8 heures par semaine"
+      ]
+    },
+    {
+      "id": "37_14",
+      "gf_field_id": 14,
+      "name": "input_14",
+      "label": "Salaire annuel",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "37_16",
+      "gf_field_id": 16,
+      "name": "input_16",
+      "label": "Date d'effet du contrat",
+      "type": "date",
+      "required": true,
+      "options": [
+        "Axa",
+        "Generali",
+        "Zurich (Romandie Courtage uniquement)",
+        "La Mobilière",
+        "Allianz",
+        "Envoi du formulaire"
+      ]
+    },
+    {
+      "id": "37_17",
+      "gf_field_id": 17,
+      "name": "input_17",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "37_30",
+      "gf_field_id": 30,
+      "name": "input_30",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "37_19",
+      "gf_field_id": 19,
+      "name": "input_19",
+      "label": "Date de rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "37_21",
+      "gf_field_id": 21,
+      "name": "input_24",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ]
+    },
+    {
+      "id": "37_12",
+      "gf_field_id": 12,
+      "name": "input_12",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": []
+    }
+  ]
+}
