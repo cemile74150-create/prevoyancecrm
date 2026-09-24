@@ -127,8 +127,36 @@ export const ERREURS_INCOMPLETE_CATALOG = [
   { code: "autre", label: "Autre" },
 ];
 
+/** Catalogue stable des champs erronés (bouton Erreurs — comptabilisation agent). */
+export const ERREURS_CHAMPS_CATALOG = [
+  { code: "nom_prenom", label: "Nom / prénom" },
+  { code: "date_naissance", label: "Date de naissance" },
+  { code: "adresse", label: "Adresse" },
+  { code: "salaire", label: "Salaire" },
+  { code: "taux_activite", label: "Taux d'activité" },
+  { code: "vehicule", label: "Véhicule" },
+  { code: "date_effet", label: "Date d'effet" },
+  { code: "type_assurance", label: "Type d'assurance" },
+  { code: "informations_client", label: "Informations client" },
+  { code: "profession", label: "Profession" },
+  { code: "montant_prime", label: "Montant / prime" },
+  { code: "compagnie", label: "Compagnie" },
+  { code: "documents", label: "Documents joints" },
+  { code: "autre", label: "Autre" },
+];
+
 export function erreurLabel(code) {
   return ERREURS_INCOMPLETE_CATALOG.find((e) => e.code === code)?.label || code || "—";
+}
+
+export function erreurChampLabel(code) {
+  if (!code) return "—";
+  const fromCatalog = ERREURS_CHAMPS_CATALOG.find((e) => e.code === code);
+  if (fromCatalog) return fromCatalog.label;
+  if (String(code).startsWith("schema:")) {
+    return String(code).slice(7).replace(/_/g, " ");
+  }
+  return code;
 }
 
 export function demandeOrigineKey(origine) {

@@ -43,17 +43,30 @@ def test_format_offres_completes_email(monkeypatch):
             "commentaires": "ne doit pas apparaître",
         }
     )
-    assert subject == "Offres complètes – Jean Dupont – OFF-2026-0099"
+    assert subject == "Vos offres sont complètes – Jean Dupont"
     assert "Bonjour Cemile," in text
-    assert "complètes et disponibles" in text
+    assert "complètes et disponibles dans LeoSoft" in text
     assert "https://app.leosoft.ch/demandes-offres/d-complete" in text
-    assert "Voir les offres dans Leosoft" in text
-    assert "Bonne journée," in text
-    assert "Leosoft" in text
+    assert "Voir les offres dans LeoSoft" in text
+    assert "Cordialement," in text
+    assert "LeoSoft" in text
     assert "1200" not in text
     assert "ne doit pas apparaître" not in text
     assert 'href="https://app.leosoft.ch/demandes-offres/d-complete"' in html
     assert es.MAIL_TYPE_OFFRES_COMPLETES == "offres_completes"
+
+    subject2, text2, _ = es.format_offres_completes_email(
+        {
+            "id": "d-complete",
+            "prenom": "Jean",
+            "nom": "Dupont",
+            "agent_prenom": "Cemile",
+        },
+        note="Merci de vérifier la variante Zurich.",
+    )
+    assert "Note du gestionnaire :" in text2
+    assert "Merci de vérifier la variante Zurich." in text2
+    assert subject2 == subject
 
 
 def test_offre_notify_role_offres_completes():

@@ -1225,73 +1225,87 @@ def format_demande_offre_recap_conseiller_email(doc: dict) -> Tuple[str, str, st
 
 def format_offre_recue_email(doc: dict, offer: Optional[dict] = None) -> Tuple[str, str, str]:
     """
-    Notification conseiller : une offre est disponible dans Leosoft (lien direct).
-    Pas de récapitulatif détaillé — uniquement l'annonce + deep link fiche demande.
+    Notification conseiller : une offre compagnie a été enregistrée (« Offre reçue »).
+    Inclut le récapitulatif complet schéma-driven de la demande + deep link fiche.
     """
-    del offer  # conservé pour compat signature / appels existants
     client = _offre_client_name(doc)
     numero = (doc.get("numero") or "").strip()
+    form_label = (doc.get("form_type_label") or doc.get("type_pilier") or "Offre").strip() or "Offre"
     subject = f"Offre reçue – {client} – {numero or '—'}"
 
     prenom = _agent_greeting_prenom(doc)
     greeting = f"Bonjour {prenom}," if prenom else "Bonjour,"
-    url = _demande_offre_url(doc.get("id"))
-    link_label = "Voir l’offre dans Leosoft"
-
-    text_lines = [
+    intro_lines = [
         greeting,
         "",
         f"Vous avez reçu une offre pour {client}.",
         "",
-        "Vous pouvez consulter l’offre directement dans Leosoft en cliquant sur le lien ci-dessous :",
+        f"N° / référence : {numero or '—'}",
+        f"Client : {client}",
+        f"Type d'offre : {form_label}",
+        f"Statut : {doc.get('statut') or 'Offre reçue'}",
     ]
-    if url:
-        text_lines.extend(["", f"{link_label} :", url])
-    else:
-        text_lines.extend(["", "(Lien indisponible — ouvrez la demande dans Leosoft.)"])
-    text_lines.extend(["", "Bonne journée,", "Leosoft"])
-    body_text = "\n".join(text_lines)
+    offer = offer if isinstance(offer, dict) else {}
+    if offer.get("compagnie"):
+        intro_lines.append(f"Compagnie : {offer.get('compagnie')}")
+    if offer.get("reference"):
+        intro_lines.append(f"Référence compagnie : {offer.get('reference')}")
+    if offer.get("date_reception"):
+        try:
+            from swiss_dates import format_swiss_date
 
+            dr = format_swiss_date(offer.get("date_reception")) or str(offer.get("date_reception"))
+        except Exception:
+            dr = str(offer.get("date_reception"))
+        intro_lines.append(f"Date de réception : {dr}")
+
+    field_rows = _collect_filled_offre_fields(doc, include_empty=True)
+    greeting_html = html.escape(greeting)
     safe_client = html.escape(client)
-    safe_greeting = html.escape(greeting)
-    html_parts = [
-        '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.5;">',
-        f"<p>{safe_greeting}</p>",
-        f"<p>Vous avez reçu une offre pour <strong>{safe_client}</strong>.</p>",
-        "<p>Vous pouvez consulter l’offre directement dans Leosoft en cliquant sur le lien ci-dessous :</p>",
-    ]
-    if url:
-        html_parts.append(_html_button(url, link_label))
-    html_parts.append("<p>Bonne journée,<br/>Leosoft</p></div>")
-    return subject, body_text, "".join(html_parts)
+    body_text, body_html = _compose_offre_email(
+        intro_lines=intro_lines,
+        intro_html=(
+            f"<p>{greeting_html}</p>"
+            f"<p>Vous avez reçu une offre pour <strong>{safe_client}</strong>.</p>"
+        ),
+        field_rows=field_rows,
+        doc=doc,
+        highlight_rows=None,
+    )
+    return subject, body_text, body_html
 
 
-def format_offres_completes_email(doc: dict) -> Tuple[str, str, str]:
+def format_offres_completes_email(
+    doc: dict,
+    *,
+    note: Optional[str] = None,
+) -> Tuple[str, str, str]:
     """
     Notification conseiller : toutes les offres demandées sont complètes et disponibles.
-    Style simplifié (annonce + lien fiche), distinct de « Offre reçue ».
+    Inclut une note optionnelle du gestionnaire + lien profond fiche demande.
     """
     client = _offre_client_name(doc)
-    numero = (doc.get("numero") or "").strip()
-    subject = f"Offres complètes – {client} – {numero or '—'}"
+    subject = f"Vos offres sont complètes – {client}"
 
     prenom = _agent_greeting_prenom(doc)
     greeting = f"Bonjour {prenom}," if prenom else "Bonjour,"
     url = _demande_offre_url(doc.get("id"))
-    link_label = "Voir les offres dans Leosoft"
+    link_label = "Voir les offres dans LeoSoft"
+    note_text = (note or doc.get("message_conseiller") or "").strip()
 
     text_lines = [
         greeting,
         "",
-        f"Les offres pour {client} sont désormais complètes et disponibles dans Leosoft.",
-        "",
-        "Vous pouvez les consulter directement en cliquant sur le lien ci-dessous :",
+        f"Les offres concernant {client} sont maintenant complètes et disponibles dans LeoSoft.",
     ]
+    if note_text:
+        text_lines.extend(["", "Note du gestionnaire :", note_text])
+    text_lines.extend(["", "Vous pouvez consulter les offres directement ici :"])
     if url:
         text_lines.extend(["", f"{link_label} :", url])
     else:
-        text_lines.extend(["", "(Lien indisponible — ouvrez la demande dans Leosoft.)"])
-    text_lines.extend(["", "Bonne journée,", "Leosoft"])
+        text_lines.extend(["", "(Lien indisponible — ouvrez la demande dans LeoSoft.)"])
+    text_lines.extend(["", "Cordialement,", "LeoSoft"])
     body_text = "\n".join(text_lines)
 
     safe_client = html.escape(client)
@@ -1299,12 +1313,18 @@ def format_offres_completes_email(doc: dict) -> Tuple[str, str, str]:
     html_parts = [
         '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.5;">',
         f"<p>{safe_greeting}</p>",
-        f"<p>Les offres pour <strong>{safe_client}</strong> sont désormais complètes et disponibles dans Leosoft.</p>",
-        "<p>Vous pouvez les consulter directement en cliquant sur le lien ci-dessous :</p>",
+        f"<p>Les offres concernant <strong>{safe_client}</strong> sont maintenant complètes et disponibles dans LeoSoft.</p>",
     ]
+    if note_text:
+        html_parts.append(
+            "<p><strong>Note du gestionnaire :</strong><br/>"
+            + html.escape(note_text).replace("\n", "<br/>")
+            + "</p>"
+        )
+    html_parts.append("<p>Vous pouvez consulter les offres directement ici :</p>")
     if url:
         html_parts.append(_html_button(url, link_label))
-    html_parts.append("<p>Bonne journée,<br/>Leosoft</p></div>")
+    html_parts.append("<p>Cordialement,<br/>LeoSoft</p></div>")
     return subject, body_text, "".join(html_parts)
 
 
@@ -1706,18 +1726,25 @@ def _humanize_payload_key(key: str) -> str:
     return text[:1].upper() + text[1:] if text else key
 
 
-def _collect_filled_offre_fields(doc: dict) -> List[Tuple[str, Optional[str]]]:
+def _collect_filled_offre_fields(
+    doc: dict,
+    *,
+    include_empty: bool = False,
+    empty_label: str = "Non renseigné",
+) -> List[Tuple[str, Optional[str]]]:
     """
-    Extrait les champs renseignés pour l'e-mail d'offre.
+    Extrait les champs pour l'e-mail d'offre.
 
     - Infos générales CRM (n°, type, catégorie, agent, langue, statut, date…)
     - Puis champs du formulaire via le schéma (`form_type`) : labels + ordre / sections
     - Jamais d'IDs techniques (`input_124`, « Formulaire — input … »)
     - Isolation stricte par formulaire (pas de champs 3a sur véhicule entreprise)
     - Dates : JJ.MM.AAAA exact, sans double-expansion d'année
+    - include_empty=True : champs schéma vides → empty_label (récap « Offre reçue »)
     """
     rows: List[Tuple[str, Optional[str]]] = []
     seen_labels: set = set()
+    empty_text = (empty_label or "Non renseigné").strip() or "Non renseigné"
 
     def add(label: str, value: Any, *, allow_empty_section: bool = False, key: Optional[str] = None):
         if allow_empty_section:
@@ -1733,7 +1760,10 @@ def _collect_filled_offre_fields(doc: dict) -> List[Tuple[str, Optional[str]]]:
         else:
             formatted = _format_offre_field_value(value, key=key)
         if not formatted or formatted in {"—", "-", "None"}:
-            return
+            if include_empty:
+                formatted = empty_text
+            else:
+                return
         if label in seen_labels:
             return
         seen_labels.add(label)
@@ -1778,7 +1808,12 @@ def _collect_filled_offre_fields(doc: dict) -> List[Tuple[str, Optional[str]]]:
         payload = doc.get("form_payload") if isinstance(doc.get("form_payload"), dict) else {}
         schema_rows: List[Tuple[str, Optional[str]]] = []
         if callable(iter_schema_filled_fields):
-            schema_rows = iter_schema_filled_fields(form_type_id, payload)
+            schema_rows = iter_schema_filled_fields(
+                form_type_id,
+                payload,
+                include_empty=include_empty,
+                empty_label=empty_text,
+            )
 
         if schema_rows:
             for label, value in schema_rows:

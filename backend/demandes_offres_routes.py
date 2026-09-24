@@ -179,6 +179,24 @@ class InternalNoteRequest(BaseModel):
     note: str = Field(min_length=1)
 
 
+class OffresCompletesRequest(BaseModel):
+    """Note optionnelle destinée à l'agent (e-mail Offres complètes)."""
+    message_conseiller: Optional[str] = None
+    note: Optional[str] = None
+
+
+class ErreursAgentRequest(BaseModel):
+    """Multi-sélection de champs en erreur, rattachés à l'agent créateur."""
+    fields: list[Any] = Field(min_length=1)
+    error_type: Optional[str] = None
+    comment: Optional[str] = None
+
+    @field_validator("fields", mode="before")
+    @classmethod
+    def _fields_as_list(cls, value: Any) -> Any:
+        return _coerce_to_list(value) or []
+
+
 class SignatureRequest(BaseModel):
     signee: bool
     date_signature: Optional[str] = None
@@ -569,7 +587,9 @@ def attach_demandes_offres_routes(
             "offre_complète",
         }:
             mail_type = MAIL_TYPE_OFFRES_COMPLETES
-            subject, body_text, body_html = format_offres_completes_email(doc)
+            subject, body_text, body_html = format_offres_completes_email(
+                doc, note=note or doc.get("message_conseiller")
+            )
             to_addr = to_override or await resolve_demande_creator_email(doc)
             if not to_addr:
                 return False, "E-mail du créateur introuvable sur la demande"
@@ -983,6 +1003,7 @@ def attach_demandes_offres_routes(
             "demande_origines": DEMANDE_ORIGINES,
             "types_client": TYPES_CLIENT,
             "erreurs_incomplete_catalog": ERREURS_INCOMPLETE_CATALOG,
+            "erreurs_champs_catalog": ERREURS_CHAMPS_CATALOG,
             "gestion_categories": {
                 cid: {
                     "label": conf["label"],
@@ -1060,6 +1081,64 @@ def attach_demandes_offres_routes(
             stats["scoped"] = False
         stats["periode"] = period_meta
         return stats
+
+    @api_router.get("/demandes-offres/stats/erreurs-agent")
+    async def demandes_offres_stats_erreurs_agent(
+        agent_id: Optional[str] = Query(None),
+        conseiller: Optional[str] = Query(None),
+        periode: Optional[str] = Query("all"),
+        date_de: Optional[str] = Query(None),
+        date_a: Optional[str] = Query(None),
+        user: User = Depends(current_user_dependency),
+    ):
+        """
+        Comptabilisation des erreurs champ (bouton Erreurs) par agent.
+        Gestionnaire : tous / filtre. Agent : uniquement ses erreurs.
+        """
+        query: dict = {"user_id": TENANT_USER_ID}
+        if can_process_offres(user) or can_view_all_offres(user):
+            if agent_id:
+                query["agent_id"] = agent_id
+            elif conseiller and conseiller != "all":
+                import re as _re
+                query["agent_label"] = {
+                    "$regex": f"^{_re.escape(conseiller.strip())}$",
+                    "$options": "i",
+                }
+        else:
+            query["$or"] = [
+                {"agent_id": user.account_id},
+                {"created_by_account_id": user.account_id},
+            ]
+        rows = await db[COLLECTION_ERREURS].find(query, {"_id": 0}).to_list(20000)
+        # Filtre période sur le champ date / at
+        if periode and periode != "all":
+            start, end, _ = period_bounds(periode=periode, date_de=date_de, date_a=date_a)
+            filtered = []
+            for r in rows:
+                stamp = (r.get("at") or r.get("date") or "")[:19]
+                if start and stamp < start[:19]:
+                    continue
+                if end and stamp >= end[:19]:
+                    continue
+                filtered.append(r)
+            rows = filtered
+        stats = compute_erreurs_agent_stats(rows)
+        stats["periode"] = {"periode": periode, "date_de": date_de, "date_a": date_a}
+        stats["scoped"] = not (can_process_offres(user) or can_view_all_offres(user))
+        return stats
+
+    @api_router.get("/demandes-offres/{demande_id}/erreurs-checklist")
+    async def get_erreurs_checklist(
+        demande_id: str,
+        user: User = Depends(current_user_dependency),
+    ):
+        require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        doc = await require_demande(demande_id, user)
+        return {
+            "catalog": ERREURS_CHAMPS_CATALOG,
+            "items": build_erreurs_checklist(doc),
+        }
 
     @api_router.get("/demandes-offres")
     async def list_demandes_offres(
@@ -1907,11 +1986,12 @@ def attach_demandes_offres_routes(
     @api_router.post("/demandes-offres/{demande_id}/offres-completes")
     async def mark_offres_completes(
         demande_id: str,
+        payload: Optional[OffresCompletesRequest] = None,
         user: User = Depends(current_user_dependency),
     ):
         """
         Gestionnaire : signale que toutes les offres demandées sont complètes.
-        Statut → « Offres complètes » + e-mail au conseiller créateur.
+        Statut → « Offres complètes » + e-mail au conseiller créateur (note optionnelle).
         """
         require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
         doc = await require_demande(demande_id, user)
@@ -1923,26 +2003,40 @@ def attach_demandes_offres_routes(
                 detail=f"Impossible de marquer « Offres complètes » depuis le statut « {current} »",
             )
 
+        body = payload or OffresCompletesRequest()
+        note_agent = (
+            (body.message_conseiller or body.note or "").strip() or None
+        )
+
         at = now_iso()
         by_name = actor_name(user)
+        extra = {
+            "offres_completes_at": at,
+            "offres_completes_by": by_name,
+            "offres_completes_by_id": user.account_id,
+        }
+        if note_agent:
+            extra["message_conseiller"] = note_agent
+        detail = "Toutes les offres demandées sont reçues et complètes"
+        if note_agent:
+            detail = f"{detail} — note agent : {note_agent}"
         result = await save_status(
             demande_id,
             user,
             statut=STATUT_OFFRE_COMPLETE,
             action="Offres complètes",
-            detail="Toutes les offres demandées sont reçues et complètes",
-            extra={
-                "offres_completes_at": at,
-                "offres_completes_by": by_name,
-                "offres_completes_by_id": user.account_id,
-            },
+            detail=detail,
+            extra=extra,
         )
         mail_doc = {
             **doc,
             **(result if isinstance(result, dict) else {}),
             "statut": STATUT_OFFRE_COMPLETE,
+            "message_conseiller": note_agent or doc.get("message_conseiller"),
         }
-        sent, email_error = await try_send_email(mail_doc, event="offres_completes")
+        sent, email_error = await try_send_email(
+            mail_doc, event="offres_completes", note=note_agent
+        )
         if isinstance(result, dict):
             result["email_sent"] = sent
             result["email_error"] = email_error
@@ -1961,6 +2055,58 @@ def attach_demandes_offres_routes(
             account_ids=[doc.get("created_by_account_id")] if doc.get("created_by_account_id") else [],
         )
         return result
+
+    @api_router.post("/demandes-offres/{demande_id}/erreurs")
+    async def signaler_erreurs_agent(
+        demande_id: str,
+        payload: ErreursAgentRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        """
+        Gestionnaire : signale une ou plusieurs erreurs de champs, rattachées à l'agent créateur.
+        """
+        require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        doc = await require_demande(demande_id, user)
+        fields = normalize_erreurs_agent_fields(payload.fields)
+        if not fields:
+            raise HTTPException(status_code=422, detail="Sélectionnez au moins un champ en erreur")
+        records = build_erreur_agent_records(
+            doc,
+            fields,
+            by_user=user,
+            error_type=payload.error_type or ERREUR_TYPE_DEFAUT,
+            comment=payload.comment,
+        )
+        for rec in records:
+            rec["user_id"] = TENANT_USER_ID
+            rec["created_by_account_id"] = doc.get("created_by_account_id")
+        if records:
+            await db[COLLECTION_ERREURS].insert_many(records)
+        existing = list(doc.get("erreurs_agent") or [])
+        # Stocker sans user_id redondant sur la demande
+        slim = [{k: v for k, v in r.items() if k != "user_id"} for r in records]
+        existing.extend(slim)
+        labels = ", ".join(r["field_label"] for r in slim)
+        await db[COLLECTION].update_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID},
+            {
+                "$set": {"erreurs_agent": existing, "updated_at": now_iso()},
+                "$push": {
+                    "historique": history(
+                        "Erreurs signalées",
+                        user,
+                        labels,
+                        statut=doc.get("statut"),
+                        meta={
+                            "fields": [r["field"] for r in slim],
+                            "agent_id": slim[0].get("agent_id") if slim else None,
+                        },
+                    )
+                },
+            },
+        )
+        fresh = await require_demande(demande_id, user)
+        return serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
 
     @api_router.post("/demandes-offres/{demande_id}/offres/{offre_id}/documents")
     async def add_documents_to_company_offer(
@@ -2213,6 +2359,11 @@ def attach_demandes_offres_routes(
         user: User = Depends(current_user_dependency),
     ):
         doc = await require_demande(demande_id, user)
+        if not can_follow_signature(user, doc):
+            raise HTTPException(
+                status_code=403,
+                detail="Le suivi signature est réservé à l'agent ayant créé la demande",
+            )
         if signee is None:
             try:
                 payload = SignatureRequest.model_validate(await request.json())
@@ -2625,6 +2776,18 @@ def attach_demandes_offres_routes(
         user: User = Depends(current_user_dependency),
     ):
         await require_demande(demande_id, user)
+        doc = await db[COLLECTION].find_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID, "is_deleted": {"$ne": True}},
+            {"_id": 0, "statut": 1},
+        )
+        statut = normalize_statut((doc or {}).get("statut"))
+        editable = {STATUT_BROUILLON, STATUT_ATTENTE_INFOS, STATUT_INCOMPLETE}
+        if statut not in editable:
+            require_perm(
+                user,
+                PERM_DEMANDES_OFFRES_PROCESS,
+                detail="Réservé aux gestionnaires d'offres",
+            )
         normalized_category = category.strip() or "Pièce jointe"
         if normalized_category.lower() not in {
             "pièce jointe",

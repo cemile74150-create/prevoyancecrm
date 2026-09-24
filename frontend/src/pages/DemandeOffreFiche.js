@@ -11,12 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  ACTIVITES_RISQUE, CIVILITES, COMPAGNIES_DEFAUT, ERREURS_INCOMPLETE_CATALOG,
+  ACTIVITES_RISQUE, CIVILITES, COMPAGNIES_DEFAUT, ERREURS_INCOMPLETE_CATALOG, ERREURS_CHAMPS_CATALOG,
   EXONERATIONS, LANGUES, OUI_NON, PERIODICITES, SEXES, SITUATIONS, STATUTS_PRO,
   STATUT_STYLE, STEPS, TYPES_CLIENT, TYPES_PAIEMENT, TYPES_PILIER, emptyForm,
   formatChf, formatDateFr, demandeOrigineLabel, demandeOrigineKey, toIsoDate, toSwissDate,
   DEMANDE_ORIGINE_STYLE, typeClientLabel, buildDemandeResume,
-  PRIORITE_STYLE, prioriteLabel, erreurLabel, formatDateTimeFr,
+  PRIORITE_STYLE, prioriteLabel, erreurLabel, erreurChampLabel, formatDateTimeFr,
   prefillSchemaPayloadFromClient,
 } from "@/lib/demandesOffres";
 import OffreSchemaForm, { SchemaReadOnlySummary, isFieldVisible } from "@/components/OffreSchemaForm";
@@ -116,6 +116,12 @@ export default function DemandeOffreFiche() {
   const [incompleteErreurs, setIncompleteErreurs] = useState({});
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
+  const [offresCompletesOpen, setOffresCompletesOpen] = useState(false);
+  const [offresCompletesNote, setOffresCompletesNote] = useState("");
+  const [erreursOpen, setErreursOpen] = useState(false);
+  const [erreursChecklist, setErreursChecklist] = useState(ERREURS_CHAMPS_CATALOG);
+  const [erreursSelected, setErreursSelected] = useState({});
+  const [erreursComment, setErreursComment] = useState("");
   const [offerOpen, setOfferOpen] = useState(false);
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [signatureMode, setSignatureMode] = useState(true);
@@ -549,10 +555,54 @@ export default function DemandeOffreFiche() {
   };
 
   const markOffresCompletes = async () => {
-    if (!window.confirm(
-      "Confirmer que toutes les offres demandées sont reçues et complètes ?\n\nLe conseiller créateur sera notifié par e-mail.",
-    )) return;
-    await runAction("offres-completes", {}, "Offres marquées complètes — conseiller notifié");
+    setOffresCompletesNote("");
+    setOffresCompletesOpen(true);
+  };
+
+  const confirmOffresCompletes = async () => {
+    const note = offresCompletesNote.trim();
+    const ok = await runAction(
+      "offres-completes",
+      { message_conseiller: note || null, note: note || null },
+      "Offres marquées complètes — conseiller notifié",
+    );
+    if (ok) {
+      setOffresCompletesOpen(false);
+      setOffresCompletesNote("");
+    }
+  };
+
+  const openErreursDialog = async () => {
+    setErreursSelected({});
+    setErreursComment("");
+    setErreursOpen(true);
+    try {
+      const res = await api.get(`/demandes-offres/${demandeId}/erreurs-checklist`);
+      const items = res.data?.items || res.data?.catalog || ERREURS_CHAMPS_CATALOG;
+      setErreursChecklist(Array.isArray(items) && items.length ? items : ERREURS_CHAMPS_CATALOG);
+    } catch {
+      setErreursChecklist(ERREURS_CHAMPS_CATALOG);
+    }
+  };
+
+  const confirmErreurs = async () => {
+    const fields = Object.entries(erreursSelected)
+      .filter(([, on]) => on)
+      .map(([code]) => {
+        const item = erreursChecklist.find((e) => e.code === code);
+        return { code, label: item?.label || erreurChampLabel(code) };
+      });
+    if (!fields.length) return toast.error("Sélectionnez au moins un champ en erreur");
+    const ok = await runAction(
+      "erreurs",
+      { fields, comment: erreursComment.trim() || null },
+      `${fields.length} erreur(s) enregistrée(s) pour l'agent`,
+    );
+    if (ok) {
+      setErreursOpen(false);
+      setErreursSelected({});
+      setErreursComment("");
+    }
   };
 
   const confirmCancel = async () => {
@@ -667,6 +717,8 @@ export default function DemandeOffreFiche() {
   const hasIncompleteCompany = reponsesCompagnies.some((c) => String(c.statut || "").toLowerCase().includes("incompl"));
   const variantes = demande.variantes || [];
   const notesInternes = canProcess ? (demande.notes_internes || []) : [];
+  const erreursAgent = Array.isArray(demande.erreurs_agent) ? demande.erreurs_agent : [];
+  const canFollowSignature = Boolean(demande.can_follow_signature);
 
   return (
     <Layout>
@@ -1022,6 +1074,25 @@ export default function DemandeOffreFiche() {
                   )}
                 </Card>
               )}
+              {erreursAgent.length > 0 && (
+                <Card className="p-5 space-y-3 border-rose-200">
+                  <h2 className="font-display font-bold flex items-center gap-2 text-rose-800">
+                    <AlertTriangle className="h-5 w-5" /> Erreurs signalées ({erreursAgent.length})
+                  </h2>
+                  <ul className="space-y-2">
+                    {[...erreursAgent].reverse().map((err) => (
+                      <li key={err.id || `${err.field}-${err.at}`} className="rounded-md border border-rose-100 bg-rose-50/60 px-3 py-2 text-sm">
+                        <p className="font-medium text-rose-900">❌ {err.field_label || erreurChampLabel(err.field)}</p>
+                        {err.comment && <p className="text-xs text-rose-800/80 mt-0.5">{err.comment}</p>}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {formatDateFr(err.at || err.date)}
+                          {err.by_name ? ` · ${err.by_name}` : ""}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
               {demande.conclusion && (
                 <Card className="p-5">
                   <h2 className="font-display font-bold mb-2">Conclusion</h2>
@@ -1039,12 +1110,14 @@ export default function DemandeOffreFiche() {
               demande={demande}
               canEdit={canEdit}
               canProcess={canProcess}
+              canFollowSignature={canFollowSignature}
               busy={actionBusy}
               hasOffers={offresList.length > 0 || reponsesCompagnies.some((c) => c.has_offre)}
               hasIncompleteCompany={hasIncompleteCompany}
               onIncomplete={() => openIncompleteNotify(incompleteCompagnie || reponsesCompagnies.find((c) => String(c.statut || "").toLowerCase().includes("incompl"))?.compagnie || "")}
               onOffer={() => openAddOffer()}
               onOffresCompletes={markOffresCompletes}
+              onErreurs={openErreursDialog}
               onNote={() => setNoteOpen(true)}
               onDoc={() => fileRef.current?.click()}
               onConclusion={markConclusion}
@@ -1155,6 +1228,91 @@ export default function DemandeOffreFiche() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setNoteOpen(false)}>Annuler</Button>
             <Button onClick={addInternalNote} disabled={actionBusy}>Enregistrer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={offresCompletesOpen} onOpenChange={setOffresCompletesOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Offres complètes</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Le statut passera à « Offres complètes » et l&apos;agent créateur recevra un e-mail avec un lien vers la demande.
+          </p>
+          <Field label="Note / message pour l'agent (optionnel)">
+            <Textarea
+              rows={4}
+              value={offresCompletesNote}
+              onChange={(e) => setOffresCompletesNote(e.target.value)}
+              placeholder="Ex. : Les offres Zurich et Helvetia sont prêtes à présenter au client…"
+              data-testid="offres-completes-note"
+            />
+          </Field>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOffresCompletesOpen(false)}>Annuler</Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={confirmOffresCompletes}
+              disabled={actionBusy}
+              data-testid="offres-completes-confirm"
+            >
+              <Mail className="h-4 w-4 mr-2" /> Confirmer et notifier
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={erreursOpen} onOpenChange={setErreursOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Signaler des erreurs</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Sélectionnez les champs concernés. Chaque erreur sera comptabilisée pour l&apos;agent qui a créé la demande.
+          </p>
+          <Field label="Champs en erreur">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+              {erreursChecklist.map((item) => {
+                const checked = Boolean(erreursSelected[item.code]);
+                return (
+                  <label
+                    key={item.code}
+                    className={`flex items-center gap-2 rounded-md border p-2.5 text-sm cursor-pointer ${checked ? "border-rose-400 bg-rose-50" : "border-border"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-rose-700"
+                      checked={checked}
+                      onChange={(e) => setErreursSelected((prev) => ({
+                        ...prev,
+                        [item.code]: e.target.checked,
+                      }))}
+                    />
+                    <span>{item.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </Field>
+          <Field label="Commentaire (optionnel)">
+            <Textarea
+              rows={2}
+              value={erreursComment}
+              onChange={(e) => setErreursComment(e.target.value)}
+              placeholder="Précision éventuelle…"
+            />
+          </Field>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setErreursOpen(false)}>Annuler</Button>
+            <Button
+              className="bg-rose-700 hover:bg-rose-800"
+              onClick={confirmErreurs}
+              disabled={actionBusy}
+              data-testid="erreurs-confirm"
+            >
+              Enregistrer les erreurs
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1867,8 +2025,8 @@ function ReadOnlyData({ data }) {
 }
 
 function ActionPanel({
-  demande, canEdit, canProcess, busy, hasOffers, hasIncompleteCompany,
-  onIncomplete, onOffer, onOffresCompletes, onNote, onDoc, onConclusion, onSendClient, onSignature, onCancel, onRestore, onDelete,
+  demande, canEdit, canProcess, canFollowSignature, busy, hasOffers, hasIncompleteCompany,
+  onIncomplete, onOffer, onOffresCompletes, onErreurs, onNote, onDoc, onConclusion, onSendClient, onSignature, onCancel, onRestore, onDelete,
 }) {
   const terminal = ["Offre signée", "Demande annulée", "Offre refusée"].includes(demande.statut);
   const canSendClient = hasOffers || demande.offre;
@@ -1877,10 +2035,11 @@ function ActionPanel({
     || (hasOffers && !["Brouillon", "Demande annulée", "Offre refusée"].includes(demande.statut));
   const showProcess = Boolean(canProcess);
   const showConseillerFollowup = Boolean(canEdit) && !showProcess;
+  const showSignature = Boolean(canFollowSignature) && signatureReady && demande.statut !== "Offre signée";
   const canCancel = (canEdit || canProcess) && !terminal && demande.statut !== "Offre signée";
   const canRestore = (canEdit || canProcess) && demande.statut === "Demande annulée";
   const canDeleteHard = (canEdit || canProcess) && ["Brouillon", "Demande annulée"].includes(demande.statut);
-  if (!showProcess && !showConseillerFollowup && !canEdit) return null;
+  if (!showProcess && !showConseillerFollowup && !canEdit && !showSignature) return null;
   return <Card className="p-5 space-y-3 sticky top-20">
     <h2 className="font-display font-bold flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-[#002FA7]" /> {showProcess ? "Traitement" : "Actions"}</h2>
     {canRestore && (
@@ -1914,13 +2073,18 @@ function ActionPanel({
     )}
     {showProcess && !terminal && <Button variant="outline" className="w-full justify-start" onClick={onDoc} disabled={busy}><FileText className="h-4 w-4 mr-2" /> Ajouter un document</Button>}
     {showProcess && !terminal && <Button variant="outline" className="w-full justify-start" onClick={onNote} disabled={busy}><StickyNote className="h-4 w-4 mr-2" /> Ajouter une note interne</Button>}
-    {(showProcess || canEdit) && !terminal && hasOffers && !["En conclusion", "Offre envoyée au client", "Offre signée", "Offre refusée"].includes(demande.statut) &&
+    {showProcess && !terminal && (
+      <Button className="w-full justify-start bg-rose-700 hover:bg-rose-800" onClick={onErreurs} disabled={busy} data-testid="erreurs-btn">
+        <AlertTriangle className="h-4 w-4 mr-2" /> Erreurs
+      </Button>
+    )}
+    {showConseillerFollowup && !terminal && hasOffers && !["En conclusion", "Offre envoyée au client", "Offre signée", "Offre refusée"].includes(demande.statut) &&
       <Button variant="outline" className="w-full justify-start" onClick={onConclusion} disabled={busy}><FileText className="h-4 w-4 mr-2" /> Passer en conclusion</Button>}
-    {(showProcess || canEdit) && canSendClient && !["Offre envoyée au client", "Offre signée", "Offre refusée", "Demande annulée"].includes(demande.statut) &&
+    {showConseillerFollowup && canSendClient && !["Offre envoyée au client", "Offre signée", "Offre refusée", "Demande annulée"].includes(demande.statut) &&
       <Button className="w-full justify-start bg-[#002FA7] hover:bg-[#00248a]" onClick={onSendClient} disabled={busy}><Mail className="h-4 w-4 mr-2" /> Envoyer au client</Button>}
-    {(showProcess || canEdit) && signatureReady && demande.statut !== "Offre signée" && <>
-      <Button className="w-full justify-start bg-emerald-700 hover:bg-emerald-800" onClick={() => onSignature(true)} disabled={busy}><CheckCircle2 className="h-4 w-4 mr-2" /> Offre signée</Button>
-      <Button variant="outline" className="w-full justify-start text-rose-700" onClick={() => onSignature(false)} disabled={busy}><XCircle className="h-4 w-4 mr-2" /> Offre non signée</Button>
+    {showSignature && <>
+      <Button className="w-full justify-start bg-emerald-700 hover:bg-emerald-800" onClick={() => onSignature(true)} disabled={busy} data-testid="offre-signee-btn"><CheckCircle2 className="h-4 w-4 mr-2" /> Offre signée</Button>
+      <Button variant="outline" className="w-full justify-start text-rose-700" onClick={() => onSignature(false)} disabled={busy} data-testid="offre-non-signee-btn"><XCircle className="h-4 w-4 mr-2" /> Offre non signée</Button>
     </>}
     {canCancel && (
       <Button variant="outline" className="w-full justify-start border-rose-300 text-rose-800" onClick={onCancel} disabled={busy}>

@@ -615,6 +615,9 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("PATCH",), r"^/suivi-3p", PERM_SUIVI_3P_EDIT),
     (("DELETE",), r"^/suivi-3p", PERM_SUIVI_3P_EDIT),
     (("GET",), r"^/emails", PERM_USERS_MANAGE),
+    # Checklist erreurs : avant le GET générique demandes-offres (sinon view gagne)
+    (("GET",), r"^/demandes-offres/[^/]+/erreurs-checklist$", PERM_DEMANDES_OFFRES_PROCESS),
+    (("GET",), r"^/demandes-offres/stats/erreurs-agent$", PERM_DEMANDES_OFFRES_VIEW),
     (("GET",), r"^/demandes-offres", PERM_DEMANDES_OFFRES_VIEW),
     # Traitement réservé gestionnaire / CEO / admin (avant le POST générique edit)
     (("POST",), r"^/demandes-offres/[^/]+/incomplete$", PERM_DEMANDES_OFFRES_PROCESS),
@@ -622,6 +625,7 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("POST",), r"^/demandes-offres/[^/]+/offres-completes$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/offre$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/notes-internes$", PERM_DEMANDES_OFFRES_PROCESS),
+    (("POST",), r"^/demandes-offres/[^/]+/erreurs$", PERM_DEMANDES_OFFRES_PROCESS),
     # Renvoi admin d'une offre déjà envoyée (même id) — réservé administrateur
     (("POST",), r"^/demandes-offres/[^/]+/renvoyer$", PERM_USERS_MANAGE),
     (("POST",), r"^/demandes-offres", PERM_DEMANDES_OFFRES_EDIT),

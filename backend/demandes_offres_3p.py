@@ -8,6 +8,7 @@ from typing import Any, Optional, Tuple
 COLLECTION = "demandes_offres_3p"
 COLLECTION_DOCS = "demandes_offres_3p_documents"
 COLLECTION_COUNTERS = "demandes_offres_3p_counters"
+COLLECTION_ERREURS = "demande_offre_erreurs"
 
 
 def _offres_email_to() -> str:
@@ -82,6 +83,226 @@ ERREURS_INCOMPLETE_CATALOG = [
     {"code": "autre", "label": "Autre"},
 ]
 ERREURS_INCOMPLETE_CODES = {e["code"] for e in ERREURS_INCOMPLETE_CATALOG}
+
+# Catalogue stable des champs / catégories d'erreurs agent (bouton « Erreurs »).
+# Évolutif : ajouter des entrées ici sans migration.
+ERREURS_CHAMPS_CATALOG = [
+    {"code": "nom_prenom", "label": "Nom / prénom"},
+    {"code": "date_naissance", "label": "Date de naissance"},
+    {"code": "adresse", "label": "Adresse"},
+    {"code": "salaire", "label": "Salaire"},
+    {"code": "taux_activite", "label": "Taux d'activité"},
+    {"code": "vehicule", "label": "Véhicule"},
+    {"code": "date_effet", "label": "Date d'effet"},
+    {"code": "type_assurance", "label": "Type d'assurance"},
+    {"code": "informations_client", "label": "Informations client"},
+    {"code": "profession", "label": "Profession"},
+    {"code": "montant_prime", "label": "Montant / prime"},
+    {"code": "compagnie", "label": "Compagnie"},
+    {"code": "documents", "label": "Documents joints"},
+    {"code": "autre", "label": "Autre"},
+]
+ERREURS_CHAMPS_CODES = {e["code"] for e in ERREURS_CHAMPS_CATALOG}
+ERREUR_TYPE_DEFAUT = "Erreur"
+
+
+def erreurs_champs_label(code: str) -> str:
+    for item in ERREURS_CHAMPS_CATALOG:
+        if item["code"] == code:
+            return item["label"]
+    return (code or "—").replace("_", " ").capitalize()
+
+
+def build_erreurs_checklist(doc: Optional[dict] = None) -> list:
+    """
+    Checklist pour le formulaire Erreurs : catalogue stable + champs du schéma formulaire.
+    Les codes catalogue sont prioritaires ; les champs schéma viennent en complément.
+    """
+    seen = set()
+    out: list = []
+    for item in ERREURS_CHAMPS_CATALOG:
+        code = item["code"]
+        if code in seen:
+            continue
+        seen.add(code)
+        out.append({"code": code, "label": item["label"], "source": "catalog"})
+
+    form_type = (doc or {}).get("form_type") or ""
+    if form_type and form_type != "pilier3_legacy":
+        try:
+            from offre_form_types import load_form_schema
+
+            schema = load_form_schema(form_type) or {}
+            for field in schema.get("fields") or []:
+                if not isinstance(field, dict):
+                    continue
+                ftype = (field.get("type") or "").strip().lower()
+                if ftype in {"section", "html", "hidden", "page"}:
+                    continue
+                name = (field.get("name") or field.get("id") or "").strip()
+                label = (field.get("label") or name or "").strip()
+                if not name or not label:
+                    continue
+                # Normaliser en code stable (évite collisions avec le catalogue)
+                code = f"schema:{name}"
+                if code in seen or name in ERREURS_CHAMPS_CODES:
+                    continue
+                seen.add(code)
+                out.append({"code": code, "label": label, "source": "schema"})
+        except Exception:
+            pass
+    return out
+
+
+def normalize_erreurs_agent_fields(raw: Any) -> list:
+    """Normalise la sélection multi-champs du bouton Erreurs."""
+    if not isinstance(raw, list):
+        return []
+    out = []
+    seen = set()
+    for item in raw:
+        if isinstance(item, str):
+            code = item.strip()
+            label = None
+        elif isinstance(item, dict):
+            code = (item.get("code") or item.get("field") or "").strip()
+            label = (item.get("label") or item.get("field_label") or "").strip() or None
+        else:
+            continue
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        if code.startswith("schema:"):
+            field_label = label or code.split(":", 1)[-1].replace("_", " ").capitalize()
+        elif code in ERREURS_CHAMPS_CODES:
+            field_label = label or erreurs_champs_label(code)
+        else:
+            # Accepte codes catalogue futurs / libres
+            field_label = label or erreurs_champs_label(code)
+        out.append({"code": code, "label": field_label})
+    return out
+
+
+def build_erreur_agent_records(
+    doc: dict,
+    fields: list,
+    *,
+    by_user,
+    error_type: str = ERREUR_TYPE_DEFAUT,
+    comment: Optional[str] = None,
+) -> list:
+    """Construit les enregistrements d'erreurs rattachés à l'agent créateur."""
+    at = now_iso()
+    client = (
+        f"{(doc.get('prenom') or '').strip()} {(doc.get('nom') or '').strip()}".strip()
+        or (doc.get("client_label") or "").strip()
+        or "—"
+    )
+    agent_id = (
+        doc.get("created_by_account_id")
+        or doc.get("agent_account_id")
+        or None
+    )
+    agent_label = (doc.get("agent_label") or doc.get("created_by_name") or "").strip() or "—"
+    by_name = ""
+    by_id = None
+    if by_user is not None:
+        by_name = (
+            getattr(by_user, "name", None)
+            or f"{getattr(by_user, 'prenom', '')} {getattr(by_user, 'nom', '')}".strip()
+            or getattr(by_user, "email", "")
+            or ""
+        )
+        by_id = getattr(by_user, "account_id", None)
+    records = []
+    for field in fields:
+        code = field.get("code")
+        label = field.get("label") or erreurs_champs_label(code)
+        records.append({
+            "id": str(uuid.uuid4()),
+            "at": at,
+            "date": at[:10],
+            "client": client,
+            "error_type": (error_type or ERREUR_TYPE_DEFAUT).strip() or ERREUR_TYPE_DEFAUT,
+            "field": code,
+            "field_label": label,
+            "agent_id": agent_id,
+            "agent_label": agent_label,
+            "demande_id": doc.get("id"),
+            "demande_numero": doc.get("numero"),
+            "comment": (comment or "").strip() or None,
+            "by_id": by_id,
+            "by_name": by_name,
+        })
+    return records
+
+
+def compute_erreurs_agent_stats(records: list) -> dict:
+    """
+    Agrège les erreurs champ par agent.
+    Retourne total + répartition par champ, plus détail tabulaire.
+    """
+    from conseiller_identity import display_conseiller_name, merge_conseiller_display, normalize_conseiller_key
+
+    by_agent: dict = {}
+    for rec in records or []:
+        if not isinstance(rec, dict):
+            continue
+        raw_label = (rec.get("agent_label") or "").strip() or "Non attribué"
+        key = normalize_conseiller_key(raw_label) or (rec.get("agent_id") or "unknown")
+        if key not in by_agent:
+            by_agent[key] = {
+                "agent": display_conseiller_name(raw_label),
+                "agent_id": rec.get("agent_id"),
+                "total": 0,
+                "by_field": {},
+                "items": [],
+            }
+        else:
+            by_agent[key]["agent"] = merge_conseiller_display(by_agent[key]["agent"], raw_label)
+            if not by_agent[key].get("agent_id") and rec.get("agent_id"):
+                by_agent[key]["agent_id"] = rec.get("agent_id")
+        field_code = rec.get("field") or "autre"
+        field_label = rec.get("field_label") or erreurs_champs_label(field_code)
+        by_agent[key]["total"] += 1
+        bucket = by_agent[key]["by_field"].setdefault(
+            field_code, {"code": field_code, "label": field_label, "count": 0}
+        )
+        bucket["count"] += 1
+        by_agent[key]["items"].append(rec)
+
+    out = []
+    for a in by_agent.values():
+        fields = sorted(a["by_field"].values(), key=lambda x: (-x["count"], x["label"].casefold()))
+        out.append({
+            "agent": a["agent"],
+            "agent_id": a.get("agent_id"),
+            "total": a["total"],
+            "by_field": fields,
+            "items": a["items"],
+        })
+    out.sort(key=lambda x: (-x["total"], x["agent"].casefold()))
+    return {"by_agent": out, "total": sum(a["total"] for a in out)}
+
+
+def can_follow_signature(user, doc: dict) -> bool:
+    """
+    Suivi Offre signée / non signée : réservé à l'agent créateur (ou conseiller de la demande).
+    Les gestionnaires purs (sans lien agent) ne doivent pas actionner ces boutons.
+    """
+    from access_control import (
+        email_matches_conseiller,
+        labels_match_conseiller,
+    )
+
+    account_id = getattr(user, "account_id", None)
+    if account_id and doc.get("created_by_account_id") == account_id:
+        return True
+    if labels_match_conseiller(doc.get("agent_label"), user):
+        return True
+    if email_matches_conseiller(doc, user):
+        return True
+    return False
 
 # Pipeline clair (onglet Pipeline) — du brouillon à la signature
 KANBAN_COLUMNS = [
@@ -772,6 +993,7 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "demande_origine": normalize_demande_origine(doc.get("demande_origine")),
         "type_client": normalize_type_client(doc.get("type_client"), client_id=doc.get("client_id")),
         "erreurs_incomplete": list(doc.get("erreurs_incomplete") or []),
+        "erreurs_agent": list(doc.get("erreurs_agent") or []),
         "modifications": list(doc.get("modifications") or []),
         "note_service_offre": doc.get("note_service_offre") or "",
         "snapshot_original": doc.get("snapshot_original") or None,
@@ -780,6 +1002,7 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "created_at": doc.get("created_at"),
         "updated_at": doc.get("updated_at"),
         "created_by_name": doc.get("created_by_name"),
+        "created_by_account_id": doc.get("created_by_account_id"),
         "historique": collapse_demande_historique(doc.get("historique") or []),
         "documents": docs if docs is not None else None,
         "client_label": f"{(doc.get('prenom') or '').strip()} {(doc.get('nom') or '').strip()}".strip() or "—",
@@ -788,6 +1011,7 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "message_conseiller": doc.get("message_conseiller") or doc.get("incomplete_comment") or "",
         "documents_manquants": doc.get("documents_manquants") or "",
         "can_process": False,
+        "can_follow_signature": False,
         "client_signe": bool(
             (isinstance(doc.get("signature"), dict) and doc["signature"].get("signee"))
             or statut == STATUT_OFFRE_SIGNEE
@@ -809,6 +1033,8 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
                 continue
             hist.append(entry)
         out["historique"] = hist
+    if viewer is not None:
+        out["can_follow_signature"] = can_follow_signature(viewer, doc)
     return out
 
 
@@ -1690,15 +1916,8 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
             en_attente += 1
         if st in {STATUT_INCOMPLETE, STATUT_ATTENTE_INFOS}:
             incompletes += 1
-        if st in {
-            STATUT_OFFRE_RECUE,
-            STATUT_OFFRE_COMPLETE,
-            STATUT_OFFRE_CHOISIE,
-            STATUT_EN_CONCLUSION,
-            STATUT_OFFRE_ENVOYEE_CLIENT,
-            STATUT_OFFRE_SIGNEE,
-            STATUT_OFFRE_REFUSEE,
-        }:
+        # KPI « Offres complètes » : uniquement le statut final (pas « Offre reçue »)
+        if normalize_statut(st) == STATUT_OFFRE_COMPLETE:
             offres_recues += 1
         if st in {
             STATUT_OFFRE_ENVOYEE_CLIENT,

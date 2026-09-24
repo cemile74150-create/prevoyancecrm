@@ -69,6 +69,8 @@ def test_process_routes_require_process_perm():
     assert permission_for_request("POST", "/api/demandes-offres/abc/complete") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/offres-completes") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/offre") == PERM_DEMANDES_OFFRES_PROCESS
+    assert permission_for_request("POST", "/api/demandes-offres/abc/notes-internes") == PERM_DEMANDES_OFFRES_PROCESS
+    assert permission_for_request("POST", "/api/demandes-offres/abc/erreurs") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/envoyer") == PERM_DEMANDES_OFFRES_EDIT
     assert permission_for_request("POST", "/api/demandes-offres/abc/annuler") == PERM_DEMANDES_OFFRES_EDIT
     assert permission_for_request("POST", "/api/demandes-offres/abc/restaurer") == PERM_DEMANDES_OFFRES_EDIT
