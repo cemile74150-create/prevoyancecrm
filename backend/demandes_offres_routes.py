@@ -10,7 +10,8 @@ from typing import Any, Optional
 
 from fastapi import Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from access_control import (
     User,
@@ -34,6 +35,54 @@ except ImportError:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_to_list(value: Any) -> Optional[list]:
+    """Pydantic/JSON : une valeur seule ne doit pas faire échouer un champ list."""
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+async def collect_multipart_uploads(
+    request: Request,
+    *,
+    single_file: Optional[UploadFile] = None,
+    field_names: tuple[str, ...] = ("files", "documents", "file"),
+) -> list[UploadFile]:
+    """
+    Collecte 1..N fichiers depuis un multipart.
+
+    Ne pas typer `files: Optional[list[UploadFile]] = File(None)` : avec un seul
+    fichier, FastAPI/Pydantic v2 reçoit un UploadFile scalaire et répond
+    « Input should be a valid list ».
+    """
+    form = await request.form()
+    out: list[UploadFile] = []
+    seen: set[tuple[str, Optional[int]]] = set()
+
+    def _add(item: Any) -> None:
+        if item is None:
+            return
+        if not isinstance(item, (UploadFile, StarletteUploadFile)):
+            return
+        name = (getattr(item, "filename", None) or "").strip()
+        if not name:
+            return
+        size = getattr(item, "size", None)
+        key = (name, size if isinstance(size, int) else None)
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(item)
+
+    for field in field_names:
+        for item in form.getlist(field):
+            _add(item)
+    _add(single_file)
+    return out
 
 
 class DemandeOffreUpdate(BaseModel):
@@ -115,6 +164,11 @@ class IncompleteRequest(BaseModel):
     erreurs: Optional[list[IncompleteErreurItem]] = None
     compagnie: Optional[str] = None
 
+    @field_validator("erreurs", mode="before")
+    @classmethod
+    def _erreurs_as_list(cls, value: Any) -> Any:
+        return _coerce_to_list(value)
+
 
 class CompleteOfferRequest(BaseModel):
     commentaire: Optional[str] = None
@@ -141,6 +195,11 @@ class ModificationRequest(BaseModel):
     fields: Optional[dict[str, Any]] = None
     note_service_offre: Optional[str] = None
     changes: Optional[list[dict[str, Any]]] = None
+
+    @field_validator("changes", mode="before")
+    @classmethod
+    def _changes_as_list(cls, value: Any) -> Any:
+        return _coerce_to_list(value)
 
 
 class MarkCompanyIncompleteRequest(BaseModel):
@@ -467,12 +526,14 @@ def attach_demandes_offres_routes(
                 MAIL_TYPE_OFFRE_INCOMPLETE,
                 MAIL_TYPE_OFFRE_MODIFIEE,
                 MAIL_TYPE_OFFRE_RECUE,
+                MAIL_TYPE_OFFRES_COMPLETES,
                 MAIL_TYPE_OFFRE_SIGNEE,
                 format_demande_incomplete_email,
                 format_demande_offre_email,
                 format_demande_offre_recap_conseiller_email,
                 format_offre_modifiee_email,
                 format_offre_recue_email,
+                format_offres_completes_email,
                 format_offre_signee_email,
                 office_email_to,
                 offre_notify_role,
@@ -493,9 +554,22 @@ def attach_demandes_offres_routes(
         cc_list = list(cc or [])
         send_conseiller_recap = False
 
-        if event_key in {"recue", "reçue", "offre_recue", "received", "complete"}:
+        if event_key in {"recue", "reçue", "offre_recue", "received"}:
             mail_type = MAIL_TYPE_OFFRE_RECUE
             subject, body_text, body_html = format_offre_recue_email(doc, offer)
+            to_addr = to_override or await resolve_demande_creator_email(doc)
+            if not to_addr:
+                return False, "E-mail du créateur introuvable sur la demande"
+        elif event_key in {
+            "complete",
+            "completes",
+            "offres_completes",
+            "offres_complètes",
+            "offre_complete",
+            "offre_complète",
+        }:
+            mail_type = MAIL_TYPE_OFFRES_COMPLETES
+            subject, body_text, body_html = format_offres_completes_email(doc)
             to_addr = to_override or await resolve_demande_creator_email(doc)
             if not to_addr:
                 return False, "E-mail du créateur introuvable sur la demande"
@@ -1693,6 +1767,7 @@ def attach_demandes_offres_routes(
 
     @api_router.post("/demandes-offres/{demande_id}/offre")
     async def receive_company_offer(
+        request: Request,
         demande_id: str,
         compagnie: str = Form(...),
         date_reception: str = Form(...),
@@ -1703,18 +1778,11 @@ def attach_demandes_offres_routes(
         duree: Optional[str] = Form(None),
         commentaires: Optional[str] = Form(None),
         file: Optional[UploadFile] = File(None),
-        files: Optional[list[UploadFile]] = File(None),
         user: User = Depends(current_user_dependency),
     ):
         require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
         doc = await require_demande(demande_id, user)
-        uploads: list[UploadFile] = []
-        if files:
-            uploads.extend([f for f in files if f is not None and getattr(f, "filename", None)])
-        if file is not None and getattr(file, "filename", None):
-            # Éviter le doublon si le même fichier est aussi dans files
-            if not any(getattr(f, "filename", None) == file.filename for f in uploads):
-                uploads.append(file)
+        uploads = await collect_multipart_uploads(request, single_file=file)
 
         stored_docs = []
         for upload in uploads:
@@ -1789,6 +1857,7 @@ def attach_demandes_offres_routes(
 
     @api_router.post("/demandes-offres/{demande_id}/complete")
     async def mark_offre_complete(
+        request: Request,
         demande_id: str,
         compagnie: str = Form(...),
         date_reception: str = Form(...),
@@ -1800,7 +1869,6 @@ def attach_demandes_offres_routes(
         commentaires: Optional[str] = Form(None),
         message_conseiller: Optional[str] = Form(None),
         file: Optional[UploadFile] = File(None),
-        files: Optional[list[UploadFile]] = File(None),
         user: User = Depends(current_user_dependency),
     ):
         """
@@ -1809,6 +1877,7 @@ def attach_demandes_offres_routes(
         """
         # Délègue au même flux que /offre (statut compagnie = reçue)
         result = await receive_company_offer(
+            request=request,
             demande_id=demande_id,
             compagnie=compagnie,
             date_reception=date_reception,
@@ -1819,7 +1888,6 @@ def attach_demandes_offres_routes(
             duree=duree,
             commentaires=commentaires or message_conseiller,
             file=file,
-            files=files,
             user=user,
         )
         if isinstance(result, dict) and (message_conseiller or "").strip():
@@ -1836,12 +1904,70 @@ def attach_demandes_offres_routes(
             result["message_conseiller"] = msg
         return result
 
+    @api_router.post("/demandes-offres/{demande_id}/offres-completes")
+    async def mark_offres_completes(
+        demande_id: str,
+        user: User = Depends(current_user_dependency),
+    ):
+        """
+        Gestionnaire : signale que toutes les offres demandées sont complètes.
+        Statut → « Offres complètes » + e-mail au conseiller créateur.
+        """
+        require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        doc = await require_demande(demande_id, user)
+        current = normalize_statut(doc.get("statut"))
+        terminal = {STATUT_OFFRE_SIGNEE, STATUT_OFFRE_REFUSEE, STATUT_ANNULEE}
+        if current in terminal:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Impossible de marquer « Offres complètes » depuis le statut « {current} »",
+            )
+
+        at = now_iso()
+        by_name = actor_name(user)
+        result = await save_status(
+            demande_id,
+            user,
+            statut=STATUT_OFFRE_COMPLETE,
+            action="Offres complètes",
+            detail="Toutes les offres demandées sont reçues et complètes",
+            extra={
+                "offres_completes_at": at,
+                "offres_completes_by": by_name,
+                "offres_completes_by_id": user.account_id,
+            },
+        )
+        mail_doc = {
+            **doc,
+            **(result if isinstance(result, dict) else {}),
+            "statut": STATUT_OFFRE_COMPLETE,
+        }
+        sent, email_error = await try_send_email(mail_doc, event="offres_completes")
+        if isinstance(result, dict):
+            result["email_sent"] = sent
+            result["email_error"] = email_error
+            if sent:
+                await db[COLLECTION].update_one(
+                    {"id": demande_id, "user_id": TENANT_USER_ID},
+                    {"$set": {"offres_completes_email_sent": True, "updated_at": now_iso()}},
+                )
+                result["offres_completes_email_sent"] = True
+        await write_offre_notification(
+            doc=doc,
+            event="offres_completes",
+            title=f"Offres complètes — {doc.get('numero') or ''}".strip(),
+            message="Les offres sont complètes et disponibles pour le conseiller.",
+            audience="conseiller",
+            account_ids=[doc.get("created_by_account_id")] if doc.get("created_by_account_id") else [],
+        )
+        return result
+
     @api_router.post("/demandes-offres/{demande_id}/offres/{offre_id}/documents")
     async def add_documents_to_company_offer(
+        request: Request,
         demande_id: str,
         offre_id: str,
         file: Optional[UploadFile] = File(None),
-        files: Optional[list[UploadFile]] = File(None),
         user: User = Depends(current_user_dependency),
     ):
         """Ajoute un ou plusieurs documents à une offre compagnie (sans remplacer)."""
@@ -1856,11 +1982,7 @@ def attach_demandes_offres_routes(
         if not target:
             raise HTTPException(status_code=404, detail="Offre compagnie introuvable")
 
-        uploads: list[UploadFile] = []
-        if files:
-            uploads.extend([f for f in files if f is not None and getattr(f, "filename", None)])
-        if file is not None and getattr(file, "filename", None):
-            uploads.append(file)
+        uploads = await collect_multipart_uploads(request, single_file=file)
         if not uploads:
             raise HTTPException(status_code=400, detail="Aucun fichier fourni")
 

@@ -51,6 +51,8 @@ CONSEILLER_OFFRE_EVENTS = frozenset(
         "incompletee",
         "incomplète",
         "complete",
+        "offres_completes",
+        "offres_complètes",
         "modifiee",
         "modification",
     }
@@ -72,6 +74,7 @@ MAIL_TYPE_RAPPEL = "rappel"
 MAIL_TYPE_DEMANDE_OFFRE = "demande_offre"
 MAIL_TYPE_DEMANDE_OFFRE_RECAP = "demande_offre_recap"
 MAIL_TYPE_OFFRE_RECUE = "offre_recue"
+MAIL_TYPE_OFFRES_COMPLETES = "offres_completes"
 MAIL_TYPE_OFFRE_INCOMPLETE = "offre_incomplete"
 MAIL_TYPE_OFFRE_SIGNEE = "offre_signee"
 MAIL_TYPE_OFFRE_MODIFIEE = "offre_modifiee"
@@ -1256,6 +1259,48 @@ def format_offre_recue_email(doc: dict, offer: Optional[dict] = None) -> Tuple[s
         f"<p>{safe_greeting}</p>",
         f"<p>Vous avez reçu une offre pour <strong>{safe_client}</strong>.</p>",
         "<p>Vous pouvez consulter l’offre directement dans Leosoft en cliquant sur le lien ci-dessous :</p>",
+    ]
+    if url:
+        html_parts.append(_html_button(url, link_label))
+    html_parts.append("<p>Bonne journée,<br/>Leosoft</p></div>")
+    return subject, body_text, "".join(html_parts)
+
+
+def format_offres_completes_email(doc: dict) -> Tuple[str, str, str]:
+    """
+    Notification conseiller : toutes les offres demandées sont complètes et disponibles.
+    Style simplifié (annonce + lien fiche), distinct de « Offre reçue ».
+    """
+    client = _offre_client_name(doc)
+    numero = (doc.get("numero") or "").strip()
+    subject = f"Offres complètes – {client} – {numero or '—'}"
+
+    prenom = _agent_greeting_prenom(doc)
+    greeting = f"Bonjour {prenom}," if prenom else "Bonjour,"
+    url = _demande_offre_url(doc.get("id"))
+    link_label = "Voir les offres dans Leosoft"
+
+    text_lines = [
+        greeting,
+        "",
+        f"Les offres pour {client} sont désormais complètes et disponibles dans Leosoft.",
+        "",
+        "Vous pouvez les consulter directement en cliquant sur le lien ci-dessous :",
+    ]
+    if url:
+        text_lines.extend(["", f"{link_label} :", url])
+    else:
+        text_lines.extend(["", "(Lien indisponible — ouvrez la demande dans Leosoft.)"])
+    text_lines.extend(["", "Bonne journée,", "Leosoft"])
+    body_text = "\n".join(text_lines)
+
+    safe_client = html.escape(client)
+    safe_greeting = html.escape(greeting)
+    html_parts = [
+        '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.5;">',
+        f"<p>{safe_greeting}</p>",
+        f"<p>Les offres pour <strong>{safe_client}</strong> sont désormais complètes et disponibles dans Leosoft.</p>",
+        "<p>Vous pouvez les consulter directement en cliquant sur le lien ci-dessous :</p>",
     ]
     if url:
         html_parts.append(_html_button(url, link_label))
