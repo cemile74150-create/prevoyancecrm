@@ -23,6 +23,8 @@ import {
   demandeOrigineKey,
   demandeOrigineShort,
   demandeOrigineLabel,
+  soumisCompagnieLabel,
+  isSoumisCompagnie,
 } from "@/lib/demandesOffres";
 import { uniqueConseillerNames } from "@/lib/conseillers";
 import {
@@ -193,6 +195,23 @@ export default function GestionReponsesOffres() {
     if (!id) return;
     navigate(`/demandes-offres/${id}?from=gestion`);
   }, [navigate]);
+
+  const toggleSoumis = useCallback(async (row, next, event) => {
+    event?.stopPropagation?.();
+    if (!canProcess || !row?.id) return;
+    try {
+      const res = await api.post(`/demandes-offres/${row.id}/soumis-compagnie`, { soumis: Boolean(next) });
+      const updated = res.data || {};
+      setRows((prev) => prev.map((r) => (
+        r.id === row.id
+          ? { ...r, soumis_compagnie: updated.soumis_compagnie ?? { soumis: Boolean(next) } }
+          : r
+      )));
+      toast.success(next ? "Soumis à la compagnie" : "Indicateur retiré");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Mise à jour impossible");
+    }
+  }, [canProcess]);
 
   const onNotifClick = async (n) => {
     try {
@@ -537,7 +556,7 @@ export default function GestionReponsesOffres() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50/80 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                    {["Client", "Conseiller", "Type", "Date création", "Date envoi", "Compagnies", "Statut", "Dernière action", "Jours", "Priorité", "Action"].map((h) => (
+                    {["Client", "Conseiller", "Type", "Date création", "Date envoi", "Compagnies", "Statut", "Soumis cie.", "Dernière action", "Jours", "Priorité", "Action"].map((h) => (
                       <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -545,13 +564,13 @@ export default function GestionReponsesOffres() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={11} className="px-3 py-12 text-center text-slate-400">
+                      <td colSpan={12} className="px-3 py-12 text-center text-slate-400">
                         <Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Chargement…
                       </td>
                     </tr>
                   ) : visibleRows.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-3 py-12 text-center text-slate-400">
+                      <td colSpan={12} className="px-3 py-12 text-center text-slate-400">
                         Aucune demande dans la file.
                       </td>
                     </tr>
@@ -559,6 +578,7 @@ export default function GestionReponsesOffres() {
                     visibleRows.map((r) => {
                       const hi = rowHighlight(r);
                       const actionLabel = TERMINAL.has(r.statut) ? "Voir" : "Traiter";
+                      const soumis = isSoumisCompagnie(r.soumis_compagnie);
                       return (
                         <tr
                           key={r.id}
@@ -590,6 +610,30 @@ export default function GestionReponsesOffres() {
                             {formatVariantesSummary(r) || compsShort(r)}
                           </td>
                           <td className="px-3 py-2"><StatutBadge statut={r.statut} /></td>
+                          <td className="px-3 py-2">
+                            {canProcess ? (
+                              <label
+                                className="inline-flex items-center gap-1.5 text-xs cursor-pointer"
+                                title={soumisCompagnieLabel(r.soumis_compagnie)}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="accent-[#002FA7]"
+                                  checked={soumis}
+                                  data-testid={`soumis-compagnie-row-${r.id}`}
+                                  onChange={(e) => toggleSoumis(r, e.target.checked, e)}
+                                />
+                                <span className={soumis ? "text-emerald-800" : "text-slate-500"}>
+                                  {soumis ? "🟢" : "⚪"}
+                                </span>
+                              </label>
+                            ) : (
+                              <span className="text-xs text-slate-500" title={soumisCompagnieLabel(r.soumis_compagnie)}>
+                                {soumis ? "🟢" : "⚪"}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-xs text-slate-500 max-w-[120px] truncate" title={r.derniere_action || ""}>
                             {r.derniere_action || "—"}
                           </td>

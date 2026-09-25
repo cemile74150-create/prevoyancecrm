@@ -204,6 +204,10 @@ class SignatureRequest(BaseModel):
     date_relance: Optional[str] = None
 
 
+class SoumisCompagnieRequest(BaseModel):
+    soumis: bool = True
+
+
 class AnnulationRequest(BaseModel):
     commentaire: Optional[str] = None
 
@@ -2379,19 +2383,45 @@ def attach_demandes_offres_routes(
                 commentaire=commentaire,
                 date_relance=date_relance,
             )
+        # Offre signée : PDF proposition signée obligatoire (ne coche PAS soumis_compagnie)
+        if payload.signee:
+            if file is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Le PDF de la proposition signée est obligatoire",
+                )
+            fname = (file.filename or "").strip().lower()
+            ctype = (file.content_type or "").lower()
+            if not (fname.endswith(".pdf") or "pdf" in ctype):
+                raise HTTPException(
+                    status_code=422,
+                    detail="La proposition signée doit être un fichier PDF",
+                )
         stored = (
-            await store_doc(demande_id, file, user, category="Offre signée")
+            await store_doc(
+                demande_id,
+                file,
+                user,
+                category=DOC_CATEGORY_PROPOSITION_SIGNEE,
+            )
             if file is not None
             else None
         )
+        stamp = now_iso()
         signature = {
             "signee": payload.signee,
             "date_signature": (payload.date_signature or "").strip() or None,
             "commentaire": (payload.commentaire or "").strip() or None,
             "date_relance": (payload.date_relance or "").strip() or None,
             "document_id": stored.get("id") if stored else None,
-            "recorded_at": now_iso(),
+            "document_category": DOC_CATEGORY_PROPOSITION_SIGNEE if stored else None,
+            "recorded_at": stamp,
             "recorded_by": actor_name(user),
+            "recorded_by_id": user.account_id,
+            # Alias explicites pour audit / UI
+            "signed_at": stamp if payload.signee else None,
+            "signed_by": actor_name(user) if payload.signee else None,
+            "signed_by_id": user.account_id if payload.signee else None,
         }
         statut = STATUT_OFFRE_SIGNEE if payload.signee else STATUT_OFFRE_REFUSEE
         action = "Offre signée" if payload.signee else "Offre refusée"
@@ -2400,7 +2430,9 @@ def attach_demandes_offres_routes(
             user,
             statut=statut,
             action=action,
-            detail=signature["commentaire"] or "",
+            detail=signature["commentaire"] or (
+                (stored.get("original_filename") if stored else None) or ""
+            ),
             extra={"signature": signature},
             document_id=signature.get("document_id"),
         )
@@ -2423,6 +2455,46 @@ def attach_demandes_offres_routes(
                 account_ids=await manager_account_ids(),
             )
         return result
+
+    @api_router.post("/demandes-offres/{demande_id}/soumis-compagnie")
+    async def mark_soumis_compagnie(
+        demande_id: str,
+        payload: SoumisCompagnieRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        """
+        Indicateur manuel « Soumis à la compagnie » — réservé gestionnaires
+        (demandes_offres.process). Indépendant de « Offre signée » (jamais auto).
+        """
+        require_perm(
+            user,
+            PERM_DEMANDES_OFFRES_PROCESS,
+            detail="Réservé aux gestionnaires d'offres",
+        )
+        doc = await require_demande(demande_id, user)
+        current = normalize_soumis_compagnie(doc)
+        wanted = bool(payload.soumis)
+        if current.get("soumis") is wanted and wanted:
+            return serialize_demande(
+                doc, docs=await docs_for(demande_id), viewer=user
+            )
+        extras = build_soumis_compagnie_payload(
+            soumis=wanted,
+            by_name=actor_name(user),
+            by_id=user.account_id or "",
+        )
+        action = ACTION_SOUMIS_COMPAGNIE if wanted else ACTION_NON_SOUMIS_COMPAGNIE
+        # Conserve le statut courant — cet indicateur n'est pas un statut workflow
+        statut = normalize_statut(doc.get("statut"))
+        return await save_status(
+            demande_id,
+            user,
+            statut=statut,
+            action=action,
+            detail="" if wanted else "Indicateur retiré",
+            extra=extras,
+            meta={"soumis_compagnie": wanted},
+        )
 
     @api_router.post("/demandes-offres/{demande_id}/annuler")
     async def cancel_demande_offre(

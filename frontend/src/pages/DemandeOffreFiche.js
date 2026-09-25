@@ -17,7 +17,7 @@ import {
   formatChf, formatDateFr, demandeOrigineLabel, demandeOrigineKey, toIsoDate, toSwissDate,
   DEMANDE_ORIGINE_STYLE, typeClientLabel, buildDemandeResume,
   PRIORITE_STYLE, prioriteLabel, erreurLabel, erreurChampLabel, formatDateTimeFr,
-  prefillSchemaPayloadFromClient,
+  prefillSchemaPayloadFromClient, soumisCompagnieLabel, isSoumisCompagnie,
 } from "@/lib/demandesOffres";
 import OffreSchemaForm, { SchemaReadOnlySummary, isFieldVisible } from "@/components/OffreSchemaForm";
 import ClientSuggestInput from "@/components/ClientSuggestInput";
@@ -230,6 +230,8 @@ export default function DemandeOffreFiche() {
     delete clean.id; delete clean.numero; delete clean.statut; delete clean.documents;
     delete clean.historique; delete clean.offre; delete clean.offres; delete clean.offre_choisie_id;
     delete clean.signature; delete clean.envoi_client; delete clean.conclusion;
+    delete clean.soumis_compagnie; delete clean.soumis_compagnie_at;
+    delete clean.soumis_compagnie_by; delete clean.soumis_compagnie_by_id;
     delete clean.created_at; delete clean.updated_at; delete clean.created_by_name;
     delete clean.client_label; delete clean.agent_label; delete clean.incomplete_comment;
     delete clean.incomplete_at; delete clean.incomplete_by; delete clean.date_envoi;
@@ -645,6 +647,18 @@ export default function DemandeOffreFiche() {
   };
 
   const recordSignature = async () => {
+    if (signatureMode && !signature.file) {
+      toast.error("Ajoutez le PDF de la proposition signée");
+      return;
+    }
+    if (signatureMode && signature.file) {
+      const name = String(signature.file.name || "").toLowerCase();
+      const type = String(signature.file.type || "").toLowerCase();
+      if (!name.endsWith(".pdf") && !type.includes("pdf")) {
+        toast.error("La proposition signée doit être un fichier PDF");
+        return;
+      }
+    }
     const fd = new FormData();
     fd.append("signee", String(signatureMode));
     if (signature.date_signature) fd.append("date_signature", signature.date_signature);
@@ -656,9 +670,29 @@ export default function DemandeOffreFiche() {
       const res = await api.post(`/demandes-offres/${demandeId}/signature`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       refreshFromAction(res.data, signatureMode ? "Offre marquée signée" : "Offre marquée non signée");
       setSignatureOpen(false);
+      setSignature({
+        date_signature: new Date().toISOString().slice(0, 10),
+        commentaire: "", date_relance: "", file: null,
+      });
     } catch (e) {
       toast.error(errorMessage(e, "Enregistrement impossible"));
     } finally { setActionBusy(false); }
+  };
+
+  const toggleSoumisCompagnie = async (next) => {
+    if (!canProcess) return;
+    setActionBusy(true);
+    try {
+      const res = await api.post(`/demandes-offres/${demandeId}/soumis-compagnie`, { soumis: Boolean(next) });
+      refreshFromAction(
+        res.data,
+        next ? "Marqué soumis à la compagnie" : "Indicateur soumis retiré",
+      );
+    } catch (e) {
+      toast.error(errorMessage(e, "Mise à jour impossible"));
+    } finally {
+      setActionBusy(false);
+    }
   };
 
   const uploadDocument = async (event) => {
@@ -775,12 +809,30 @@ export default function DemandeOffreFiche() {
                     {offresList.length} réponse{offresList.length > 1 ? "s" : ""} compagnie
                   </span>
                 )}
+                <span
+                  className={`text-xs rounded-full px-2.5 py-1 ring-1 ring-inset ${
+                    isSoumisCompagnie(demande.soumis_compagnie)
+                      ? "bg-emerald-50 text-emerald-900 ring-emerald-200"
+                      : "bg-slate-50 text-slate-600 ring-slate-200"
+                  }`}
+                  data-testid="soumis-compagnie-badge"
+                  title={
+                    isSoumisCompagnie(demande.soumis_compagnie) && demande.soumis_compagnie?.by
+                      ? `Par ${demande.soumis_compagnie.by}${demande.soumis_compagnie.at ? ` · ${formatDateFr(demande.soumis_compagnie.at)}` : ""}`
+                      : undefined
+                  }
+                >
+                  {soumisCompagnieLabel(demande.soumis_compagnie)}
+                </span>
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-2">
               Conseiller : {demande.agent_label || "—"}
               {demande.date_envoi ? ` · Envoyée le ${formatDateFr(demande.date_envoi)}` : ""}
               {demande.created_at ? ` · Créée le ${formatDateFr(demande.created_at)}` : ""}
+              {demande.signature?.signee && (demande.signature.signed_by || demande.signature.recorded_by)
+                ? ` · Signée par ${demande.signature.signed_by || demande.signature.recorded_by}`
+                : ""}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -1123,6 +1175,7 @@ export default function DemandeOffreFiche() {
               onConclusion={markConclusion}
               onSendClient={() => runAction("envoyer-client", {}, "Offre envoyée au client")}
               onSignature={(signed) => { setSignatureMode(signed); setSignatureOpen(true); }}
+              onSoumisCompagnie={toggleSoumisCompagnie}
               onCancel={() => setCancelOpen(true)}
               onRestore={restoreDemande}
               onDelete={deleteDemande}
@@ -1373,14 +1426,51 @@ export default function DemandeOffreFiche() {
       </Dialog>
 
       <Dialog open={signatureOpen} onOpenChange={setSignatureOpen}>
-        <DialogContent><DialogHeader><DialogTitle>{signatureMode ? "Enregistrer l'offre signée" : "Enregistrer l'offre non signée"}</DialogTitle></DialogHeader>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{signatureMode ? "Enregistrer l'offre signée" : "Enregistrer l'offre non signée"}</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
-            <Field label={signatureMode ? "Date de signature" : "Date de décision"}><Input type="date" value={signature.date_signature} onChange={(e) => setSignature({ ...signature, date_signature: e.target.value })} /></Field>
-            {!signatureMode && <Field label="Date de relance"><Input type="date" value={signature.date_relance} onChange={(e) => setSignature({ ...signature, date_relance: e.target.value })} /></Field>}
-            <Field label="Commentaire"><Textarea value={signature.commentaire} onChange={(e) => setSignature({ ...signature, commentaire: e.target.value })} /></Field>
-            <Field label="Document signé"><Input type="file" onChange={(e) => setSignature({ ...signature, file: e.target.files?.[0] || null })} /></Field>
+            <Field label={signatureMode ? "Date de signature" : "Date de décision"}>
+              <Input type="date" value={signature.date_signature} onChange={(e) => setSignature({ ...signature, date_signature: e.target.value })} />
+            </Field>
+            {!signatureMode && (
+              <Field label="Date de relance">
+                <Input type="date" value={signature.date_relance} onChange={(e) => setSignature({ ...signature, date_relance: e.target.value })} />
+              </Field>
+            )}
+            <Field label="Commentaire">
+              <Textarea value={signature.commentaire} onChange={(e) => setSignature({ ...signature, commentaire: e.target.value })} />
+            </Field>
+            {signatureMode && (
+              <Field label="Proposition signée (PDF) *">
+                <Input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  data-testid="proposition-signee-file"
+                  onChange={(e) => setSignature({ ...signature, file: e.target.files?.[0] || null })}
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Obligatoire. Le fichier sera enregistré dans le dossier sous le libellé « Proposition signée ».
+                </p>
+              </Field>
+            )}
+            {!signatureMode && (
+              <Field label="Document (optionnel)">
+                <Input type="file" onChange={(e) => setSignature({ ...signature, file: e.target.files?.[0] || null })} />
+              </Field>
+            )}
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setSignatureOpen(false)}>Annuler</Button><Button onClick={recordSignature} disabled={actionBusy}>Enregistrer</Button></DialogFooter>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSignatureOpen(false)}>Annuler</Button>
+            <Button
+              onClick={recordSignature}
+              disabled={actionBusy || (signatureMode && !signature.file)}
+              data-testid="confirm-signature-btn"
+            >
+              Enregistrer
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Layout>
@@ -2026,7 +2116,8 @@ function ReadOnlyData({ data }) {
 
 function ActionPanel({
   demande, canEdit, canProcess, canFollowSignature, busy, hasOffers, hasIncompleteCompany,
-  onIncomplete, onOffer, onOffresCompletes, onErreurs, onNote, onDoc, onConclusion, onSendClient, onSignature, onCancel, onRestore, onDelete,
+  onIncomplete, onOffer, onOffresCompletes, onErreurs, onNote, onDoc, onConclusion, onSendClient,
+  onSignature, onSoumisCompagnie, onCancel, onRestore, onDelete,
 }) {
   const terminal = ["Offre signée", "Demande annulée", "Offre refusée"].includes(demande.statut);
   const canSendClient = hasOffers || demande.offre;
@@ -2039,6 +2130,7 @@ function ActionPanel({
   const canCancel = (canEdit || canProcess) && !terminal && demande.statut !== "Offre signée";
   const canRestore = (canEdit || canProcess) && demande.statut === "Demande annulée";
   const canDeleteHard = (canEdit || canProcess) && ["Brouillon", "Demande annulée"].includes(demande.statut);
+  const soumis = isSoumisCompagnie(demande.soumis_compagnie);
   if (!showProcess && !showConseillerFollowup && !canEdit && !showSignature) return null;
   return <Card className="p-5 space-y-3 sticky top-20">
     <h2 className="font-display font-bold flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-[#002FA7]" /> {showProcess ? "Traitement" : "Actions"}</h2>
@@ -2077,6 +2169,31 @@ function ActionPanel({
       <Button className="w-full justify-start bg-rose-700 hover:bg-rose-800" onClick={onErreurs} disabled={busy} data-testid="erreurs-btn">
         <AlertTriangle className="h-4 w-4 mr-2" /> Erreurs
       </Button>
+    )}
+    {showProcess && (
+      <label
+        className={`flex items-start gap-2.5 rounded-md border p-3 text-sm cursor-pointer ${
+          soumis ? "border-emerald-300 bg-emerald-50/70" : "border-border bg-white"
+        }`}
+        data-testid="soumis-compagnie-checkbox"
+      >
+        <input
+          type="checkbox"
+          className="mt-0.5 accent-[#002FA7]"
+          checked={soumis}
+          disabled={busy}
+          onChange={(e) => onSoumisCompagnie?.(e.target.checked)}
+        />
+        <span className="min-w-0">
+          <span className="font-medium block">{soumisCompagnieLabel(demande.soumis_compagnie)}</span>
+          <span className="text-[11px] text-muted-foreground block mt-0.5">
+            Manuel uniquement — ne se coche pas automatiquement à la signature.
+            {soumis && demande.soumis_compagnie?.by
+              ? ` · ${demande.soumis_compagnie.by}${demande.soumis_compagnie.at ? ` · ${formatDateFr(demande.soumis_compagnie.at)}` : ""}`
+              : ""}
+          </span>
+        </span>
+      </label>
     )}
     {showConseillerFollowup && !terminal && hasOffers && !["En conclusion", "Offre envoyée au client", "Offre signée", "Offre refusée"].includes(demande.statut) &&
       <Button variant="outline" className="w-full justify-start" onClick={onConclusion} disabled={busy}><FileText className="h-4 w-4 mr-2" /> Passer en conclusion</Button>}

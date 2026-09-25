@@ -41,6 +41,13 @@ STATUT_OFFRE_SIGNEE = "Offre signée"
 STATUT_OFFRE_REFUSEE = "Offre refusée"
 STATUT_ANNULEE = "Demande annulée"
 
+# Document déposé par le conseiller lors du passage à « Offre signée »
+DOC_CATEGORY_PROPOSITION_SIGNEE = "Proposition signée"
+# Indicateur manuel gestionnaire (indépendant du statut « Offre signée »)
+ACTION_SOUMIS_COMPAGNIE = "Soumis à la compagnie"
+ACTION_NON_SOUMIS_COMPAGNIE = "Non soumis à la compagnie"
+FIELD_SOUMIS_COMPAGNIE = "soumis_compagnie"
+
 # Champ persisté à l'annulation (historique / audit) ; la restauration
 # remet toujours en brouillon (choix produit : éviter de ré-envoyer).
 FIELD_STATUT_AVANT_ANNULATION = "statut_avant_annulation"
@@ -303,6 +310,67 @@ def can_follow_signature(user, doc: dict) -> bool:
     if email_matches_conseiller(doc, user):
         return True
     return False
+
+
+def normalize_soumis_compagnie(doc: Optional[dict]) -> dict:
+    """
+    Indicateur « Soumis à la compagnie » — manuel, jamais auto-coché à la signature.
+    Persistance : soumis_compagnie (bool) + at / by / by_id.
+    """
+    raw = doc if isinstance(doc, dict) else {}
+    nested = raw.get(FIELD_SOUMIS_COMPAGNIE)
+    if isinstance(nested, dict):
+        flag = bool(nested.get("soumis") if "soumis" in nested else nested.get("value"))
+        return {
+            "soumis": flag,
+            "at": nested.get("at") or nested.get("date") or None,
+            "by": nested.get("by") or nested.get("by_name") or None,
+            "by_id": nested.get("by_id") or None,
+        }
+    # Legacy flat fields
+    flag = bool(raw.get(FIELD_SOUMIS_COMPAGNIE)) if not isinstance(nested, dict) else False
+    if isinstance(nested, bool):
+        flag = nested
+    return {
+        "soumis": flag,
+        "at": raw.get("soumis_compagnie_at") or None,
+        "by": raw.get("soumis_compagnie_by") or None,
+        "by_id": raw.get("soumis_compagnie_by_id") or None,
+    }
+
+
+def build_soumis_compagnie_payload(
+    *,
+    soumis: bool,
+    by_name: str = "",
+    by_id: str = "",
+    at: Optional[str] = None,
+) -> dict:
+    """Construit le bloc persisté soumis_compagnie (+ flat mirrors pour listes/filtres)."""
+    stamp = at or now_iso()
+    if not soumis:
+        return {
+            FIELD_SOUMIS_COMPAGNIE: {
+                "soumis": False,
+                "at": None,
+                "by": None,
+                "by_id": None,
+            },
+            "soumis_compagnie_at": None,
+            "soumis_compagnie_by": None,
+            "soumis_compagnie_by_id": None,
+        }
+    return {
+        FIELD_SOUMIS_COMPAGNIE: {
+            "soumis": True,
+            "at": stamp,
+            "by": by_name or None,
+            "by_id": by_id or None,
+        },
+        "soumis_compagnie_at": stamp,
+        "soumis_compagnie_by": by_name or None,
+        "soumis_compagnie_by_id": by_id or None,
+    }
 
 # Pipeline clair (onglet Pipeline) — du brouillon à la signature
 KANBAN_COLUMNS = [
@@ -985,6 +1053,7 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "offre": offre_compat,
         "envoi_client": doc.get("envoi_client") or None,
         "signature": doc.get("signature") or None,
+        "soumis_compagnie": normalize_soumis_compagnie(doc),
         "conclusion": doc.get("conclusion") or None,
         "date_envoi": doc.get("date_envoi"),
         "email_sent": bool(doc.get("email_sent")),

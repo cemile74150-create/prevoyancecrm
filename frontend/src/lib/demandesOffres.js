@@ -55,6 +55,19 @@ export const STATUT_STYLE = {
   "Demande annulée": "bg-zinc-500/10 text-zinc-600 ring-1 ring-inset ring-zinc-500/20",
 };
 
+/** Indicateur manuel gestionnaire (indépendant du statut Offre signée). */
+export function soumisCompagnieLabel(soumis) {
+  const flag = typeof soumis === "object" && soumis != null
+    ? Boolean(soumis.soumis)
+    : Boolean(soumis);
+  return flag ? "🟢 Soumis à la compagnie" : "⚪ Non soumis à la compagnie";
+}
+
+export function isSoumisCompagnie(soumis) {
+  if (typeof soumis === "object" && soumis != null) return Boolean(soumis.soumis);
+  return Boolean(soumis);
+}
+
 export const COMPAGNIES_DEFAUT = [
   "PAX", "Helvetia", "Swiss Life", "AXA", "Zurich", "Generali", "Baloise",
   "Allianz", "Vaudoise", "Mobilière", "Groupe Mutuel", "Retraites Populaires",
