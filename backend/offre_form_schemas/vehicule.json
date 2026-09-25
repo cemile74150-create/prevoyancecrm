@@ -880,7 +880,7 @@
       "name": "input_106",
       "label": "Merci de préciser",
       "type": "checkbox",
-      "required": true,
+      "required": false,
       "options": [
         "Transport de personnes",
         "Transport de marchandise",

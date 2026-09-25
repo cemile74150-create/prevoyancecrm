@@ -1921,7 +1921,12 @@ PIPELINE_STAGES = [
     {
         "id": "offre_recue",
         "label": "Offre reçue",
-        "statuts": [STATUT_OFFRE_RECUE, STATUT_OFFRE_COMPLETE, STATUT_OFFRE_CHOISIE, STATUT_EN_CONCLUSION],
+        "statuts": [STATUT_OFFRE_RECUE],
+    },
+    {
+        "id": "completes",
+        "label": "Offres complètes",
+        "statuts": [STATUT_OFFRE_COMPLETE, STATUT_OFFRE_CHOISIE, STATUT_EN_CONCLUSION],
     },
     {
         "id": "envoyee_client",
@@ -1960,7 +1965,9 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
     en_attente = 0
     incompletes = 0
     offres_recues = 0
+    offres_completes = 0
     offres_envoyees = 0
+    offres_envoyees_client = 0
     offres_attente_reponse = 0
     signees = 0
     refusees = 0
@@ -1970,6 +1977,7 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
 
     for r in rows:
         st = r.get("statut") or STATUT_BROUILLON
+        st_norm = normalize_statut(st)
         by_statut[st] = by_statut.get(st, 0) + 1
         created = str(r.get("created_at") or "")[:7]
         if created == month_prefix:
@@ -1985,9 +1993,16 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
             en_attente += 1
         if st in {STATUT_INCOMPLETE, STATUT_ATTENTE_INFOS}:
             incompletes += 1
-        # KPI « Offres complètes » : uniquement le statut final (pas « Offre reçue »)
-        if normalize_statut(st) == STATUT_OFFRE_COMPLETE:
+        # KPI « Offres reçues » : statut « Offre reçue » uniquement
+        if st_norm == STATUT_OFFRE_RECUE:
             offres_recues += 1
+        # KPI « Offres complètes » (conservé, distinct des reçues)
+        if st_norm == STATUT_OFFRE_COMPLETE:
+            offres_completes += 1
+        # KPI « Offres envoyées au client » : statut exact
+        if st_norm == STATUT_OFFRE_ENVOYEE_CLIENT:
+            offres_envoyees_client += 1
+        # Dénominateur taux de signature (parcours post-envoi client)
         if st in {
             STATUT_OFFRE_ENVOYEE_CLIENT,
             STATUT_EN_CONCLUSION,
@@ -2047,7 +2062,9 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
         "en_attente": en_attente,
         "incompletes": incompletes,
         "offres_recues": offres_recues,
+        "offres_completes": offres_completes,
         "offres_envoyees": offres_envoyees,
+        "offres_envoyees_client": offres_envoyees_client,
         "offres_attente_reponse": offres_attente_reponse,
         "offres_signees": signees,
         "offres_refusees": refusees,

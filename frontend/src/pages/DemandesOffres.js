@@ -19,7 +19,7 @@ import {
 import { uniqueConseillerNames } from "@/lib/conseillers";
 import {
   BarChart3, Briefcase, CheckCircle2, Clock3, FilePlus2, FileSpreadsheet,
-  FileText, Layers, Loader2, Mail, RotateCcw, Search, Signature, Tag, Trash2, TriangleAlert,
+  FileText, Layers, Loader2, Mail, RotateCcw, Search, Tag, Trash2, TriangleAlert,
   UserRound, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -125,21 +125,21 @@ const FALLBACK_MENU = {
   ],
 };
 
-/** Dashboard — cartes aérées, intitulés complets (pas de troncature). */
+/** Dashboard — cartes workflow principales (ordre métier). */
 const KPI_FEATURED = [
-  ["nb_origine_conseiller", "Demandes d'offre – Conseiller", UserRound, "bg-sky-100 text-sky-800"],
-  ["nb_origine_attribuee", "Demandes d'offre attribuées", Tag, "bg-indigo-100 text-indigo-800"],
-  ["nb_demandes", "Total des demandes", FileSpreadsheet, "bg-[#002FA7]/10 text-[#002FA7]"],
+  ["nb_demandes", "Demandes d'offre", FileSpreadsheet, "bg-[#002FA7]/10 text-[#002FA7]"],
+  ["nb_brouillons", "Brouillons", FilePlus2, "bg-zinc-100 text-zinc-700"],
+  ["en_attente", "En attente", Clock3, "bg-amber-100 text-amber-800"],
+  ["offres_recues", "Offres reçues", FileText, "bg-violet-100 text-violet-800"],
 ];
 
 const KPI_SECONDARY = [
-  ["nb_brouillons", "Brouillons", FilePlus2, "bg-zinc-100 text-zinc-700"],
-  ["en_attente", "En attente", Clock3, "bg-amber-100 text-amber-800"],
-  ["incompletes", "Incomplètes", TriangleAlert, "bg-rose-100 text-rose-700"],
-  ["offres_recues", "Offres complètes", CheckCircle2, "bg-emerald-100 text-emerald-700"],
-  ["nb_variantes_sollicitees", "Variantes sollicitées", Layers, "bg-indigo-100 text-indigo-800"],
+  ["incompletes", "Offres incomplètes", TriangleAlert, "bg-rose-100 text-rose-700"],
   ["offres_signees", "Offres signées", CheckCircle2, "bg-emerald-100 text-emerald-700"],
-  ["taux_signature", "Taux de signature", Signature, "bg-teal-100 text-teal-700"],
+  ["offres_envoyees_client", "Offres envoyées au client", Mail, "bg-purple-100 text-purple-800"],
+  ["nb_variantes_sollicitees", "Variantes sollicitées", Layers, "bg-indigo-100 text-indigo-800"],
+  ["nb_origine_attribuee", "Demandes d'offre attribuées", Tag, "bg-indigo-100 text-indigo-800"],
+  ["offres_completes", "Offres complètes", CheckCircle2, "bg-emerald-100 text-emerald-700"],
 ];
 
 /**
@@ -160,12 +160,22 @@ const KPI_CLICK_FILTERS = {
   incompletes: {
     kind: "statuts",
     values: ["Demande incomplète", "En attente d'informations"],
-    label: "Incomplètes",
+    label: "Offres incomplètes",
   },
   offres_recues: {
+    kind: "statut",
+    value: "Offre reçue",
+    label: "Offres reçues",
+  },
+  offres_completes: {
     kind: "statuts",
     values: ["Offres complètes", "Offre complète"],
     label: "Offres complètes",
+  },
+  offres_envoyees_client: {
+    kind: "statut",
+    value: "Offre envoyée au client",
+    label: "Offres envoyées au client",
   },
   nb_offres_recues_detail: { kind: "has_offres", label: "Réponses comparées" },
   offres_signees: { kind: "statut", value: "Offre signée", label: "Offres signées" },
@@ -711,28 +721,28 @@ export default function DemandesOffres({ mode = "conseiller" }) {
           <div>
             <h2 className="text-lg font-bold text-slate-800">Tableau de bord</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Cliquez sur une carte pour filtrer la liste. Les deux types de demandes sont comptés séparément.
+              Cliquez sur une carte pour filtrer la liste (workflow : reçues → incomplètes → signées → envoyées au client).
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {KPI_FEATURED.map((item) => (
               <KpiCard
                 key={item[0]}
                 item={item}
                 stats={stats}
-                active={kpiFilter === item[0] || (item[0] === "nb_origine_conseiller" && origine === "conseiller" && !kpiFilter)}
+                active={kpiFilter === item[0]}
                 onSelect={selectKpi}
                 large
               />
             ))}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {KPI_SECONDARY.map((item) => (
               <KpiCard
                 key={item[0]}
                 item={item}
                 stats={stats}
-                active={kpiFilter === item[0]}
+                active={kpiFilter === item[0] || (item[0] === "nb_origine_attribuee" && origine === "attribuee" && !kpiFilter)}
                 onSelect={selectKpi}
               />
             ))}

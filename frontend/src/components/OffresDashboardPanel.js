@@ -19,21 +19,23 @@ const ANNULEE = "Demande annulée";
 const BROUILLON = "Brouillon";
 
 const KPI_DEFS = [
-  { key: "demandes", label: "Demandes d'offres", icon: FolderKanban, accent: "bg-slate-100 text-slate-700" },
+  { key: "demandes", label: "Demandes d'offre", icon: FolderKanban, accent: "bg-slate-100 text-slate-700" },
   { key: "brouillons", label: "Brouillons", icon: FilePlus2, accent: "bg-zinc-100 text-zinc-700" },
-  { key: "variantes", label: "Variantes sollicitées", icon: Layers, accent: "bg-blue-100 text-blue-700" },
   { key: "attente", label: "En attente", icon: Clock, accent: "bg-amber-100 text-amber-700" },
-  { key: "recues", label: "Offres complètes", icon: FileSearch, accent: "bg-emerald-100 text-emerald-700" },
-  { key: "envoyees", label: "Offres envoyées client", icon: FileSpreadsheet, accent: "bg-purple-100 text-purple-700" },
+  { key: "recues", label: "Offres reçues", icon: FileSearch, accent: "bg-violet-100 text-violet-800" },
+  { key: "incompletes", label: "Offres incomplètes", icon: AlertTriangle, accent: "bg-rose-100 text-rose-700" },
   { key: "signees", label: "Offres signées", icon: CheckCircle2, accent: "bg-emerald-100 text-emerald-700" },
-  { key: "refusees", label: "Offres refusées", icon: AlertTriangle, accent: "bg-red-100 text-red-700" },
+  { key: "envoyees", label: "Offres envoyées au client", icon: FileSpreadsheet, accent: "bg-purple-100 text-purple-700" },
+  { key: "variantes", label: "Variantes sollicitées", icon: Layers, accent: "bg-blue-100 text-blue-700" },
+  { key: "completes", label: "Offres complètes", icon: CheckCircle2, accent: "bg-emerald-100 text-emerald-700" },
 ];
 
 const PIPELINE_STAGES = [
   { id: "brouillon", label: "Brouillon", statuts: [BROUILLON] },
   { id: "demande_envoyee", label: "Demande envoyée", statuts: ["Demande envoyée", "Demande validée"] },
   { id: "en_attente", label: "En attente", statuts: ["En attente d'informations", "Demande incomplète"] },
-  { id: "offre_recue", label: "Offre reçue", statuts: ["Offre reçue", "Offres complètes", "Offre complète", "Offre choisie", "En conclusion"] },
+  { id: "offre_recue", label: "Offre reçue", statuts: ["Offre reçue"] },
+  { id: "completes", label: "Offres complètes", statuts: ["Offres complètes", "Offre complète", "Offre choisie", "En conclusion"] },
   { id: "envoyee_client", label: "Envoyée au client", statuts: ["Offre envoyée au client"] },
   { id: "signee", label: "Signée", statuts: ["Offre signée"] },
   { id: "refusee", label: "Refusée", statuts: ["Offre refusée"] },
@@ -60,11 +62,16 @@ function matchesKpi(row, key) {
       return st !== BROUILLON && st !== ANNULEE && (row.compagnies || []).length > 0;
     case "attente":
       return ["Demande envoyée", "Demande validée", "En attente d'informations"].includes(st);
+    case "incompletes":
+      return ["Demande incomplète", "En attente d'informations"].includes(st);
     case "recues":
-      // KPI « Offres complètes » — uniquement ce statut (pas « Offre reçue »)
+      // KPI « Offres reçues » — statut exact uniquement
+      return st === "Offre reçue";
+    case "completes":
       return st === "Offres complètes" || st === "Offre complète";
     case "envoyees":
-      return ["Offre envoyée au client", "En conclusion", "Offre signée", "Offre refusée"].includes(st);
+      // KPI « Offres envoyées au client » — statut exact
+      return st === "Offre envoyée au client";
     case "signees":
       return st === "Offre signée";
     case "refusees":
@@ -133,13 +140,10 @@ function computeAgentBuckets(rows) {
     const b = map[name];
     if (st === BROUILLON) b.nb_brouillons += 1;
     else b.nb_demandes += 1;
-    if (["Offre envoyée au client", "En conclusion", "Offre signée", "Offre refusée"].includes(st)) {
+    if (["Offre envoyée au client"].includes(st)) {
       b.offres_envoyees += 1;
     }
-    if ([
-      "Offre reçue", "Offres complètes", "Offre complète", "Offre choisie", "En conclusion",
-      "Offre envoyée au client", "Offre signée", "Offre refusée",
-    ].includes(st)) {
+    if (st === "Offre reçue") {
       b.nb_offres_recues += 1;
     }
     if (st === "Offre signée") b.offres_signees += 1;
@@ -298,7 +302,7 @@ export default function OffresDashboardPanel({
   const kpiCounts = useMemo(() => {
     const c = {
       demandes: 0, brouillons: 0, variantes: 0, attente: 0,
-      recues: 0, envoyees: 0, signees: 0, refusees: 0,
+      recues: 0, incompletes: 0, completes: 0, envoyees: 0, signees: 0, refusees: 0,
     };
     for (const r of baseRows) {
       const st = r.statut || BROUILLON;
@@ -308,7 +312,9 @@ export default function OffresDashboardPanel({
         c.variantes += (r.compagnies || []).length;
       }
       if (matchesKpi(r, "attente")) c.attente += 1;
+      if (matchesKpi(r, "incompletes")) c.incompletes += 1;
       if (matchesKpi(r, "recues")) c.recues += 1;
+      if (matchesKpi(r, "completes")) c.completes += 1;
       if (matchesKpi(r, "envoyees")) c.envoyees += 1;
       if (matchesKpi(r, "signees")) c.signees += 1;
       if (matchesKpi(r, "refusees")) c.refusees += 1;
