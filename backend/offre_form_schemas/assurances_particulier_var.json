@@ -1,0 +1,300 @@
+{
+  "id": "assurances_particulier_var",
+  "label": "Assurances particulier (var.)",
+  "category": "Particulier",
+  "title": "Assurances particulier (var.)",
+  "gravity_form_id": 47,
+  "source_file": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-8_.html",
+  "fields_count": 26,
+  "fields": [
+    {
+      "id": "47_43",
+      "gf_field_id": 43,
+      "name": "input_43",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "47_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "Statut :",
+      "type": "text",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "47_54",
+      "gf_field_id": 54,
+      "name": "input_55.3",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "47_56",
+      "gf_field_id": 56,
+      "name": "input_56",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_57",
+      "gf_field_id": 57,
+      "name": "input_57",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_3",
+      "gf_field_id": 3,
+      "name": "input_3",
+      "label": "Renseignement généraux",
+      "type": "section",
+      "required": false,
+      "options": []
+    },
+    {
+      "id": "47_39",
+      "gf_field_id": 39,
+      "name": "input_39",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_41",
+      "gf_field_id": 41,
+      "name": "input_41",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_7",
+      "gf_field_id": 7,
+      "name": "input_7",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_9",
+      "gf_field_id": 9,
+      "name": "input_9",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_10",
+      "gf_field_id": 10,
+      "name": "input_10",
+      "label": "Permis de séjour",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_11",
+      "gf_field_id": 11,
+      "name": "input_12.6",
+      "label": "Renseignement sur l'animal",
+      "type": "section",
+      "required": true,
+      "options": [
+        "Chien",
+        "Chat",
+        "D'intérieur",
+        "D'extérieur",
+        "Mâle",
+        "Femelle"
+      ]
+    },
+    {
+      "id": "47_33",
+      "gf_field_id": 33,
+      "name": "input_33",
+      "label": "Race de l'animal",
+      "type": "text",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_14",
+      "gf_field_id": 14,
+      "name": "input_14",
+      "label": "Date de naissance de l'animal",
+      "type": "date",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_34",
+      "gf_field_id": 34,
+      "name": "input_34",
+      "label": "Identification",
+      "type": "number",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ]
+    },
+    {
+      "id": "47_18",
+      "gf_field_id": 18,
+      "name": "input_18",
+      "label": "Si oui, pour quelle(s) cause(s)",
+      "type": "textarea",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_19",
+      "gf_field_id": 19,
+      "name": "input_19",
+      "label": "Nom et adresse du vétérinaire traitant :",
+      "type": "textarea",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_20",
+      "gf_field_id": 20,
+      "name": "input_20",
+      "label": "Nom et adresse du vétérinaire habituel :",
+      "type": "textarea",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ]
+    },
+    {
+      "id": "47_23",
+      "gf_field_id": 23,
+      "name": "input_23",
+      "label": "Si oui, lesquelles ?",
+      "type": "textarea",
+      "required": true,
+      "options": [
+        "Animalia",
+        "Epona",
+        "Simpego"
+      ]
+    },
+    {
+      "id": "47_22",
+      "gf_field_id": 22,
+      "name": "input_29.1",
+      "label": "Couvertures prétendues",
+      "type": "section",
+      "required": false,
+      "options": [
+        "COUVERTURE DE BASE (accident seul + assistance)",
+        "MALADIES (toutes les maladies)",
+        "FRAIS DE PRÉVENTION ET DÉPISTAGE",
+        "200.-",
+        "400.-",
+        "500.-",
+        "600.-",
+        "1000.-",
+        "Annuel",
+        "Semestriel"
+      ]
+    },
+    {
+      "id": "47_37",
+      "gf_field_id": 37,
+      "name": "input_52",
+      "label": "Questions spécifiques pour SIMPEGO",
+      "type": "section",
+      "required": false,
+      "options": [
+        "Pedigree",
+        "Croisée",
+        "Mixte",
+        "Oui",
+        "Non",
+        "0.-",
+        "300.-",
+        "500.-",
+        "1000.-",
+        "2000.-",
+        "100%",
+        "80%",
+        "Conditiions préexistantes**",
+        "Protection mondiale",
+        "Pas de couvertures supplémentaires",
+        "Base - Protection de base couvrant CHF 3 000.- de frais vétérinaires.",
+        "Régulier - Protection de niveau régulier couvrant CHF 6 000.- de frais vétérinaires.",
+        "Complet - Protection de haut niveau couvrant CHF 12 000.- de frais vétérinaires."
+      ]
+    },
+    {
+      "id": "47_50",
+      "gf_field_id": 50,
+      "name": "input_30",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ]
+    },
+    {
+      "id": "47_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Date d'effet du contrat ?",
+      "type": "date",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_28",
+      "gf_field_id": 28,
+      "name": "input_28",
+      "label": "Date du rendez-vous avec le client ?",
+      "type": "date",
+      "required": true,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ]
+    },
+    {
+      "id": "47_36",
+      "gf_field_id": 36,
+      "name": "input_36",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": []
+    },
+    {
+      "id": "47_40",
+      "gf_field_id": 40,
+      "name": "input_40",
+      "label": "Commentaire :",
+      "type": "textarea",
+      "required": false,
+      "options": []
+    }
+  ]
+}

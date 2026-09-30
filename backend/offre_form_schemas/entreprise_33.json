@@ -1,0 +1,1109 @@
+{
+  "id": "entreprise_33",
+  "label": "Assurances choses",
+  "category": "Entreprise",
+  "title": "Entreprise - Assurances choses",
+  "gravity_form_id": 33,
+  "source_file": "Texte collé (10)(1).txt",
+  "fields_count": 67,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Étape 1"
+    },
+    {
+      "page": 2,
+      "label": "Étape 2"
+    },
+    {
+      "page": 3,
+      "label": "Étape 3"
+    }
+  ],
+  "page_count": 3,
+  "fields": [
+    {
+      "id": "33_202",
+      "gf_field_id": 202,
+      "name": "input_202",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "Entreprise - Assurances choses "
+    },
+    {
+      "id": "33_206",
+      "gf_field_id": 206,
+      "name": "input_206",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "33_207_3",
+      "gf_field_id": 207,
+      "name": "input_207.3",
+      "label": "Prénom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "33_207_6",
+      "gf_field_id": 207,
+      "name": "input_207.6",
+      "label": "Nom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "33_208",
+      "gf_field_id": 208,
+      "name": "input_208",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "33_209",
+      "gf_field_id": 209,
+      "name": "input_209",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "33_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Renseignements généraux",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "33_48",
+      "gf_field_id": 48,
+      "name": "input_48",
+      "label": "Nom de l'entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "33_49",
+      "gf_field_id": 49,
+      "name": "input_49",
+      "label": "Activité de l'entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "33_57",
+      "gf_field_id": 57,
+      "name": "input_57",
+      "label": "Forme de la société",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "SA",
+        "Sàrl",
+        "Société en nom collectif",
+        "Raison individuelle"
+      ],
+      "page": 1
+    },
+    {
+      "id": "33_58",
+      "gf_field_id": 58,
+      "name": "input_58",
+      "label": "Nombre de propriétaires",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true
+    },
+    {
+      "id": "33_64",
+      "gf_field_id": 64,
+      "name": "input_64",
+      "label": "Nouvelle création",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "33_203",
+      "gf_field_id": 203,
+      "name": "input_203",
+      "label": "Assureur précédent",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_64",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "33_191",
+      "gf_field_id": 191,
+      "name": "input_191",
+      "label": "Compagnie",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_64",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "33_204",
+      "gf_field_id": 204,
+      "name": "input_204",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_64",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "33_2_1",
+      "gf_field_id": 2,
+      "name": "input_2.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "33_2_3",
+      "gf_field_id": 2,
+      "name": "input_2.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "33_2_5",
+      "gf_field_id": 2,
+      "name": "input_2.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "33_2_6",
+      "gf_field_id": 2,
+      "name": "input_2.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden",
+      "default": "Suisse"
+    },
+    {
+      "id": "33_198",
+      "gf_field_id": 198,
+      "name": "input_198",
+      "label": "Nom de la personne responsable",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "33_200",
+      "gf_field_id": 200,
+      "name": "input_200",
+      "label": "Prénom de la personne responsable",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "33_194",
+      "gf_field_id": 194,
+      "name": "input_194",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 1
+    },
+    {
+      "id": "33_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "33_196_1",
+      "gf_field_id": 196,
+      "name": "input_196.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "33_196_3",
+      "gf_field_id": 196,
+      "name": "input_196.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "33_196_5",
+      "gf_field_id": 196,
+      "name": "input_196.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "33_196_6",
+      "gf_field_id": 196,
+      "name": "input_196.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden",
+      "default": "Suisse"
+    },
+    {
+      "id": "33_52",
+      "gf_field_id": 52,
+      "name": "input_52",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "33_53",
+      "gf_field_id": 53,
+      "name": "input_53",
+      "label": "Permis de séjour",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "33_161",
+      "gf_field_id": 161,
+      "name": "input_161",
+      "label": "Assurance Choses entreprise",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "33_163_1",
+      "gf_field_id": 163,
+      "name": "input_163.1",
+      "label": "Adresse postale",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "type": "text"
+    },
+    {
+      "id": "33_163_2",
+      "gf_field_id": 163,
+      "name": "input_163.2",
+      "label": "Adresse ligne 2",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "type": "text"
+    },
+    {
+      "id": "33_163_3",
+      "gf_field_id": 163,
+      "name": "input_163.3",
+      "label": "Ville",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "type": "text"
+    },
+    {
+      "id": "33_163_4",
+      "gf_field_id": 163,
+      "name": "input_163.4",
+      "label": "État/Province/Région",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "type": "text"
+    },
+    {
+      "id": "33_163_5",
+      "gf_field_id": 163,
+      "name": "input_163.5",
+      "label": "Code postal",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "type": "text"
+    },
+    {
+      "id": "33_163_6",
+      "gf_field_id": 163,
+      "name": "input_163.6",
+      "label": "Pays",
+      "required": false,
+      "options": [
+        "Afghanistan",
+        "Afrique du Sud",
+        "Albanie",
+        "Algérie",
+        "Allemagne",
+        "Andorre",
+        "Angola",
+        "Anguilla",
+        "Antarctique",
+        "Antigua-et-Barbuda",
+        "Arabie Saoudite",
+        "Argentine",
+        "Arménie",
+        "Aruba",
+        "Australie",
+        "Autriche",
+        "Azerbaïdjan",
+        "Bahamas",
+        "Bahreïn",
+        "Bangladesh",
+        "Belarus",
+        "Belgique",
+        "Belize",
+        "Bermudes",
+        "Bhoutan",
+        "Bolivie",
+        "Bonaire, Saint-Eustache et Saba",
+        "Bosnie-Herzégovine",
+        "Botswana",
+        "Brunei Darussalam",
+        "Brésil",
+        "Bulgarie",
+        "Burkina Faso",
+        "Burundi",
+        "Bénin",
+        "Cambodge",
+        "Cameroun",
+        "Canada",
+        "Cap-Vert",
+        "Chili",
+        "Chine",
+        "Chypre",
+        "Colombie",
+        "Comores",
+        "Congo",
+        "Corée (République de)",
+        "Corée (République populaire démocratique de)",
+        "Costa Rica",
+        "Croatie",
+        "Cuba",
+        "Curaçao",
+        "Côte d’Ivoire",
+        "Danemark",
+        "Djibouti",
+        "Dominique",
+        "Espagne",
+        "Estonie",
+        "Eswatini",
+        "Fidji",
+        "Finlande",
+        "France",
+        "Fédération Russe",
+        "Gabon",
+        "Gambie",
+        "Ghana",
+        "Gibraltar",
+        "Grenade",
+        "Groenland",
+        "Grèce",
+        "Guadeloupe",
+        "Guam",
+        "Guatemala",
+        "Guernsey",
+        "Guinée",
+        "Guinée équatoriale",
+        "Guinée-Bissau",
+        "Guyane",
+        "Géorgie",
+        "Géorgie du Sud et Îles Sandwich du Sud",
+        "Haïti",
+        "Honduras",
+        "Hong Kong",
+        "Hongrie",
+        "Inde",
+        "Indonésie",
+        "Irak",
+        "Iran",
+        "Irlande",
+        "Islande",
+        "Israël",
+        "Italie",
+        "Jamaïque",
+        "Japon",
+        "Jersey",
+        "Jordanie",
+        "Kazakhstan",
+        "Kenya",
+        "Kirghizistan",
+        "Kiribati",
+        "Koweït",
+        "La Barbade",
+        "La Réunion",
+        "Lesotho",
+        "Lettonie",
+        "Liban",
+        "Liberia",
+        "Libye",
+        "Liechtenstein",
+        "Lituanie",
+        "Luxembourg",
+        "Macao",
+        "Macédoine du Nord",
+        "Madagascar",
+        "Malaisie",
+        "Malawi",
+        "Maldives",
+        "Mali",
+        "Malte",
+        "Maroc",
+        "Martinique",
+        "Mauritanie",
+        "Mayotte",
+        "Mexique",
+        "Micronésie",
+        "Moldavie",
+        "Monaco",
+        "Mongolie",
+        "Montserrat",
+        "Monténégro",
+        "Mozambique",
+        "Myanmar",
+        "Namibie",
+        "Nauru",
+        "Nicaragua",
+        "Niger",
+        "Nigéria",
+        "Niué",
+        "Norvège",
+        "Nouvelle-Calédonie",
+        "Nouvelle-Zélande",
+        "Népal",
+        "Oman",
+        "Ouganda",
+        "Ouzbékistan",
+        "Pakistan",
+        "Palau",
+        "Panama",
+        "Papouasie-Nouvelle-Guinée",
+        "Paraguay",
+        "Pays-Bas",
+        "Philippines",
+        "Pologne",
+        "Polynésie française",
+        "Porto Rico",
+        "Portugal",
+        "Pérou",
+        "Qatar",
+        "Roumanie",
+        "Royaume-Uni",
+        "Rwanda",
+        "République Dominicaine",
+        "République Tchèque",
+        "République arabe syrienne",
+        "République centrafricaine",
+        "République démocratique du Congo",
+        "République démocratique populaire du Laos",
+        "Sahara occidental",
+        "Saint Barthélemy",
+        "Saint Martin",
+        "Saint Pierre et Miquelon",
+        "Saint-Christophe-et-Nevis",
+        "Saint-Marin",
+        "Saint-Siège",
+        "Saint-Vincent-et-les Grenadines",
+        "Sainte-Hélène, Ascension et Tristan da Cunha",
+        "Sainte-Lucie",
+        "Salvador",
+        "Samoa",
+        "Samoa américaines",
+        "Sao Tomé et Principe",
+        "Serbie",
+        "Seychelles",
+        "Sierra Leone",
+        "Singapour",
+        "Sint Maarten",
+        "Slovaquie",
+        "Slovénie",
+        "Somalie",
+        "Soudan",
+        "Soudan du Sud",
+        "Sri Lanka",
+        "Suisse",
+        "Suriname",
+        "Suède",
+        "Sénégal",
+        "Tadjikistan",
+        "Tanzanie (République-Unie de)",
+        "Taïwan",
+        "Tchad",
+        "Terres Australes Françaises",
+        "Territoire britannique de l’océan Indien",
+        "Thaïlande",
+        "Timor oriental",
+        "Togo",
+        "Tokelau",
+        "Tonga",
+        "Trinité et Tobago",
+        "Tunisie",
+        "Turkménistan",
+        "Turquie",
+        "Tuvalu",
+        "Ukraine",
+        "Uruguay",
+        "Vanuatu",
+        "Venezuela",
+        "Vietnam",
+        "Wallis et Futuna",
+        "Yémen",
+        "Zambie",
+        "Zimbabwe",
+        "Égypte",
+        "Émirats arabes unis",
+        "Équateur",
+        "Érythrée",
+        "État palestinien",
+        "États-Unis",
+        "Éthiopie",
+        "Île Bouvet",
+        "Île Christmas",
+        "Île Maurice",
+        "Île Norfolk",
+        "Île de Man",
+        "Îles Cayman",
+        "Îles Cocos",
+        "Îles Cook",
+        "Îles Falkland",
+        "Îles Féroé",
+        "Îles Heard et McDonald",
+        "Îles Mariannes du Nord",
+        "Îles Marshall",
+        "Îles Pitcairn",
+        "Îles Salomon",
+        "Îles Turques et Caïques",
+        "Îles Vierges américaines",
+        "Îles Vierges britanniques",
+        "Îles de Svalbard et Jan Mayen",
+        "Îles mineures américaines",
+        "Îles Åland"
+      ],
+      "page": 2,
+      "type": "select"
+    },
+    {
+      "id": "33_165",
+      "gf_field_id": 165,
+      "name": "input_165",
+      "label": "Incendie",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "33_164",
+      "gf_field_id": 164,
+      "name": "input_164",
+      "label": "Valeur totale",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "description": "Somme d'assurance"
+    },
+    {
+      "id": "33_183",
+      "gf_field_id": 183,
+      "name": "input_183",
+      "label": "Evénements naturels",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "33_184",
+      "gf_field_id": 184,
+      "name": "input_184",
+      "label": "Montant",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "33_166",
+      "gf_field_id": 166,
+      "name": "input_166",
+      "label": "Vol",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "33_167",
+      "gf_field_id": 167,
+      "name": "input_167",
+      "label": "Marchandises dans véhicules à moteur",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "33_168",
+      "gf_field_id": 168,
+      "name": "input_168",
+      "label": "Somme d'assurance",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "33_169",
+      "gf_field_id": 169,
+      "name": "input_169",
+      "label": "Dégâts d'eau",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "33_172",
+      "gf_field_id": 172,
+      "name": "input_172",
+      "label": "Valeur totale",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "33_170",
+      "gf_field_id": 170,
+      "name": "input_170",
+      "label": "Glaces",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "33_171",
+      "gf_field_id": 171,
+      "name": "input_171",
+      "label": "Somme d'assurance",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "33_173",
+      "gf_field_id": 173,
+      "name": "input_173",
+      "label": "Electronique de bureau",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "33_174",
+      "gf_field_id": 174,
+      "name": "input_174",
+      "label": "Somme d'assurance",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "33_175",
+      "gf_field_id": 175,
+      "name": "input_175",
+      "label": "Altération des marchandises",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "33_176",
+      "gf_field_id": 176,
+      "name": "input_176",
+      "label": "Somme d'assurance",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "33_177",
+      "gf_field_id": 177,
+      "name": "input_177",
+      "label": "Perte de rendement",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "33_190",
+      "gf_field_id": 190,
+      "name": "input_190",
+      "label": "Chiffre d'affaire",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "description": "pour la perte de rendement",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_177",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "33_178",
+      "gf_field_id": 178,
+      "name": "input_178",
+      "label": "Incendie",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "description": "Chiffre d'affaire",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_177",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "33_179",
+      "gf_field_id": 179,
+      "name": "input_179",
+      "label": "Vol",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "description": "Chiffre d'affaire",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_177",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "33_180",
+      "gf_field_id": 180,
+      "name": "input_180",
+      "label": "Dégâts d'eau",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "description": "Chiffre d'affaire",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_177",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "33_182",
+      "gf_field_id": 182,
+      "name": "input_182",
+      "label": "Commentaires sur assurance entreprise choses",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "33_32",
+      "gf_field_id": 32,
+      "name": "input_32",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Axa",
+        "Generali (Romandie Courtage uniquement)",
+        "La Mobilière (Romandie Courtage uniquement)",
+        "Zurich (Romandie Courtage uniquement)",
+        "Helvetia (Romandie Courtage uniquement)",
+        "Innova (Perte de gain uniquement)",
+        "Allianz (Romandie Courtage uniquement)",
+        "Vaudoise",
+        "Envoi du formulaire"
+      ],
+      "page": 3,
+      "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois àr nous communiquer une offre, voire ne pas l'envoyer du tout."
+    },
+    {
+      "id": "33_205",
+      "gf_field_id": 205,
+      "name": "input_205",
+      "label": "Date de création de l'entreprise (ou d'installation comme indépendant)",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "La Mobilière a rendu ce renseignement obligatoire.",
+      "placeholder": "jj/mm/aaaa",
+      "disabled": true
+    },
+    {
+      "id": "33_201",
+      "gf_field_id": 201,
+      "name": "input_201",
+      "label": "Numéro UID",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "Generali a rendu ce renseignement obligatoire. Pour le trouver, rendez-vous sur ce lien : https://links.agencemendes.ch/DmfC",
+      "disabled": true
+    },
+    {
+      "id": "33_192",
+      "gf_field_id": 192,
+      "name": "input_192",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "33_35",
+      "gf_field_id": 35,
+      "name": "input_35",
+      "label": "Date du rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "33_189",
+      "gf_field_id": 189,
+      "name": "input_189",
+      "label": "Date d'effet",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "33_193",
+      "gf_field_id": 193,
+      "name": "input_193",
+      "label": "Fichier à inclure",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "33_210",
+      "gf_field_id": 210,
+      "name": "input_210",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_192",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "33_195",
+      "gf_field_id": 195,
+      "name": "input_195",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "33_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}

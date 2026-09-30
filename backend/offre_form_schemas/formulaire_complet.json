@@ -1,0 +1,3281 @@
+{
+  "id": "formulaire_complet",
+  "label": "Formulaire complet",
+  "category": "Autre",
+  "title": "Indépendant / Entreprise",
+  "gravity_form_id": 94,
+  "source_file": "Texte collé (2)(1).txt",
+  "fields_count": 155,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Étape 1"
+    },
+    {
+      "page": 2,
+      "label": "Étape 2"
+    },
+    {
+      "page": 3,
+      "label": "Étape 3"
+    },
+    {
+      "page": 4,
+      "label": "Étape 4"
+    },
+    {
+      "page": 5,
+      "label": "Étape 5"
+    },
+    {
+      "page": 6,
+      "label": "Étape 6"
+    },
+    {
+      "page": 7,
+      "label": "Étape 7"
+    },
+    {
+      "page": 8,
+      "label": "Étape 8"
+    },
+    {
+      "page": 9,
+      "label": "Étape 9"
+    }
+  ],
+  "page_count": 9,
+  "fields": [
+    {
+      "id": "94_110",
+      "gf_field_id": 110,
+      "name": "input_110",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "Indépendant / Entreprise"
+    },
+    {
+      "id": "94_190",
+      "gf_field_id": 190,
+      "name": "input_190",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "94_191_3",
+      "gf_field_id": 191,
+      "name": "input_191.3",
+      "label": "Prénom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "94_191_6",
+      "gf_field_id": 191,
+      "name": "input_191.6",
+      "label": "Nom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "94_192",
+      "gf_field_id": 192,
+      "name": "input_192",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "94_193",
+      "gf_field_id": 193,
+      "name": "input_193",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "94_3",
+      "gf_field_id": 3,
+      "name": "input_3",
+      "label": "Renseignements généraux",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "94_4",
+      "gf_field_id": 4,
+      "name": "input_4",
+      "label": "Nom de l'entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "94_5",
+      "gf_field_id": 5,
+      "name": "input_5",
+      "label": "Activité de l'entreprise",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Description exacte de l'activité, le registre du commerce ne suffit pas."
+    },
+    {
+      "id": "94_88",
+      "gf_field_id": 88,
+      "name": "input_88",
+      "label": "Chiffre d'affaire",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "94_7",
+      "gf_field_id": 7,
+      "name": "input_7",
+      "label": "Avez-vous des employés ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "94_112",
+      "gf_field_id": 112,
+      "name": "input_112",
+      "label": "Nouvelle création ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "94_108",
+      "gf_field_id": 108,
+      "name": "input_108",
+      "label": "Date d'installation comme indépendant",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj/mm/aaaa"
+    },
+    {
+      "id": "94_8_1",
+      "gf_field_id": 8,
+      "name": "input_8.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "94_8_3",
+      "gf_field_id": 8,
+      "name": "input_8.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "94_8_5",
+      "gf_field_id": 8,
+      "name": "input_8.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "94_8_6",
+      "gf_field_id": 8,
+      "name": "input_8.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden"
+    },
+    {
+      "id": "94_70",
+      "gf_field_id": 70,
+      "name": "input_70",
+      "label": "Canton",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "94_103",
+      "gf_field_id": 103,
+      "name": "input_103",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "94_104",
+      "gf_field_id": 104,
+      "name": "input_104",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "94_101",
+      "gf_field_id": 101,
+      "name": "input_101",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 1
+    },
+    {
+      "id": "94_10",
+      "gf_field_id": 10,
+      "name": "input_10",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "94_11",
+      "gf_field_id": 11,
+      "name": "input_11",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "94_12",
+      "gf_field_id": 12,
+      "name": "input_12",
+      "label": "Permis de séjour",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_112",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_89",
+      "gf_field_id": 89,
+      "name": "input_89",
+      "label": "Salaire AVS",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Salaire annuel"
+    },
+    {
+      "id": "94_14",
+      "gf_field_id": 14,
+      "name": "input_14",
+      "label": "RC Entreprise",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "94_15",
+      "gf_field_id": 15,
+      "name": "input_15",
+      "label": "RC Entreprise ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "94_82",
+      "gf_field_id": 82,
+      "name": "input_82",
+      "label": "Ancien assureur ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_15",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_83",
+      "gf_field_id": 83,
+      "name": "input_83",
+      "label": "Nom de la compagnie",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_15",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_111",
+      "gf_field_id": 111,
+      "name": "input_111",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_15",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_114",
+      "gf_field_id": 114,
+      "name": "input_114",
+      "label": "Quel type de contrat RC souhaitez-vous ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "RC de base (bureau)",
+        "RC spécifique à l'activité"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_15",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_115",
+      "gf_field_id": 115,
+      "name": "input_115",
+      "label": "Merci d'indiquer les couvertures complémentaires souhaitées :",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_15",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_117",
+      "gf_field_id": 117,
+      "name": "input_117",
+      "label": "Somme d'assurance",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "3 Mio.",
+        "5 Mio.",
+        "10 Mio."
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_15",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_118",
+      "gf_field_id": 118,
+      "name": "input_118",
+      "label": "Franchise",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "0.-",
+        "200.-",
+        "500.-",
+        "1'000.-",
+        "2'000.-",
+        "5'000.-"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_15",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_119",
+      "gf_field_id": 119,
+      "name": "input_119",
+      "label": "Commentaires Responsabilité Civile",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_15",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_121",
+      "gf_field_id": 121,
+      "name": "input_121",
+      "label": "Assurances choses entreprise",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "94_122",
+      "gf_field_id": 122,
+      "name": "input_122",
+      "label": "Souhaitez-vous une assurance Choses ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3
+    },
+    {
+      "id": "94_123",
+      "gf_field_id": 123,
+      "name": "input_123",
+      "label": "Assureur précédent ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_124",
+      "gf_field_id": 124,
+      "name": "input_124",
+      "label": "Compagnie",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_125",
+      "gf_field_id": 125,
+      "name": "input_125",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_126_1",
+      "gf_field_id": 126,
+      "name": "input_126.1",
+      "label": "Adresse postale",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_126_3",
+      "gf_field_id": 126,
+      "name": "input_126.3",
+      "label": "Ville",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_126_5",
+      "gf_field_id": 126,
+      "name": "input_126.5",
+      "label": "Code postal",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_126_6",
+      "gf_field_id": 126,
+      "name": "input_126.6",
+      "label": "Pays",
+      "required": false,
+      "options": [
+        "Afghanistan",
+        "Afrique du Sud",
+        "Albanie",
+        "Algérie",
+        "Allemagne",
+        "Andorre",
+        "Angola",
+        "Anguilla",
+        "Antarctique",
+        "Antigua-et-Barbuda",
+        "Arabie Saoudite",
+        "Argentine",
+        "Arménie",
+        "Aruba",
+        "Australie",
+        "Autriche",
+        "Azerbaïdjan",
+        "Bahamas",
+        "Bahreïn",
+        "Bangladesh",
+        "Belarus",
+        "Belgique",
+        "Belize",
+        "Bermudes",
+        "Bhoutan",
+        "Bolivie",
+        "Bonaire, Saint-Eustache et Saba",
+        "Bosnie-Herzégovine",
+        "Botswana",
+        "Brunei Darussalam",
+        "Brésil",
+        "Bulgarie",
+        "Burkina Faso",
+        "Burundi",
+        "Bénin",
+        "Cambodge",
+        "Cameroun",
+        "Canada",
+        "Cap-Vert",
+        "Chili",
+        "Chine",
+        "Chypre",
+        "Colombie",
+        "Comores",
+        "Congo",
+        "Corée (République de)",
+        "Corée (République populaire démocratique de)",
+        "Costa Rica",
+        "Croatie",
+        "Cuba",
+        "Curaçao",
+        "Côte d’Ivoire",
+        "Danemark",
+        "Djibouti",
+        "Dominique",
+        "Espagne",
+        "Estonie",
+        "Eswatini",
+        "Fidji",
+        "Finlande",
+        "France",
+        "Fédération Russe",
+        "Gabon",
+        "Gambie",
+        "Ghana",
+        "Gibraltar",
+        "Grenade",
+        "Groenland",
+        "Grèce",
+        "Guadeloupe",
+        "Guam",
+        "Guatemala",
+        "Guernsey",
+        "Guinée",
+        "Guinée équatoriale",
+        "Guinée-Bissau",
+        "Guyane",
+        "Géorgie",
+        "Géorgie du Sud et Îles Sandwich du Sud",
+        "Haïti",
+        "Honduras",
+        "Hong Kong",
+        "Hongrie",
+        "Inde",
+        "Indonésie",
+        "Irak",
+        "Iran",
+        "Irlande",
+        "Islande",
+        "Israël",
+        "Italie",
+        "Jamaïque",
+        "Japon",
+        "Jersey",
+        "Jordanie",
+        "Kazakhstan",
+        "Kenya",
+        "Kirghizistan",
+        "Kiribati",
+        "Koweït",
+        "La Barbade",
+        "La Réunion",
+        "Lesotho",
+        "Lettonie",
+        "Liban",
+        "Liberia",
+        "Libye",
+        "Liechtenstein",
+        "Lituanie",
+        "Luxembourg",
+        "Macao",
+        "Macédoine du Nord",
+        "Madagascar",
+        "Malaisie",
+        "Malawi",
+        "Maldives",
+        "Mali",
+        "Malte",
+        "Maroc",
+        "Martinique",
+        "Mauritanie",
+        "Mayotte",
+        "Mexique",
+        "Micronésie",
+        "Moldavie",
+        "Monaco",
+        "Mongolie",
+        "Montserrat",
+        "Monténégro",
+        "Mozambique",
+        "Myanmar",
+        "Namibie",
+        "Nauru",
+        "Nicaragua",
+        "Niger",
+        "Nigéria",
+        "Niué",
+        "Norvège",
+        "Nouvelle-Calédonie",
+        "Nouvelle-Zélande",
+        "Népal",
+        "Oman",
+        "Ouganda",
+        "Ouzbékistan",
+        "Pakistan",
+        "Palau",
+        "Panama",
+        "Papouasie-Nouvelle-Guinée",
+        "Paraguay",
+        "Pays-Bas",
+        "Philippines",
+        "Pologne",
+        "Polynésie française",
+        "Porto Rico",
+        "Portugal",
+        "Pérou",
+        "Qatar",
+        "Roumanie",
+        "Royaume-Uni",
+        "Rwanda",
+        "République Dominicaine",
+        "République Tchèque",
+        "République arabe syrienne",
+        "République centrafricaine",
+        "République démocratique du Congo",
+        "République démocratique populaire du Laos",
+        "Sahara occidental",
+        "Saint Barthélemy",
+        "Saint Martin",
+        "Saint Pierre et Miquelon",
+        "Saint-Christophe-et-Nevis",
+        "Saint-Marin",
+        "Saint-Siège",
+        "Saint-Vincent-et-les Grenadines",
+        "Sainte-Hélène, Ascension et Tristan da Cunha",
+        "Sainte-Lucie",
+        "Salvador",
+        "Samoa",
+        "Samoa américaines",
+        "Sao Tomé et Principe",
+        "Serbie",
+        "Seychelles",
+        "Sierra Leone",
+        "Singapour",
+        "Sint Maarten",
+        "Slovaquie",
+        "Slovénie",
+        "Somalie",
+        "Soudan",
+        "Soudan du Sud",
+        "Sri Lanka",
+        "Suisse",
+        "Suriname",
+        "Suède",
+        "Sénégal",
+        "Tadjikistan",
+        "Tanzanie (République-Unie de)",
+        "Taïwan",
+        "Tchad",
+        "Terres Australes Françaises",
+        "Territoire britannique de l’océan Indien",
+        "Thaïlande",
+        "Timor oriental",
+        "Togo",
+        "Tokelau",
+        "Tonga",
+        "Trinité et Tobago",
+        "Tunisie",
+        "Turkménistan",
+        "Turquie",
+        "Tuvalu",
+        "Ukraine",
+        "Uruguay",
+        "Vanuatu",
+        "Venezuela",
+        "Vietnam",
+        "Wallis et Futuna",
+        "Yémen",
+        "Zambie",
+        "Zimbabwe",
+        "Égypte",
+        "Émirats arabes unis",
+        "Équateur",
+        "Érythrée",
+        "État palestinien",
+        "États-Unis",
+        "Éthiopie",
+        "Île Bouvet",
+        "Île Christmas",
+        "Île Maurice",
+        "Île Norfolk",
+        "Île de Man",
+        "Îles Cayman",
+        "Îles Cocos",
+        "Îles Cook",
+        "Îles Falkland",
+        "Îles Féroé",
+        "Îles Heard et McDonald",
+        "Îles Mariannes du Nord",
+        "Îles Marshall",
+        "Îles Pitcairn",
+        "Îles Salomon",
+        "Îles Turques et Caïques",
+        "Îles Vierges américaines",
+        "Îles Vierges britanniques",
+        "Îles de Svalbard et Jan Mayen",
+        "Îles mineures américaines",
+        "Îles Åland"
+      ],
+      "page": 3,
+      "disabled": true,
+      "type": "select",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_127",
+      "gf_field_id": 127,
+      "name": "input_127",
+      "label": "Incendie",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_128",
+      "gf_field_id": 128,
+      "name": "input_128",
+      "label": "Valeur totale",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "description": "Somme d'assurance",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_129",
+      "gf_field_id": 129,
+      "name": "input_129",
+      "label": "Evénements naturels",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_130",
+      "gf_field_id": 130,
+      "name": "input_130",
+      "label": "Montant",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_131",
+      "gf_field_id": 131,
+      "name": "input_131",
+      "label": "Vol",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_132",
+      "gf_field_id": 132,
+      "name": "input_132",
+      "label": "Marchandises dans véhicules à moteur",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_137",
+      "gf_field_id": 137,
+      "name": "input_137",
+      "label": "Somme d'assurance",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_134",
+      "gf_field_id": 134,
+      "name": "input_134",
+      "label": "Dégâts d'eau",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_138",
+      "gf_field_id": 138,
+      "name": "input_138",
+      "label": "Valeur totale",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_133",
+      "gf_field_id": 133,
+      "name": "input_133",
+      "label": "Glace",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_139",
+      "gf_field_id": 139,
+      "name": "input_139",
+      "label": "Somme d'assurance",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_135",
+      "gf_field_id": 135,
+      "name": "input_135",
+      "label": "Electronique de bureau",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_140",
+      "gf_field_id": 140,
+      "name": "input_140",
+      "label": "Somme d'assurance",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_136",
+      "gf_field_id": 136,
+      "name": "input_136",
+      "label": "Altération des marchandises",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_141",
+      "gf_field_id": 141,
+      "name": "input_141",
+      "label": "Somme d'assurance",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_142",
+      "gf_field_id": 142,
+      "name": "input_142",
+      "label": "Perte de rendement",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "non"
+      ],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_143",
+      "gf_field_id": 143,
+      "name": "input_143",
+      "label": "Chiffre d'affaires",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "description": "pour la perte de rendement",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_145",
+      "gf_field_id": 145,
+      "name": "input_145",
+      "label": "Dégâts d'eau",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "description": "chiffre d'affaire",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_144",
+      "gf_field_id": 144,
+      "name": "input_144",
+      "label": "Incendie",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "description": "chiffre d'affaire",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_146",
+      "gf_field_id": 146,
+      "name": "input_146",
+      "label": "Vol",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "description": "chiffre d'affaire",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_147",
+      "gf_field_id": 147,
+      "name": "input_147",
+      "label": "Commentaires assurance choses entreprise",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_122",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_92",
+      "gf_field_id": 92,
+      "name": "input_92",
+      "label": "Perte de Gain Maladie",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "94_96",
+      "gf_field_id": 96,
+      "name": "input_96",
+      "label": "Perte de gain maladie ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4
+    },
+    {
+      "id": "94_97",
+      "gf_field_id": 97,
+      "name": "input_97",
+      "label": "Ancien assureur ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_96",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_98",
+      "gf_field_id": 98,
+      "name": "input_98",
+      "label": "Nom de la compagnie",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_96",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_84",
+      "gf_field_id": 84,
+      "name": "input_84",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_96",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_77",
+      "gf_field_id": 77,
+      "name": "input_77",
+      "label": "Date d'effet",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_96",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_16",
+      "gf_field_id": 16,
+      "name": "input_16",
+      "label": "Délai d'attente",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_96",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_17",
+      "gf_field_id": 17,
+      "name": "input_17",
+      "label": "Salaire assuré",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_96",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_18",
+      "gf_field_id": 18,
+      "name": "input_18",
+      "label": "Pourcentage",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_96",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_106",
+      "gf_field_id": 106,
+      "name": "input_106",
+      "label": "À quelle couverture le client souhaite-il souscire ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Assurance de dommage",
+        "Assurance de somme"
+      ],
+      "page": 4,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_96",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_19",
+      "gf_field_id": 19,
+      "name": "input_19",
+      "label": "Ajouter l'accident ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_96",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_21",
+      "gf_field_id": 21,
+      "name": "input_21",
+      "label": "LAA Facultative",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 5
+    },
+    {
+      "id": "94_22",
+      "gf_field_id": 22,
+      "name": "input_22",
+      "label": "Ajouter une LAA facultative ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5
+    },
+    {
+      "id": "94_85",
+      "gf_field_id": 85,
+      "name": "input_85",
+      "label": "Ancien assureur ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 5,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_22",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_86",
+      "gf_field_id": 86,
+      "name": "input_86",
+      "label": "Nom de la compagnie",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 5,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_22",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_87",
+      "gf_field_id": 87,
+      "name": "input_87",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 5,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_22",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_80",
+      "gf_field_id": 80,
+      "name": "input_80",
+      "label": "Date d'effet",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 5,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_22",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_23",
+      "gf_field_id": 23,
+      "name": "input_23",
+      "label": "Salaire à assurer",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 5,
+      "description": "Minimum 66 690 CHF",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_22",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_25",
+      "gf_field_id": 25,
+      "name": "input_25",
+      "label": "LAA Complémentaire",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 6
+    },
+    {
+      "id": "94_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Ajouter une LAA complémentaire ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6
+    },
+    {
+      "id": "94_113",
+      "gf_field_id": 113,
+      "name": "input_113",
+      "label": "Ancien assureur ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_183",
+      "gf_field_id": 183,
+      "name": "input_183",
+      "label": "Compagnie",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_184",
+      "gf_field_id": 184,
+      "name": "input_184",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_79",
+      "gf_field_id": 79,
+      "name": "input_79",
+      "label": "Date d'effet",
+      "type": "date",
+      "required": false,
+      "options": [],
+      "page": 6,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Frais de guérison en privée ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_26",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_29",
+      "gf_field_id": 29,
+      "name": "input_29",
+      "label": "Rente d'invalidité",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 7
+    },
+    {
+      "id": "94_30",
+      "gf_field_id": 30,
+      "name": "input_30",
+      "label": "Ajouter une rente d'invalidité ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 7
+    },
+    {
+      "id": "94_78",
+      "gf_field_id": 78,
+      "name": "input_78",
+      "label": "Date d'effet",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 7,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_31",
+      "gf_field_id": 31,
+      "name": "input_31",
+      "label": "Maladie et/ou accident ?",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Maladie",
+        "Accident"
+      ],
+      "page": 7,
+      "description": "Les deux choix sont possibles",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_36",
+      "gf_field_id": 36,
+      "name": "input_36",
+      "label": "Montant à assurer",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 7,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_32",
+      "gf_field_id": 32,
+      "name": "input_32",
+      "label": "Délai d'attente",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 7,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_71",
+      "gf_field_id": 71,
+      "name": "input_71",
+      "label": "Jusqu'à quel âge ?",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 7,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_73",
+      "gf_field_id": 73,
+      "name": "input_73",
+      "label": "Libre ou lié ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Libre",
+        "Lié"
+      ],
+      "page": 7,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_33",
+      "gf_field_id": 33,
+      "name": "input_33",
+      "label": "Taille",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 7,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_34",
+      "gf_field_id": 34,
+      "name": "input_34",
+      "label": "Poids",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 7,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_35",
+      "gf_field_id": 35,
+      "name": "input_35",
+      "label": "Fumeur ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 7,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_74",
+      "gf_field_id": 74,
+      "name": "input_74",
+      "label": "Niveau d'étude",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 7,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_150",
+      "gf_field_id": 150,
+      "name": "input_150",
+      "label": "Assurances de personnes employés",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 8,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_149",
+      "gf_field_id": 149,
+      "name": "input_149",
+      "label": "Souhaitez-vous une assurance pour les employés ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_151",
+      "gf_field_id": 151,
+      "name": "input_151",
+      "label": "Nombre de femmes",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_153",
+      "gf_field_id": 153,
+      "name": "input_153",
+      "label": "Âge moyen des femmes",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_152",
+      "gf_field_id": 152,
+      "name": "input_152",
+      "label": "Somme es salaires femmes",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "description": "Salaire annuel",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_154",
+      "gf_field_id": 154,
+      "name": "input_154",
+      "label": "Nombre d'hommes",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_155",
+      "gf_field_id": 155,
+      "name": "input_155",
+      "label": "Âge moyen des hommes",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_156",
+      "gf_field_id": 156,
+      "name": "input_156",
+      "label": "Somme es salaires hommes",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "description": "Salaire annuel",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_158",
+      "gf_field_id": 158,
+      "name": "input_158",
+      "label": "LAA obligatoire",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 8,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_159",
+      "gf_field_id": 159,
+      "name": "input_159",
+      "label": "Souhaitez-vous une offre LAA obligatoire ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non",
+        "SUVA"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_160",
+      "gf_field_id": 160,
+      "name": "input_160",
+      "label": "Assureur précédent",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_161",
+      "gf_field_id": 161,
+      "name": "input_161",
+      "label": "Compagnie",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_162",
+      "gf_field_id": 162,
+      "name": "input_162",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_185",
+      "gf_field_id": 185,
+      "name": "input_185",
+      "label": "LAA complémentaire",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 8,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_163",
+      "gf_field_id": 163,
+      "name": "input_163",
+      "label": "Souhaitez-vous une offre LAA complémentaire ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_187",
+      "gf_field_id": 187,
+      "name": "input_187",
+      "label": "Assureur précédent",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_188",
+      "gf_field_id": 188,
+      "name": "input_188",
+      "label": "Compagnie",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_189",
+      "gf_field_id": 189,
+      "name": "input_189",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_186",
+      "gf_field_id": 186,
+      "name": "input_186",
+      "label": "Frais de traitement privé",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_164",
+      "gf_field_id": 164,
+      "name": "input_164",
+      "label": "Indémnité journalière salaire LAA",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "10%",
+        "20%"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_166",
+      "gf_field_id": 166,
+      "name": "input_166",
+      "label": "Indémnité journalière salaire LAA (jours de carence)",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "80%",
+        "90%",
+        "100%"
+      ],
+      "page": 8,
+      "description": "Du 1er au 2ème jour",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_165",
+      "gf_field_id": 165,
+      "name": "input_165",
+      "label": "Délai d'attente",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "2 jours",
+        "3 jours",
+        "7 jours",
+        "14 jours",
+        "30 jours",
+        "60 jours",
+        "90 jours",
+        "180 jours"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_167",
+      "gf_field_id": 167,
+      "name": "input_167",
+      "label": "Indemnité journalière salaire excédentaire",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "80%",
+        "90%",
+        "100%"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_168",
+      "gf_field_id": 168,
+      "name": "input_168",
+      "label": "Délai d'attente",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "0 jour",
+        "1 jour",
+        "2 jours",
+        "3 jours",
+        "7 jours",
+        "14 jours",
+        "30 jours",
+        "60 jours",
+        "90 jours",
+        "180 jours"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_169",
+      "gf_field_id": 169,
+      "name": "input_169",
+      "label": "Capital d'invalidité",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 8,
+      "description": "x salaire LAA",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_170",
+      "gf_field_id": 170,
+      "name": "input_170",
+      "label": "Progression",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "Sans",
+        "225%",
+        "350%"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_171",
+      "gf_field_id": 171,
+      "name": "input_171",
+      "label": "Rente d'invalidité sur le salaire excédentaire",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_172",
+      "gf_field_id": 172,
+      "name": "input_172",
+      "label": "Capital décès",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 8,
+      "description": "x salaire LAA",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_173",
+      "gf_field_id": 173,
+      "name": "input_173",
+      "label": "Rente de survivant sur le salaire excédentaire",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_174",
+      "gf_field_id": 174,
+      "name": "input_174",
+      "label": "Couverture différence LAA",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_175",
+      "gf_field_id": 175,
+      "name": "input_175",
+      "label": "Assurance collective perte de gain maladie",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 8,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_176",
+      "gf_field_id": 176,
+      "name": "input_176",
+      "label": "Souhaitez-vous une offre pour une perte de gain maladie collective (employés) ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_177",
+      "gf_field_id": 177,
+      "name": "input_177",
+      "label": "Assureur précédent",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_178",
+      "gf_field_id": 178,
+      "name": "input_178",
+      "label": "Compagnie",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_179",
+      "gf_field_id": 179,
+      "name": "input_179",
+      "label": "Merci de joindre la fiche de renseignements des sinistres",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_180",
+      "gf_field_id": 180,
+      "name": "input_180",
+      "label": "Indémnité journalière",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "80%",
+        "90%",
+        "100%"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_181",
+      "gf_field_id": 181,
+      "name": "input_181",
+      "label": "Indémnité journalière",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "3 jours",
+        "7 jours",
+        "14 jours",
+        "30 jours"
+      ],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_182",
+      "gf_field_id": 182,
+      "name": "input_182",
+      "label": "Commentaires pour assurance de personnes employés",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 8,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_63",
+      "gf_field_id": 63,
+      "name": "input_63",
+      "label": "Registre du commerce",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 9
+    },
+    {
+      "id": "94_64",
+      "gf_field_id": 64,
+      "name": "input_64",
+      "label": "Merci de nous inclure la copie du registre du commerce",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 9,
+      "description": "Copie PDF de Zefix : http://zefix.admin.ch/"
+    },
+    {
+      "id": "94_68",
+      "gf_field_id": 68,
+      "name": "input_68",
+      "label": "Validation de la demande",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 9
+    },
+    {
+      "id": "94_65",
+      "gf_field_id": 65,
+      "name": "input_65",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Allianz",
+        "Axa",
+        "Generali (Romandie Courtage uniquement)",
+        "La Mobilière",
+        "Zurich",
+        "Helvetia",
+        "Innova (Perte de gain uniquement)",
+        "Pax",
+        "Vaudoise",
+        "Envoi du formulaire"
+      ],
+      "page": 9,
+      "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois àr nous communiquer une offre, voire ne pas l'envoyer du tout.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_194",
+      "gf_field_id": 194,
+      "name": "input_194",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Allianz",
+        "Axa",
+        "Generali (Romandie Courtage uniquement)",
+        "La Mobilière",
+        "Zurich",
+        "Innova (Perte de gain uniquement)",
+        "Pax",
+        "Vaudoise",
+        "Envoi du formulaire"
+      ],
+      "page": 9,
+      "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois àr nous communiquer une offre, voire ne pas l'envoyer du tout.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_109",
+      "gf_field_id": 109,
+      "name": "input_109",
+      "label": "Numéro UID",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 9,
+      "description": "Generali a rendu ce renseignement obligatoire. Pour le trouver, rendez-vous sur ce lien : https://links.agencemendes.ch/DmfC",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_107",
+      "gf_field_id": 107,
+      "name": "input_107",
+      "label": "Champ 107",
+      "type": "html",
+      "required": false,
+      "options": [],
+      "page": 9,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_30",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_67",
+      "gf_field_id": 67,
+      "name": "input_67",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 9
+    },
+    {
+      "id": "94_81",
+      "gf_field_id": 81,
+      "name": "input_81",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 9
+    },
+    {
+      "id": "94_66",
+      "gf_field_id": 66,
+      "name": "input_66",
+      "label": "Date du prochain rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 9,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "94_100",
+      "gf_field_id": 100,
+      "name": "input_100",
+      "label": "Autre(s) document(s) à inclure",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 9
+    },
+    {
+      "id": "94_195",
+      "gf_field_id": 195,
+      "name": "input_195",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 9,
+      "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_81",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "94_102",
+      "gf_field_id": 102,
+      "name": "input_102",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 9
+    },
+    {
+      "id": "94_105",
+      "gf_field_id": 105,
+      "name": "input_105",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 9,
+      "default": "Français"
+    },
+    {
+      "id": "94_2",
+      "gf_field_id": 2,
+      "name": "input_2",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 9,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}
