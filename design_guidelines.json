@@ -1,0 +1,114 @@
+{
+  "theme_strategy": "Light theme default. Clean, precise Swiss Modern approach. Calm defaults with ranked attention. Dark mode toggle supported.",
+  "typography": {
+    "headings": {
+      "family": "'Chivo', sans-serif",
+      "import": "@import url('https://fonts.googleapis.com/css2?family=Chivo:wght@300;400;700;900&display=swap');",
+      "rules": "Use radical weight contrast. Tight tracking for h1/h2 (tracking-tight). Avoid generic 'Inter' for headings."
+    },
+    "body": {
+      "family": "'IBM Plex Sans', sans-serif",
+      "import": "@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap');",
+      "rules": "Highly legible, professional, clean reading suitable for dense financial data."
+    }
+  },
+  "colors": {
+    "archetype": "SWISS & HIGH-CONTRAST (Authority, Clarity, Truth)",
+    "palette": {
+      "light": {
+        "background": "#F9FAFB",
+        "surface": "#FFFFFF",
+        "primary": "#0F172A",
+        "secondary": "#64748B",
+        "accent": "#002FA7",
+        "border": "#E2E8F0",
+        "text": "#0F172A",
+        "text_muted": "#64748B"
+      },
+      "dark": {
+        "background": "#0B0F19",
+        "surface": "#111827",
+        "primary": "#FFFFFF",
+        "secondary": "#94A3B8",
+        "accent": "#3B82F6",
+        "border": "#1F2937",
+        "text": "#F8FAFC",
+        "text_muted": "#94A3B8"
+      }
+    },
+    "kanban_statuses": {
+      "Nouveau": "bg-blue-100 text-blue-800 border-blue-200",
+      "Documents demandés": "bg-amber-100 text-amber-800 border-amber-200",
+      "Documents reçus": "bg-emerald-100 text-emerald-800 border-emerald-200",
+      "Analyse en cours": "bg-purple-100 text-purple-800 border-purple-200",
+      "Rapport en préparation": "bg-pink-100 text-pink-800 border-pink-200",
+      "À présenter au client": "bg-cyan-100 text-cyan-800 border-cyan-200",
+      "Clôturé": "bg-slate-100 text-slate-800 border-slate-200"
+    }
+  },
+  "visual_enhancers": {
+    "surfaces": "Grid Borders style. 1px solid borders. No soft or muddy shadows. Content density must be high but distinctly organized.",
+    "spacing": "Generous Spacing inside components. Use p-6 or p-8 inside cards.",
+    "icons": "lucide-react (stroke-width: 1.5, use consistently)"
+  },
+  "components": {
+    "buttons": "Sharp or slightly rounded (rounded-md). High contrast solid primary or strict outline. Hover states must shift color explicitly.",
+    "cards": "Subtle Neumorphism mixed with Grid Borders. Max 8px border-radius.",
+    "kanban": "Clear column separation with visible borders. Cards must be draggable, tight padding, distinct status badges.",
+    "forms": "shadcn/ui form elements. Clear labeling above inputs.",
+    "table": "High density, clear horizontal borders. Avoid zebra striping; use hover row highlights instead.",
+    "tabs": "Minimalist underline style or pill style. Must not feel cluttered."
+  },
+  "grids_layouts": {
+    "dashboard": "High-density Grid. Base: grid-cols-1 lg:grid-cols-4. Summary KPIs top (col-span-1 each), main charts middle (col-span-2 or 3), recent activity feed side (col-span-1 row-span-2).",
+    "client_detail": "Sidebar-main layout. col-span-3 for profile summary (left), col-span-9 for deep dive tabs (right: Infos, RDV, Notes, Documents).",
+    "kanban_board": "Horizontal scroll flex container with fixed width columns (min-w-[300px])."
+  },
+  "motion": {
+    "interactions": "Crisp and fast. hover:-translate-y-[1px] transition-transform duration-200.",
+    "transitions": "Page loads with subtle fade-in and slide-up. Kanban drag feels solid, not bouncy."
+  },
+  "accessibility": {
+    "contrast": "APCA standards required. High contrast text.",
+    "focus": "Clear focus rings (focus:ring-2 focus:ring-accent focus:outline-none) on all inputs/buttons.",
+    "testing": "All interactive/key elements MUST include data-testid attribute (kebab-case, role-based)."
+  },
+  "media": {
+    "images": [
+      {
+        "url": "https://images.pexels.com/photos/17057591/pexels-photo-17057591.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "login_background",
+        "description": "Modern Swiss architecture image for the Google login page background."
+      },
+      {
+        "url": "https://images.pexels.com/photos/37148308/pexels-photo-37148308.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "avatar_1",
+        "description": "Client or advisor profile picture."
+      },
+      {
+        "url": "https://images.pexels.com/photos/27086922/pexels-photo-27086922.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "avatar_2",
+        "description": "Client or advisor profile picture."
+      }
+    ]
+  },
+  "3d_libraries": {
+    "usage": "Not recommended for this CRM. Keep it 2D and highly readable with Recharts for data visualization."
+  },
+  "component_paths": {
+    "shadcn": "src/components/ui"
+  },
+  "instructions_to_main_agent": [
+    "Build the dashboard using React, Tailwind CSS, and shadcn/ui components.",
+    "The UI language MUST be French (e.g., 'Nouveau dossier', 'Rendez-vous', 'Rechercher un client', 'Se connecter avec Google').",
+    "Implement a Google Sign-in screen featuring the provided login_background image on one half of the screen.",
+    "Implement a Sidebar Navigation for global routing (Tableau de bord, Clients, Agenda, Documents).",
+    "Implement the Dashboard with KPI cards, Recharts graphs for monthly stats, and a Kanban board for case statuses.",
+    "Implement a comprehensive Client Detail page with tabs for personal/professional info, RDV history, internal notes, and document management.",
+    "Implement a Global Search bar in the header.",
+    "Ensure all interactive elements have data-testid attributes.",
+    "Do NOT use transparent backgrounds in headers, modals, or dropdowns. Use solid or heavily blurred (glassmorphism with 1px border) backgrounds.",
+    "Avoid generic 'Inter' font for headings; implement Chivo for headings and IBM Plex Sans for body."
+  ],
+  "universal_guidelines_for_main_agent": "Avoid generic centered layouts. Prioritize asymmetric, highly organized grid layouts (Swiss design). Create depth with 1px borders and very subtle shadows, avoiding muddy drop shadows. Every interaction needs micro-animations (e.g., color shift on hover). NEVER use AI assistant emoji characters. Ensure strict adherence to contrast rules."
+}

@@ -1,0 +1,2134 @@
+{
+  "id": "pilier3_risque_pur",
+  "label": "3ème pilier Risque pur / rente invalidité",
+  "category": "3ème pilier",
+  "title": "3ème pilier - Risque pur et rente d'invalidité",
+  "gravity_form_id": 42,
+  "source_file": "Texte collé (2).txt",
+  "fields_count": 118,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Renseignements généraux"
+    },
+    {
+      "page": 2,
+      "label": "Couverture & envoi"
+    }
+  ],
+  "page_count": 2,
+  "fields": [
+    {
+      "id": "42_115",
+      "gf_field_id": 115,
+      "name": "input_115",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "3ème pilier - Risque pur et rente d"
+    },
+    {
+      "id": "42_118",
+      "gf_field_id": 118,
+      "name": "input_118",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "42_119_3",
+      "gf_field_id": 119,
+      "name": "input_119.3",
+      "label": "Prénom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "42_119_6",
+      "gf_field_id": 119,
+      "name": "input_119.6",
+      "label": "Nom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "42_120",
+      "gf_field_id": 120,
+      "name": "input_120",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "42_121",
+      "gf_field_id": 121,
+      "name": "input_121",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "42_4",
+      "gf_field_id": 4,
+      "name": "input_4",
+      "label": "Preneur d'assurance",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "42_110",
+      "gf_field_id": 110,
+      "name": "input_110",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Madame",
+        "Monsieur"
+      ],
+      "page": 1
+    },
+    {
+      "id": "42_45",
+      "gf_field_id": 45,
+      "name": "input_45",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "42_46",
+      "gf_field_id": 46,
+      "name": "input_46",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "42_47",
+      "gf_field_id": 47,
+      "name": "input_47",
+      "label": "Sexe",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Masculin",
+        "Féminin"
+      ],
+      "page": 1
+    },
+    {
+      "id": "42_7",
+      "gf_field_id": 7,
+      "name": "input_7",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "42_22",
+      "gf_field_id": 22,
+      "name": "input_22",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "42_23",
+      "gf_field_id": 23,
+      "name": "input_23",
+      "label": "Permis",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Aucun permis",
+        "Permis B",
+        "Permis C",
+        "Permis G",
+        "Permis L"
+      ],
+      "page": 1
+    },
+    {
+      "id": "42_58",
+      "gf_field_id": 58,
+      "name": "input_58",
+      "label": "Date du permis de séjour",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true
+    },
+    {
+      "id": "42_59",
+      "gf_field_id": 59,
+      "name": "input_59",
+      "label": "Impôts à la source ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1,
+      "disabled": true
+    },
+    {
+      "id": "42_6_1",
+      "gf_field_id": 6,
+      "name": "input_6.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "42_6_3",
+      "gf_field_id": 6,
+      "name": "input_6.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "42_6_4",
+      "gf_field_id": 6,
+      "name": "input_6.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "42_6_5",
+      "gf_field_id": 6,
+      "name": "input_6.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "42_6_6",
+      "gf_field_id": 6,
+      "name": "input_6.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "42_48",
+      "gf_field_id": 48,
+      "name": "input_48",
+      "label": "Canton de l'employeur",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true
+    },
+    {
+      "id": "42_24",
+      "gf_field_id": 24,
+      "name": "input_24",
+      "label": "Statut professionnel",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Salarié",
+        "Indépendant",
+        "Pas d'activité lucrative"
+      ],
+      "page": 1
+    },
+    {
+      "id": "42_25",
+      "gf_field_id": 25,
+      "name": "input_25",
+      "label": "Profession",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "42_114",
+      "gf_field_id": 114,
+      "name": "input_114",
+      "label": "Travaille-t il plus de 80% dans un bureau (activité administrative) ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "42_109",
+      "gf_field_id": 109,
+      "name": "input_109",
+      "label": "Est-il affilié à une LPP ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "42_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Fumeur",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "42_56",
+      "gf_field_id": 56,
+      "name": "input_56",
+      "label": "Situation",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Célibataire",
+        "Marié(e)",
+        "Veuf/Veuve"
+      ],
+      "page": 1
+    },
+    {
+      "id": "42_99",
+      "gf_field_id": 99,
+      "name": "input_99",
+      "label": "Pratique activité(s) à risque ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "42_100",
+      "gf_field_id": 100,
+      "name": "input_100",
+      "label": "Si oui, quelle(s) activité(s) ?",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Alpinisme - escalade",
+        "Aviation",
+        "Canyoning",
+        "Deltaplane - parapente",
+        "Équitation",
+        "Kitesurf",
+        "Parachutisme",
+        "Plongée subaquatique sportive",
+        "Ski-snowboarding",
+        "Spéléologie",
+        "Sport de combat",
+        "Sports mécaniques",
+        "Voile",
+        "Vol à voile"
+      ],
+      "page": 1,
+      "description": "Plusieurs choix possibles.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_99",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_61",
+      "gf_field_id": 61,
+      "name": "input_61",
+      "label": "Y'a-t-il une deuxième personne à assurer ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "42_111",
+      "gf_field_id": 111,
+      "name": "input_111",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Madame",
+        "Monsieur"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_62",
+      "gf_field_id": 62,
+      "name": "input_62",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_63",
+      "gf_field_id": 63,
+      "name": "input_63",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_64",
+      "gf_field_id": 64,
+      "name": "input_64",
+      "label": "Sexe",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Masculin",
+        "Féminin"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_65",
+      "gf_field_id": 65,
+      "name": "input_65",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_66",
+      "gf_field_id": 66,
+      "name": "input_66",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_67",
+      "gf_field_id": 67,
+      "name": "input_67",
+      "label": "Permis",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Aucun permis",
+        "Permis B",
+        "Permis C",
+        "Permis G",
+        "Permis L"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_68",
+      "gf_field_id": 68,
+      "name": "input_68",
+      "label": "Date du permis de séjour",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_69",
+      "gf_field_id": 69,
+      "name": "input_69",
+      "label": "Impôts à la source ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_70_1",
+      "gf_field_id": 70,
+      "name": "input_70.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_70_3",
+      "gf_field_id": 70,
+      "name": "input_70.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_70_4",
+      "gf_field_id": 70,
+      "name": "input_70.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_70_5",
+      "gf_field_id": 70,
+      "name": "input_70.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_70_6",
+      "gf_field_id": 70,
+      "name": "input_70.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_71",
+      "gf_field_id": 71,
+      "name": "input_71",
+      "label": "Canton de l'employeur",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_72",
+      "gf_field_id": 72,
+      "name": "input_72",
+      "label": "Statut professionnel",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Salarié",
+        "Indépendant",
+        "Pas d'activité lucrative"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_73",
+      "gf_field_id": 73,
+      "name": "input_73",
+      "label": "Profession",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Obligatoire pour Axa.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_74",
+      "gf_field_id": 74,
+      "name": "input_74",
+      "label": "Est-il affilié à une LPP ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_107",
+      "gf_field_id": 107,
+      "name": "input_107",
+      "label": "Fumeur",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_75",
+      "gf_field_id": 75,
+      "name": "input_75",
+      "label": "Situation",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Célibataire",
+        "Marié(e)",
+        "Veuf/Veuve"
+      ],
+      "page": 1,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_61",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_101",
+      "gf_field_id": 101,
+      "name": "input_101",
+      "label": "Pratique activité(s) à risque ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 1
+    },
+    {
+      "id": "42_102",
+      "gf_field_id": 102,
+      "name": "input_102",
+      "label": "Si oui, quelle(s) activité(s) ?",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Alpinisme - escalade",
+        "Aviation",
+        "Canyoning",
+        "Deltaplane - parapente",
+        "Équitation",
+        "Kitesurf",
+        "Parachutisme",
+        "Plongée subaquatique sportive",
+        "Ski-snowboarding",
+        "Spéléologie",
+        "Sport de combat",
+        "Sports mécaniques",
+        "Voile",
+        "Vol à voile"
+      ],
+      "page": 1,
+      "description": "Plusieurs choix possibles.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_101",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_8",
+      "gf_field_id": 8,
+      "name": "input_8",
+      "label": "Caractéristiques du contrat",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "42_29",
+      "gf_field_id": 29,
+      "name": "input_29",
+      "label": "Type de pilier",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Pilier lié 3a",
+        "Pilier libre 3b"
+      ],
+      "page": 2
+    },
+    {
+      "id": "42_30",
+      "gf_field_id": 30,
+      "name": "input_30",
+      "label": "Date de début",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "42_54",
+      "gf_field_id": 54,
+      "name": "input_54",
+      "label": "Périodicité de la prime",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Annuel",
+        "Semestriel",
+        "Trimestriel",
+        "Mensuel",
+        "Prime unique"
+      ],
+      "page": 2
+    },
+    {
+      "id": "42_31",
+      "gf_field_id": 31,
+      "name": "input_31",
+      "label": "Montant de la prime",
+      "type": "number",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "42_55",
+      "gf_field_id": 55,
+      "name": "input_55",
+      "label": "Type de paiement",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "BVR",
+        "Débit direct",
+        "LSV",
+        "Compte de dépôt de prime fermé",
+        "Compte de dépôt de prime ouvert",
+        "Prime unique"
+      ],
+      "page": 2
+    },
+    {
+      "id": "42_34",
+      "gf_field_id": 34,
+      "name": "input_34",
+      "label": "Durée du contrat",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "42_35",
+      "gf_field_id": 35,
+      "name": "input_35",
+      "label": "Âge de terme",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "42_36",
+      "gf_field_id": 36,
+      "name": "input_36",
+      "label": "Exonération du paiement des primes",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "3 mois",
+        "6 mois",
+        "12 mois",
+        "24 mois",
+        "Aucun"
+      ],
+      "page": 2
+    },
+    {
+      "id": "42_37",
+      "gf_field_id": 37,
+      "name": "input_37",
+      "label": "Rente d'invalidité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "42_38",
+      "gf_field_id": 38,
+      "name": "input_38",
+      "label": "Montant de la rente",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_37",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Niveau d'étude",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_37",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_57",
+      "gf_field_id": 57,
+      "name": "input_57",
+      "label": "Diplôme",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Ecole supérieure spécialisée (ESS)",
+        "Diplômes spécialisés ou professionnels supérieurs",
+        "Hautes Ecoles Spécialisées (HES)",
+        "Apprentissage",
+        "CFC ou équivalent"
+      ],
+      "page": 2
+    },
+    {
+      "id": "42_39",
+      "gf_field_id": 39,
+      "name": "input_39",
+      "label": "Avec accident",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_37",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_40",
+      "gf_field_id": 40,
+      "name": "input_40",
+      "label": "Délai d'attente",
+      "type": "select",
+      "required": false,
+      "options": [
+        "3 mois",
+        "6 mois",
+        "9 mois",
+        "12 mois",
+        "24 mois"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_37",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_49",
+      "gf_field_id": 49,
+      "name": "input_49",
+      "label": "Taille",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_37",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_50",
+      "gf_field_id": 50,
+      "name": "input_50",
+      "label": "Poids",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_37",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_41",
+      "gf_field_id": 41,
+      "name": "input_41",
+      "label": "Risque pure",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "42_42",
+      "gf_field_id": 42,
+      "name": "input_42",
+      "label": "Taille",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_41",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_43",
+      "gf_field_id": 43,
+      "name": "input_43",
+      "label": "Poids",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_41",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_52",
+      "gf_field_id": 52,
+      "name": "input_52",
+      "label": "Capital",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_41",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_53",
+      "gf_field_id": 53,
+      "name": "input_53",
+      "label": "Cholesterol ou hyper tension",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_41",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_12",
+      "gf_field_id": 12,
+      "name": "input_12",
+      "label": "Renseignements complémentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "42_13",
+      "gf_field_id": 13,
+      "name": "input_13",
+      "label": "Compagnie",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "42_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Axa",
+        "CCAP",
+        "Allianz",
+        "Generali",
+        "La Mobilière",
+        "Pax",
+        "Helvetia",
+        "Zurich",
+        "Rentes genevoises",
+        "Liechtenstein Life",
+        "Retraites populaires",
+        "Swisslife",
+        "Vaudoise",
+        "Envoi du formulaire"
+      ],
+      "page": 2,
+      "description": "3 compagnies maximum. Pour les compagnies principales, vous avez vos accès à utiliser pour faire les offres."
+    },
+    {
+      "id": "42_116",
+      "gf_field_id": 116,
+      "name": "input_116",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "42_60",
+      "gf_field_id": 60,
+      "name": "input_60",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "42_117",
+      "gf_field_id": 117,
+      "name": "input_117",
+      "label": "Fichier(s) à inclure",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "42_124",
+      "gf_field_id": 124,
+      "name": "input_124",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document."
+    },
+    {
+      "id": "42_44",
+      "gf_field_id": 44,
+      "name": "input_44",
+      "label": "Date du rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "42_76",
+      "gf_field_id": 76,
+      "name": "input_76",
+      "label": "Question pour AXA",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_77",
+      "gf_field_id": 77,
+      "name": "input_77",
+      "label": "Des propositions ont-elles été refusées, ajournées ou soumises avec des conditions aggravées ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_78",
+      "gf_field_id": 78,
+      "name": "input_78",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_79",
+      "gf_field_id": 79,
+      "name": "input_79",
+      "label": "L'assuré pratique-t-il des sports, activités ou loisirs particuliers, ou a-t-il l'intention d'en pratiquer ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_80",
+      "gf_field_id": 80,
+      "name": "input_80",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_81",
+      "gf_field_id": 81,
+      "name": "input_81",
+      "label": "Au cours des 12 prochains mois, l'assuré prévoit-il des voyages ou des séjours dans des régions en guerre ou en crise ou compte-t-il séjourner plus de 12 mois à l'étranger (hormis dans les pays limitrophes de la Suisse) ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_82",
+      "gf_field_id": 82,
+      "name": "input_82",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_83",
+      "gf_field_id": 83,
+      "name": "input_83",
+      "label": "Un médecin ou un thérapeute est-il informé de l'état de santé de l'assuré ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_84",
+      "gf_field_id": 84,
+      "name": "input_84",
+      "label": "Nom du médecin",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_85_1",
+      "gf_field_id": 85,
+      "name": "input_85.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_85_3",
+      "gf_field_id": 85,
+      "name": "input_85.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_85_4",
+      "gf_field_id": 85,
+      "name": "input_85.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_85_5",
+      "gf_field_id": 85,
+      "name": "input_85.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_85_6",
+      "gf_field_id": 85,
+      "name": "input_85.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "type": "text",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_86",
+      "gf_field_id": 86,
+      "name": "input_86",
+      "label": "Date de la dernière consultation",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_103",
+      "gf_field_id": 103,
+      "name": "input_103",
+      "label": "L'assuré souhaite souscrire à l'option \"rendements garantis\" ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_104",
+      "gf_field_id": 104,
+      "name": "input_104",
+      "label": "L'assuré souhaite souscrire à l'option \"gestion de l'échéance\" ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_105",
+      "gf_field_id": 105,
+      "name": "input_105",
+      "label": "L'assuré souhaite souscrire à l'option \"Atteindre automatiquement la limite 3e\" ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_106",
+      "gf_field_id": 106,
+      "name": "input_106",
+      "label": "Prestation intégrée en cas décès :",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Avec couverture décès constante",
+        "Avec remboursement des primes",
+        "Sans couverture risque"
+      ],
+      "page": 2,
+      "description": "(un seul choix possible)",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_87",
+      "gf_field_id": 87,
+      "name": "input_87",
+      "label": "Etat de santé",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_88",
+      "gf_field_id": 88,
+      "name": "input_88",
+      "label": "L'assuré a-t-il (ou a-t-il eu) un ou plusieurs troubles de santé ou atteintes de santé, ou anomalie congénitale ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_89",
+      "gf_field_id": 89,
+      "name": "input_89",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_90",
+      "gf_field_id": 90,
+      "name": "input_90",
+      "label": "L'assuré prend-il (ou a-t-il pris) régulièrement des médicaments ou des drogues, ou des médicaments lui ont-ils été prescrits pour des affections durant plus de 7 jours (hormis pour une simple grippe) ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_91",
+      "gf_field_id": 91,
+      "name": "input_91",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_92",
+      "gf_field_id": 92,
+      "name": "input_92",
+      "label": "L'assuré a-t-il subi des examens dont le résultat a révélé une anomalie (ne pas indiquer les examens génétiques) ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_93",
+      "gf_field_id": 93,
+      "name": "input_93",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_94",
+      "gf_field_id": 94,
+      "name": "input_94",
+      "label": "L'assuré a-t-il subi (ou prévoit-il) de subir une opération, ou une intervention lui a-t-elle été recommandée ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_95",
+      "gf_field_id": 95,
+      "name": "input_95",
+      "label": "Merci de préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_96",
+      "gf_field_id": 96,
+      "name": "input_96",
+      "label": "L'assuré est-il actuellement en incapacité de travail ou de gain partielle ou totale, ou a-t-il dû interrompre son activité, même partiellement, durant plus de deux semaines en raison de maladies ou d'accidents ?",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Non",
+        "Oui"
+      ],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_97",
+      "gf_field_id": 97,
+      "name": "input_97",
+      "label": "A préciser",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_122",
+      "gf_field_id": 122,
+      "name": "input_122",
+      "label": "Retraites Populaires",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_123",
+      "gf_field_id": 123,
+      "name": "input_123",
+      "label": "Attestation LBA datée de moins de 2 ans",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Les Retraites Populaires demandent désormais ce document pour toute demande d'offre.",
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_60",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "42_112",
+      "gf_field_id": 112,
+      "name": "input_112",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "42_113",
+      "gf_field_id": 113,
+      "name": "input_113",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 2,
+      "default": "Français"
+    },
+    {
+      "id": "42_3",
+      "gf_field_id": 3,
+      "name": "input_3",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}

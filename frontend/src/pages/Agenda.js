@@ -1,0 +1,512 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import api from "@/lib/api";
+import Layout from "@/components/Layout";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import Echeances3PTable from "@/components/Echeances3PTable";
+import {
+  URGENCY,
+  URGENCY_ORDER,
+  filterAlertEcheances,
+  sortByUrgency,
+  countByUrgency,
+} from "@/lib/echeances3p";
+import { toast } from "sonner";
+import { rappelStatutEffectif } from "@/lib/rappels";
+import { CalendarClock, ListTodo, Plus, Trash2, MapPin, Shield, ArrowRight, Bell } from "lucide-react";
+
+const PREVIEW_LIMIT = 5;
+
+export default function Agenda() {
+  const [appts, setAppts] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [rappels, setRappels] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [echeances3p, setEcheances3p] = useState([]);
+  const [apptDialog, setApptDialog] = useState(false);
+  const [taskDialog, setTaskDialog] = useState(false);
+  const [apptForm, setApptForm] = useState({ titre: "", date: "", type: "Rendez-vous", lieu: "", client_id: "none" });
+  const [taskForm, setTaskForm] = useState({ titre: "", echeance: "", priorite: "normale", client_id: "none" });
+  const navigate = useNavigate();
+
+  const load = async () => {
+    const [a, t, c, e, r] = await Promise.all([
+      api.get("/appointments"),
+      api.get("/tasks"),
+      api.get("/clients"),
+      api.get("/echeances-3p").catch(() => ({ data: [] })),
+      api.get("/rappels", { params: { done: false } }).catch(() => ({ data: [] })),
+    ]);
+    setAppts(a.data);
+    setTasks(t.data);
+    setClients(c.data);
+    setEcheances3p(sortByUrgency(filterAlertEcheances(e.data || [])));
+    setRappels(
+      Array.isArray(r.data)
+        ? r.data.filter((item) => item.notify_crm !== false && String(item.statut || "").toLowerCase() !== "en_attente")
+        : [],
+    );
+  };
+  useEffect(() => {
+    load();
+  }, []);
+
+  const echeanceCounts = useMemo(() => countByUrgency(echeances3p), [echeances3p]);
+  const echeancePreview = useMemo(() => echeances3p.slice(0, PREVIEW_LIMIT), [echeances3p]);
+
+  const createAppt = async () => {
+    if (!apptForm.titre || !apptForm.date) {
+      toast.error("Titre et date requis");
+      return;
+    }
+    const payload = { ...apptForm, client_id: apptForm.client_id === "none" ? null : apptForm.client_id };
+    await api.post("/appointments", payload);
+    setApptDialog(false);
+    setApptForm({ titre: "", date: "", type: "Rendez-vous", lieu: "", client_id: "none" });
+    load();
+    toast.success("Rendez-vous ajouté");
+  };
+
+  const createTask = async () => {
+    if (!taskForm.titre) {
+      toast.error("Titre requis");
+      return;
+    }
+    const payload = { ...taskForm, client_id: taskForm.client_id === "none" ? null : taskForm.client_id };
+    await api.post("/tasks", payload);
+    setTaskDialog(false);
+    setTaskForm({ titre: "", echeance: "", priorite: "normale", client_id: "none" });
+    load();
+    toast.success("Tâche ajoutée");
+  };
+
+  const toggleTask = async (t) => {
+    await api.patch(`/tasks/${t.id}`);
+    load();
+  };
+  const delTask = async (id) => {
+    await api.delete(`/tasks/${id}`);
+    load();
+  };
+  const delAppt = async (id) => {
+    await api.delete(`/appointments/${id}`);
+    load();
+  };
+
+  const toggleRappel = async (r) => {
+    await api.patch(`/rappels/${r.id}`, { done: !r.done });
+    load();
+  };
+
+  // Fusion RDV + rappels, tri chronologique, groupés par jour
+  const timelineItems = useMemo(() => {
+    const items = [];
+    (appts || []).forEach((a) => {
+      const raw = a.date || "";
+      items.push({
+        kind: "rdv",
+        id: a.id,
+        sortKey: raw,
+        dayKey: raw ? String(raw).slice(0, 10) : "sans-date",
+        raw: a,
+      });
+    });
+    (rappels || []).forEach((r) => {
+      const day = (r.date || "").slice(0, 10);
+      const heure = (r.heure || "09:00").padStart(5, "0");
+      const sortKey = day ? `${day}T${heure}` : "";
+      items.push({
+        kind: "rappel",
+        id: r.id,
+        sortKey,
+        dayKey: day || "sans-date",
+        raw: r,
+      });
+    });
+    items.sort((a, b) => (a.sortKey || "").localeCompare(b.sortKey || ""));
+    return items;
+  }, [appts, rappels]);
+
+  const grouped = useMemo(() => {
+    const g = {};
+    timelineItems.forEach((item) => {
+      const dayLabel =
+        item.dayKey === "sans-date"
+          ? "Sans date"
+          : new Date(`${item.dayKey}T12:00:00`).toLocaleDateString("fr-CH", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+            });
+      (g[dayLabel] = g[dayLabel] || []).push(item);
+    });
+    return g;
+  }, [timelineItems]);
+
+  return (
+    <Layout>
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+        <div>
+          <h1 className="font-display font-black text-3xl sm:text-4xl tracking-tight">Ordre du jour</h1>
+          <p className="text-muted-foreground mt-1">Rendez-vous, rappels et tâches à effectuer</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setTaskDialog(true)} data-testid="add-task-btn" className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            Tâche
+          </Button>
+          <Button onClick={() => setApptDialog(true)} data-testid="agenda-add-appt-btn" className="bg-[#002FA7] hover:bg-[#00248a] gap-1.5">
+            <Plus className="h-4 w-4" />
+            Rendez-vous
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {echeances3p.length > 0 && (
+          <div className="lg:col-span-3">
+            <Card className="p-5" data-testid="agenda-echeances-3p">
+              <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Shield className="h-5 w-5 text-[#002FA7]" />
+                    <h2 className="font-display font-bold text-lg tracking-tight">Échéances 3e pilier</h2>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs">
+                    {URGENCY_ORDER.map((id) => {
+                      const u = URGENCY[id];
+                      const n = echeanceCounts[id] || 0;
+                      if (!n) return null;
+                      return (
+                        <span key={id} className="inline-flex items-center gap-1.5 text-muted-foreground">
+                          <span className={`h-2 w-2 rounded-full ${u.dot}`} />
+                          <span className="font-semibold text-foreground">{n}</span> {u.short}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => navigate("/echeances-3p")}
+                  data-testid="voir-toutes-echeances-3p"
+                >
+                  Voir toutes les échéances
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+
+              <p className="text-xs text-muted-foreground mb-3">
+                Les {Math.min(PREVIEW_LIMIT, echeances3p.length)} prochaines échéances (les plus proches en premier)
+              </p>
+              <Echeances3PTable items={echeancePreview} />
+
+              {echeances3p.length > PREVIEW_LIMIT && (
+                <div className="mt-3 text-center">
+                  <button
+                    type="button"
+                    onClick={() => navigate("/echeances-3p")}
+                    className="text-sm text-[#002FA7] hover:underline"
+                  >
+                    + {echeances3p.length - PREVIEW_LIMIT} autre
+                    {echeances3p.length - PREVIEW_LIMIT > 1 ? "s" : ""} — voir la liste complète
+                  </button>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        <div className="lg:col-span-2">
+          <div className="flex items-center gap-2 mb-4">
+            <CalendarClock className="h-5 w-5 text-[#002FA7]" />
+            <h2 className="font-display font-bold text-lg tracking-tight">Rendez-vous &amp; rappels</h2>
+          </div>
+          {timelineItems.length === 0 ? (
+            <Card className="p-10 text-center text-sm text-muted-foreground">Aucun rendez-vous ni rappel planifié.</Card>
+          ) : (
+            <div className="space-y-6">
+              {Object.entries(grouped).map(([day, items]) => (
+                <div key={day}>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 capitalize">{day}</p>
+                  <div className="space-y-2">
+                    {items.map((item) => {
+                      if (item.kind === "rappel") {
+                        const r = item.raw;
+                        const overdue = rappelStatutEffectif(r) === "echeance_passee";
+                        return (
+                          <Card
+                            key={`rappel-${r.id}`}
+                            data-testid={`agenda-rappel-${r.id}`}
+                            className={`p-4 flex items-center gap-4 transition-colors ${
+                              overdue
+                                ? "border-red-200/80 bg-red-50/40 hover:border-red-400"
+                                : "border-amber-200/80 bg-amber-50/40 hover:border-amber-400"
+                            }`}
+                          >
+                            <div className={`text-sm font-bold w-16 ${overdue ? "text-red-700" : "text-amber-700"}`}>
+                              {r.heure || "—"}
+                            </div>
+                            <div className="h-8 w-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                              <Bell className="h-4 w-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{r.titre}</p>
+                              <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                                {r.client_name && (
+                                  <button type="button" onClick={() => r.client_id && navigate(`/clients/${r.client_id}`)} className="hover:text-[#002FA7]">
+                                    {r.client_name}
+                                  </button>
+                                )}
+                                <span className={overdue ? "text-red-700/80" : "text-amber-700/80"}>
+                                  {overdue ? "Échéance passée" : "Rappel"}
+                                </span>
+                              </div>
+                            </div>
+                            <Checkbox checked={!!r.done} onCheckedChange={() => toggleRappel(r)} />
+                          </Card>
+                        );
+                      }
+                      const a = item.raw;
+                      return (
+                        <Card key={`rdv-${a.id}`} data-testid={`agenda-appt-${a.id}`} className="p-4 flex items-center gap-4 hover:border-[#002FA7] transition-colors">
+                          <div className="text-sm font-bold text-[#002FA7] w-16">
+                            {a.date ? new Date(a.date).toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                          </div>
+                          <div className="h-8 w-8 rounded-full bg-[#002FA7]/10 text-[#002FA7] flex items-center justify-center shrink-0">
+                            <CalendarClock className="h-4 w-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{a.titre}</p>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                              {a.client_name && (
+                                <button type="button" onClick={() => a.client_id && navigate(`/clients/${a.client_id}`)} className="hover:text-[#002FA7]">
+                                  {a.client_name}
+                                </button>
+                              )}
+                              {a.lieu && (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="h-3 w-3" />
+                                  {a.lieu}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-xs px-2 py-1 rounded bg-secondary">{a.type}</span>
+                          <Button size="icon" variant="ghost" onClick={() => delAppt(a.id)} className="text-destructive hover:text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <ListTodo className="h-5 w-5 text-[#002FA7]" />
+            <h2 className="font-display font-bold text-lg tracking-tight">Tâches & rappels</h2>
+          </div>
+          <Card className="p-4">
+            {tasks.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">Aucune tâche.</p>
+            ) : (
+              <div className="space-y-1">
+                {tasks.map((t) => (
+                  <div key={t.id} data-testid={`task-${t.id}`} className="flex items-start gap-3 p-2.5 rounded-md hover:bg-secondary transition-colors group">
+                    <Checkbox checked={t.done} onCheckedChange={() => toggleTask(t)} data-testid={`task-check-${t.id}`} className="mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm ${t.done ? "line-through text-muted-foreground" : "font-medium"}`}>{t.titre}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {t.type === "echeance_3p" && t.echeance ? (
+                          <span className="text-xs text-muted-foreground">
+                            Échéance le {new Date(`${String(t.echeance).slice(0, 10)}T00:00:00`).toLocaleDateString("fr-CH")}
+                          </span>
+                        ) : (
+                          <>
+                            {t.client_name && (
+                              <button
+                                type="button"
+                                onClick={() => t.client_id && navigate(`/clients/${t.client_id}`)}
+                                className="text-xs text-muted-foreground hover:text-[#002FA7]"
+                              >
+                                {t.client_name}
+                              </button>
+                            )}
+                            {t.echeance && (
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(t.echeance).toLocaleDateString("fr-CH")}
+                              </span>
+                            )}
+                          </>
+                        )}
+                        {t.priorite === "urgent" && (
+                          <span className="text-[11px] text-red-700 bg-red-100 rounded px-1.5">Urgent</span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => delTask(t.id)}
+                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      <Dialog open={apptDialog} onOpenChange={setApptDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display">Nouveau rendez-vous</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Titre</Label>
+              <Input
+                data-testid="agenda-appt-titre"
+                value={apptForm.titre}
+                onChange={(e) => setApptForm({ ...apptForm, titre: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Date et heure</Label>
+              <Input
+                data-testid="agenda-appt-date"
+                type="datetime-local"
+                value={apptForm.date}
+                onChange={(e) => setApptForm({ ...apptForm, date: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Type</Label>
+                <Select value={apptForm.type} onValueChange={(v) => setApptForm({ ...apptForm, type: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["Rendez-vous", "Appel", "Visio", "Présentation"].map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Client</Label>
+                <Select value={apptForm.client_id} onValueChange={(v) => setApptForm({ ...apptForm, client_id: v })}>
+                  <SelectTrigger data-testid="agenda-appt-client">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Aucun</SelectItem>
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.prenom} {c.nom}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Lieu</Label>
+              <Input value={apptForm.lieu} onChange={(e) => setApptForm({ ...apptForm, lieu: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApptDialog(false)}>
+              Annuler
+            </Button>
+            <Button onClick={createAppt} data-testid="agenda-appt-save" className="bg-[#002FA7] hover:bg-[#00248a]">
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={taskDialog} onOpenChange={setTaskDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display">Nouvelle tâche</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Titre</Label>
+              <Input
+                data-testid="task-titre"
+                value={taskForm.titre}
+                onChange={(e) => setTaskForm({ ...taskForm, titre: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Échéance</Label>
+                <Input
+                  data-testid="task-echeance"
+                  type="date"
+                  value={taskForm.echeance}
+                  onChange={(e) => setTaskForm({ ...taskForm, echeance: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Priorité</Label>
+                <Select value={taskForm.priorite} onValueChange={(v) => setTaskForm({ ...taskForm, priorite: v })}>
+                  <SelectTrigger data-testid="task-priorite">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="normale">Normale</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Client (optionnel)</Label>
+              <Select value={taskForm.client_id} onValueChange={(v) => setTaskForm({ ...taskForm, client_id: v })}>
+                <SelectTrigger data-testid="task-client">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Aucun</SelectItem>
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.prenom} {c.nom}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTaskDialog(false)}>
+              Annuler
+            </Button>
+            <Button onClick={createTask} data-testid="task-save" className="bg-[#002FA7] hover:bg-[#00248a]">
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Layout>
+  );
+}

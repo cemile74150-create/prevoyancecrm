@@ -1,0 +1,327 @@
+{
+  "id": "laa_employee_maison",
+  "label": "LAA employé(e) de maison",
+  "category": "Particulier",
+  "title": "LAA employé(e) de maison",
+  "gravity_form_id": 37,
+  "source_file": "Texte collé (10).txt",
+  "fields_count": 28,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Étape 1"
+    }
+  ],
+  "page_count": 1,
+  "fields": [
+    {
+      "id": "37_25",
+      "gf_field_id": 25,
+      "name": "input_25",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "LAA employé(e) de maison"
+    },
+    {
+      "id": "37_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "37_27_3",
+      "gf_field_id": 27,
+      "name": "input_27.3",
+      "label": "Prénom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "37_27_6",
+      "gf_field_id": 27,
+      "name": "input_27.6",
+      "label": "Nom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "37_28",
+      "gf_field_id": 28,
+      "name": "input_28",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "37_29",
+      "gf_field_id": 29,
+      "name": "input_29",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "37_1",
+      "gf_field_id": 1,
+      "name": "input_1",
+      "label": "Employeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "37_22",
+      "gf_field_id": 22,
+      "name": "input_22",
+      "label": "Prénom de l'employeur",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "37_23",
+      "gf_field_id": 23,
+      "name": "input_23",
+      "label": "Nom de l'employeur",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "37_20",
+      "gf_field_id": 20,
+      "name": "input_20",
+      "label": "Civilité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 1
+    },
+    {
+      "id": "37_13",
+      "gf_field_id": 13,
+      "name": "input_13",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "37_3_1",
+      "gf_field_id": 3,
+      "name": "input_3.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "37_3_2",
+      "gf_field_id": 3,
+      "name": "input_3.2",
+      "label": "Adresse ligne 2",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "37_3_3",
+      "gf_field_id": 3,
+      "name": "input_3.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "37_3_4",
+      "gf_field_id": 3,
+      "name": "input_3.4",
+      "label": "État / Province",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "37_3_5",
+      "gf_field_id": 3,
+      "name": "input_3.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "37_3_6",
+      "gf_field_id": 3,
+      "name": "input_3.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "37_4",
+      "gf_field_id": 4,
+      "name": "input_4",
+      "label": "Employée",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "37_15",
+      "gf_field_id": 15,
+      "name": "input_15",
+      "label": "Nombre d'heures trava",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Plus de 8 heures par semaine",
+        "Moins de 8 heures par semaine"
+      ],
+      "page": 1
+    },
+    {
+      "id": "37_14",
+      "gf_field_id": 14,
+      "name": "input_14",
+      "label": "Salaire annuel",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "37_16",
+      "gf_field_id": 16,
+      "name": "input_16",
+      "label": "Date d'effet du contrat",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Attention: effet rétroactif impossible.",
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "37_18",
+      "gf_field_id": 18,
+      "name": "input_18",
+      "label": "Compagnies :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Axa",
+        "Generali",
+        "Zurich (Romandie Courtage uniquement)",
+        "La Mobilière",
+        "Allianz",
+        "Envoi du formulaire"
+      ],
+      "page": 1,
+      "description": "3 compagnies maximum."
+    },
+    {
+      "id": "37_17",
+      "gf_field_id": 17,
+      "name": "input_17",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "37_30",
+      "gf_field_id": 30,
+      "name": "input_30",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document."
+    },
+    {
+      "id": "37_19",
+      "gf_field_id": 19,
+      "name": "input_19",
+      "label": "Date de rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "37_21",
+      "gf_field_id": 21,
+      "name": "input_21",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "37_24",
+      "gf_field_id": 24,
+      "name": "input_24",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 1,
+      "default": "Français"
+    },
+    {
+      "id": "37_12",
+      "gf_field_id": 12,
+      "name": "input_12",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
+      "default": "cdemirtas@agencemendes.ch"
+    }
+  ]
+}

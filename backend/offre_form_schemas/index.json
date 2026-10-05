@@ -1,0 +1,263 @@
+[
+  {
+    "id": "pilier3_standard",
+    "label": "LAA employée de maison (alias obsolète)",
+    "category": "3ème pilier",
+    "gravity_form_id": 37,
+    "fields_count": 16,
+    "schema_file": "pilier3_standard.json",
+    "active": false
+  },
+  {
+    "id": "pilier3_autre",
+    "label": "3ème pilier (variante)",
+    "category": "3ème pilier",
+    "gravity_form_id": 58,
+    "fields_count": 11,
+    "schema_file": "pilier3_autre.json",
+    "active": true
+  },
+  {
+    "id": "pilier3_parent_enfant",
+    "label": "3ème pilier Parent-Enfant",
+    "category": "3ème pilier",
+    "gravity_form_id": 41,
+    "fields_count": 78,
+    "schema_file": "pilier3_parent_enfant.json",
+    "active": true
+  },
+  {
+    "id": "pilier3_risque_pur",
+    "label": "3ème pilier Risque pur / rente invalidité",
+    "category": "3ème pilier",
+    "gravity_form_id": 42,
+    "fields_count": 118,
+    "schema_file": "pilier3_risque_pur.json",
+    "active": true
+  },
+  {
+    "id": "pilier3",
+    "label": "3ème pilier",
+    "category": "3ème pilier",
+    "gravity_form_id": 6,
+    "fields_count": 104,
+    "schema_file": "pilier3.json",
+    "active": true
+  },
+  {
+    "id": "formulaire_complet",
+    "label": "Formulaire complet",
+    "category": "Autre",
+    "gravity_form_id": 94,
+    "fields_count": 155,
+    "schema_file": "formulaire_complet.json",
+    "active": true
+  },
+  {
+    "id": "entreprise_offres",
+    "label": "Véhicule entreprise",
+    "category": "Entreprise",
+    "gravity_form_id": 14,
+    "fields_count": 88,
+    "schema_file": "entreprise_offres.json",
+    "active": true
+  },
+  {
+    "id": "entreprise",
+    "label": "Assurances entreprise / indépendant",
+    "category": "Entreprise",
+    "gravity_form_id": 13,
+    "fields_count": 129,
+    "schema_file": "entreprise.json",
+    "active": true
+  },
+  {
+    "id": "entreprise_27",
+    "label": "Perte de gain",
+    "category": "Entreprise",
+    "gravity_form_id": 27,
+    "fields_count": 52,
+    "schema_file": "entreprise_27.json",
+    "active": true
+  },
+  {
+    "id": "entreprise_28",
+    "label": "LAAF / LAAC",
+    "category": "Entreprise",
+    "gravity_form_id": 28,
+    "fields_count": 51,
+    "schema_file": "entreprise_28.json",
+    "active": true
+  },
+  {
+    "id": "entreprise_29",
+    "label": "Rente invalidité",
+    "category": "Entreprise",
+    "gravity_form_id": 29,
+    "fields_count": 53,
+    "schema_file": "entreprise_29.json",
+    "active": true
+  },
+  {
+    "id": "entreprise_31",
+    "label": "Assurance chef d'entreprise",
+    "category": "Entreprise",
+    "gravity_form_id": 31,
+    "fields_count": 49,
+    "schema_file": "entreprise_31.json",
+    "active": true
+  },
+  {
+    "id": "entreprise_32",
+    "label": "Assurance de personne employée",
+    "category": "Entreprise",
+    "gravity_form_id": 32,
+    "fields_count": 74,
+    "schema_file": "entreprise_32.json",
+    "active": true
+  },
+  {
+    "id": "entreprise_33",
+    "label": "Assurances choses",
+    "category": "Entreprise",
+    "gravity_form_id": 33,
+    "fields_count": 67,
+    "schema_file": "entreprise_33.json",
+    "active": true
+  },
+  {
+    "id": "entreprise_50",
+    "label": "Véhicule entreprise plaques interchangeables",
+    "category": "Entreprise",
+    "gravity_form_id": 50,
+    "fields_count": 131,
+    "schema_file": "entreprise_50.json",
+    "active": true
+  },
+  {
+    "id": "entreprise_46",
+    "label": "LPP - 2021",
+    "category": "Entreprise",
+    "gravity_form_id": 46,
+    "fields_count": 35,
+    "schema_file": "entreprise_46.json",
+    "active": true
+  },
+  {
+    "id": "rc_entreprise",
+    "label": "Responsabilité civile entreprise",
+    "category": "Entreprise",
+    "gravity_form_id": 30,
+    "fields_count": 50,
+    "schema_file": "rc_entreprise.json",
+    "active": true
+  },
+  {
+    "id": "animaux",
+    "label": "Animaux",
+    "category": "Particulier",
+    "gravity_form_id": 47,
+    "fields_count": 52,
+    "schema_file": "animaux.json",
+    "active": true
+  },
+  {
+    "id": "assurances_particulier",
+    "label": "Bâtiment",
+    "category": "Particulier",
+    "gravity_form_id": 11,
+    "fields_count": 68,
+    "schema_file": "assurances_particulier.json",
+    "active": true
+  },
+  {
+    "id": "assurances_particulier_var",
+    "label": "Animaux (alias obsolète GF47)",
+    "category": "Particulier",
+    "gravity_form_id": 47,
+    "fields_count": 26,
+    "schema_file": "assurances_particulier_var.json",
+    "active": false
+  },
+  {
+    "id": "menage_rc",
+    "label": "RC-Ménage",
+    "category": "Particulier",
+    "gravity_form_id": 1,
+    "fields_count": 109,
+    "schema_file": "menage_rc.json",
+    "active": true
+  },
+  {
+    "id": "voyage",
+    "label": "Véhicule plaques interchangeables",
+    "category": "Véhicule",
+    "gravity_form_id": 12,
+    "fields_count": 137,
+    "schema_file": "voyage.json",
+    "active": true
+  },
+  {
+    "id": "protection_juridique_entreprise",
+    "label": "Protection juridique entreprise",
+    "category": "Protection juridique",
+    "gravity_form_id": 36,
+    "fields_count": 49,
+    "schema_file": "protection_juridique_entreprise.json",
+    "active": true
+  },
+  {
+    "id": "protection_juridique_entreprise_2",
+    "label": "Protection juridique entreprise (var.)",
+    "category": "Protection juridique",
+    "gravity_form_id": 38,
+    "fields_count": 44,
+    "schema_file": "protection_juridique_entreprise_2.json",
+    "active": true
+  },
+  {
+    "id": "protection_juridique_particulier",
+    "label": "Protection juridique privé",
+    "category": "Protection juridique",
+    "gravity_form_id": 35,
+    "fields_count": 48,
+    "schema_file": "protection_juridique_particulier.json",
+    "active": true
+  },
+  {
+    "id": "attestation_vehicule",
+    "label": "Demande attestation véhicule",
+    "category": "Véhicule",
+    "gravity_form_id": 110,
+    "fields_count": 31,
+    "schema_file": "attestation_vehicule.json",
+    "active": true
+  },
+  {
+    "id": "motocycle",
+    "label": "Assurance Motocycle",
+    "category": "Véhicule",
+    "gravity_form_id": 9,
+    "fields_count": 91,
+    "schema_file": "motocycle.json",
+    "active": true
+  },
+  {
+    "id": "vehicule",
+    "label": "Assurance véhicule",
+    "category": "Véhicule",
+    "gravity_form_id": 8,
+    "fields_count": 110,
+    "schema_file": "vehicule.json",
+    "active": true
+  },
+  {
+    "id": "laa_employee_maison",
+    "label": "LAA employé(e) de maison",
+    "category": "Particulier",
+    "gravity_form_id": 37,
+    "fields_count": 28,
+    "schema_file": "laa_employee_maison.json",
+    "active": true
+  }
+]

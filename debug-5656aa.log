@@ -1,0 +1,1 @@
+{"sessionId": "5656aa", "hypothesisId": "F", "location": "railway_deploy", "message": "deploy success with lettre AVS", "data": {"deployment": "e4755c2e-748f-433b-9e82-5356380a41d8", "status": "SUCCESS", "lettre_size": 260567, "fields": ["Date", "Nom", "Prenom"], "other_avs_letter_copies": 0}, "timestamp": 1785240375440, "runId": "post-fix"}

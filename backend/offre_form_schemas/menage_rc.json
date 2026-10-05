@@ -1,0 +1,1960 @@
+{
+  "id": "menage_rc",
+  "label": "RC-Ménage",
+  "category": "Particulier",
+  "title": "Assurance RC / Ménage",
+  "gravity_form_id": 1,
+  "source_file": "menage_rc_gf_dump.txt",
+  "fields_count": 109,
+  "pages": [
+    {
+      "page": 1,
+      "label": "Renseignements généraux + habitation"
+    },
+    {
+      "page": 2,
+      "label": "Couvertures Ménage"
+    },
+    {
+      "page": 3,
+      "label": "Responsabilité Civile"
+    },
+    {
+      "page": 4,
+      "label": "Assurance bâtiment"
+    },
+    {
+      "page": 5,
+      "label": "Paiement + compagnies"
+    },
+    {
+      "page": 6,
+      "label": "Retour des offres + options compagnies"
+    }
+  ],
+  "page_count": 6,
+  "fields": [
+    {
+      "id": "1_113",
+      "gf_field_id": 113,
+      "name": "input_113",
+      "label": "Titre du formulaire :",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "default": "Assurance RC / Ménage"
+    },
+    {
+      "id": "1_119",
+      "gf_field_id": 119,
+      "name": "input_119",
+      "label": "Agent demandeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "1_120_3",
+      "gf_field_id": 120,
+      "name": "input_120.3",
+      "label": "Prénom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "1_120_6",
+      "gf_field_id": 120,
+      "name": "input_120.6",
+      "label": "Nom de l'agent",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "1_121",
+      "gf_field_id": 121,
+      "name": "input_121",
+      "label": "Votre adresse email",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "1_122",
+      "gf_field_id": 122,
+      "name": "input_122",
+      "label": "Votre numéro FINMA",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "De nombreuses compagnies imposent désormais que nous renseignions le numéro FINMA de l'agent demandeur au moment où nous demandons les offres."
+    },
+    {
+      "id": "1_27",
+      "gf_field_id": 27,
+      "name": "input_27",
+      "label": "Renseignements généraux",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "1_39",
+      "gf_field_id": 39,
+      "name": "input_39",
+      "label": "Nom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "1_40",
+      "gf_field_id": 40,
+      "name": "input_40",
+      "label": "Prénom",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "1_105",
+      "gf_field_id": 105,
+      "name": "input_105",
+      "label": "Civlité",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Monsieur",
+        "Madame"
+      ],
+      "page": 1
+    },
+    {
+      "id": "1_41",
+      "gf_field_id": 41,
+      "name": "input_41",
+      "label": "Sexe",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Masculin",
+        "Féminin"
+      ],
+      "page": 1
+    },
+    {
+      "id": "1_2_1",
+      "gf_field_id": 2,
+      "name": "input_2.1",
+      "label": "Adresse postale",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "1_2_3",
+      "gf_field_id": 2,
+      "name": "input_2.3",
+      "label": "Ville",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "1_2_5",
+      "gf_field_id": 2,
+      "name": "input_2.5",
+      "label": "Code postal",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "type": "text"
+    },
+    {
+      "id": "1_2_6",
+      "gf_field_id": 2,
+      "name": "input_2.6",
+      "label": "Pays",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "type": "hidden",
+      "default": "Suisse"
+    },
+    {
+      "id": "1_42",
+      "gf_field_id": 42,
+      "name": "input_42",
+      "label": "Canton",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "1_3",
+      "gf_field_id": 3,
+      "name": "input_3",
+      "label": "Date de naissance",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "1_4",
+      "gf_field_id": 4,
+      "name": "input_4",
+      "label": "Nationalité",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "1_50",
+      "gf_field_id": 50,
+      "name": "input_50",
+      "label": "Permis de séjour",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "1_43",
+      "gf_field_id": 43,
+      "name": "input_43",
+      "label": "Employeur",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 1,
+      "description": "Peut donner droit à des rabais selon les compagnies (PA)."
+    },
+    {
+      "id": "1_33",
+      "gf_field_id": 33,
+      "name": "input_33",
+      "label": "Renseignements sur l'habitation",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "1_5",
+      "gf_field_id": 5,
+      "name": "input_5",
+      "label": "Résidence",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Principale",
+        "Secondaire"
+      ],
+      "page": 1
+    },
+    {
+      "id": "1_6",
+      "gf_field_id": 6,
+      "name": "input_6",
+      "label": "Type d'habitation",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Maison",
+        "Habitation à plusieurs famille (max. 3 appartements)",
+        "Immeuble (Appartement)"
+      ],
+      "page": 1
+    },
+    {
+      "id": "1_7",
+      "gf_field_id": 7,
+      "name": "input_7",
+      "label": "Statut",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Propriétaire",
+        "Locataire"
+      ],
+      "page": 1
+    },
+    {
+      "id": "1_8",
+      "gf_field_id": 8,
+      "name": "input_8",
+      "label": "Nombre de pièces",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "1_45",
+      "gf_field_id": 45,
+      "name": "input_45",
+      "label": "Etage",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1,
+      "description": "Obligatoire pour la Zurich"
+    },
+    {
+      "id": "1_9",
+      "gf_field_id": 9,
+      "name": "input_9",
+      "label": "Somme d'assurance",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 1
+    },
+    {
+      "id": "1_24",
+      "gf_field_id": 24,
+      "name": "input_24",
+      "label": "Couvertures Ménage",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "1_11",
+      "gf_field_id": 11,
+      "name": "input_11",
+      "label": "Couvertures Ménage",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "Incendie",
+        "Bagages",
+        "Dégât d'eau",
+        "Bris de glace",
+        "Produits surgelés",
+        "Abus carte de crédit"
+      ],
+      "page": 2
+    },
+    {
+      "id": "1_58",
+      "gf_field_id": 58,
+      "name": "input_58",
+      "label": "Couverture bris de glace",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Mobilier",
+        "Bâtiment",
+        "Mobilier et bâtiment"
+      ],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_11",
+            "op": "is",
+            "value": "Bris de glace"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_36",
+      "gf_field_id": 36,
+      "name": "input_36",
+      "label": "Somme Bris de Glace",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "1000",
+        "2000",
+        "3000",
+        "4000",
+        "5000"
+      ],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_11",
+            "op": "is",
+            "value": "Bris de glace"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_37",
+      "gf_field_id": 37,
+      "name": "input_37",
+      "label": "Somme Bagages",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "2000",
+        "5000",
+        "10 000"
+      ],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_11",
+            "op": "is",
+            "value": "Bagages"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_52",
+      "gf_field_id": 52,
+      "name": "input_52",
+      "label": "Chauffage au sol hydraulique",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "1_57",
+      "gf_field_id": 57,
+      "name": "input_57",
+      "label": "Remplacement des serrures",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "1_53",
+      "gf_field_id": 53,
+      "name": "input_53",
+      "label": "Casco ménage",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "1_54",
+      "gf_field_id": 54,
+      "name": "input_54",
+      "label": "Montant à assurer Casco ménage",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_53",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_19",
+      "gf_field_id": 19,
+      "name": "input_19",
+      "label": "Couverture Vol",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "1_12",
+      "gf_field_id": 12,
+      "name": "input_12",
+      "label": "Couverture Vol",
+      "type": "checkbox",
+      "required": false,
+      "options": [
+        "Vol",
+        "Vol simple au domicile",
+        "Vol simple hors du domicile"
+      ],
+      "page": 2
+    },
+    {
+      "id": "1_13",
+      "gf_field_id": 13,
+      "name": "input_13",
+      "label": "Montant vol hors du domicile",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_12",
+            "op": "is",
+            "value": "Vol simple hors du domicile"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_18",
+      "gf_field_id": 18,
+      "name": "input_18",
+      "label": "Couverture Objet de valeur",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 2
+    },
+    {
+      "id": "1_14",
+      "gf_field_id": 14,
+      "name": "input_14",
+      "label": "Objets de valeur",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 2
+    },
+    {
+      "id": "1_44",
+      "gf_field_id": 44,
+      "name": "input_44",
+      "label": "Franchise des objets de valeur",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "0",
+        "300",
+        "500",
+        "1000",
+        "1500",
+        "2000",
+        "5000"
+      ],
+      "page": 2,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_14",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_15",
+      "gf_field_id": 15,
+      "name": "input_15",
+      "label": "Objets de valeur : Détails",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "description": "Joindre photos et factures",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_14",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_20",
+      "gf_field_id": 20,
+      "name": "input_20",
+      "label": "Sinistres déclarés",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 2,
+      "description": "Merci d'être le plus précis possible : Dates, causes et montants des sinistres."
+    },
+    {
+      "id": "1_30",
+      "gf_field_id": 30,
+      "name": "input_30",
+      "label": "Responsabilité Civile",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 3
+    },
+    {
+      "id": "1_55",
+      "gf_field_id": 55,
+      "name": "input_55",
+      "label": "Type de RC",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Individuelle",
+        "Familiale",
+        "Pas de RC"
+      ],
+      "page": 3
+    },
+    {
+      "id": "1_22",
+      "gf_field_id": 22,
+      "name": "input_22",
+      "label": "Franchise",
+      "type": "text",
+      "required": false,
+      "options": [],
+      "page": 3,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_55",
+            "op": "isnot",
+            "value": "Pas de RC"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_23",
+      "gf_field_id": 23,
+      "name": "input_23",
+      "label": "Usage occasionnel de véhicule de tiers",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_55",
+            "op": "isnot",
+            "value": "Pas de RC"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_102",
+      "gf_field_id": 102,
+      "name": "input_102",
+      "label": "Nombre de personnes adultes à assurer",
+      "type": "number",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_55",
+            "op": "is",
+            "value": "Familiale"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_103",
+      "gf_field_id": 103,
+      "name": "input_103",
+      "label": "Nombre d'enfants (-18 ans) à assurer",
+      "type": "number",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_55",
+            "op": "is",
+            "value": "Familiale"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_60",
+      "gf_field_id": 60,
+      "name": "input_60",
+      "label": "Personnes à assurer",
+      "type": "list",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "description": "Merci d’indiquer les informations nécessaires pour TOUS les membres à assurer. Ajouter une nouvelle ligne en cliquant sur le +",
+      "columns": [
+        "Prénom",
+        "Nom",
+        "Date de naissance"
+      ],
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_55",
+            "op": "is",
+            "value": "Familiale"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_118",
+      "gf_field_id": 118,
+      "name": "input_118",
+      "label": "Option faute grave ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 3,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_55",
+            "op": "isnot",
+            "value": "Pas de RC"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_84",
+      "gf_field_id": 84,
+      "name": "input_84",
+      "label": "Assurance bâtiment",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 4
+    },
+    {
+      "id": "1_85",
+      "gf_field_id": 85,
+      "name": "input_85",
+      "label": "Souhaitez-vous ajouter l'assurance bâtiment ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4
+    },
+    {
+      "id": "1_86",
+      "gf_field_id": 86,
+      "name": "input_86",
+      "label": "Valeur de l'immeuble",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_88",
+      "gf_field_id": 88,
+      "name": "input_88",
+      "label": "Estimation faite par :",
+      "type": "select",
+      "required": true,
+      "options": [
+        "Architecte",
+        "Assurance cantonale des bâtiments",
+        "Expert ASA",
+        "Proposant"
+      ],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_89",
+      "gf_field_id": 89,
+      "name": "input_89",
+      "label": "Année de construction",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_90",
+      "gf_field_id": 90,
+      "name": "input_90",
+      "label": "Usage",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Proriétaire",
+        "Locataire"
+      ],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_91",
+      "gf_field_id": 91,
+      "name": "input_91",
+      "label": "Taille de la maison",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Une famille",
+        "Plusieurs familles",
+        "Immeuble (appartement)",
+        "Maison mitoyenne"
+      ],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_107",
+      "gf_field_id": 107,
+      "name": "input_107",
+      "label": "Couvertures d'assurance souhaitées :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Incendie",
+        "Vol (détqérioration)",
+        "Dégât d'eau",
+        "Bris de glace",
+        "Dégâts causés par les animaux",
+        "Déterioration du bâtiment",
+        "Rc immeuble"
+      ],
+      "page": 4,
+      "description": "Les couvertures de l'assurance bâtiment",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_114",
+      "gf_field_id": 114,
+      "name": "input_114",
+      "label": "Souhaitez-vous assurer les dégats causés par les guêpes ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          },
+          {
+            "field": "input_107",
+            "op": "is",
+            "value": "Dégâts causés par les animaux"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_92",
+      "gf_field_id": 92,
+      "name": "input_92",
+      "label": "Ancienneté d'assurance",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Il s'agit d'une première assurance",
+        "Précédent assureur"
+      ],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_94",
+      "gf_field_id": 94,
+      "name": "input_94",
+      "label": "Nom du précédent assureur",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          },
+          {
+            "field": "input_92",
+            "op": "is",
+            "value": "Précédent assureur"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_115",
+      "gf_field_id": 115,
+      "name": "input_115",
+      "label": "Sinistres déclarés à l'ancien assureur",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Joindre la fiche de sinistralité",
+        "Indiquer les sinistres manuellement"
+      ],
+      "page": 4,
+      "description": "S'il ne s'agit pas d'une première assurance, nous avons impérativement besoin de connaître les sinistres déclarés chez l'ancien assureur. Comment souhaitez-vous procéder ?",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_116",
+      "gf_field_id": 116,
+      "name": "input_116",
+      "label": "Joindre la fiche de sinistralité",
+      "type": "file",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "description": "Merci de joindre la fiche de sinistralité du précédent assureur. Attention : s'il ne s'agit pas du bon document, nous ne serons pas en mesure de réaliser l'offre.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          },
+          {
+            "field": "input_115",
+            "op": "is",
+            "value": "Joindre la fiche de sinistralité"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_117",
+      "gf_field_id": 117,
+      "name": "input_117",
+      "label": "Sinistres déclarés",
+      "type": "textarea",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "description": "Merci d'être le plus précis possible : Dates, causes et montants des sinistres.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          },
+          {
+            "field": "input_115",
+            "op": "is",
+            "value": "Indiquer les sinistres manuellement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_95",
+      "gf_field_id": 95,
+      "name": "input_95",
+      "label": "Hydrant ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_96",
+      "gf_field_id": 96,
+      "name": "input_96",
+      "label": "Construction massive",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_97",
+      "gf_field_id": 97,
+      "name": "input_97",
+      "label": "Chauffage au plafond",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_98",
+      "gf_field_id": 98,
+      "name": "input_98",
+      "label": "Chauffage autre",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_99",
+      "gf_field_id": 99,
+      "name": "input_99",
+      "label": "Toit plat",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_100",
+      "gf_field_id": 100,
+      "name": "input_100",
+      "label": "Année de l'indice de construction",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_101",
+      "gf_field_id": 101,
+      "name": "input_101",
+      "label": "Année de renouvellement des conduites",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 4,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_85",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_51",
+      "gf_field_id": 51,
+      "name": "input_51",
+      "label": "Intervalle de paiement",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Annuel",
+        "Semestriel",
+        "Trimestriel",
+        "Mensuel"
+      ],
+      "page": 5
+    },
+    {
+      "id": "1_32",
+      "gf_field_id": 32,
+      "name": "input_32",
+      "label": "La demande doit être faite aux compagnies suivantes :",
+      "type": "checkbox",
+      "required": true,
+      "options": [
+        "Axa",
+        "Generali",
+        "La Mobilière",
+        "Zurich",
+        "Allianz",
+        "Helvetia",
+        "Vaudoise",
+        "Smile Direct",
+        "Envoi du formulaire"
+      ],
+      "page": 5,
+      "description": "3 compagnies maximum."
+    },
+    {
+      "id": "1_82",
+      "gf_field_id": 82,
+      "name": "input_82",
+      "label": "Vos commentaires",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "page": 6
+    },
+    {
+      "id": "1_56",
+      "gf_field_id": 56,
+      "name": "input_56",
+      "label": "Souhaitez-vous inclure les CGA ?",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6
+    },
+    {
+      "id": "1_104",
+      "gf_field_id": 104,
+      "name": "input_104",
+      "label": "Fichier(s) à inclure",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 6
+    },
+    {
+      "id": "1_123",
+      "gf_field_id": 123,
+      "name": "input_123",
+      "label": "Mandat de gestion",
+      "type": "file",
+      "required": false,
+      "options": [],
+      "page": 6,
+      "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document."
+    },
+    {
+      "id": "1_47",
+      "gf_field_id": 47,
+      "name": "input_47",
+      "label": "Date d'effet du contrat",
+      "type": "text",
+      "required": true,
+      "options": [],
+      "page": 6
+    },
+    {
+      "id": "1_35",
+      "gf_field_id": 35,
+      "name": "input_35",
+      "label": "Date du rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "placeholder": "jj.mm.aaaa"
+    },
+    {
+      "id": "1_106",
+      "gf_field_id": 106,
+      "name": "input_106",
+      "label": "Retour des offres - Service des Offres",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 6
+    },
+    {
+      "id": "1_112",
+      "gf_field_id": 112,
+      "name": "input_112",
+      "label": "En quelle langue souhaitez-vous recevoir les offres ?",
+      "type": "radio",
+      "required": false,
+      "options": [
+        "Français",
+        "Allemand",
+        "Italien",
+        "Anglais"
+      ],
+      "page": 6,
+      "default": "Français"
+    },
+    {
+      "id": "1_26",
+      "gf_field_id": 26,
+      "name": "input_26",
+      "label": "Vous recevrez les offres à l'adresse email suivante :",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée."
+    },
+    {
+      "id": "1_108",
+      "gf_field_id": 108,
+      "name": "input_108",
+      "label": "Questions spécifiques à Smile Direct",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 6,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Smile Direct"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_109",
+      "gf_field_id": 109,
+      "name": "input_109",
+      "label": "E-mail de l'assuré",
+      "type": "email",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Smile Direct"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_110",
+      "gf_field_id": 110,
+      "name": "input_110",
+      "label": "Téléphone de l'assuré",
+      "type": "tel",
+      "required": true,
+      "options": [],
+      "page": 6,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Smile Direct"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_62",
+      "gf_field_id": 62,
+      "name": "input_62",
+      "label": "Options spécifiques à Axa",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 6,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_63",
+      "gf_field_id": 63,
+      "name": "input_63",
+      "label": "Utilisation de véhicules de location et en autopartage",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont assurés les dommages découlant de l'utilisation de véhicules automobiles contre rémunération ou de véhicules mis à disposition par une association ou par l'employeur en vue d'un usage privé. Sont assurés en sus les dommages causés à ces véhicules automobiles.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_64",
+      "gf_field_id": 64,
+      "name": "input_64",
+      "label": "Dommages causés par des animaux domestiques aux logements locatifs",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont assurés les dommages causés à un logement locatif par des animaux domestiques.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_65",
+      "gf_field_id": 65,
+      "name": "input_65",
+      "label": "Chasseurs",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont assurés les dommages causés lors d'une partie de chasse à d'autres personnes ou à des choses appartenant à des tiers.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_66",
+      "gf_field_id": 66,
+      "name": "input_66",
+      "label": "Locataires de chevaux",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont assurés les dommages causés involontairement à un cheval pris en location.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_67",
+      "gf_field_id": 67,
+      "name": "input_67",
+      "label": "Vol hors du domicile",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont assurés les vols simples lors de déplacements (p. ex. vol à la tire et vol par ruse).",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_68",
+      "gf_field_id": 68,
+      "name": "input_68",
+      "label": "Bris de fenêtres, de lavabos et de vitrages du bâtiment",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Est assuré le bris de vitrages de meubles (p. ex. vitrine).",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_69",
+      "gf_field_id": 69,
+      "name": "input_69",
+      "label": "Construction en plein air",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont assurées les choses installées de manière fixe autour de la maison (murs de soutènement, etc.).",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_70",
+      "gf_field_id": 70,
+      "name": "input_70",
+      "label": "Tremblement de terre",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Est assuré l'inventaire du ménage détérioré ou détruit à la suite d'un tremblement de terre.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_71",
+      "gf_field_id": 71,
+      "name": "input_71",
+      "label": "Smartphones, tablettes et appareils électroniques de loisirs",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont p. ex. assurés les ordinateurs portables, les téléviseurs et les consoles de jeux endommagés ou volés.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_72",
+      "gf_field_id": 72,
+      "name": "input_72",
+      "label": "Vélos, vélos électriques et équipements de sport",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont p. ex. assurés les mobylettes, les skis et les snowboards endommagés ou volés.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_73",
+      "gf_field_id": 73,
+      "name": "input_73",
+      "label": "Lunettes, appareils auditifs et moyens auxiliaires médicaux",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont p. ex. assurés les fauteuils roulants, les véhicules pour seniors et les déambulateurs endommagés ou volés.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_74",
+      "gf_field_id": 74,
+      "name": "input_74",
+      "label": "Bagages",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont assurés les bagages, notamment lorsqu'ils sont endommagés ou volés lors d'un voyage en avion.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_75",
+      "gf_field_id": 75,
+      "name": "input_75",
+      "label": "Bijoux, montres et instruments de musique",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont p. ex. assurés les bagues, les colliers et les violons endommagés ou volés.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_76",
+      "gf_field_id": 76,
+      "name": "input_76",
+      "label": "Art, collections et antiquités",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont assurés les objets d'art, les collections et les antiquités lorsqu'ils sont endommagés ou volés.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_77",
+      "gf_field_id": 77,
+      "name": "input_77",
+      "label": "Faute grave",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "AXA renonce à réduire les prestations en cas de dommage imputable à une faute grave causé à l'inventaire du ménage ou relevant de la responsabilité civile privée (p. ex. bougie non surveillée qui déclenche un incendie).",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_78",
+      "gf_field_id": 78,
+      "name": "input_78",
+      "label": "Perte de clés et service de serrurerie",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Sont assurés les frais induits par le service de serrurerie et le remplacement de clés, y compris les frais relatifs à un changement de serrures nécessaire (p. ex. frais générés en cas de perte de clés du logement locatif, qui oblige à changer les serrures).",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_79",
+      "gf_field_id": 79,
+      "name": "input_79",
+      "label": "Service d'intervention d'artisan en urgence",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Dans les cas d'urgence suivants liés au logement, AXA fait intervenir un artisan: débouchage de conduites, problèmes avec des installations sanitaires, électriques ou de chauffage, élimination de nids de guêpes, d'abeilles et de frelons, lutte contre les parasites. Sont assurés au maximum deux sinistres par an.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_80",
+      "gf_field_id": 80,
+      "name": "input_80",
+      "label": "Assistance vélo et vélo électrique",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "AXA organise le dépannage et le remorquage vers un atelier de réparation de vélos et de vélos électriques. Sont également couverts les frais de transport pour le retour au domicile ou la poursuite du voyage, ainsi que les frais d'hébergement et de restauration. Sont assurés au maximum deux sinistres par an.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_81",
+      "gf_field_id": 81,
+      "name": "input_81",
+      "label": "Récupération des données et suppression de virus",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "AXA organise la suppression de virus et la reconstitution de données sur des appareils électroniques endommagés, p. ex. des ordinateurs ou des téléphones portables. Sont assurés au maximum deux sinistres par an.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Axa"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_61",
+      "gf_field_id": 61,
+      "name": "input_61",
+      "label": "Option spécifique à Zurich",
+      "type": "section",
+      "required": false,
+      "options": [],
+      "page": 6,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Zurich"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1_46",
+      "gf_field_id": 46,
+      "name": "input_46",
+      "label": "Rabais pour absence de sinistre",
+      "type": "radio",
+      "required": true,
+      "options": [
+        "Oui",
+        "Non"
+      ],
+      "page": 6,
+      "description": "Si au bout de 3 années, le client n'a eu aucun sinistre, la Zurich va lui rembourser 15% de la somme de 3 primes annuelles.",
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Zurich"
+          }
+        ]
+      }
+    }
+  ]
+}
