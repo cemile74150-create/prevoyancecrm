@@ -22,6 +22,8 @@ import {
   SUIVI_3P_STATUT_STYLE,
   SUIVI_3P_GEO_OPTIONS,
   SUIVI_3P_GEO_STYLE,
+  SUIVI_3P_AGE_OPTIONS,
+  parseAgeBound,
   SUIVI_3P_EXPORT_COLUMNS,
   DEFAULT_SUIVI_3P_EXPORT_COLUMN_KEYS,
   formatChf,
@@ -187,6 +189,11 @@ export default function Suivi3P() {
   const [filterConseiller, setFilterConseiller] = useState("all");
   const [kpiFilter, setKpiFilter] = useState("all");
   const [geoFilter, setGeoFilter] = useState("all");
+  const [ageBracket, setAgeBracket] = useState("all");
+  const [ageMin, setAgeMin] = useState("");
+  const [ageMax, setAgeMax] = useState("");
+  const [ageMinDebounced, setAgeMinDebounced] = useState("");
+  const [ageMaxDebounced, setAgeMaxDebounced] = useState("");
   const [conseillerRows, setConseillerRows] = useState([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -221,6 +228,14 @@ export default function Suivi3P() {
     return () => clearTimeout(t);
   }, [q]);
 
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setAgeMinDebounced(ageMin.trim());
+      setAgeMaxDebounced(ageMax.trim());
+    }, 300);
+    return () => clearTimeout(t);
+  }, [ageMin, ageMax]);
+
   const loadPending = useCallback(async () => {
     if (!isAdmin) return;
     try {
@@ -245,6 +260,14 @@ export default function Suivi3P() {
       }
       if (geoFilter && geoFilter !== "all") {
         params.geo = geoFilter;
+      }
+      const minAge = parseAgeBound(ageMinDebounced);
+      const maxAge = parseAgeBound(ageMaxDebounced);
+      if (minAge != null || maxAge != null) {
+        if (minAge != null) params.age_min = minAge;
+        if (maxAge != null) params.age_max = maxAge;
+      } else if (ageBracket && ageBracket !== "all") {
+        params.age_bracket = ageBracket;
       }
       const [statsRes, listRes, consRes] = await Promise.all([
         api.get("/suivi-3p/stats", {
@@ -278,7 +301,7 @@ export default function Suivi3P() {
     } finally {
       setLoading(false);
     }
-  }, [statut, qDebounced, filterConseiller, kpiFilter, geoFilter, isGlobal]);
+  }, [statut, qDebounced, filterConseiller, kpiFilter, geoFilter, ageBracket, ageMinDebounced, ageMaxDebounced, isGlobal]);
 
   const refreshStats = useCallback(async () => {
     try {
@@ -399,6 +422,18 @@ export default function Suivi3P() {
   }, [filterConseiller, sortedConseillers]);
 
   const displayedRows = rows;
+  const appliedAgeMin = parseAgeBound(ageMinDebounced);
+  const appliedAgeMax = parseAgeBound(ageMaxDebounced);
+  const customAgeActive = appliedAgeMin != null || appliedAgeMax != null;
+  const ageFilterActive = customAgeActive || ageBracket !== "all";
+
+  const resetAgeFilter = () => {
+    setAgeBracket("all");
+    setAgeMin("");
+    setAgeMax("");
+    setAgeMinDebounced("");
+    setAgeMaxDebounced("");
+  };
 
   const resetConseillerFilter = () => setFilterConseiller("all");
 
@@ -649,6 +684,12 @@ export default function Suivi3P() {
         params.set("conseiller", filterConseiller);
       }
       if (kpiFilter && kpiFilter !== "all") params.set("filtre", kpiFilter);
+      if (appliedAgeMin != null || appliedAgeMax != null) {
+        if (appliedAgeMin != null) params.set("age_min", String(appliedAgeMin));
+        if (appliedAgeMax != null) params.set("age_max", String(appliedAgeMax));
+      } else if (ageBracket && ageBracket !== "all") {
+        params.set("age_bracket", ageBracket);
+      }
       if (exportScope === "selection") {
         params.set("client_ids", selectedIds.join(","));
       }
@@ -854,6 +895,86 @@ export default function Suivi3P() {
           </div>
           <p className="text-[11px] text-muted-foreground mt-2">
             Selon l&apos;adresse (France → Frontalier, Suisse → Suisse). Les deux listes ne se mélangent pas.
+          </p>
+        </Card>
+
+        <Card className="px-4 py-3.5 mb-4 border-[#002FA7]/30 bg-white shadow-sm" data-testid="suivi-3p-age-filter">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <p className="text-sm font-semibold text-[#002FA7]">Filtrer par âge</p>
+            {ageFilterActive && (
+              <button
+                type="button"
+                onClick={resetAgeFilter}
+                className="text-xs text-[#002FA7] hover:underline"
+                data-testid="suivi-3p-age-clear"
+              >
+                Effacer l&apos;âge
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {SUIVI_3P_AGE_OPTIONS.map((opt) => {
+              const active = !customAgeActive && ageBracket === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => {
+                    setAgeBracket(opt.id);
+                    setAgeMin("");
+                    setAgeMax("");
+                    setAgeMinDebounced("");
+                    setAgeMaxDebounced("");
+                  }}
+                  className={`text-sm px-3.5 py-2 rounded-lg transition-colors border ${
+                    active
+                      ? "bg-[#002FA7] text-white font-semibold border-[#002FA7] shadow-sm"
+                      : "bg-secondary/60 text-foreground border-border/80 hover:border-[#002FA7]/40"
+                  }`}
+                  data-testid={`suivi-3p-age-${opt.id}`}
+                  aria-pressed={active}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-end gap-3 mt-3">
+            <div className="space-y-1">
+              <Label htmlFor="suivi-3p-age-min" className="text-xs text-muted-foreground">Âge min</Label>
+              <Input
+                id="suivi-3p-age-min"
+                type="number"
+                min={0}
+                max={130}
+                inputMode="numeric"
+                value={ageMin}
+                onChange={(e) => setAgeMin(e.target.value)}
+                placeholder="55"
+                className="h-9 w-24"
+                data-testid="suivi-3p-age-min"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="suivi-3p-age-max" className="text-xs text-muted-foreground">Âge max</Label>
+              <Input
+                id="suivi-3p-age-max"
+                type="number"
+                min={0}
+                max={130}
+                inputMode="numeric"
+                value={ageMax}
+                onChange={(e) => setAgeMax(e.target.value)}
+                placeholder="62"
+                className="h-9 w-24"
+                data-testid="suivi-3p-age-max"
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-2">
+            {customAgeActive
+              ? "La fourchette saisie remplace la tranche. Les clients sans date de naissance sont exclus."
+              : "Sans min/max, la tranche cochée s'applique. Les clients sans date de naissance restent visibles tant qu'aucun filtre d'âge n'est actif."}
           </p>
         </Card>
 
@@ -1170,7 +1291,7 @@ export default function Suivi3P() {
         )}
 
         <div ref={tableRef} className="space-y-3">
-        {(selectedConseillerMeta || kpiFilter !== "all" || geoFilter !== "all" || q.trim()) && (
+        {(selectedConseillerMeta || kpiFilter !== "all" || geoFilter !== "all" || ageFilterActive || q.trim()) && (
           <div
             className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#002FA7]/15 bg-[#002FA7]/[0.03] px-3 py-2"
             data-testid="suivi-3p-active-filters"
@@ -1182,10 +1303,21 @@ export default function Suivi3P() {
                   {" "}({selectedConseillerMeta.total})
                 </>
               )}
-              {selectedConseillerMeta && (kpiFilter !== "all" || geoFilter !== "all" || q.trim()) && <span className="text-muted-foreground"> · </span>}
+              {selectedConseillerMeta && (kpiFilter !== "all" || geoFilter !== "all" || ageFilterActive || q.trim()) && <span className="text-muted-foreground"> · </span>}
               {geoFilter === "frontaliers" && <span className="font-semibold">Suivi 3P – Frontaliers</span>}
               {geoFilter === "suisses" && <span className="font-semibold">Suivi 3P – Suisses</span>}
-              {geoFilter !== "all" && (kpiFilter !== "all" || q.trim()) && <span className="text-muted-foreground"> · </span>}
+              {geoFilter !== "all" && (kpiFilter !== "all" || ageFilterActive || q.trim()) && <span className="text-muted-foreground"> · </span>}
+              {customAgeActive && (
+                <span className="font-semibold">
+                  Âge {appliedAgeMin != null ? appliedAgeMin : "…"}–{appliedAgeMax != null ? appliedAgeMax : "…"} ans
+                </span>
+              )}
+              {!customAgeActive && ageBracket === "lt50" && <span className="font-semibold">Moins de 50 ans</span>}
+              {!customAgeActive && ageBracket === "50-54" && <span className="font-semibold">50–54 ans</span>}
+              {!customAgeActive && ageBracket === "55-59" && <span className="font-semibold">55–59 ans</span>}
+              {!customAgeActive && ageBracket === "60-64" && <span className="font-semibold">60–64 ans</span>}
+              {!customAgeActive && ageBracket === "65plus" && <span className="font-semibold">65 ans et +</span>}
+              {ageFilterActive && (kpiFilter !== "all" || q.trim()) && <span className="text-muted-foreground"> · </span>}
               {kpiFilter === "analyses" && <span>Analyses réalisées</span>}
               {kpiFilter === "gain" && <span>Gain fiscal proposé</span>}
               {kpiFilter === "signes" && <span>Contrats signés</span>}
@@ -1202,6 +1334,7 @@ export default function Suivi3P() {
                 resetConseillerFilter();
                 setKpiFilter("all");
                 setGeoFilter("all");
+                resetAgeFilter();
                 setQ("");
                 setStatut("all");
               }}
@@ -1247,6 +1380,7 @@ export default function Suivi3P() {
                       />
                     </th>
                     <th className="px-4 py-2.5 font-medium">Client</th>
+                    <th className="px-3 py-2.5 font-medium">Âge</th>
                     <th className="px-3 py-2.5 font-medium hidden lg:table-cell">Résidence</th>
                     <th className="px-3 py-2.5 font-medium">Civilité</th>
                     <th className="px-3 py-2.5 font-medium hidden md:table-cell">Conseiller</th>
@@ -1306,6 +1440,13 @@ export default function Suivi3P() {
                             <span className={`lg:hidden mt-1 inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded ${SUIVI_3P_GEO_STYLE[r.residence_suivi] || "bg-slate-100 text-slate-700"}`}>
                               {r.residence_suivi}
                             </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 tabular-nums whitespace-nowrap" data-testid={`suivi-3p-age-${r.id}`}>
+                          {r.age == null || r.age === "" ? (
+                            <span className="text-muted-foreground/60">—</span>
+                          ) : (
+                            <span className="font-medium">{r.age}</span>
                           )}
                         </td>
                         <td className="px-3 py-3 hidden lg:table-cell">

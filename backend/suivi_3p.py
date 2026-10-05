@@ -1,7 +1,7 @@
 """Module Suivi 3e Pilier — collection Mongo indépendante (suivi_3p_clients)."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 SUIVI_3P_STATUTS = [
@@ -291,6 +291,747 @@ def extract_economie_fiscale_from_pdf(pdf_bytes: bytes) -> Optional[float]:
         if gain is not None:
             return gain
     return None
+
+
+def _analyse_pdf_plain_text(pdf_bytes: bytes) -> str:
+    """Texte brut d'un PDF d'analyse (même lecture que le gain fiscal)."""
+    if not pdf_bytes:
+        return ""
+    try:
+        import fitz  # pymupdf
+
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            return "\n".join((page.get_text("text") or "") for page in doc)
+        finally:
+            doc.close()
+    except Exception:
+        try:
+            import io
+            from pypdf import PdfReader
+
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            return "\n".join((page.extract_text() or "") for page in reader.pages)
+        except Exception:
+            return ""
+
+
+# Libellés vus sur les PDF d'analyse (la date est souvent sur la ligne suivante).
+_BIRTH_LABELS = (
+    r"date\s+de\s+naissance",
+    r"n[ée]e?\s+le",
+    r"geburtsdatum",
+    r"date\s+of\s+birth",
+)
+
+# Clés déjà posées sur un document importé (sans relire le PDF).
+_EXTRACTED_BIRTH_KEYS = (
+    "extracted_date_naissance",
+    "date_naissance",
+    "dateNaissance",
+    "date_de_naissance",
+    "naissance",
+    "geburtsdatum",
+    "date_of_birth",
+    "birth_date",
+    "dob",
+)
+
+# Tranches d'âge inclusives. « moins de 50 » = 0–49 ans révolus.
+AGE_BRACKETS = {
+    "lt50": (None, 49),
+    "50-54": (50, 54),
+    "55-59": (55, 59),
+    "60-64": (60, 64),
+    "65plus": (65, None),
+}
+
+
+def coerce_birth_date(value: Any) -> Optional[str]:
+    """Date de naissance en YYYY-MM-DD, ou None si absente / invalide."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s or s.startswith("enc:"):
+        return None
+    if "T" in s:
+        s = s.split("T", 1)[0]
+    s = s[:10] if len(s) >= 10 and s[4:5] == "-" else s
+
+    year = month = day = None
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        try:
+            year, month, day = int(s[0:4]), int(s[5:7]), int(s[8:10])
+        except ValueError:
+            return None
+    else:
+        import re
+
+        m = re.match(r"^(\d{1,2})[./](\d{1,2})[./](\d{2,4})$", s)
+        if not m:
+            return None
+        day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if year < 100:
+            year += 2000 if year <= 30 else 1900
+    if year < 1850 or year > 2100:
+        return None
+    try:
+        date(year, month, day)
+    except ValueError:
+        return None
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def parse_date_naissance_from_analyse_text(text: str) -> Optional[str]:
+    """Lit « Date de naissance » (même ligne ou ligne suivante) dans le texte PDF."""
+    import re
+
+    if not text or not str(text).strip():
+        return None
+    for label in _BIRTH_LABELS:
+        m = re.search(
+            rf"{label}\s*[:\-–]?\s*"
+            rf"(\d{{1,2}}[./]\d{{1,2}}[./]\d{{2,4}}|\d{{4}}-\d{{2}}-\d{{2}})",
+            text,
+            re.IGNORECASE,
+        )
+        if not m:
+            continue
+        iso = coerce_birth_date(m.group(1))
+        if iso:
+            return iso
+    return None
+
+
+def extract_date_naissance_from_pdf(pdf_bytes: bytes) -> Optional[str]:
+    """Date de naissance ISO extraite d'un PDF d'analyse, ou None."""
+    return parse_date_naissance_from_analyse_text(_analyse_pdf_plain_text(pdf_bytes))
+
+
+def birth_date_already_stored(value: Any) -> bool:
+    """Vrai si la fiche a déjà une date (clair, chiffré, ou toute valeur non vide)."""
+    if value is None:
+        return False
+    return bool(str(value).strip())
+
+
+def birth_date_to_store(existing: Any, extracted: Any) -> Optional[str]:
+    """ISO à écrire sur le client, uniquement si le champ est vide."""
+    iso = coerce_birth_date(extracted)
+    if not iso or birth_date_already_stored(existing):
+        return None
+    return iso
+
+
+# Champs fiche touchés par un import d'analyse. Le reste (téléphone, notes,
+# conseiller, statut, adresse, RDV, etc.) n'est jamais réécrit.
+ANALYSE_IMPORT_CLIENT_KEYS = frozenset({
+    "date_derniere_analyse",
+    "updated_at",
+    "gain_fiscal_estime",
+    "date_naissance",
+})
+
+_ANALYSE_DOC_EXTRA_BLOCKED = frozenset({
+    "id",
+    "user_id",
+    "suivi_3p_client_id",
+    "is_deleted",
+    "created_at",
+    "storage_path",
+    "size",
+    "content_sha256",
+})
+
+
+def normalize_analyse_filename(filename: Any) -> str:
+    """
+    Nom comparable pour un remplacement : basename, NFC, espaces compactés, casse ignorée.
+
+    « Dupont Jean.PDF » et « dupont  jean.pdf » correspondent.
+    « Dupont_Jean.pdf » reste un autre fichier. Les accents ne sont pas retirés.
+    """
+    import unicodedata
+    from pathlib import PurePath
+
+    raw = str(filename or "").replace("\\", "/").strip()
+    name = PurePath(raw).name.strip()
+    if not name or name in {".", ".."}:
+        return ""
+    name = unicodedata.normalize("NFC", name)
+    name = " ".join(name.split())
+    return name.casefold()
+
+
+def find_same_filename_docs(docs: Optional[list], *, client_id: Any, filename: str) -> list:
+    """
+    Documents actifs du MÊME client dont le nom normalisé est identique.
+
+    Un document d'un autre client n'est jamais retourné, même si le nom est le même.
+    Les courriers générés sont exclus.
+    """
+    target = normalize_analyse_filename(filename)
+    cid = str(client_id or "").strip()
+    if not target or not cid:
+        return []
+    found = []
+    for doc in docs or []:
+        if not isinstance(doc, dict) or doc.get("is_deleted"):
+            continue
+        if str(doc.get("suivi_3p_client_id") or "") != cid:
+            continue
+        if (doc.get("kind") or "").strip() == COURRIER_KIND:
+            continue
+        if normalize_analyse_filename(doc.get("original_filename")) != target:
+            continue
+        found.append(doc)
+    found.sort(key=lambda d: (str(d.get("created_at") or ""), str(d.get("id") or "")))
+    return found
+
+
+def other_duplicate_reason(docs: Optional[list], *, client_id: Any, filename: str, data: bytes) -> Optional[str]:
+    """
+    Doublon d'un AUTRE nom de fichier (même client) : stem+taille ou empreinte.
+
+    Le même nom normalisé n'est pas un skip : c'est un remplacement.
+    """
+    import hashlib
+    from pathlib import PurePath
+
+    target = normalize_analyse_filename(filename)
+    cid = str(client_id or "").strip()
+    if not cid:
+        return None
+    digest = hashlib.sha256(data or b"").hexdigest()
+    stem = PurePath(str(filename or "")).stem.strip().casefold()
+    for doc in docs or []:
+        if not isinstance(doc, dict) or doc.get("is_deleted"):
+            continue
+        if str(doc.get("suivi_3p_client_id") or "") != cid:
+            continue
+        if (doc.get("kind") or "").strip() == COURRIER_KIND:
+            continue
+        existing_name = doc.get("original_filename") or ""
+        if normalize_analyse_filename(existing_name) == target:
+            continue
+        existing_stem = PurePath(str(existing_name)).stem.strip().casefold()
+        if stem and existing_stem == stem and doc.get("size") == len(data or b""):
+            return "deja_importe_stem_size"
+        if doc.get("content_sha256") and doc.get("content_sha256") == digest:
+            return "deja_importe_sha256"
+    return None
+
+
+def readable_birth_value(value: Any) -> Any:
+    """Date en clair si elle est déjà lisible. Un jeton chiffré illisible reste inchangé."""
+    if value is None:
+        return value
+    text = str(value).strip()
+    if not text.startswith("enc:"):
+        return value
+    try:
+        from field_crypto import decrypt_str
+
+        return decrypt_str(text)
+    except Exception:
+        return value
+
+
+def birth_date_for_analyse_import(
+    existing: Any,
+    extracted: Any,
+    *,
+    previous_extracted: Any = None,
+) -> Optional[str]:
+    """
+    Date ISO à écrire sur la fiche, ou None pour ne pas y toucher.
+
+    - PDF sans date de naissance : ne rien écrire (ne pas vider la fiche)
+    - fiche vide et PDF avec une date : enregistrer
+    - fiche égale à l'ancienne date extraite : prendre la date du nouveau PDF
+    - fiche différente (saisie manuelle ou valeur illisible / chiffrée) : ne pas écraser
+    """
+    existing = readable_birth_value(existing)
+    new_iso = coerce_birth_date(extracted)
+    if not new_iso:
+        return None
+    if not birth_date_already_stored(existing):
+        return new_iso
+    existing_iso = coerce_birth_date(existing)
+    previous_iso = coerce_birth_date(previous_extracted)
+    if existing_iso and previous_iso and existing_iso == previous_iso and existing_iso != new_iso:
+        return new_iso
+    return None
+
+
+def client_updates_for_analyse_import(
+    client: Optional[dict],
+    *,
+    extracted_gain: Any,
+    extracted_birth: Any,
+    previous_extracted_birth: Any,
+    now: str,
+) -> dict:
+    """$set fiche : date d'analyse, gain seulement s'il est relu, naissance selon la règle."""
+    updates = {
+        "date_derniere_analyse": str(now)[:10],
+        "updated_at": now,
+    }
+    if extracted_gain is not None:
+        updates["gain_fiscal_estime"] = extracted_gain
+    birth = birth_date_for_analyse_import(
+        (client or {}).get("date_naissance"),
+        extracted_birth,
+        previous_extracted=previous_extracted_birth,
+    )
+    if birth:
+        updates["date_naissance"] = birth
+    return {k: v for k, v in updates.items() if k in ANALYSE_IMPORT_CLIENT_KEYS}
+
+
+def _new_analyse_logical_path(filename: str) -> str:
+    import uuid
+
+    ext = "pdf"
+    name = str(filename or "")
+    if "." in name:
+        cand = name.rsplit(".", 1)[-1].lower()
+        if cand.isalnum() and 1 <= len(cand) <= 8:
+            ext = cand
+    return f"prevoyance-crm/suivi-3p/analyses/{uuid.uuid4()}.{ext}"
+
+
+def prepare_analyse_pdf_import(
+    documents: Optional[list],
+    client: dict,
+    *,
+    filename: str,
+    data: bytes,
+    extracted_gain: Any,
+    extracted_birth: Any,
+    now: str,
+    user_id: str,
+    source_folder: Optional[str] = None,
+    display_label: Optional[str] = None,
+    content_type: str = "application/pdf",
+    extra_doc_fields: Optional[dict] = None,
+    logical_path: Optional[str] = None,
+    new_doc_id: Optional[str] = None,
+) -> dict:
+    """
+    Plan de création ou de remplacement. N'écrit ni en base ni dans le stockage.
+
+    Le document conservé est le plus ancien du même nom, pour le même client.
+    Les autres doublons de ce nom (même client) sont marqués supprimés.
+    """
+    import hashlib
+    import uuid
+
+    if not isinstance(client, dict) or not str(client.get("id") or "").strip():
+        raise ValueError("Client Suivi 3P requis pour importer une analyse")
+    cid = str(client["id"])
+    if not normalize_analyse_filename(filename):
+        raise ValueError("Nom de fichier vide")
+
+    matches = find_same_filename_docs(documents, client_id=cid, filename=filename)
+    keeper = matches[0] if matches else None
+    extras = matches[1:] if matches else []
+    previous_birth = (keeper or {}).get("extracted_date_naissance") if keeper else None
+    birth_iso = coerce_birth_date(extracted_birth)
+    digest = hashlib.sha256(data or b"").hexdigest()
+
+    doc_set = {
+        "original_filename": str(filename),
+        "content_type": content_type or "application/pdf",
+        "content_sha256": digest,
+        "extracted_gain_fiscal": extracted_gain,
+        "extracted_date_naissance": birth_iso,
+        "category": ANALYSE_DOC_CATEGORY,
+        "updated_at": now,
+        "is_deleted": False,
+    }
+    if source_folder:
+        doc_set["source_folder"] = source_folder
+    if display_label:
+        doc_set["display_label"] = display_label
+    for key, value in (extra_doc_fields or {}).items():
+        if key in _ANALYSE_DOC_EXTRA_BLOCKED or key in doc_set:
+            continue
+        doc_set[key] = value
+
+    old_paths = []
+    if keeper and keeper.get("storage_path"):
+        old_paths.append(keeper.get("storage_path"))
+    for extra in extras:
+        if extra.get("storage_path"):
+            old_paths.append(extra.get("storage_path"))
+
+    keeper_id = keeper.get("id") if keeper else None
+    created_id = keeper_id or new_doc_id or str(uuid.uuid4())
+    retired = [
+        {
+            "id": extra.get("id"),
+            "set": {
+                "is_deleted": True,
+                "replaced_at": now,
+                "replaced_by": created_id,
+                "updated_at": now,
+            },
+        }
+        for extra in extras
+        if extra.get("id")
+    ]
+
+    new_document = None
+    action = "replaced" if keeper else "created"
+    if action == "created":
+        new_document = {
+            "id": created_id,
+            "user_id": user_id,
+            "suivi_3p_client_id": cid,
+            "is_deleted": False,
+            "created_at": now,
+            **doc_set,
+        }
+
+    return {
+        "action": action,
+        "client_id": cid,
+        "user_id": user_id,
+        "keeper_id": keeper_id,
+        "logical_path": logical_path or _new_analyse_logical_path(filename),
+        "content_type": doc_set["content_type"],
+        "old_storage_paths": [p for p in old_paths if p],
+        "retired": retired,
+        "doc_set": doc_set,
+        "new_document": new_document,
+        "client_updates": client_updates_for_analyse_import(
+            client,
+            extracted_gain=extracted_gain,
+            extracted_birth=extracted_birth,
+            previous_extracted_birth=previous_birth,
+            now=now,
+        ),
+        "previous_extracted_birth": previous_birth,
+    }
+
+
+def bind_stored_analyse(plan: dict, *, storage_path: str, size: int) -> dict:
+    """Renseigne le chemin de stockage neuf et la liste des anciens objets à supprimer."""
+    if not storage_path:
+        raise ValueError("Chemin de stockage manquant")
+    bound = dict(plan)
+    doc_set = dict(plan.get("doc_set") or {})
+    doc_set["storage_path"] = storage_path
+    doc_set["size"] = int(size)
+    bound["doc_set"] = doc_set
+    bound["storage_path"] = storage_path
+    bound["size"] = int(size)
+    if plan.get("new_document") is not None:
+        new_doc = dict(plan["new_document"])
+        new_doc["storage_path"] = storage_path
+        new_doc["size"] = int(size)
+        bound["new_document"] = new_doc
+    bound["delete_storage_paths"] = [
+        p for p in (plan.get("old_storage_paths") or []) if p and p != storage_path
+    ]
+    return bound
+
+
+def apply_plan_to_documents(documents: list, plan: dict) -> dict:
+    """Applique le plan sur la liste en mémoire. Ne modifie pas un autre client."""
+    cid = str(plan["client_id"])
+    if plan["action"] == "created":
+        doc = dict(plan["new_document"])
+        if str(doc.get("suivi_3p_client_id") or "") != cid:
+            raise ValueError("Refus: le nouveau document n'est pas rattaché à ce client")
+        documents.append(doc)
+        return doc
+
+    keeper = None
+    for doc in documents:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("id") == plan.get("keeper_id") and str(doc.get("suivi_3p_client_id") or "") == cid:
+            keeper = doc
+            break
+    if keeper is None:
+        raise ValueError("Document à remplacer introuvable pour ce client")
+    keeper.update(plan["doc_set"])
+    keeper["suivi_3p_client_id"] = cid
+    retired = {item["id"]: item["set"] for item in plan.get("retired") or [] if item.get("id")}
+    for doc in documents:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("id") in retired and str(doc.get("suivi_3p_client_id") or "") == cid:
+            doc.update(retired[doc["id"]])
+    return keeper
+
+
+def mongo_persist_analyse_import(db, plan: dict) -> None:
+    """Écrit le plan. Chaque update est filtré par l'id du client concerné."""
+    cid = plan["client_id"]
+    scope = {"suivi_3p_client_id": cid}
+    client_scope = {"id": cid}
+    if plan.get("user_id"):
+        scope["user_id"] = plan["user_id"]
+        client_scope["user_id"] = plan["user_id"]
+    docs = db[COLLECTION_DOCS]
+    if plan["action"] == "created":
+        doc = dict(plan["new_document"])
+        if str(doc.get("suivi_3p_client_id") or "") != str(cid):
+            raise ValueError("Refus: création d'un document pour un autre client")
+        docs.insert_one(doc)
+    else:
+        docs.update_one(
+            {"id": plan["keeper_id"], **scope},
+            {"$set": dict(plan["doc_set"])},
+        )
+        for retired in plan.get("retired") or []:
+            docs.update_one(
+                {"id": retired["id"], **scope},
+                {"$set": dict(retired["set"])},
+            )
+    updates = dict(plan.get("client_updates") or {})
+    if updates:
+        db[COLLECTION_CLIENTS].update_one(
+            client_scope,
+            {"$set": encrypt_birth_updates(updates)},
+        )
+
+
+def commit_analyse_pdf_import(
+    documents: list,
+    client: dict,
+    *,
+    filename: str,
+    data: bytes,
+    extracted_gain: Any,
+    extracted_birth: Any,
+    now: str,
+    user_id: str,
+    put_object,
+    delete_object,
+    source_folder: Optional[str] = None,
+    display_label: Optional[str] = None,
+    content_type: str = "application/pdf",
+    extra_doc_fields: Optional[dict] = None,
+    logical_path: Optional[str] = None,
+    persist=None,
+    storage_path: Optional[str] = None,
+    storage_size: Optional[int] = None,
+) -> dict:
+    """
+    Crée ou remplace l'analyse du client.
+
+    ``storage_path`` est utilisé quand les octets sont déjà stockés (document en attente).
+    Sinon ``put_object(logical_path, data, content_type)`` envoie le fichier.
+    L'ancien objet n'est supprimé qu'après ``persist`` (s'il est fourni).
+    """
+    plan = prepare_analyse_pdf_import(
+        documents,
+        client,
+        filename=filename,
+        data=data,
+        extracted_gain=extracted_gain,
+        extracted_birth=extracted_birth,
+        now=now,
+        user_id=user_id,
+        source_folder=source_folder,
+        display_label=display_label,
+        content_type=content_type,
+        extra_doc_fields=extra_doc_fields,
+        logical_path=logical_path,
+    )
+    if storage_path:
+        stored_path = storage_path
+        size = int(storage_size if storage_size is not None else len(data or b""))
+    else:
+        stored = put_object(plan["logical_path"], data, plan["content_type"])
+        if isinstance(stored, dict):
+            stored_path = stored["path"]
+            size = int(stored.get("size") if stored.get("size") is not None else len(data or b""))
+        else:
+            stored_path, size = stored[0], int(stored[1])
+    plan = bind_stored_analyse(plan, storage_path=stored_path, size=size)
+    document = apply_plan_to_documents(documents, plan)
+    if persist:
+        persist(plan, document)
+    removed = []
+    delete_errors = []
+    for old in plan.get("delete_storage_paths") or []:
+        try:
+            delete_object(old)
+            removed.append(old)
+        except Exception as exc:
+            delete_errors.append({"path": old, "error": str(exc)})
+    updated_client = dict(client)
+    updated_client.update(plan["client_updates"])
+    return {
+        "action": plan["action"],
+        "document": document,
+        "client": updated_client,
+        "client_updates": plan["client_updates"],
+        "plan": plan,
+        "removed_storage_paths": removed,
+        "storage_delete_errors": delete_errors,
+    }
+
+
+def encrypt_birth_updates(updates: dict) -> dict:
+    """Chiffre ``date_naissance`` dans un $set si le chiffrement est configuré."""
+    if not updates or "date_naissance" not in updates:
+        return updates
+    try:
+        from data_crypto_keys import encryption_configured
+        from field_crypto import patch_encrypt_sensitive
+
+        if encryption_configured():
+            return patch_encrypt_sensitive(updates)
+    except Exception:
+        return updates
+    return updates
+
+
+def _birth_from_mapping(data: Any) -> Optional[str]:
+    if not isinstance(data, dict):
+        return None
+    for key in _EXTRACTED_BIRTH_KEYS:
+        iso = coerce_birth_date(data.get(key))
+        if iso:
+            return iso
+    return None
+
+
+def resolve_birth_date(client: Optional[dict], docs: Optional[list] = None) -> Optional[str]:
+    """
+    Date de naissance pour l'affichage.
+
+    La fiche client (``date_naissance``) prime. Sinon, une date déjà extraite
+    sur un document importé (sans relire le PDF).
+    """
+    iso = coerce_birth_date((client or {}).get("date_naissance"))
+    if iso:
+        return iso
+    ordered = sorted(
+        (d for d in (docs or []) if isinstance(d, dict) and not d.get("is_deleted")),
+        key=lambda d: str(d.get("created_at") or ""),
+        reverse=True,
+    )
+    for doc in ordered:
+        iso = _birth_from_mapping(doc)
+        if iso:
+            return iso
+        for nest_key in ("extracted", "extracted_fields", "fields", "meta"):
+            iso = _birth_from_mapping(doc.get(nest_key))
+            if iso:
+                return iso
+    return None
+
+
+def zurich_today(today: Any = None) -> date:
+    if isinstance(today, datetime):
+        return today.date()
+    if isinstance(today, date):
+        return today
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo("Europe/Zurich")).date()
+
+
+def completed_age(value: Any, today: Any = None) -> Optional[int]:
+    """Années révolues à la date du jour (Europe/Zurich). None si date absente ou invalide."""
+    iso = coerce_birth_date(value)
+    if not iso:
+        return None
+    year, month, day = (int(part) for part in iso.split("-"))
+    born = date(year, month, day)
+    current = zurich_today(today)
+    if born > current:
+        return None
+    age = current.year - born.year - ((current.month, current.day) < (born.month, born.day))
+    if age < 0:
+        return None
+    return age
+
+
+def age_filter_bounds(
+    bracket: Optional[str] = None,
+    age_min: Optional[int] = None,
+    age_max: Optional[int] = None,
+) -> Optional[tuple]:
+    """
+    Bornes inclusives (min, max). None = pas de filtre d'âge.
+
+    Si l'utilisateur saisit un min et/ou un max, cette fourchette remplace la tranche.
+    Les deux bornes sont remises dans l'ordre si min > max.
+    """
+    if age_min is not None or age_max is not None:
+        lo, hi = age_min, age_max
+        if lo is not None and hi is not None and lo > hi:
+            lo, hi = hi, lo
+        return (lo, hi)
+    key = (bracket or "").strip().lower().replace("–", "-").replace("—", "-")
+    if not key or key in {"all", "tous"}:
+        return None
+    aliases = {
+        "lt50": "lt50",
+        "moins50": "lt50",
+        "moins-de-50": "lt50",
+        "<50": "lt50",
+        "50-54": "50-54",
+        "55-59": "55-59",
+        "60-64": "60-64",
+        "65plus": "65plus",
+        "65+": "65plus",
+        "65-et-plus": "65plus",
+    }
+    canon = aliases.get(key)
+    if not canon:
+        return None
+    return AGE_BRACKETS[canon]
+
+
+def age_matches(age: Optional[int], bounds: Optional[tuple]) -> bool:
+    """Sans filtre : tout le monde. Avec filtre : les âges inconnus sont exclus."""
+    if bounds is None:
+        return True
+    if age is None:
+        return False
+    lo, hi = bounds
+    if lo is not None and age < lo:
+        return False
+    if hi is not None and age > hi:
+        return False
+    return True
+
+
+def _row_age_value(row: dict) -> Optional[int]:
+    if "age" in row:
+        value = row.get("age")
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+    return completed_age(resolve_birth_date(row))
+
+
+def attach_computed_age(rows: list, docs_by_client: Optional[dict] = None, *, today: Any = None) -> list:
+    """Ajoute ``age`` calculé (jamais persisté) à partir de la fiche ou des documents."""
+    docs_by_client = docs_by_client or {}
+    out = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            out.append(row)
+            continue
+        docs = docs_by_client.get(row.get("id")) or []
+        birth = resolve_birth_date(row, docs)
+        copied = dict(row)
+        copied["age"] = completed_age(birth, today=today)
+        out.append(copied)
+    return out
 
 
 def suivi_3p_base_query(user, conseiller: Optional[str] = None) -> dict:
@@ -629,8 +1370,11 @@ def filter_suivi_3p_rows(
     filtre: Optional[str] = None,
     geo: Optional[str] = None,
     q: Optional[str] = None,
+    age_bracket: Optional[str] = None,
+    age_min: Optional[int] = None,
+    age_max: Optional[int] = None,
 ) -> list:
-    """Filtres liste Suivi 3P (statut, KPI, géo Frontaliers/Suisses, recherche texte)."""
+    """Filtres liste Suivi 3P (statut, KPI, géo, âge, recherche texte)."""
     out = list(rows)
 
     if statut and statut != "all":
@@ -682,6 +1426,10 @@ def filter_suivi_3p_rows(
             or ql in (r.get("conjoint_nom") or "").casefold()
             or ql in (r.get("residence_suivi") or "").casefold()
         ]
+
+    bounds = age_filter_bounds(age_bracket, age_min, age_max)
+    if bounds is not None:
+        out = [r for r in out if age_matches(_row_age_value(r), bounds)]
 
     out.sort(key=lambda r: ((r.get("nom") or "").casefold(), (r.get("prenom") or "").casefold()))
     return out

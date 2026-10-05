@@ -99,6 +99,12 @@ from suivi_3p import (
     needs_rdv_suivi_relance,
     parse_gain,
     extract_economie_fiscale_from_pdf,
+    extract_date_naissance_from_pdf,
+    birth_date_for_analyse_import,
+    find_same_filename_docs,
+    prepare_analyse_pdf_import,
+    bind_stored_analyse,
+    attach_computed_age,
     suivi_3p_base_query,
     can_access_suivi_client,
     serialize_suivi_client,
@@ -5423,6 +5429,39 @@ async def list_suivi_3p_conseillers(user: User = Depends(get_current_user)):
     return rows
 
 
+async def _load_suivi_3p_view(
+    user,
+    *,
+    q: Optional[str] = None,
+    statut: Optional[str] = None,
+    conseiller: Optional[str] = None,
+    filtre: Optional[str] = None,
+    geo: Optional[str] = None,
+    age_bracket: Optional[str] = None,
+    age_min: Optional[int] = None,
+    age_max: Optional[int] = None,
+    limit: int = 5000,
+):
+    """Liste Suivi 3P filtrée, avec âge calculé (fiche ou date déjà extraite)."""
+    query = suivi_3p_base_query(user, conseiller=conseiller)
+    clients = await db[SUIVI_3P_CLIENTS].find(query, {"_id": 0}).to_list(limit)
+    rows = [serialize_suivi_client(c) for c in clients]
+    client_ids = [r["id"] for r in rows if r.get("id")]
+    docs_map = await _docs_by_suivi_client(client_ids)
+    rows = attach_computed_age(rows, docs_map)
+    rows = filter_suivi_3p_rows(
+        rows,
+        statut=statut,
+        filtre=filtre,
+        geo=geo,
+        q=q,
+        age_bracket=age_bracket,
+        age_min=age_min,
+        age_max=age_max,
+    )
+    return rows, docs_map
+
+
 @api_router.get("/suivi-3p")
 async def list_suivi_3p(
     q: Optional[str] = None,
@@ -5430,18 +5469,25 @@ async def list_suivi_3p(
     conseiller: Optional[str] = None,
     filtre: Optional[str] = None,
     geo: Optional[str] = None,
+    age_bracket: Optional[str] = None,
+    age_min: Optional[int] = None,
+    age_max: Optional[int] = None,
     limit: int = Query(5000, ge=1, le=10000),
     user: User = Depends(get_current_user),
 ):
-    query = suivi_3p_base_query(user, conseiller=conseiller)
-    clients = await db[SUIVI_3P_CLIENTS].find(query, {"_id": 0}).to_list(limit)
-    rows = [serialize_suivi_client(c) for c in clients]
+    rows, docs_map = await _load_suivi_3p_view(
+        user,
+        q=q,
+        statut=statut,
+        conseiller=conseiller,
+        filtre=filtre,
+        geo=geo,
+        age_bracket=age_bracket,
+        age_min=age_min,
+        age_max=age_max,
+        limit=limit,
+    )
 
-    rows = filter_suivi_3p_rows(rows, statut=statut, filtre=filtre, geo=geo, q=q)
-
-    # Enrichissement Analyses (3e Pilier / Fortune) après filtres
-    client_ids = [r["id"] for r in rows if r.get("id")]
-    docs_map = await _docs_by_suivi_client(client_ids)
     for r in rows:
         summary = analyse_summary_from_docs(docs_map.get(r.get("id")) or [])
         if not summary["has_analyse_3p"] and not summary["has_analyse_fortune"] and r.get("date_derniere_analyse"):
@@ -5458,6 +5504,9 @@ async def export_suivi_3p_phone_followup(
     conseiller: Optional[str] = None,
     filtre: Optional[str] = None,
     geo: Optional[str] = None,
+    age_bracket: Optional[str] = None,
+    age_min: Optional[int] = None,
+    age_max: Optional[int] = None,
     scope: Optional[str] = Query("a_appeler", description="a_appeler | liste_filtree | selection"),
     regroupement: Optional[str] = Query("par_conseiller", description="par_conseiller | feuille_unique"),
     colonnes: Optional[str] = Query(None, description="Clés colonnes séparées par des virgules"),
@@ -5480,17 +5529,22 @@ async def export_suivi_3p_phone_followup(
         [c.strip() for c in (colonnes or "").split(",") if c.strip()] or None
     )
 
-    query = suivi_3p_base_query(user, conseiller=conseiller)
-    clients = await db[SUIVI_3P_CLIENTS].find(query, {"_id": 0}).to_list(10000)
-    rows = [serialize_suivi_client(c) for c in clients]
-    rows = filter_suivi_3p_rows(rows, statut=statut, filtre=filtre, geo=geo, q=q)
+    rows, docs_map = await _load_suivi_3p_view(
+        user,
+        q=q,
+        statut=statut,
+        conseiller=conseiller,
+        filtre=filtre,
+        geo=geo,
+        age_bracket=age_bracket,
+        age_min=age_min,
+        age_max=age_max,
+        limit=10000,
+    )
 
     if scope_norm == "selection":
         id_set = set(selected_ids)
         rows = [r for r in rows if r.get("id") in id_set]
-
-    client_ids_for_docs = [r["id"] for r in rows if r.get("id")]
-    docs_map = await _docs_by_suivi_client(client_ids_for_docs)
 
     try:
         data = build_suivi_3p_export_xlsx(
@@ -5639,8 +5693,13 @@ async def create_suivi_3p_client(payload: Suivi3PCreate, user: User = Depends(ge
     return serialize_suivi_client(to_store)
 
 
-async def _apply_analyse_pdf_to_client(client_id: str, pdf_bytes: bytes) -> Optional[float]:
-    """Met à jour date d'analyse + gain fiscal extrait du PDF."""
+async def _apply_analyse_pdf_to_client(
+    client_id: str,
+    pdf_bytes: bytes,
+    *,
+    previous_extracted_birth: Optional[str] = None,
+) -> Optional[float]:
+    """Met à jour date d'analyse + gain fiscal. La naissance suit la règle d'import."""
     now = datetime.now(timezone.utc).isoformat()
     updates = {
         "date_derniere_analyse": now[:10],
@@ -5649,11 +5708,178 @@ async def _apply_analyse_pdf_to_client(client_id: str, pdf_bytes: bytes) -> Opti
     gain = extract_economie_fiscale_from_pdf(pdf_bytes) if pdf_bytes else None
     if gain is not None:
         updates["gain_fiscal_estime"] = gain
+    birth = extract_date_naissance_from_pdf(pdf_bytes) if pdf_bytes else None
+    if birth:
+        current = await db[SUIVI_3P_CLIENTS].find_one(
+            {"id": client_id, "user_id": TENANT_USER_ID},
+            {"_id": 0, "date_naissance": 1},
+        )
+        existing = None
+        if current:
+            plain = _decrypt_client_doc(current)
+            existing = (plain or {}).get("date_naissance")
+        to_store = birth_date_for_analyse_import(
+            existing,
+            birth,
+            previous_extracted=previous_extracted_birth,
+        )
+        if to_store:
+            updates["date_naissance"] = to_store
     await db[SUIVI_3P_CLIENTS].update_one(
         {"id": client_id, "user_id": TENANT_USER_ID},
-        {"$set": updates},
+        {"$set": _encrypt_client_patch(updates)},
     )
     return gain
+
+
+def delete_stored_object(storage_path: str) -> None:
+    """Supprime un objet S3 ou un fichier local://. N'efface rien d'autre."""
+    storage_path = (storage_path or "").strip()
+    if not storage_path:
+        return
+    if storage_path.startswith("local://"):
+        path = _safe_local_path(storage_path)
+        if path.is_file():
+            path.unlink()
+        return
+    delete = getattr(object_storage, "delete_object", None)
+    if delete is None:
+        raise RuntimeError("Suppression stockage indisponible")
+    delete(storage_path)
+
+
+async def _persist_analyse_plan(plan: dict) -> None:
+    """Écrit le plan d'import. Le filtre inclut toujours le client concerné."""
+    cid = plan["client_id"]
+    scope = {"suivi_3p_client_id": cid, "user_id": TENANT_USER_ID}
+    if plan["action"] == "created":
+        doc = dict(plan["new_document"])
+        if str(doc.get("suivi_3p_client_id") or "") != str(cid):
+            raise HTTPException(status_code=409, detail="Document rattaché au mauvais client")
+        await db[SUIVI_3P_DOCS].insert_one(doc)
+        return
+    res = await db[SUIVI_3P_DOCS].update_one(
+        {"id": plan["keeper_id"], **scope},
+        {"$set": dict(plan["doc_set"])},
+    )
+    if res.matched_count != 1:
+        raise HTTPException(status_code=409, detail="Document à remplacer introuvable pour ce client")
+    for retired in plan.get("retired") or []:
+        await db[SUIVI_3P_DOCS].update_one(
+            {"id": retired["id"], **scope},
+            {"$set": dict(retired["set"])},
+        )
+
+
+async def _save_analyse_for_client(
+    *,
+    client: dict,
+    data: bytes,
+    filename: str,
+    content_type: str,
+    source_folder: Optional[str] = None,
+    display_label: Optional[str] = None,
+    extra_doc_fields: Optional[dict] = None,
+    existing_storage_path: Optional[str] = None,
+    existing_size: Optional[int] = None,
+    extracted_gain: Any = None,
+    extracted_birth: Any = None,
+    extraction_done: bool = False,
+) -> dict:
+    """Crée ou remplace le PDF d'analyse de ce client (même nom normalisé uniquement)."""
+    client_id = client["id"]
+    now = datetime.now(timezone.utc).isoformat()
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
+    is_pdf = bool(data) and (ext == "pdf" or (content_type or "").lower().endswith("pdf"))
+    if not extraction_done and is_pdf:
+        extracted_birth = extract_date_naissance_from_pdf(data)
+        extracted_gain = extract_economie_fiscale_from_pdf(data)
+
+    comparable = dict(client)
+    try:
+        plain = _decrypt_client_doc(client)
+        if isinstance(plain, dict):
+            comparable["date_naissance"] = plain.get("date_naissance")
+    except HTTPException:
+        raise
+
+    existing_docs = await db[SUIVI_3P_DOCS].find(
+        {
+            "user_id": TENANT_USER_ID,
+            "suivi_3p_client_id": client_id,
+            "is_deleted": False,
+        },
+        {"_id": 0},
+    ).to_list(500)
+    logical = f"{APP_NAME}/suivi-3p/analyses/{uuid.uuid4()}.{ext}"
+    plan = prepare_analyse_pdf_import(
+        existing_docs,
+        comparable,
+        filename=filename,
+        data=data or b"",
+        extracted_gain=extracted_gain,
+        extracted_birth=extracted_birth,
+        now=now,
+        user_id=TENANT_USER_ID,
+        source_folder=source_folder,
+        display_label=display_label,
+        content_type=content_type or "application/pdf",
+        extra_doc_fields=extra_doc_fields,
+        logical_path=logical,
+    )
+    uploaded_new = False
+    if existing_storage_path:
+        plan = bind_stored_analyse(
+            plan,
+            storage_path=existing_storage_path,
+            size=int(existing_size if existing_size is not None else len(data or b"")),
+        )
+    else:
+        try:
+            result = put_object(logical, data, plan["content_type"])
+            stored_path = result["path"]
+            size = result.get("size", len(data))
+        except Exception as e:
+            logger.error("Storage upload failed (suivi 3p analyses): %s", e)
+            local_name = f"{uuid.uuid4()}.{ext}"
+            stored_path = _local_storage_fallback(
+                ROOT_DIR / "uploads" / "suivi-3p" / "analyses",
+                local_name,
+                data,
+            )
+            size = len(data)
+        uploaded_new = True
+        plan = bind_stored_analyse(plan, storage_path=stored_path, size=size)
+
+    try:
+        await _persist_analyse_plan(plan)
+        updates = dict(plan.get("client_updates") or {})
+        if updates:
+            await db[SUIVI_3P_CLIENTS].update_one(
+                {"id": client_id, "user_id": TENANT_USER_ID},
+                {"$set": _encrypt_client_patch(updates)},
+            )
+    except Exception:
+        if uploaded_new:
+            try:
+                delete_stored_object(plan.get("storage_path") or "")
+            except Exception:
+                logger.exception("Rollback stockage analyse impossible")
+        raise
+
+    for old in plan.get("delete_storage_paths") or []:
+        try:
+            delete_stored_object(old)
+        except Exception:
+            logger.warning("Ancien PDF non supprimé (client=%s path=%s)", client_id, old)
+
+    if plan["action"] == "created":
+        doc = dict(plan["new_document"])
+    else:
+        keeper = next((d for d in existing_docs if d.get("id") == plan.get("keeper_id")), {})
+        doc = {**keeper, **plan["doc_set"]}
+    doc.pop("_id", None)
+    return doc
 
 
 async def _store_suivi_3p_bytes(
@@ -5668,55 +5894,55 @@ async def _store_suivi_3p_bytes(
     parsed_prenom: Optional[str] = None,
     match_reason: Optional[str] = None,
 ) -> dict:
+    if not pending:
+        if not client_id:
+            raise HTTPException(status_code=400, detail="Client Suivi 3P requis")
+        client = await db[SUIVI_3P_CLIENTS].find_one(
+            {"id": client_id, "user_id": TENANT_USER_ID},
+            {"_id": 0},
+        )
+        if not client:
+            raise HTTPException(status_code=404, detail="Client Suivi 3P introuvable")
+        folder_l = (source_folder or "").casefold()
+        label = None
+        if "fortune" in folder_l or "optimisation" in folder_l:
+            label = "Analyse optimisation fiscale"
+        return await _save_analyse_for_client(
+            client=client,
+            data=data,
+            filename=filename,
+            content_type=content_type,
+            source_folder=source_folder,
+            display_label=label,
+        )
+
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
-    folder = "pending" if pending else "analyses"
-    path = f"{APP_NAME}/suivi-3p/{folder}/{uuid.uuid4()}.{ext}"
+    path = f"{APP_NAME}/suivi-3p/pending/{uuid.uuid4()}.{ext}"
     try:
         result = put_object(path, data, content_type)
         storage_path = result["path"]
         size = result.get("size", len(data))
     except Exception as e:
-        logger.error(f"Storage upload failed (suivi 3p {folder}): {e}")
+        logger.error(f"Storage upload failed (suivi 3p pending): {e}")
         local_name = f"{uuid.uuid4()}.{ext}"
-        storage_path = _local_storage_fallback(ROOT_DIR / "uploads" / "suivi-3p" / folder, local_name, data)
+        storage_path = _local_storage_fallback(ROOT_DIR / "uploads" / "suivi-3p" / "pending", local_name, data)
         size = len(data)
 
     now = datetime.now(timezone.utc).isoformat()
     extracted_gain = None
-    if not pending and data and (ext == "pdf" or (content_type or "").lower().endswith("pdf")):
-        extracted_gain = extract_economie_fiscale_from_pdf(data)
+    extracted_birth = None
+    is_pdf = bool(data) and (ext == "pdf" or (content_type or "").lower().endswith("pdf"))
+    if is_pdf:
+        extracted_birth = extract_date_naissance_from_pdf(data)
 
     folder_l = (source_folder or "").casefold()
     display_label = None
     if "fortune" in folder_l or "optimisation" in folder_l:
         display_label = "Analyse optimisation fiscale"
 
-    if pending:
-        doc = {
-            "id": str(uuid.uuid4()),
-            "user_id": TENANT_USER_ID,
-            "storage_path": storage_path,
-            "original_filename": filename,
-            "content_type": content_type,
-            "size": size,
-            "category": ANALYSE_DOC_CATEGORY,
-            "source_folder": source_folder,
-            "display_label": display_label,
-            "parsed_nom": parsed_nom,
-            "parsed_prenom": parsed_prenom,
-            "match_reason": match_reason or "unmatched",
-            "extracted_gain_fiscal": extracted_gain,
-            "is_deleted": False,
-            "created_at": now,
-        }
-        await db[SUIVI_3P_PENDING].insert_one(doc)
-        doc.pop("_id", None)
-        return doc
-
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": TENANT_USER_ID,
-        "suivi_3p_client_id": client_id,
         "storage_path": storage_path,
         "original_filename": filename,
         "content_type": content_type,
@@ -5724,13 +5950,16 @@ async def _store_suivi_3p_bytes(
         "category": ANALYSE_DOC_CATEGORY,
         "source_folder": source_folder,
         "display_label": display_label,
+        "parsed_nom": parsed_nom,
+        "parsed_prenom": parsed_prenom,
+        "match_reason": match_reason or "unmatched",
         "extracted_gain_fiscal": extracted_gain,
         "is_deleted": False,
         "created_at": now,
     }
-    await db[SUIVI_3P_DOCS].insert_one(doc)
-    if client_id:
-        await _apply_analyse_pdf_to_client(client_id, data)
+    if extracted_birth:
+        doc["extracted_date_naissance"] = extracted_birth
+    await db[SUIVI_3P_PENDING].insert_one(doc)
     doc.pop("_id", None)
     return doc
 
@@ -5828,34 +6057,28 @@ async def assign_suivi_3p_pending(
     extracted_gain = pending.get("extracted_gain_fiscal")
     if extracted_gain is None and pdf_bytes:
         extracted_gain = extract_economie_fiscale_from_pdf(pdf_bytes)
-    doc = {
-        "id": str(uuid.uuid4()),
-        "user_id": TENANT_USER_ID,
-        "suivi_3p_client_id": client["id"],
-        "storage_path": pending["storage_path"],
-        "original_filename": pending.get("original_filename"),
-        "content_type": pending.get("content_type") or "application/pdf",
-        "size": pending.get("size"),
-        "category": ANALYSE_DOC_CATEGORY,
-        "source_folder": pending.get("source_folder"),
-        "assigned_from_pending": pending["id"],
-        "extracted_gain_fiscal": extracted_gain,
-        "is_deleted": False,
-        "created_at": now,
-    }
-    await db[SUIVI_3P_DOCS].insert_one(doc)
+    extracted_birth = pending.get("extracted_date_naissance")
+    if not extracted_birth and pdf_bytes:
+        extracted_birth = extract_date_naissance_from_pdf(pdf_bytes)
+    filename = pending.get("original_filename") or "analyse.pdf"
+    doc = await _save_analyse_for_client(
+        client=client,
+        data=pdf_bytes or b"",
+        filename=filename,
+        content_type=pending.get("content_type") or "application/pdf",
+        source_folder=pending.get("source_folder"),
+        display_label=pending.get("display_label"),
+        extra_doc_fields={"assigned_from_pending": pending["id"]},
+        existing_storage_path=pending.get("storage_path"),
+        existing_size=pending.get("size"),
+        extracted_gain=extracted_gain,
+        extracted_birth=extracted_birth,
+        extraction_done=True,
+    )
     await db[SUIVI_3P_PENDING].update_one(
         {"id": doc_id},
         {"$set": {"is_deleted": True, "assigned_client_id": client["id"], "assigned_at": now}},
     )
-    if pdf_bytes:
-        await _apply_analyse_pdf_to_client(client["id"], pdf_bytes)
-    else:
-        updates = {"date_derniere_analyse": now[:10], "updated_at": now}
-        if extracted_gain is not None:
-            updates["gain_fiscal_estime"] = extracted_gain
-        await db[SUIVI_3P_CLIENTS].update_one({"id": client["id"]}, {"$set": updates})
-    doc.pop("_id", None)
     return public_storage_record(doc)
 
 
@@ -5901,43 +6124,38 @@ async def import_suivi_3p_analyses(
 
         if len(matches) == 1:
             client = matches[0]
-            # éviter doublon exact même nom de fichier (casse ignorée)
-            exists = await db[SUIVI_3P_DOCS].find_one({
-                "user_id": TENANT_USER_ID,
-                "suivi_3p_client_id": client["id"],
-                "is_deleted": False,
-                "$or": [
-                    {"original_filename": filename},
-                    {"original_filename": {"$regex": f"^{re.escape(filename)}$", "$options": "i"}},
-                ],
-            }, {"_id": 0, "id": 1})
-            if exists:
-                skipped += 1
-                details.append({
-                    "filename": filename,
-                    "action": "skipped",
-                    "reason": "deja_importe",
-                    "client_id": client["id"],
-                })
-                continue
-            # Doublon contenu : même taille + même stem déjà présent
-            stem_l = Path(filename).stem.strip().casefold()
             existing_docs = await db[SUIVI_3P_DOCS].find({
                 "user_id": TENANT_USER_ID,
                 "suivi_3p_client_id": client["id"],
                 "is_deleted": False,
-                "size": len(item["data"]),
-            }, {"_id": 0, "id": 1, "original_filename": 1}).to_list(50)
-            if any(Path(d.get("original_filename") or "").stem.strip().casefold() == stem_l for d in existing_docs):
-                skipped += 1
-                details.append({
-                    "filename": filename,
-                    "action": "skipped",
-                    "reason": "deja_importe_taille_stem",
-                    "client_id": client["id"],
-                })
-                continue
-            await _store_suivi_3p_bytes(
+            }, {
+                "_id": 0,
+                "id": 1,
+                "original_filename": 1,
+                "size": 1,
+                "kind": 1,
+                "is_deleted": 1,
+                "suivi_3p_client_id": 1,
+            }).to_list(500)
+            same_name = find_same_filename_docs(
+                existing_docs, client_id=client["id"], filename=filename,
+            )
+            if not same_name:
+                stem_l = Path(filename).stem.strip().casefold()
+                if any(
+                    Path(d.get("original_filename") or "").stem.strip().casefold() == stem_l
+                    and d.get("size") == len(item["data"])
+                    for d in existing_docs
+                ):
+                    skipped += 1
+                    details.append({
+                        "filename": filename,
+                        "action": "skipped",
+                        "reason": "deja_importe_taille_stem",
+                        "client_id": client["id"],
+                    })
+                    continue
+            saved = await _store_suivi_3p_bytes(
                 data=item["data"],
                 filename=filename,
                 content_type=item["content_type"],
@@ -5945,14 +6163,17 @@ async def import_suivi_3p_analyses(
                 pending=False,
                 source_folder=item.get("source_folder"),
             )
-            gain = extract_economie_fiscale_from_pdf(item["data"])
+            gain = saved.get("extracted_gain_fiscal")
+            if gain is None:
+                gain = extract_economie_fiscale_from_pdf(item["data"])
             matched += 1
             details.append({
                 "filename": filename,
-                "action": "matched",
+                "action": "replaced" if same_name else "matched",
                 "client_id": client["id"],
                 "client": f"{client.get('prenom')} {client.get('nom')}",
                 "gain_fiscal_estime": gain,
+                "doc_id": saved.get("id"),
             })
         else:
             reason = "ambiguous" if len(matches) > 1 else "unmatched"
@@ -6462,48 +6683,20 @@ async def upload_suivi_3p_document(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
 ):
-    await _require_suivi_3p_client(client_id, user)
+    client = await _require_suivi_3p_client(client_id, user)
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Fichier vide")
     fname = file.filename or "analyse-3p.pdf"
     ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else "pdf"
     ctype = file.content_type or MIME_TYPES.get(ext, "application/octet-stream")
-    path = f"{APP_NAME}/suivi-3p/{user.user_id}/{uuid.uuid4()}.{ext}"
-    try:
-        result = put_object(path, data, ctype)
-        storage_path = result["path"]
-        size = result.get("size", len(data))
-    except Exception as e:
-        logger.error(f"Storage upload failed (suivi 3p): {e}")
-        local_name = f"{uuid.uuid4()}.{ext}"
-        storage_path = _local_storage_fallback(ROOT_DIR / "uploads" / "suivi-3p" / user.user_id, local_name, data)
-        size = len(data)
-
-    doc = {
-        "id": str(uuid.uuid4()),
-        "user_id": TENANT_USER_ID,
-        "suivi_3p_client_id": client_id,
-        "storage_path": storage_path,
-        "original_filename": fname,
-        "content_type": ctype,
-        "size": size,
-        "category": ANALYSE_DOC_CATEGORY,
-        "is_deleted": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "uploaded_by": getattr(user, "account_id", None),
-    }
-    await db[SUIVI_3P_DOCS].insert_one(doc)
-    if (ext == "pdf" or (ctype or "").lower().endswith("pdf")):
-        await _apply_analyse_pdf_to_client(client_id, data)
-        gain = extract_economie_fiscale_from_pdf(data)
-        if gain is not None:
-            await db[SUIVI_3P_DOCS].update_one(
-                {"id": doc["id"]},
-                {"$set": {"extracted_gain_fiscal": gain}},
-            )
-            doc["extracted_gain_fiscal"] = gain
-    doc.pop("_id", None)
+    doc = await _save_analyse_for_client(
+        client=client,
+        data=data,
+        filename=fname,
+        content_type=ctype,
+        extra_doc_fields={"uploaded_by": getattr(user, "account_id", None)},
+    )
     return public_storage_record(doc)
 
 

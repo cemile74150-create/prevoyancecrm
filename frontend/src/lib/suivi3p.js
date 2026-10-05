@@ -40,6 +40,25 @@ export const SUIVI_3P_GEO_STYLE = {
   Suisse: "bg-[#002FA7]/10 text-[#002FA7] ring-1 ring-inset ring-[#002FA7]/25",
 };
 
+/** Tranches d'âge (années révolues). La fourchette min/max saisie les remplace. */
+export const SUIVI_3P_AGE_OPTIONS = [
+  { id: "all", label: "Tous les âges" },
+  { id: "lt50", label: "Moins de 50 ans" },
+  { id: "50-54", label: "50–54 ans" },
+  { id: "55-59", label: "55–59 ans" },
+  { id: "60-64", label: "60–64 ans" },
+  { id: "65plus", label: "65 ans et +" },
+];
+
+/** Entier 0–130, ou null si la saisie n'est pas une borne d'âge. */
+export function parseAgeBound(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw || !/^\d{1,3}$/.test(raw)) return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 130) return null;
+  return n;
+}
+
 export function formatChf(value) {
   if (value === null || value === undefined || value === "") return "—";
   const n = Number(value);
