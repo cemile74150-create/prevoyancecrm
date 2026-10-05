@@ -79,14 +79,6 @@ export function ResultsPanel({ record }: Props) {
             <FileText className="size-4" />
             Prévisualiser le rapport
           </a>
-          <a
-            href={analyseUrl(`/${id}/pdf`)}
-            className={buttonVariants()}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Télécharger le PDF
-          </a>
         </div>
       </div>
 

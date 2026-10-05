@@ -2,7 +2,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Calculator, Loader2, RotateCcw } from "lucide-react";
+import { Calculator, FileText, Loader2, RotateCcw } from "lucide-react";
 import { CommuneSearch } from "@/analyse-prevoyance/components/CommuneSearch";
 import { PersonIdentityFields } from "@/analyse-prevoyance/components/PersonIdentityFields";
 import { AvsFields } from "@/analyse-prevoyance/components/AvsFields";
@@ -96,6 +96,16 @@ function sampleFerreyres(): AnalyseInput {
   };
 }
 
+function payloadFrom(source: AnalyseInput) {
+  return {
+    ...source,
+    conjoint:
+      source.etatCivil === "Marié(e)"
+        ? source.conjoint ?? emptyPerson("Madame")
+        : null,
+  };
+}
+
 function Section({
   title,
   children,
@@ -136,6 +146,12 @@ export function AnalysePrevoyanceApp({
     () => initialRecord,
   );
   const [error, setError] = useState<string | null>(null);
+  const [calculatedSnapshot, setCalculatedSnapshot] = useState<string | null>(
+    () =>
+      initialRecord?.results
+        ? JSON.stringify(payloadFrom(initialRecord.input))
+        : null,
+  );
   const [pending, startTransition] = useTransition();
   const clientId = linkedClientId ?? record?.clientId ?? null;
 
@@ -226,6 +242,12 @@ export function AnalysePrevoyanceApp({
       setError("Calculez l'analyse avant de l'enregistrer dans le dossier client.");
       return;
     }
+    if (!resultsAreCurrent()) {
+      setError(
+        "Les données ont changé depuis le dernier calcul. Recalculez avant d'enregistrer le PDF.",
+      );
+      return;
+    }
     setError(null);
     startTransition(async () => {
       try {
@@ -247,13 +269,7 @@ export function AnalysePrevoyanceApp({
     setError(null);
     startTransition(async () => {
       try {
-        const payload = {
-          ...input,
-          conjoint:
-            input.etatCivil === "Marié(e)"
-              ? input.conjoint ?? emptyPerson("Madame")
-              : null,
-        };
+        const payload = payloadFrom(input);
         const id = record?.id;
         if (!id) {
           setError("Analyse non enregistrée");
@@ -270,6 +286,7 @@ export function AnalysePrevoyanceApp({
         }
         setRecord(data);
         setInput(data.input);
+        setCalculatedSnapshot(JSON.stringify(payloadFrom(data.input)));
         onSaved?.();
         requestAnimationFrame(() => {
           document.getElementById("resultats")?.scrollIntoView({
@@ -281,6 +298,26 @@ export function AnalysePrevoyanceApp({
         setError("Erreur réseau pendant le calcul ESTV");
       }
     });
+  }
+
+  function resultsAreCurrent() {
+    if (!record?.results || !calculatedSnapshot) return false;
+    return JSON.stringify(payloadFrom(input)) === calculatedSnapshot;
+  }
+
+  function createPdf() {
+    if (!record?.id || !record?.results) {
+      setError("Calculez l'analyse avant de créer le PDF.");
+      return;
+    }
+    if (!resultsAreCurrent()) {
+      setError(
+        "Les données ont changé depuis le dernier calcul. Recalculez avant de créer le PDF.",
+      );
+      return;
+    }
+    setError(null);
+    window.open(analyseUrl(`/${record.id}/pdf`), "_blank", "noopener");
   }
 
   return (
@@ -299,19 +336,6 @@ export function AnalysePrevoyanceApp({
       </header>
 
       <div className="mb-6 flex flex-wrap gap-2">
-        <button
-          type="button"
-          className={cn(buttonVariants())}
-          onClick={calculate}
-          disabled={pending || !canCalculate}
-        >
-          {pending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Calculator className="size-4" />
-          )}
-          {pending ? "Calcul ESTV en cours…" : "Calculer"}
-        </button>
         <button
           type="button"
           className={cn(buttonVariants({ variant: "outline" }))}
@@ -681,6 +705,31 @@ export function AnalysePrevoyanceApp({
 
       <div className="mt-10">
         <ResultsPanel record={record} />
+      </div>
+
+      <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-border pt-6">
+        <button
+          type="button"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#002FA7] px-6 text-base font-semibold text-white hover:bg-[#00248a] disabled:opacity-50"
+          onClick={calculate}
+          disabled={pending || !canCalculate}
+        >
+          {pending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Calculator className="size-4" />
+          )}
+          {pending ? "Calcul ESTV en cours…" : "Calculer"}
+        </button>
+        <button
+          type="button"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-md border-2 border-[#002FA7] bg-white px-6 text-base font-semibold text-[#002FA7] hover:bg-[#002FA7]/5 disabled:opacity-50"
+          onClick={createPdf}
+          disabled={pending || !record?.results}
+        >
+          <FileText className="size-4" />
+          Créer le PDF
+        </button>
       </div>
     </div>
   );
