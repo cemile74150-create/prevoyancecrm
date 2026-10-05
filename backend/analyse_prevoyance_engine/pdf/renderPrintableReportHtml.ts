@@ -41,7 +41,9 @@ export function buildReportPages(payload: ReportPayload): ReportPageSpec[] {
   });
 
   if (payload.flags.hasThirdPillar) {
-    pages.push({ kind: "portrait", html: page3a(payload, next(), total) });
+    for (const html of thirdPillarPages(payload, next, total)) {
+      pages.push({ kind: "portrait", html });
+    }
   }
   // fiscalOptimization.include === false → page masquée (pas d’invention)
 
@@ -271,6 +273,13 @@ export function reportCss(forceOrient?: ReportPageKind) {
   .synth th { color: #fff; padding: 8px; font-size: 9pt; }
   .synth td { text-align: center; padding: 8px 10px; border: 1px solid #ddd; font-weight: 600; vertical-align: middle; line-height: 1.15; height: 32px; }
   .note { font-size: 8.5pt; font-style: italic; color: ${GRAY}; margin-top: 6px; line-height: 1.35; }
+  .eco {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 12px; background: ${BRAND}; color: #fff;
+    font-weight: 700; letter-spacing: 0.04em; padding: 8px 12px; font-size: 11pt;
+  }
+  table.pillars { font-size: 8pt; }
+  table.pillars th { white-space: normal; line-height: 1.2; font-size: 7.5pt; }
   .chart-wrap { margin: 8px 0 14px; }
   .chart-title {
     text-align: center; font-size: 11pt; font-weight: 700; letter-spacing: 0.06em;
@@ -479,7 +488,7 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
   <table class="synth">
     <tr>
       <th style="background:${GREEN}">AVS estimée</th>
-      <th style="background:${BRAND};white-space:normal;line-height:1.25">Capital 2e pilier, y compris libre passage</th>
+      <th style="background:${BRAND};white-space:normal;line-height:1.25">Capital 2e pilier retirable, y compris libre passage</th>
       <th style="background:${GRAY}">Âge de la retraite</th>
     </tr>
     <tr>
@@ -512,7 +521,8 @@ function pageCompareRenteCapital(
     <tr><td class="lab">Capital LPP</td><td class="num">—</td><td class="num">${formatChf(a.capitalLppRetireTotal)}</td></tr>
     <tr><td class="lab">Impôt sur les capitaux</td><td class="num">—</td><td class="num tax">${formatChf(a.impotCapital65)}</td></tr>
     <tr><td class="lab">Capitaux après impôt</td><td class="num">—</td><td class="num">${formatChf(a.capitalNet65)}</td></tr>
-    <tr><td class="lab">Rente LPP</td><td class="num">${formatChf(a.renteLppTotal)}</td><td class="num">${formatChf(a.renteLppResiduelleTotal)}</td></tr>
+    <tr><td class="lab">Rente LPP – Assuré 1</td><td class="num">${formatChf(p.client1.renteLpp65)}</td><td class="num">${formatChf(p.client1.renteLppResiduelle65)}</td></tr>
+    ${p.conjoint ? `<tr><td class="lab">Rente LPP – Assuré 2</td><td class="num">${formatChf(p.conjoint.renteLpp65)}</td><td class="num">${formatChf(p.conjoint.renteLppResiduelle65)}</td></tr>` : ""}
     <tr><td class="lab">Rente AVS</td><td class="num">${formatChf(a.avsTotal)}</td><td class="num">${formatChf(a.avsTotal)}</td></tr>
     <tr><td class="lab">Impôts ICC &amp; IFD</td><td class="num tax">${formatChf(a.impotRevenuCouple1)}</td><td class="num tax">${formatChf(a.impotRevenuCouple2)}</td></tr>
     <tr><td class="lab">Rente après impôt</td><td class="num">${formatChf(a.renteApresImpot)}</td><td class="num">${formatChf(a.renteNetteCheminCapital)}</td></tr>
@@ -532,181 +542,160 @@ function pageCompareRenteCapital(
   ${footer(n, total)}`;
 }
 
-/**
- * Graphique évolution — SVG aire hachurée proche du PDF ref p.4.
- * Données = payload.evolution (moteur).
- */
-function renderEvolutionChart(p: ReportPayload): string {
-  const points = p.evolution.points;
-  if (!points.length) {
-    return `<div class="chart-title">EVOLUTION REVENU APRÈS LA RETRAITE</div>
-      <p class="note">Pas de série d’évolution.</p>`;
-  }
-
-  // Fenêtre autour de la transition (comme le ref : ~avant + après)
-  const firstRenteIdx = points.findIndex((x) => x.phase !== "salaire");
-  const start = Math.max(0, (firstRenteIdx >= 0 ? firstRenteIdx : 2) - 2);
-  const end = Math.min(points.length, start + 14);
-  const slice = points.slice(start, end);
-
-  const maxVal = Math.max(
-    ...slice.map((x) => x.revenu),
-    p.evolution.salaireReference,
-    p.evolution.renteReference,
-    1,
-  );
-  // Arrondi axe Y (pas de 50k comme ref)
-  const yMax = Math.ceil(maxVal / 50_000) * 50_000 || 200_000;
-
-  const W = 720;
-  const H = 220;
-  const padL = 68;
-  const padR = 16;
-  const padT = 12;
-  const padB = 28;
-  const plotW = W - padL - padR;
-  const plotH = H - padT - padB;
-
-  const xAt = (i: number) => padL + (i / Math.max(1, slice.length - 1)) * plotW;
-  const yAt = (v: number) => padT + plotH - (v / yMax) * plotH;
-
-  // Area path: before (salaire) then after (rente) — continuous line
-  const linePts = slice
-    .map((pt, i) => `${xAt(i).toFixed(1)},${yAt(pt.revenu).toFixed(1)}`)
-    .join(" ");
-  const areaPath =
-    `M ${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} ` +
-    slice
-      .map((pt, i) => `L ${xAt(i).toFixed(1)},${yAt(pt.revenu).toFixed(1)}`)
-      .join(" ") +
-    ` L ${xAt(slice.length - 1).toFixed(1)},${yAt(0).toFixed(1)} Z`;
-
-  // Split areas: green for salaire/transition start, red for rente
-  const splitIdx = slice.findIndex((x) => x.phase === "rente");
-  const split = splitIdx < 0 ? slice.length : splitIdx;
-
-  const areaSeg = (from: number, to: number) => {
-    if (to <= from) return "";
-    const seg = slice.slice(from, to + 1);
-    if (!seg.length) return "";
-    const xs = seg.map((_, j) => xAt(from + j));
-    const ys = seg.map((pt) => yAt(pt.revenu));
-    let d = `M ${xs[0].toFixed(1)},${yAt(0).toFixed(1)} `;
-    for (let j = 0; j < seg.length; j++) {
-      d += `L ${xs[j].toFixed(1)},${ys[j].toFixed(1)} `;
-    }
-    d += `L ${xs[xs.length - 1].toFixed(1)},${yAt(0).toFixed(1)} Z`;
-    return d;
-  };
-
-  const beforePath = areaSeg(0, Math.min(split, slice.length - 1));
-  const afterPath =
-    split < slice.length - 1
-      ? areaSeg(Math.max(0, split - 1), slice.length - 1)
-      : "";
-
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((t) => {
-    const v = yMax * t;
-    const y = yAt(v);
-    return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#e8e8e8" stroke-width="1"/>
-      <text x="${padL - 8}" y="${y + 3}" text-anchor="end" font-size="9" fill="#666" font-family="Calibri, Segoe UI, sans-serif">${formatAxisChf(v)}</text>`;
-  });
-
-  const xLabels = slice
-    .map((pt, i) => {
-      if (i % 2 !== 0 && slice.length > 8) return "";
-      return `<text x="${xAt(i)}" y="${H - 6}" text-anchor="middle" font-size="8" fill="#666" font-family="Calibri, Segoe UI, sans-serif">${pt.year}</text>`;
-    })
-    .join("");
-
-  // Amount callouts near mid of each phase
-  const midBefore = Math.floor(Math.max(0, split - 1) / 2);
-  const midAfter =
-    split < slice.length
-      ? Math.min(slice.length - 1, split + Math.floor((slice.length - split) / 2))
-      : -1;
-  const callouts = [
-    midBefore >= 0
-      ? `<text x="${xAt(midBefore)}" y="${yAt(slice[midBefore].revenu) - 8}" text-anchor="middle" font-size="9" font-weight="700" fill="${GREEN}" font-family="Calibri, Segoe UI, sans-serif">${formatChf(slice[midBefore].revenu)}</text>`
-      : "",
-    midAfter >= 0
-      ? `<text x="${xAt(midAfter)}" y="${yAt(slice[midAfter].revenu) - 8}" text-anchor="middle" font-size="9" font-weight="700" fill="${BRAND}" font-family="Calibri, Segoe UI, sans-serif">${formatChf(slice[midAfter].revenu)}</text>`
-      : "",
-  ].join("");
-
-  return `
-  <div class="chart-wrap">
-    <div class="chart-title">EVOLUTION REVENU APRÈS LA RETRAITE</div>
-    <div class="chart-legend">
-      <span><i class="sw before"></i> Revenu avant retraite (salaire brut)</span>
-      <span><i class="sw after"></i> Revenu après retraite (rente brute AVS + LPP)</span>
-    </div>
-    <svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Évolution revenu après retraite">
-      <defs>
-        <pattern id="hatchGreen" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
-          <rect width="8" height="8" fill="#d4ecd9"/>
-          <line x1="0" y1="0" x2="0" y2="8" stroke="${GREEN_LIGHT}" stroke-width="3"/>
-        </pattern>
-        <pattern id="hatchRed" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(-45)">
-          <rect width="8" height="8" fill="#f5d4d4"/>
-          <line x1="0" y1="0" x2="0" y2="8" stroke="#c45c5c" stroke-width="3"/>
-        </pattern>
-      </defs>
-      ${yTicks.join("\n")}
-      ${beforePath ? `<path d="${beforePath}" fill="url(#hatchGreen)" opacity="0.95"/>` : ""}
-      ${afterPath ? `<path d="${afterPath}" fill="url(#hatchRed)" opacity="0.95"/>` : `<path d="${areaPath}" fill="url(#hatchGreen)" opacity="0.9"/>`}
-      <polyline points="${linePts}" fill="none" stroke="#555" stroke-width="1.2"/>
-      ${callouts}
-      ${xLabels}
-    </svg>
-  </div>`;
-}
-
 function formatAxisChf(n: number): string {
   return new Intl.NumberFormat("fr-CH", {
     maximumFractionDigits: 0,
   }).format(n);
 }
 
-function page3a(p: ReportPayload, n: number, total: number): string {
-  const show = p.flags.showConjoint;
-  const byPerson = {
-    client1: p.thirdPillarRows.filter((r) => r.personKey === "client1"),
-    conjoint: p.thirdPillarRows.filter((r) => r.personKey === "conjoint"),
-  };
-  const c1 = byPerson.client1[0];
-  const c2 = byPerson.conjoint[0];
-  const name1 = c1?.personName.split(" ")[0] || p.client1.displayName;
-  const name2 = c2?.personName.split(" ")[0] || p.conjoint?.displayName || "";
+/**
+ * Barres empilées : hauteur totale = revenu avant retraite.
+ * Bas = revenu touché (AVS + LPP résiduelle). Haut = manque.
+ */
+function renderEvolutionChart(p: ReportPayload): string {
+  const points = p.evolution.points;
+  if (!points.length) {
+    return `<div class="chart-title">ÉVOLUTION REVENU APRÈS LA RETRAITE</div>
+      <p class="note">Pas de série d’évolution.</p>`;
+  }
 
-  const row = (label: string, v1: string, v2?: string) =>
-    `<tr><td class="lab">${esc(label)}</td><td class="val">${v1}</td>${show ? `<td class="val">${v2 ?? "—"}</td>` : ""}</tr>`;
+  const reference = Math.max(p.evolution.salaireReference || 0, 1);
+  const firstChange = points.findIndex((x) => x.phase !== "salaire");
+  const start = Math.max(0, (firstChange >= 0 ? firstChange : 0) - 1);
+  const end = Math.min(points.length, start + 12);
+  const slice = points.slice(start, end);
+  const yMax = Math.max(
+    reference,
+    ...slice.map((pt) => pt.revenu),
+    1,
+  );
+
+  const W = 720;
+  const H = 248;
+  const padL = 74;
+  const padR = 10;
+  const padT = 14;
+  const padB = 30;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const yAt = (v: number) => padT + plotH - (v / yMax) * plotH;
+  const colW = Math.max(18, plotW / slice.length - 8);
+
+  const yTicks: string[] = [];
+  const steps = 4;
+  for (let i = 0; i <= steps; i++) {
+    const val = (yMax * i) / steps;
+    const y = yAt(val);
+    yTicks.push(
+      `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" stroke="#e4e4e4" stroke-width="1"/>`,
+      `<text x="${padL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="8" fill="#666">${formatAxisChf(val)}</text>`,
+    );
+  }
+
+  const bars = slice
+    .map((pt, i) => {
+      const received = Math.max(0, pt.revenu);
+      const gap = Math.max(0, reference - received);
+      const x = padL + (i + 0.5) * (plotW / slice.length) - colW / 2;
+      const yReceived = yAt(received);
+      const hReceived = yAt(0) - yReceived;
+      const yGap = yAt(received + gap);
+      const hGap = yReceived - yGap;
+      const receivedLabel =
+        hReceived > 16
+          ? `<text x="${(x + colW / 2).toFixed(1)}" y="${(yReceived + hReceived / 2 + 3).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="#fff">${formatAxisChf(received)}</text>`
+          : "";
+      const gapLabel =
+        hGap > 16
+          ? `<text x="${(x + colW / 2).toFixed(1)}" y="${(yGap + hGap / 2 + 3).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="#fff">${formatAxisChf(gap)}</text>`
+          : "";
+      return `<rect x="${x.toFixed(1)}" y="${yReceived.toFixed(1)}" width="${colW.toFixed(1)}" height="${Math.max(0, hReceived).toFixed(1)}" fill="${GREEN}"/>
+        <rect x="${x.toFixed(1)}" y="${yGap.toFixed(1)}" width="${colW.toFixed(1)}" height="${Math.max(0, hGap).toFixed(1)}" fill="#9a3b3b"/>
+        ${receivedLabel}${gapLabel}
+        <text x="${(x + colW / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="8" fill="#444">${pt.year}</text>`;
+    })
+    .join("\n");
 
   return `
-  <div class="page-title">Analyse des contrats de prévoyance 3a</div>
-  <table class="data kv${show ? "" : " one"}">
+  <div class="chart-wrap">
+    <div class="chart-title">ÉVOLUTION REVENU APRÈS LA RETRAITE</div>
+    <div class="chart-legend">
+      <span><i class="sw before"></i> Revenu touché (AVS + LPP)</span>
+      <span><i class="sw after"></i> Manque de revenu</span>
+    </div>
+    <svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Évolution revenu après retraite">
+      ${yTicks.join("\n")}
+      ${bars}
+    </svg>
+    <p class="note">La hauteur de chaque barre correspond au revenu avant retraite. Le bas est le revenu réellement perçu, le haut est le manque pour retrouver ce niveau. Les rentes LPP tiennent compte du pourcentage déblocable.</p>
+  </div>`;
+}
+
+const THIRD_PILLAR_ROWS_PER_PAGE = 8;
+
+function thirdPillarPages(
+  p: ReportPayload,
+  next: () => number,
+  total: number,
+): string[] {
+  const rows = p.thirdPillarRows;
+  if (!rows.length) return [];
+  const pages: string[] = [];
+  for (let offset = 0; offset < rows.length; offset += THIRD_PILLAR_ROWS_PER_PAGE) {
+    const slice = rows.slice(offset, offset + THIRD_PILLAR_ROWS_PER_PAGE);
+    const body = slice
+      .map((row) => {
+        const tax = row.exonere || row.type === "3B"
+          ? "Exonéré d'impôt"
+          : row.impot == null
+            ? "—"
+            : formatChf(row.impot);
+        const net = row.capitalNet == null ? "—" : formatChf(row.capitalNet);
+        return `<tr>
+          <td>${esc(row.personKey === "conjoint" ? "Assuré 2" : "Assuré 1")}</td>
+          <td>${esc(row.compagnie)}</td>
+          <td>${esc(row.police)}</td>
+          <td>${esc(row.type)}</td>
+          <td>${esc(row.echeanceLabel)}</td>
+          <td class="num">${formatChf(row.montant)}</td>
+          <td class="num">${formatChf(row.prime)}</td>
+          <td class="num${row.exonere ? "" : " tax"}">${tax}</td>
+          <td class="num">${net}</td>
+        </tr>`;
+      })
+      .join("");
+    const continued = offset > 0 ? " (suite)" : "";
+    pages.push(`
+  <div class="page-title">Analyse des contrats de prévoyance 3A/3B${continued}</div>
+  <table class="data pillars">
     <colgroup>
-      <col class="lab" />
-      <col class="val" />
-      ${show ? `<col class="val" />` : ""}
+      <col style="width:11%" />
+      <col style="width:13%" />
+      <col style="width:14%" />
+      <col style="width:8%" />
+      <col style="width:12%" />
+      <col style="width:12%" />
+      <col style="width:10%" />
+      <col style="width:10%" />
+      <col style="width:10%" />
     </colgroup>
-    <tr><th class="lab"></th><th class="val">${esc(name1)}</th>${show ? `<th class="val">${esc(name2)}</th>` : ""}</tr>
-    ${row("Compagnie", c1?.compagnie || "—", c2?.compagnie || "—")}
-    ${row("N° de police", c1?.police || "—", c2?.police || "—")}
-    ${row("Type de contrat", c1 ? "3a" : "—", c2 ? "3a" : "—")}
-    ${row("Échéance", c1?.echeanceLabel || "—", c2?.echeanceLabel || "—")}
-    ${row("Valeur garantie à l’échéance", c1 ? formatChf(c1.montant) : "—", c2 ? formatChf(c2.montant) : "—")}
-    ${row("Primes annuelles", c1 ? formatChf(c1.prime) : "—", c2 ? formatChf(c2.prime) : "—")}
-    ${row("Impôt (estim.)", c1?.impot != null ? formatChf(c1.impot) : "—", c2?.impot != null ? formatChf(c2.impot) : "—")}
-    ${row("Capital net (estim.)", c1?.capitalNet != null ? formatChf(c1.capitalNet) : "—", c2?.capitalNet != null ? formatChf(c2.capitalNet) : "—")}
+    <tr>
+      <th>Assuré</th>
+      <th>Compagnie</th>
+      <th>N° de police</th>
+      <th>Type</th>
+      <th>Échéance</th>
+      <th>Valeur à l'échéance</th>
+      <th>Prime annuelle</th>
+      <th>Impôt estimé</th>
+      <th>Capital net</th>
+    </tr>
+    ${body}
   </table>
-  ${
-    byPerson.client1.length > 1 || byPerson.conjoint.length > 1
-      ? `<p class="note">Contrats saisis : assuré 1 = ${byPerson.client1.length}${show ? `, assuré 2 = ${byPerson.conjoint.length}` : ""}. Affichage : contrat principal.</p>`
-      : ""
+  <p class="note">${rows.length} contrat${rows.length > 1 ? "s" : ""} saisi${rows.length > 1 ? "s" : ""}. Les 3B restent dans le capital et ne sont pas soumis à l'impôt sur les prestations en capital.</p>
+  ${footer(next(), total)}`);
   }
-  <p class="note">Analyse réalisée sur la base des données disponibles à ce jour.</p>
-  ${footer(n, total)}`;
+  return pages;
 }
 
 type WithdrawalPlanning = ReportPayload["withdrawalPlanning"];
@@ -724,155 +713,119 @@ function assureLabel(titulaire: string): string {
   return titulaire === "conjoint" ? "Assuré 2" : "Assuré 1";
 }
 
-function scenarioBlock(sc: WithdrawalScenario): string {
-  const rows = sc.byYear
-    .map((y) => {
-      const lines = y.lines?.length ? y.lines : [null];
-      return lines
-        .map((line, index) => {
-          const tax =
-            index === 0
-              ? `<td class="num tax" rowspan="${lines.length}" style="vertical-align:top">${formatChf(y.impot)}</td><td class="num" rowspan="${lines.length}" style="vertical-align:top">${formatChf(y.net)}</td>`
-              : "";
-          const who = line ? assureLabel(line.titulaire) : "—";
-          const kind = line ? capitalKindLabel(line.kind) : "—";
-          const where = line ? line.institution || line.label || "—" : "—";
-          const capital = line ? line.montantRetire : y.capitalRetire;
-          return `<tr>
-            <td class="lab">${y.year}</td>
-            <td class="lab">${esc(who)}</td>
-            <td class="lab">${esc(kind)}</td>
-            <td class="lab">${esc(where)}</td>
-            <td class="num">${formatChf(capital)}</td>
-            ${tax}
-          </tr>`;
-        })
-        .join("");
-    })
-    .join("");
-  return `
-  <div class="sec-title">${esc(sc.name)}</div>
-  <table class="data">
-    <colgroup>
-      <col style="width:34%" />
-      <col style="width:33%" />
-      <col style="width:33%" />
-    </colgroup>
-    <tr>
-      <th class="val">Capital retiré</th>
-      <th class="val">Impôts ESTV</th>
-      <th class="val">Capital net</th>
-    </tr>
-    <tr>
-      <td class="num">${formatChf(sc.capitalRetireTotal)}</td>
-      <td class="num tax">${formatChf(sc.impotTotal)}</td>
-      <td class="num">${formatChf(sc.capitalNet)}</td>
-    </tr>
-  </table>
-  <table class="data">
-    <colgroup>
-      <col style="width:10%" />
-      <col style="width:14%" />
-      <col style="width:16%" />
-      <col style="width:24%" />
-      <col style="width:12%" />
-      <col style="width:12%" />
-      <col style="width:12%" />
-    </colgroup>
-    <tr>
-      <th class="lab">Année</th>
-      <th class="lab">Assuré</th>
-      <th class="lab">Prestation</th>
-      <th class="lab">Institution / contrat</th>
-      <th class="val">Capital retiré</th>
-      <th class="val">Impôt</th>
-      <th class="val">Net</th>
-    </tr>
-    ${rows || `<tr><td class="lab" colspan="7">—</td></tr>`}
-  </table>`;
-}
-
-function yearSpan(years: number[]): string {
-  const unique = [...new Set(years)].filter((y) => Number.isFinite(y)).sort((a, b) => a - b);
-  if (!unique.length) return "";
-  if (unique.length === 1) return String(unique[0]);
-  return `${unique[0]} et ${unique[unique.length - 1]}`;
-}
-
-function planningConclusion(wp: WithdrawalPlanning): string {
-  const c = wp.comparisons[0];
-  if (!c) return "";
-  const from = wp.scenarios.find((s) => s.name === c.fromName);
-  const to = wp.scenarios.find((s) => s.name === c.toName);
-  const fromYears = (from?.byYear ?? []).map((y) => y.year);
-  const toYears = (to?.byYear ?? []).map((y) => y.year);
-  const fromSpan = yearSpan(fromYears);
-  const toSpan = yearSpan(toYears);
-  const fromName = esc(c.fromName);
-  const toName = esc(c.toName);
-  if (c.deltaImpot == null || c.deltaCapitalNet == null) {
-    return `Comparaison entre « ${fromName} » et « ${toName} » : les écarts d’impôt ou de capital net ne sont pas disponibles.`;
-  }
-  const spread = toYears.length > fromYears.length && c.deltaImpot < 0;
-  if (spread) {
-    const when = toYears.length > 1 ? `entre ${toSpan}` : `en ${toSpan}`;
-    const vs =
-      fromYears.length <= 1
-        ? `un retrait regroupé${fromSpan ? ` en ${fromSpan}` : " sur une seule année"}`
-        : `« ${fromName} »${fromSpan ? ` (${fromSpan})` : ""}`;
-    return `En répartissant les retraits ${when}, l’imposition est réduite de ${formatChf(Math.abs(c.deltaImpot))}, ce qui permet un gain net de ${formatChf(Math.abs(c.deltaCapitalNet))} par rapport à ${vs}.`;
-  }
-  const taxPhrase =
-    c.deltaImpot === 0
-      ? "l’imposition est identique"
-      : c.deltaImpot < 0
-        ? `l’imposition est réduite de ${formatChf(Math.abs(c.deltaImpot))}`
-        : `l’imposition augmente de ${formatChf(Math.abs(c.deltaImpot))}`;
-  const netPhrase =
-    c.deltaCapitalNet === 0
-      ? "le capital net est identique"
-      : c.deltaCapitalNet > 0
-        ? `le capital net augmente de ${formatChf(c.deltaCapitalNet)}`
-        : `le capital net diminue de ${formatChf(Math.abs(c.deltaCapitalNet))}`;
-  const fromBit = fromSpan ? ` (${fromSpan})` : "";
-  const toBit = toSpan ? ` (${toSpan})` : "";
-  return `Entre « ${fromName} »${fromBit} et « ${toName} »${toBit}, ${taxPhrase} et ${netPhrase}.`;
-}
-
-function planningScenariosHtml(sc: WithdrawalScenario): string {
-  return `
-  <div class="page-title">Planification des retraits de capitaux</div>
-  ${scenarioBlock(sc)}`;
-}
-
-function planningGapsHtml(wp: WithdrawalPlanning): string {
-  const rows = wp.comparisons
+function scenarioBlock(sc: WithdrawalScenario, title: string): string {
+  const nameNote =
+    title === sc.name.trim() || title.startsWith(sc.name.trim())
+      ? ""
+      : `<p class="note">${esc(sc.name)}</p>`;
+  const prestationRows = sc.byYear
     .map(
-      (c) => `<tr>
-        <td class="lab">${esc(c.fromName)} → ${esc(c.toName)}${c.warning ? `<div class="note">${esc(c.warning)}</div>` : ""}</td>
-        <td class="num tax">${formatChf(c.deltaImpot)}</td>
-        <td class="num">${formatChf(c.deltaCapitalNet)}</td>
+      (year) => `<tr>
+        <td class="lab">${year.year}</td>
+        <td>${yearPrestationLabel(year)}</td>
+      </tr>`,
+    )
+    .join("");
+  const taxRows = sc.byYear
+    .map(
+      (year) => `<tr>
+        <td class="lab">${year.year}</td>
+        <td class="num">${formatChf(year.capitalRetire)}</td>
+        <td class="num tax">${yearTaxLabel(year)}</td>
       </tr>`,
     )
     .join("");
   return `
-  <div class="page-title">Planification des retraits de capitaux</div>
-  <div class="sec-title">Écarts entre scénarios</div>
+  <div class="sec-title">${title}</div>
+  ${nameNote}
   <table class="data">
-    <colgroup>
-      <col style="width:52%" />
-      <col style="width:24%" />
-      <col style="width:24%" />
-    </colgroup>
-    <tr>
-      <th class="lab">Comparaison</th>
-      <th class="val">Δ Impôt</th>
-      <th class="val">Δ Capital net</th>
-    </tr>
-    ${rows}
+    <colgroup><col style="width:18%" /><col style="width:82%" /></colgroup>
+    <tr><th>Année</th><th>Prestation et capital retiré</th></tr>
+    ${prestationRows || `<tr><td colspan="2">—</td></tr>`}
   </table>
-  <div class="sec-title">Conclusion</div>
-  <p class="plain">${planningConclusion(wp)}</p>`;
+  <table class="data">
+    <colgroup><col style="width:22%" /><col style="width:39%" /><col style="width:39%" /></colgroup>
+    <tr><th>Année</th><th>Capital retiré</th><th>Impôt</th></tr>
+    ${taxRows}
+    <tr><td class="lab">Total</td><td class="num">${formatChf(sc.capitalRetireTotal)}</td><td class="num tax">${formatChf(sc.impotTotal)}</td></tr>
+    <tr><td class="lab">Capital net</td><td class="num" colspan="2">${formatChf(sc.capitalNet)}</td></tr>
+  </table>`;
+}
+
+function yearPrestationLabel(year: WithdrawalScenario["byYear"][number]): string {
+  const lines = year.lines || [];
+  const parts: string[] = [];
+  const lpp = lines.filter((line) => line.kind === "lpp");
+  if (lpp.length) {
+    const who = [...new Set(lpp.map((line) => assureLabel(line.titulaire)))];
+    const whoLabel = who.length > 1 ? "Assuré 1 et Assuré 2" : who[0];
+    const sum = lpp.reduce((total, line) => total + line.montantRetire, 0);
+    parts.push(`LPP ${whoLabel} : ${formatChf(sum)}`);
+  }
+  for (const type of ["3A", "3B"] as const) {
+    const rows = lines.filter(
+      (line) => line.kind === "3p" && (line.contratType || "3A") === type,
+    );
+    if (!rows.length) continue;
+    const sum = rows.reduce((total, line) => total + line.montantRetire, 0);
+    parts.push(`3e pilier ${type} : ${formatChf(sum)}`);
+  }
+  const other3p = lines.filter((line) => line.kind === "3p" && !line.contratType);
+  if (other3p.length && !lines.some((line) => line.kind === "3p" && line.contratType)) {
+    const sum = other3p.reduce((total, line) => total + line.montantRetire, 0);
+    parts.push(`3e piliers : ${formatChf(sum)}`);
+  }
+  const lp = lines.filter((line) => line.kind === "libre_passage");
+  if (lp.length) {
+    const sum = lp.reduce((total, line) => total + line.montantRetire, 0);
+    parts.push(`Libre passage : ${formatChf(sum)}`);
+  }
+  return parts.join("<br/>") || "—";
+}
+
+function yearTaxLabel(year: WithdrawalScenario["byYear"][number]): string {
+  const lines = year.lines || [];
+  const onlyExempt = lines.length > 0 && lines.every((line) => line.exonere);
+  if (onlyExempt) return "Exonéré d'impôt";
+  return formatChf(year.impot);
+}
+
+function planningReportHtml(wp: WithdrawalPlanning): string {
+  const ordered = [...wp.scenarios].sort(
+    (a, b) => a.byYear.length - b.byYear.length,
+  );
+  const grouped = ordered[0];
+  const spread = ordered.length > 1 ? ordered[ordered.length - 1] : null;
+  const blocks = ordered
+    .map((scenario, index) => {
+      const title =
+        ordered.length > 1
+          ? index === 0
+            ? "Retraits regroupés"
+            : "Retraits répartis sur plusieurs années fiscales"
+          : scenario.byYear.length <= 1
+            ? "Retraits regroupés"
+            : "Retraits répartis sur plusieurs années fiscales";
+      return scenarioBlock(scenario, title);
+    })
+    .join("");
+  let economie = "";
+  if (
+    grouped &&
+    spread &&
+    spread.id !== grouped.id &&
+    grouped.impotTotal != null &&
+    spread.impotTotal != null
+  ) {
+    const gain = Math.round((grouped.impotTotal - spread.impotTotal) * 100) / 100;
+    if (gain > 0) {
+      economie = `<div class="eco"><span>ÉCONOMIE FISCALE ESTIMÉE</span><span>${formatChf(gain)}</span></div>`;
+    }
+  }
+  return `
+  <div class="page-title">Planification des retraits de capitaux</div>
+  ${blocks}
+  ${economie}`;
 }
 
 function withdrawalPlanningPages(
@@ -880,14 +833,7 @@ function withdrawalPlanningPages(
   next: () => number,
   total: number,
 ): string[] {
-  const wp = p.withdrawalPlanning;
-  const pages = wp.scenarios.map(
-    (sc) => `${planningScenariosHtml(sc)}${footer(next(), total)}`,
-  );
-  if (wp.comparisons.length) {
-    pages.push(`${planningGapsHtml(wp)}${footer(next(), total)}`);
-  }
-  return pages;
+  return [`${planningReportHtml(p.withdrawalPlanning)}${footer(next(), total)}`];
 }
 
 function pageFrise(p: ReportPayload, n: number, total: number): string {
@@ -1035,11 +981,6 @@ function pageComparatifVaudoise(
     vals.map((x) => `<td class="num">${x ?? "—"}</td>`).join("");
 
   const renteAvs = cell(cols.map(() => formatChf(p.aggregates.avsTotal)));
-  const renteLpp = cell(
-    cols.map((c) =>
-      c.id === "lpp" ? formatChf(p.aggregates.renteLppTotal) : formatChf(0),
-    ),
-  );
   const renteCert = cell(
     cols.map((c) =>
       c.id === "lpp" ? "—" : formatChf(c.renteCertaine),
@@ -1097,7 +1038,8 @@ function pageComparatifVaudoise(
   <table class="data" style="font-size:8.5pt">
     <tr><th class="gray"></th>${head}</tr>
     <tr><td>Rente AVS</td>${renteAvs}</tr>
-    <tr><td>Rente LPP</td>${renteLpp}</tr>
+    <tr><td>Rente LPP – Assuré 1</td>${cell(cols.map((c) => c.id === "lpp" ? formatChf(p.client1.renteLpp65) : formatChf(0)))}</tr>
+    ${p.conjoint ? `<tr><td>Rente LPP – Assuré 2</td>${cell(cols.map((c) => c.id === "lpp" ? formatChf(p.conjoint!.renteLpp65) : formatChf(0)))}</tr>` : ""}
     <tr><td>Rente certaine</td>${renteCert}</tr>
     <tr><td>Part imposable</td>${part}</tr>
     <tr><td>Impôts ICC &amp; IFD</td>${impot}</tr>

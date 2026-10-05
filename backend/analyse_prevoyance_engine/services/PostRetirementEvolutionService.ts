@@ -21,8 +21,8 @@ export interface EvolutionResult {
  * Évolution après retraite — formules Excel feuille homonyme.
  * Cible lacune : 90 % (C = revenu − salaires×90 % si pas en phase salaire pure).
  *
- * Excel strict : `Evolution après retraite!I4 = 0` (salaire conjoint forcé à 0).
- * Le salaire conjoint saisi ailleurs dans le formulaire est **ignoré** pour cette série.
+ * Le revenu après retraite additionne l'AVS et la rente LPP résiduelle
+ * (après pourcentage déblocable) des deux assurés.
  */
 export class PostRetirementEvolutionService {
   build(
@@ -31,11 +31,13 @@ export class PostRetirementEvolutionService {
     conjoint: PersonComputed | null,
     options?: { startYear?: number; endYear?: number },
   ): EvolutionResult {
+    const married = input.etatCivil === "Marié(e)" && !!conjoint;
     const salaire1 = input.salaireClient1 || 0;
-    /** Excel I4 = 0 — ne pas utiliser input.salaireConjoint. */
-    const salaire2 = 0;
-    const rente1 = client1.renteTotale65;
-    const rente2 = conjoint?.renteTotale65 ?? 0;
+    const salaire2 = married ? input.salaireConjoint || 0 : 0;
+    const rente1 = round2(client1.avsAnnuel + client1.renteLppResiduelle65);
+    const rente2 = married
+      ? round2(conjoint!.avsAnnuel + conjoint!.renteLppResiduelle65)
+      : 0;
     const salaireReference = round2(salaire1 + salaire2);
     const renteReference = round2(rente1 + rente2);
 

@@ -41,6 +41,7 @@ export interface ReportThirdPillarRow {
   montant: number;
   prime: number;
   impot: number | null;
+  exonere?: boolean;
   capitalNet: number | null;
 }
 
@@ -122,7 +123,7 @@ export interface ReportPayload {
     total3ePilierFoyer: number;
     /** Somme des libres passages du foyer (montants saisis). */
     librePassageTotal: number;
-    /** Capital 2e pilier du foyer + libre passage. Affichage du bandeau de synthèse. */
+    /** Capital LPP retirable + libre passage retirable. */
     capitalLppAvecLibrePassage: number;
     impotCapital65: number | null;
     capitalNet65: number | null;
@@ -191,6 +192,8 @@ export interface ReportPayload {
           label: string;
           institution: string;
           montantRetire: number;
+          contratType?: "3A" | "3B" | null;
+          exonere?: boolean;
         }>;
       }>;
       audits: Array<{

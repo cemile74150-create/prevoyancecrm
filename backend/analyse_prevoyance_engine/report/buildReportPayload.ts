@@ -1,6 +1,7 @@
 import { formatDateFr } from "../rules/avs-age";
 import { personDisplayName } from "../mappers";
 import type { AnalyseRecord } from "../types";
+import { librePassageRetire, normalizeThirdPillarType } from "../types";
 import type {
   ReportPayload,
   ReportPersonBlock,
@@ -63,8 +64,19 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
   const librePassageTotal = round2(
     client1.librePassage + (conjoint?.librePassage ?? 0),
   );
+  const librePassageRetireTotal =
+    path?.librePassageRetireTotal ??
+    round2(
+      (input.libresPassages || []).reduce(
+        (sum, lp) => sum + librePassageRetire(lp),
+        0,
+      ),
+    );
+  const lppRetireSeul =
+    path?.lppRetireTotal ??
+    round2(client1.capitalLppRetire65 + (conjoint?.capitalLppRetire65 ?? 0));
   const capitalLppAvecLibrePassage = round2(
-    capitalLppTotal + librePassageTotal,
+    lppRetireSeul + librePassageRetireTotal,
   );
 
   const impotRevenuCouple1 = couple1?.impot?.impotRevenuTotal ?? null;
@@ -134,6 +146,8 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
           label: l.label,
           institution: l.institution || "",
           montantRetire: l.montantRetire,
+          contratType: l.contratType ?? null,
+          exonere: !!l.exonere,
         })),
       })),
       audits: s.audits.map((a) => ({
@@ -166,7 +180,9 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
 
   // Pages : 1 cover, 2 agency, 3 bilan, 4 compare — puis conditionnels
   let pageCount = 4;
-  if (hasThirdPillar) pageCount += 1;
+  if (hasThirdPillar) {
+    pageCount += Math.max(1, Math.ceil(thirdPillarRows.length / 8));
+  }
   // fiscalOptimization never included for now
   if (hasWithdrawalPlanning) {
     const yearRows = withdrawalPlanning.scenarios.reduce(
@@ -325,11 +341,12 @@ function sumLibrePassage(
  */
 export function withdrawalPlanningSheetCount(
   scenarioCount: number,
-  _yearRowCount: number,
-  hasComparisons: boolean,
+  yearRowCount: number,
+  _hasComparisons: boolean,
 ): number {
   if (scenarioCount <= 0) return 0;
-  return scenarioCount + (hasComparisons ? 1 : 0);
+  void yearRowCount;
+  return 1;
 }
 
 function buildPersonBlock(
@@ -368,8 +385,7 @@ function buildThirdPillarRows(
 ): ReportThirdPillarRow[] {
   const { input, results } = record;
   const rows: ReportThirdPillarRow[] = [];
-  const tax = results!.thirdPillarTax;
-  const totalCapital = tax?.capital || 0;
+  const lines = results?.thirdPillarLines || [];
 
   const push = (
     personKey: "client1" | "conjoint",
@@ -378,22 +394,28 @@ function buildThirdPillarRows(
   ) => {
     for (const c of contracts) {
       if (!c.montant && !c.compagnie && !c.police) continue;
-      const share =
-        tax && totalCapital > 0
-          ? Math.round((tax.impotTotal * (c.montant || 0)) / totalCapital)
-          : null;
+      const type = normalizeThirdPillarType(c.type);
+      const line = lines.find(
+        (item) => item.contractId === c.id && item.personKey === personKey,
+      );
+      const exonere = type === "3B";
+      const impot = exonere ? null : (line?.impot ?? null);
+      const montant = c.montant || 0;
       rows.push({
         personKey,
         personName,
         compagnie: c.compagnie || "—",
         police: c.police || "—",
-        type: "3a",
+        type,
         echeance: c.echeance || null,
         echeanceLabel: c.echeance ? formatDateFr(c.echeance) : "—",
-        montant: c.montant || 0,
+        montant,
         prime: c.prime || 0,
-        impot: share,
-        capitalNet: share != null ? (c.montant || 0) - share : c.montant || 0,
+        impot,
+        exonere,
+        capitalNet: exonere
+          ? montant
+          : (line?.capitalNet ?? (impot != null ? round2(montant - impot) : null)),
       });
     }
   };

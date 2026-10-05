@@ -88,7 +88,7 @@ export function buildDefaultWithdrawalItems(
         id: `3p-${c.id}`,
         kind: "3p",
         titulaire,
-        label: `3P ${prenom} ${c.compagnie || ""} ${c.police || ""}`.trim(),
+        label: `${c.type === "3B" ? "3B" : "3A"} – ${prenom} – ${c.compagnie || ""} – ${c.police || ""}`.replace(/\s+–\s+$/g, "").trim(),
         institution: c.compagnie || "3e pilier",
         montantDisponible: c.montant,
         pctCapital: 100,

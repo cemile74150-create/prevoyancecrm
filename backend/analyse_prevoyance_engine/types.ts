@@ -26,6 +26,17 @@ export interface LppByAge {
   rente: number;
 }
 
+/** 3A imposable au retrait ; 3B exonéré dans cette analyse. Absent = 3A. */
+export type ThirdPillarType = "3A" | "3B";
+
+export function normalizeThirdPillarType(value: unknown): ThirdPillarType {
+  const raw = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  return raw === "3B" ? "3B" : "3A";
+}
+
 export interface ThirdPillarContract {
   id: string;
   echeance: string; // ISO date
@@ -33,6 +44,18 @@ export interface ThirdPillarContract {
   police: string;
   prime: number;
   compagnie: string;
+  /** Obligatoire à la saisie. Les dossiers anciens sans type restent des 3A. */
+  type?: ThirdPillarType;
+}
+
+export interface ThirdPillarLineResult {
+  contractId: string;
+  personKey: PersonKey;
+  type: ThirdPillarType;
+  montant: number;
+  impot: number | null;
+  exonere: boolean;
+  capitalNet: number;
 }
 
 export type PersonKey = "client1" | "conjoint";
@@ -371,6 +394,8 @@ export interface WithdrawalScenarioResult {
       label: string;
       institution: string;
       montantRetire: number;
+      contratType?: ThirdPillarType | null;
+      exonere?: boolean;
     }>;
   }>;
 }
@@ -414,6 +439,8 @@ export interface AnalyseResults {
   withdrawalPlanning?: WithdrawalPlanningResult | null;
   incomeScenarios: IncomeScenario[];
   thirdPillarTax?: CapitalTaxResult | null;
+  /** Une ligne par contrat saisi. Les 3B n'ont pas d'appel ESTV. */
+  thirdPillarLines?: ThirdPillarLineResult[];
   taxLocation: TaxLocation | null;
   timeline?: import("./services/TimelineService").TimelineResult;
   evolution?: import("./services/PostRetirementEvolutionService").EvolutionResult;

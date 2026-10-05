@@ -2,7 +2,9 @@ import type {
   AnalyseInput,
   AnalyseResults,
   LacuneResult,
+  ThirdPillarLineResult,
 } from "../types";
+import { normalizeThirdPillarType } from "../types";
 import { avsCalculationService } from "./AVSCalculationService";
 import { taxCalculationService } from "./TaxCalculationService";
 import { thirdPillarService } from "./ThirdPillarService";
@@ -71,6 +73,7 @@ export class RetirementAnalysisService {
     let withdrawalPlanning = null as AnalyseResults["withdrawalPlanning"];
     let incomeScenarios = [] as AnalyseResults["incomeScenarios"];
     let thirdPillarTax = null as AnalyseResults["thirdPillarTax"];
+    const thirdPillarLines: ThirdPillarLineResult[] = [];
 
     if (taxGroupId && taxLocationId) {
       capitalScenarios = await retirementScenarioService.buildCapitalScenarios(
@@ -106,27 +109,12 @@ export class RetirementAnalysisService {
         }
       }
 
-      const total3p = thirdPillarService.totalCapital(
-        input.client1.troisiemePilier,
+      await this.taxThirdPillarContracts(
+        input,
+        taxGroupId,
+        thirdPillarLines,
+        errors,
       );
-      if (total3p > 0) {
-        try {
-          thirdPillarTax = await taxCalculationService.calculateCapitalTax({
-            ageAtPayment: 64,
-            capital: total3p,
-            gender: genderFromCivilite(input.client1.civilite),
-            relationship: relationshipFromEtat(input.etatCivil),
-            taxGroupId,
-            taxYear: input.taxYear,
-          });
-        } catch (e) {
-          errors.push(
-            e instanceof Error
-              ? `Impôt 3e pilier : ${e.message}`
-              : "Impôt 3e pilier échoué",
-          );
-        }
-      }
     } else if (!errors.length) {
       errors.push(
         "TaxLocationID manquant — sélectionnez une commune fiscale avant de calculer les impôts.",
@@ -176,6 +164,7 @@ export class RetirementAnalysisService {
       withdrawalPlanning,
       incomeScenarios,
       thirdPillarTax,
+      thirdPillarLines,
       taxLocation,
       timeline,
       evolution,
@@ -183,6 +172,98 @@ export class RetirementAnalysisService {
       renteHypotheses,
       errors,
     };
+  }
+
+  /**
+   * Un impôt ESTV par contrat 3A. Les 3B restent au patrimoine, sans appel ESTV.
+   */
+  private async taxThirdPillarContracts(
+    input: AnalyseInput,
+    taxGroupId: number,
+    lines: ThirdPillarLineResult[],
+    errors: string[],
+  ): Promise<void> {
+    const people: Array<{
+      key: ThirdPillarLineResult["personKey"];
+      person: AnalyseInput["client1"];
+    }> = [{ key: "client1", person: input.client1 }];
+    if (input.etatCivil === "Marié(e)" && input.conjoint) {
+      people.push({ key: "conjoint", person: input.conjoint });
+    }
+    const relationship = relationshipFromEtat(input.etatCivil);
+
+    for (const { key, person } of people) {
+      for (const contract of person.troisiemePilier || []) {
+        if (!contract.montant && !contract.compagnie && !contract.police) {
+          continue;
+        }
+        const type = normalizeThirdPillarType(contract.type);
+        const montant = contract.montant || 0;
+        if (type === "3B") {
+          lines.push({
+            contractId: contract.id,
+            personKey: key,
+            type,
+            montant,
+            impot: null,
+            exonere: true,
+            capitalNet: montant,
+          });
+          continue;
+        }
+        if (!(montant > 0)) {
+          lines.push({
+            contractId: contract.id,
+            personKey: key,
+            type,
+            montant,
+            impot: null,
+            exonere: false,
+            capitalNet: montant,
+          });
+          continue;
+        }
+        const age =
+          thirdPillarService.ageAtMaturity(
+            person.dateNaissance,
+            contract.echeance,
+          ) ?? 65;
+        try {
+          const tax = await taxCalculationService.calculateCapitalTax({
+            ageAtPayment: age,
+            capital: montant,
+            gender: genderFromCivilite(person.civilite),
+            relationship,
+            taxGroupId,
+            taxYear: input.taxYear,
+          });
+          lines.push({
+            contractId: contract.id,
+            personKey: key,
+            type,
+            montant,
+            impot: tax.impotTotal,
+            exonere: false,
+            capitalNet: round2(montant - tax.impotTotal),
+          });
+        } catch (e) {
+          errors.push(
+            e instanceof Error
+              ? `Impôt 3e pilier ${contract.police || contract.compagnie || contract.id} : ${e.message}`
+              : "Impôt 3e pilier échoué",
+          );
+          lines.push({
+            contractId: contract.id,
+            personKey: key,
+            type,
+            montant,
+            impot: null,
+            exonere: false,
+            capitalNet: montant,
+          });
+        }
+      }
+    }
   }
 
   /**

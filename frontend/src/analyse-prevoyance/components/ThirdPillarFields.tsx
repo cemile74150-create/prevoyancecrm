@@ -34,6 +34,7 @@ export function ThirdPillarFields({
       police: "",
       prime: 0,
       compagnie: "",
+      type: "3A",
     };
     onChange({
       ...person,
@@ -65,7 +66,6 @@ export function ThirdPillarFields({
           type="button"
           variant="outline"
           size="sm"
-          disabled={contracts.length >= 4}
           onClick={addContract}
         >
           <Plus className="size-4" />
@@ -79,7 +79,7 @@ export function ThirdPillarFields({
           {contracts.map((c) => (
             <div
               key={c.id}
-              className="grid gap-2 rounded-md border p-3 sm:grid-cols-2 lg:grid-cols-5"
+              className="grid gap-2 rounded-md border p-3 sm:grid-cols-2 lg:grid-cols-6"
             >
               <div className="space-y-1">
                 <Label className="text-xs">Compagnie</Label>
@@ -98,6 +98,22 @@ export function ThirdPillarFields({
                     updateContract(c.id, { police: e.target.value })
                   }
                 />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Type 3A/3B</Label>
+                <select
+                  className="border-input bg-background h-8 w-full rounded-md border px-2 text-sm"
+                  required
+                  value={c.type === "3B" ? "3B" : "3A"}
+                  onChange={(e) =>
+                    updateContract(c.id, {
+                      type: e.target.value === "3B" ? "3B" : "3A",
+                    })
+                  }
+                >
+                  <option value="3A">3A</option>
+                  <option value="3B">3B</option>
+                </select>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Échéance</Label>

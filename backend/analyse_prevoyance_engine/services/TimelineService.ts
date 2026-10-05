@@ -1,4 +1,5 @@
-import type { AnalyseInput, PersonComputed } from "../types";
+import type { AnalyseInput, PersonComputed, WithdrawalPlanItem } from "../types";
+import { librePassageRetire, normalizeThirdPillarType } from "../types";
 import { anneeRetraitLibrePassage } from "../rules/libre-passage-annee";
 
 export interface TimelineEvent {
@@ -16,18 +17,23 @@ export interface TimelineResult {
 }
 
 /**
- * Frise chronologique — logique Excel Feuille de calcul A36:C47
- * + regroupement par années uniques (Frise Chronologique).
+ * Frise du scénario coché « Inclure dans le rapport ».
+ * Les retraits de capitaux suivent l'année prévue de ce scénario.
+ * L'AVS reste à son année de début de perception.
  */
 export class TimelineService {
   build(input: AnalyseInput, client1: PersonComputed, conjoint: PersonComputed | null): TimelineResult {
     const events: TimelineEvent[] = [];
+    const scenario = (input.withdrawalScenarios || []).find(
+      (item) => item.includeInReport,
+    );
+    const items = scenario?.items || [];
     const c1 = input.client1;
     const c2 = input.conjoint;
 
     events.push({
       year: yearOf(client1.dateDepart),
-      label: `AVS - ${c1.prenom || "assuré 1"}`,
+      label: "AVS – Assuré 1",
       amount: client1.avsAnnuel,
       kind: "avs",
       person: "client1",
@@ -36,77 +42,53 @@ export class TimelineService {
     if (conjoint && c2) {
       events.push({
         year: yearOf(conjoint.dateDepart),
-        label: `AVS - ${c2.prenom || "Assuré 2"}`,
+        label: "AVS – Assuré 2",
         amount: conjoint.avsAnnuel,
         kind: "avs",
         person: "conjoint",
       });
     }
 
-    events.push({
-      year: yearOf(client1.dateDepart),
-      label: `LPP - ${c1.prenom || "assuré 1"}`,
-      amount: client1.capitalLpp65,
-      kind: "lpp",
-      person: "client1",
-    });
-
-    if (conjoint && c2) {
+    if (client1.capitalLppRetire65 > 0) {
+      const planned = findItem(items, "lpp", "client1");
       events.push({
-        year: yearOf(conjoint.dateDepart),
-        label: `LPP - ${c2.prenom || "Assuré 2"}`,
-        amount: conjoint.capitalLpp65,
+        year: planned?.anneeRetraitPrevue ?? yearOf(client1.dateDepart),
+        label: "LPP – Assuré 1",
+        amount: client1.capitalLppRetire65,
+        kind: "lpp",
+        person: "client1",
+      });
+    }
+
+    if (conjoint && c2 && conjoint.capitalLppRetire65 > 0) {
+      const planned = findItem(items, "lpp", "conjoint");
+      events.push({
+        year: planned?.anneeRetraitPrevue ?? yearOf(conjoint.dateDepart),
+        label: "LPP – Assuré 2",
+        amount: conjoint.capitalLppRetire65,
         kind: "lpp",
         person: "conjoint",
       });
     }
 
-    for (const t of c1.troisiemePilier) {
-      if (!t.echeance) continue;
-      events.push({
-        year: yearOf(t.echeance),
-        label: `3P - ${c1.prenom || "assuré 1"} - ${t.compagnie || ""} ${t.police || ""}`.trim(),
-        amount: t.montant || 0,
-        kind: "3p",
-        person: "client1",
-      });
-    }
-
+    pushPillars(events, c1.troisiemePilier, "client1", "Assuré 1", items);
     if (c2) {
-      for (const t of c2.troisiemePilier) {
-        if (!t.echeance) continue;
-        events.push({
-          year: yearOf(t.echeance),
-          label: `3P - ${c2.prenom || "Assuré 2"} - ${t.compagnie || ""} ${t.police || ""}`.trim(),
-          amount: t.montant || 0,
-          kind: "3p",
-          person: "conjoint",
-        });
-      }
+      pushPillars(events, c2.troisiemePilier, "conjoint", "Assuré 2", items);
     }
 
     for (const lp of input.libresPassages || []) {
-      const person =
-        lp.titulaire === "client1"
-          ? c1
-          : c2;
-      const prenom =
-        lp.titulaire === "client1"
-          ? c1.prenom || "assuré 1"
-          : c2?.prenom || "Assuré 2";
-      if (!person && lp.titulaire === "conjoint") continue;
       const birth =
         lp.titulaire === "conjoint"
           ? input.conjoint?.dateNaissance
           : input.client1.dateNaissance;
-      const ageLabel =
-        lp.ageDeblocage != null && Number.isFinite(Number(lp.ageDeblocage))
-          ? ` · déblocage ${lp.ageDeblocage} ans`
-          : "";
+      const planned = items.find(
+        (item) => item.kind === "libre_passage" && item.sourceId === lp.id,
+      );
+      const who = lp.titulaire === "conjoint" ? "Assuré 2" : "Assuré 1";
       events.push({
-        year: anneeRetraitLibrePassage(lp, birth),
-        label: `LP - ${prenom} - ${lp.institution || "libre passage"}${ageLabel}`.trim(),
-        amount: lp.montant || 0,
+        year: planned?.anneeRetraitPrevue ?? anneeRetraitLibrePassage(lp, birth),
+        label: `Libre passage – ${who} – ${lp.institution || "libre passage"}`.trim(),
+        amount: librePassageRetire(lp),
         kind: "lp",
         person: lp.titulaire,
       });
@@ -127,6 +109,40 @@ export class TimelineService {
 
     return { events, years, byYear };
   }
+}
+
+function pushPillars(
+  events: TimelineEvent[],
+  contracts: AnalyseInput["client1"]["troisiemePilier"],
+  person: "client1" | "conjoint",
+  who: string,
+  items: WithdrawalPlanItem[],
+) {
+  for (const contract of contracts || []) {
+    if (!contract.montant && !contract.compagnie && !contract.police) continue;
+    const planned = items.find(
+      (item) => item.kind === "3p" && item.sourceId === contract.id,
+    );
+    const type = normalizeThirdPillarType(contract.type);
+    const year = planned?.anneeRetraitPrevue ?? yearOf(contract.echeance);
+    events.push({
+      year,
+      label: [type, who, contract.compagnie, contract.police]
+        .filter(Boolean)
+        .join(" – "),
+      amount: contract.montant || 0,
+      kind: "3p",
+      person,
+    });
+  }
+}
+
+function findItem(
+  items: WithdrawalPlanItem[],
+  kind: WithdrawalPlanItem["kind"],
+  titulaire: WithdrawalPlanItem["titulaire"],
+): WithdrawalPlanItem | undefined {
+  return items.find((item) => item.kind === kind && item.titulaire === titulaire);
 }
 
 function yearOf(iso: string | null | undefined): number | null {

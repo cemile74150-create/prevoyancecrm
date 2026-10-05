@@ -27,6 +27,8 @@ export interface LppByAge {
   rente: number;
 }
 
+export type ThirdPillarType = "3A" | "3B";
+
 export interface ThirdPillarContract {
   id: string;
   echeance: string; // ISO date
@@ -34,6 +36,8 @@ export interface ThirdPillarContract {
   police: string;
   prime: number;
   compagnie: string;
+  /** 3A imposable, 3B exonéré. Absent = 3A pour les dossiers déjà enregistrés. */
+  type?: ThirdPillarType;
 }
 
 export type PersonKey = "client1" | "conjoint";

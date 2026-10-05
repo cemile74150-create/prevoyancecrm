@@ -96,3 +96,15 @@ function wrapSinglePage(inner: string, kind: ReportPageKind): string {
 }
 
 export const pdfGenerationService = new PdfGenerationService();
+
+export async function closePdfBrowser(): Promise<void> {
+  const pending = browserPromise;
+  browserPromise = null;
+  if (!pending) return;
+  try {
+    const browser = await pending;
+    await browser.close();
+  } catch {
+    /* lancement déjà en échec */
+  }
+}

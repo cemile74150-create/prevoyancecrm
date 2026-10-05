@@ -15,6 +15,8 @@ import type {
 import {
   RETIREMENT_AGES,
   librePassageRetire,
+  normalizeThirdPillarType,
+  type ThirdPillarType,
 } from "../types";
 import { areScenariosComparable } from "../withdrawalPlanUtils";
 import { lppCalculationService } from "./LPPCalculationService";
@@ -366,6 +368,8 @@ export class WithdrawalPlanningService {
       label: string;
       institution: string;
       montantRetire: number;
+      exonere: boolean;
+      contratType: ThirdPillarType | null;
     };
     type Bucket = {
       year: number;
@@ -376,9 +380,16 @@ export class WithdrawalPlanningService {
 
     for (const item of sc.items) {
       if (item.anneeRetraitPrevue == null) continue;
-      const pct = Math.min(100, Math.max(0, item.pctCapital || 0));
+      const holder =
+        item.titulaire === "client1" ? input.client1 : input.conjoint;
+      const pct =
+        item.kind === "lpp" && holder
+          ? lppCalculationService.resolvePctDeblocable(holder.lppPctDeblocable)
+          : Math.min(100, Math.max(0, item.pctCapital || 0));
       const montantRetire = round2((item.montantDisponible || 0) * (pct / 100));
       if (montantRetire <= 0) continue;
+      const contratType = thirdPillarTypeForItem(input, item);
+      const exonere = item.kind === "3p" && contratType === "3B";
       const key = `${item.titulaire}|${item.anneeRetraitPrevue}`;
       const cur = buckets.get(key) || {
         year: item.anneeRetraitPrevue,
@@ -390,6 +401,8 @@ export class WithdrawalPlanningService {
         label: item.label,
         institution: item.institution || "",
         montantRetire,
+        exonere,
+        contratType,
       });
       buckets.set(key, cur);
     }
@@ -410,10 +423,15 @@ export class WithdrawalPlanningService {
     for (const bucket of [...buckets.values()].sort(
       (a, b) => a.year - b.year || a.titulaire.localeCompare(b.titulaire),
     )) {
-      const montantSoumis = round2(
+      const capitalAll = round2(
         bucket.items.reduce((s, i) => s + i.montantRetire, 0),
       );
-      capitalRetireTotal = round2(capitalRetireTotal + montantSoumis);
+      const montantSoumis = round2(
+        bucket.items
+          .filter((i) => !i.exonere)
+          .reduce((s, i) => s + i.montantRetire, 0),
+      );
+      capitalRetireTotal = round2(capitalRetireTotal + capitalAll);
 
       const yearEntry = byYearMap.get(bucket.year) || {
         capitalRetire: 0,
@@ -427,11 +445,37 @@ export class WithdrawalPlanningService {
           label: it.label,
           institution: it.institution,
           montantRetire: it.montantRetire,
+          contratType: it.contratType,
+          exonere: it.exonere,
         });
       }
       yearEntry.capitalRetire = round2(
-        yearEntry.capitalRetire + montantSoumis,
+        yearEntry.capitalRetire + capitalAll,
       );
+      if (montantSoumis <= 0) {
+        if (yearEntry.impot == null) yearEntry.impot = 0;
+        byYearMap.set(bucket.year, yearEntry);
+        audits.push({
+          scenarioId: sc.id,
+          scenarioName: sc.name,
+          year: bucket.year,
+          titulaire: bucket.titulaire,
+          taxLocationId: input.taxLocationId || taxGroupId,
+          etatCivil: input.etatCivil,
+          gender: genderFromCivilite(
+            (bucket.titulaire === "client1" ? input.client1 : input.conjoint)
+              ?.civilite || "Monsieur",
+          ),
+          relationship,
+          ageAtPayment: 65,
+          capitauxInclus: [],
+          montantSoumis: 0,
+          request: {},
+          response: null,
+          impotTotal: 0,
+        });
+        continue;
+      }
 
       const person =
         bucket.titulaire === "client1" ? input.client1 : input.conjoint;
@@ -446,7 +490,7 @@ export class WithdrawalPlanningService {
           gender: 1,
           relationship,
           ageAtPayment: 65,
-          capitauxInclus: bucket.items.map(({ kind, label, montantRetire }) => ({
+          capitauxInclus: bucket.items.filter((item) => !item.exonere).map(({ kind, label, montantRetire }) => ({
             kind,
             label,
             montantRetire,
@@ -490,7 +534,7 @@ export class WithdrawalPlanningService {
           gender,
           relationship,
           ageAtPayment,
-          capitauxInclus: bucket.items.map(({ kind, label, montantRetire }) => ({
+          capitauxInclus: bucket.items.filter((item) => !item.exonere).map(({ kind, label, montantRetire }) => ({
             kind,
             label,
             montantRetire,
@@ -517,7 +561,7 @@ export class WithdrawalPlanningService {
           gender,
           relationship,
           ageAtPayment,
-          capitauxInclus: bucket.items.map(({ kind, label, montantRetire }) => ({
+          capitauxInclus: bucket.items.filter((item) => !item.exonere).map(({ kind, label, montantRetire }) => ({
             kind,
             label,
             montantRetire,
@@ -553,6 +597,21 @@ export class WithdrawalPlanningService {
         })),
     };
   }
+}
+
+function thirdPillarTypeForItem(
+  input: AnalyseInput,
+  item: { kind: string; sourceId?: string },
+): ThirdPillarType | null {
+  if (item.kind !== "3p") return null;
+  const contracts = [
+    ...(input.client1.troisiemePilier || []),
+    ...(input.conjoint?.troisiemePilier || []),
+  ];
+  const found = item.sourceId
+    ? contracts.find((contract) => contract.id === item.sourceId)
+    : undefined;
+  return normalizeThirdPillarType(found?.type);
 }
 
 function ageInYear(
