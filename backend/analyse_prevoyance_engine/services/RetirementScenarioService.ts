@@ -7,7 +7,9 @@ import type {
   PersonComputed,
   PersonKey,
   RetirementAge,
+  WithdrawalPlanItem,
   WithdrawalPlanningResult,
+  WithdrawalSameYearReference,
   WithdrawalScenario,
   WithdrawalScenarioResult,
   WithdrawalTaxAudit,
@@ -351,7 +353,107 @@ export class WithdrawalPlanningService {
       }
     }
 
-    return { scenarios: results, comparisons };
+    const strategy = selectReportStrategy(results);
+    const sameYearReference = strategy
+      ? await this.buildSameYearReference(
+          input,
+          scenarios,
+          strategy,
+          client1,
+          conjoint,
+          taxGroupId,
+          relationship,
+        )
+      : null;
+    const economieFiscale =
+      sameYearReference?.impotTotal != null && strategy?.impotTotal != null
+        ? round2(sameYearReference.impotTotal - strategy.impotTotal)
+        : null;
+
+    return {
+      scenarios: results,
+      comparisons,
+      strategyScenarioId: strategy?.scenarioId ?? null,
+      sameYearReference,
+      economieFiscale,
+    };
+  }
+
+  /**
+   * Regroupe tous les capitaux du scénario stratégie sur une seule année.
+   * L'année de référence est la plus tôt où un retrait imposable est prévu dans ce scénario (s'il n'y a que des retraits exonérés, la plus tôt de ce même scénario) ; les années des autres scénarios ne sont jamais mélangées.
+   */
+  private async buildSameYearReference(
+    input: AnalyseInput,
+    scenarios: WithdrawalScenario[],
+    strategy: WithdrawalScenarioResult,
+    client1: PersonComputed,
+    conjoint: PersonComputed | null,
+    taxGroupId: number,
+    relationship: number,
+  ): Promise<WithdrawalSameYearReference | null> {
+    const source = scenarios.find((sc) => sc.id === strategy.scenarioId);
+    if (!source) return null;
+    const year = this.referenceFiscalYear(input, source);
+    if (year == null) return null;
+    const collapsed: WithdrawalScenario = {
+      id: `${source.id}__meme_annee`,
+      name: "Retraits la même année fiscale",
+      includeInReport: false,
+      items: source.items.map((item) => ({
+        ...item,
+        anneeRetraitPrevue: item.anneeRetraitPrevue == null ? null : year,
+      })),
+    };
+    const evaluated = await this.evaluateScenario(
+      input,
+      collapsed,
+      client1,
+      conjoint,
+      taxGroupId,
+      relationship,
+    );
+    return {
+      year,
+      sourceScenarioId: source.id,
+      capitalRetire: evaluated.capitalRetireTotal,
+      impotTotal: evaluated.impotTotal,
+      capitalNet: evaluated.capitalNet,
+      audits: evaluated.audits,
+    };
+  }
+
+  private referenceFiscalYear(
+    input: AnalyseInput,
+    sc: WithdrawalScenario,
+  ): number | null {
+    let taxable: number | null = null;
+    let any: number | null = null;
+    for (const item of sc.items) {
+      const year = item.anneeRetraitPrevue;
+      if (year == null) continue;
+      if (this.withdrawnAmount(input, item) <= 0) continue;
+      if (any == null || year < any) any = year;
+      if (this.isExemptCapital(input, item)) continue;
+      if (taxable == null || year < taxable) taxable = year;
+    }
+    return taxable ?? any;
+  }
+
+  /** LPP : % déblocable de l'assuré. Autres capitaux : % de la ligne. */
+  private withdrawnAmount(input: AnalyseInput, item: WithdrawalPlanItem): number {
+    const holder =
+      item.titulaire === "client1" ? input.client1 : input.conjoint;
+    const pct =
+      item.kind === "lpp" && holder
+        ? lppCalculationService.resolvePctDeblocable(holder.lppPctDeblocable)
+        : Math.min(100, Math.max(0, item.pctCapital || 0));
+    return round2((item.montantDisponible || 0) * (pct / 100));
+  }
+
+  /** Pilier 3B : capital affiché, jamais soumis à calculateCapitalTax. */
+  private isExemptCapital(input: AnalyseInput, item: WithdrawalPlanItem): boolean {
+    return item.kind === "3p" && thirdPillarTypeForItem(input, item) === "3B";
   }
 
   private async evaluateScenario(
@@ -380,16 +482,10 @@ export class WithdrawalPlanningService {
 
     for (const item of sc.items) {
       if (item.anneeRetraitPrevue == null) continue;
-      const holder =
-        item.titulaire === "client1" ? input.client1 : input.conjoint;
-      const pct =
-        item.kind === "lpp" && holder
-          ? lppCalculationService.resolvePctDeblocable(holder.lppPctDeblocable)
-          : Math.min(100, Math.max(0, item.pctCapital || 0));
-      const montantRetire = round2((item.montantDisponible || 0) * (pct / 100));
+      const montantRetire = this.withdrawnAmount(input, item);
       if (montantRetire <= 0) continue;
       const contratType = thirdPillarTypeForItem(input, item);
-      const exonere = item.kind === "3p" && contratType === "3B";
+      const exonere = this.isExemptCapital(input, item);
       const key = `${item.titulaire}|${item.anneeRetraitPrevue}`;
       const cur = buckets.get(key) || {
         year: item.anneeRetraitPrevue,
@@ -597,6 +693,24 @@ export class WithdrawalPlanningService {
         })),
     };
   }
+}
+
+/**
+ * Scénario coché affiché comme stratégie.
+ * Un seul coché : celui-là. Plusieurs : le plus d'années fiscales
+ * (règle déjà en place), sans fusionner les années entre eux.
+ */
+export function selectReportStrategy(
+  scenarios: WithdrawalScenarioResult[],
+): WithdrawalScenarioResult | null {
+  const included = scenarios.filter((scenario) => scenario.includeInReport);
+  if (!included.length) return null;
+  if (included.length === 1) return included[0];
+  return [...included].sort(
+    (a, b) =>
+      a.byYear.length - b.byYear.length ||
+      a.scenarioId.localeCompare(b.scenarioId),
+  )[included.length - 1];
 }
 
 function thirdPillarTypeForItem(

@@ -221,6 +221,23 @@ export interface ReportPayload {
       sameCapitalBase: boolean;
       warning: string | null;
     }>;
+    /** Scénario coché servi comme stratégie (le plus étalé s'il y en a plusieurs). */
+    strategyScenarioId: string | null;
+    /**
+     * Tous les capitaux de ce scénario, retirés sur une seule année fiscale.
+     * Impôt = appels ESTV réels (3B exclus du montant soumis).
+     */
+    sameYearReference: {
+      year: number;
+      capitalRetire: number;
+      impotTotal: number | null;
+      capitalNet: number | null;
+    } | null;
+    /**
+     * Impôt référence − impôt stratégie.
+     * ≤ 0 : l'échelonnement n'est pas plus favorable.
+     */
+    economieFiscale: number | null;
   };
   flags: {
     hasThirdPillar: boolean;

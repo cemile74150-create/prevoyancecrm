@@ -400,8 +400,34 @@ export interface WithdrawalScenarioResult {
   }>;
 }
 
+/**
+ * Référence « tout retirer la même année fiscale ».
+ * Les 3B sont dans le capital affiché et absents des appels ESTV.
+ */
+export interface WithdrawalSameYearReference {
+  /** Année fiscale unique retenue pour cette référence. */
+  year: number;
+  /** Scénario coché dont les capitaux ont été regroupés (aucun mélange). */
+  sourceScenarioId: string;
+  capitalRetire: number;
+  impotTotal: number | null;
+  capitalNet: number | null;
+  audits: WithdrawalTaxAudit[];
+}
+
 export interface WithdrawalPlanningResult {
   scenarios: WithdrawalScenarioResult[];
+  /**
+   * Scénario coché affiché comme stratégie préparée.
+   * S'il y en a plusieurs : celui qui a le plus d'années fiscales.
+   */
+  strategyScenarioId: string | null;
+  sameYearReference: WithdrawalSameYearReference | null;
+  /**
+   * Impôt de la référence même année − impôt de la stratégie.
+   * Null si un des deux impôts ESTV manque. ≤ 0 : pas de gain à afficher.
+   */
+  economieFiscale: number | null;
   /** Écarts d’impôt entre scénarios (sans qualifier « meilleur »). */
   comparisons: Array<{
     fromId: string;

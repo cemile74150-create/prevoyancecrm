@@ -176,6 +176,22 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
         sameCapitalBase: c.sameCapitalBase,
         warning: c.warning,
       })),
+    strategyScenarioId:
+      wp?.strategyScenarioId && reportScenarioIds.has(wp.strategyScenarioId)
+        ? wp.strategyScenarioId
+        : null,
+    sameYearReference: wp?.sameYearReference
+      ? {
+          year: wp.sameYearReference.year,
+          capitalRetire: wp.sameYearReference.capitalRetire,
+          impotTotal: wp.sameYearReference.impotTotal,
+          capitalNet: wp.sameYearReference.capitalNet,
+        }
+      : null,
+    economieFiscale:
+      wp?.strategyScenarioId && reportScenarioIds.has(wp.strategyScenarioId)
+        ? (wp.economieFiscale ?? null)
+        : null,
   };
 
   // Pages : 1 cover, 2 agency, 3 bilan, 4 compare — puis conditionnels

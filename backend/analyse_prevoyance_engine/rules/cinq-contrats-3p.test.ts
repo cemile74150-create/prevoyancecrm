@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { describe, it, after } from "node:test";
 import { fileURLToPath } from "node:url";
+import { formatChf } from "../mappers.ts";
 import { buildReportPayload } from "../report/buildReportPayload.ts";
 import { buildReportPages } from "../pdf/renderPrintableReportHtml.ts";
 import {
@@ -358,6 +359,69 @@ describe("5 contrats 3A/3B", () => {
       .reduce((sum, line) => sum + line.montantRetire, 0);
     assert.equal(lppSum, 600_000);
 
+    const planning = results.withdrawalPlanning;
+    assert.ok(planning);
+    assert.equal(planning.strategyScenarioId, "spread");
+    const ref = planning.sameYearReference;
+    assert.ok(ref);
+    assert.equal(ref.year, 2040);
+    assert.equal(ref.sourceScenarioId, "spread");
+    const taxableLpp3a = 200_000 + 55_872 + 400_000 + 45_813;
+    const exempt3b = 41_704 + 57_337 + 41_459;
+    assert.equal(
+      ref.audits.reduce((sum, audit) => sum + audit.montantSoumis, 0),
+      taxableLpp3a,
+    );
+    assert.equal(ref.capitalRetire, taxableLpp3a + exempt3b);
+    assert.deepEqual(
+      ref.audits
+        .map((audit) => audit.montantSoumis)
+        .filter((amount) => amount > 0)
+        .sort((a, b) => a - b),
+      [200_000 + 55_872, 400_000 + 45_813].sort((a, b) => a - b),
+    );
+    for (const audit of ref.audits) {
+      assert.equal(FORBIDDEN_3B.includes(audit.montantSoumis), false);
+      for (const capital of audit.capitauxInclus) {
+        assert.equal(capital.label.startsWith("3B"), false);
+        assert.equal(FORBIDDEN_3B.includes(capital.montantRetire), false);
+      }
+    }
+    assert.equal(
+      ref.audits.some((audit) =>
+        audit.capitauxInclus.some(
+          (capital) => capital.kind === "lpp" && capital.montantRetire === 200_000,
+        ),
+      ),
+      true,
+    );
+    assert.equal(
+      ref.audits.some((audit) =>
+        audit.capitauxInclus.some((capital) => capital.montantRetire === 800_000),
+      ),
+      false,
+    );
+    assert.ok(capitalsSent.includes(200_000 + 55_872));
+    assert.ok(capitalsSent.includes(400_000 + 45_813));
+    const spreadResult = planning.scenarios.find((scenario) => scenario.scenarioId === "spread");
+    assert.ok(spreadResult);
+    assert.equal(ref.impotTotal != null && spreadResult.impotTotal != null, true);
+    const economie =
+      Math.round(((ref.impotTotal ?? 0) - (spreadResult.impotTotal ?? 0)) * 100) / 100;
+    assert.equal(planning.economieFiscale, economie);
+    assert.ok(economie > 0);
+    assert.equal(payload.withdrawalPlanning.economieFiscale, economie);
+    const planHtml =
+      pages.map((page) => page.html).find((page) => page.includes("Planification des retraits")) ||
+      "";
+    assert.ok(planHtml.includes("RETRAITS LA MÊME ANNÉE FISCALE"));
+    assert.ok(planHtml.includes("STRATÉGIE DE RETRAITS PRÉPARÉE"));
+    assert.ok(planHtml.includes("Prestations retirées"));
+    assert.equal((planHtml.split(">2035<").length - 1), 1);
+    assert.ok(planHtml.includes(`ÉCONOMIE FISCALE ESTIMÉE : ${formatChf(economie)}`));
+    assert.equal(planHtml.includes("Dossier de démonstration"), false);
+    assert.equal(planHtml.includes('class="eco eco-none"'), false);
+
     const pdf = await pdfGenerationService.generatePdfBuffer(record);
     const out = resolve(
       dirname(fileURLToPath(import.meta.url)),
@@ -373,6 +437,96 @@ describe("5 contrats 3A/3B", () => {
     assert.equal(text.includes("contrat principal"), false);
     assert.ok(text.includes("Exonér"));
     console.log(`PDF ${out} (${pdf.length} octets), contrats PDF ${POLICES.length}/${POLICES.length}`);
+
+    const demoRecord: AnalyseRecord = {
+      ...record,
+      input: {
+        ...input,
+        conseillerNom:
+          "DOSSIER DÉMO — impôts simulés par le test, pas un calcul ESTV réel",
+        client1: { ...input.client1, prenom: "Démo", nom: "PLANIFICATION" },
+        conjoint: input.conjoint
+          ? { ...input.conjoint, prenom: "Démo", nom: "PLANIFICATION" }
+          : null,
+      },
+    };
+    const demoPdf = await pdfGenerationService.generatePdfBuffer(demoRecord);
+    const demoOut = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../generated/validation-planification-retraits.pdf",
+    );
+    writeFileSync(demoOut, demoPdf);
+    const demoText = extractPdfText(demoOut);
+    assert.ok(demoText.includes("DOSSIER"));
+    assert.ok(demoText.includes("monstration") || demoText.includes("simul"));
+    console.log(`PDF démo ${demoOut} (${demoPdf.length} octets) — impôts simulés, pas ESTV`);
+  });
+
+  it("n'affiche pas une économie positive quand l'échelonnement n'est pas plus favorable", async () => {
+    const previous = taxCalculationService.calculateCapitalTax;
+    const sent: number[] = [];
+    taxCalculationService.calculateCapitalTax = async (params) => {
+      sent.push(params.capital);
+      return {
+        age: params.ageAtPayment,
+        capital: params.capital,
+        gender: params.gender,
+        relationship: params.relationship,
+        taxGroupId: params.taxGroupId,
+        taxYear: params.taxYear ?? 2025,
+        taxCity: 0,
+        taxCanton: 0,
+        taxFed: 5_000,
+        taxChurch: 0,
+        impotTotal: 5_000,
+        request: {},
+        response: {},
+      };
+    };
+    try {
+      const input = dossier();
+      input.withdrawalScenarios = input.withdrawalScenarios.map((scenario) => ({
+        ...scenario,
+        includeInReport: scenario.id === "spread",
+      }));
+      const results = await retirementAnalysisService.run(input);
+      const planning = results.withdrawalPlanning;
+      assert.ok(planning?.sameYearReference);
+      assert.equal(planning.strategyScenarioId, "spread");
+      const spread = planning.scenarios.find((scenario) => scenario.scenarioId === "spread");
+      assert.ok(spread);
+      assert.equal(
+        planning.economieFiscale,
+        Math.round(
+          ((planning.sameYearReference.impotTotal ?? 0) - (spread.impotTotal ?? 0)) * 100,
+        ) / 100,
+      );
+      assert.ok((planning.economieFiscale ?? 1) <= 0);
+      for (const forbidden of FORBIDDEN_3B) {
+        assert.equal(sent.includes(forbidden), false);
+      }
+      assert.ok(sent.includes(200_000 + 55_872));
+      assert.equal(sent.includes(800_000), false);
+      const record: AnalyseRecord = {
+        id: "validation-eco-nulle",
+        createdAt: "2026-10-05T00:00:00.000Z",
+        updatedAt: "2026-10-05T00:00:00.000Z",
+        clientId: null,
+        status: "calculee",
+        input,
+        results,
+      };
+      const html = buildReportPages(buildReportPayload(record))
+        .map((page) => page.html)
+        .find((page) => page.includes("Planification des retraits"));
+      assert.ok(html);
+      assert.ok(html.includes('class="eco eco-none"'));
+      assert.equal(html.includes('class="eco">'), false);
+      assert.ok(html.includes("l'échelonnement n'est pas plus favorable"));
+      assert.ok(html.includes("ÉCONOMIE FISCALE ESTIMÉE : 0 CHF"));
+    } finally {
+      taxCalculationService.calculateCapitalTax = previous;
+    }
   });
 });
 

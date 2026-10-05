@@ -275,8 +275,11 @@ export function reportCss(forceOrient?: ReportPageKind) {
   .note { font-size: 8.5pt; font-style: italic; color: ${GRAY}; margin-top: 6px; line-height: 1.35; }
   .eco {
     display: flex; justify-content: space-between; align-items: center;
-    margin-top: 12px; background: ${BRAND}; color: #fff;
-    font-weight: 700; letter-spacing: 0.04em; padding: 8px 12px; font-size: 11pt;
+    margin-top: 16px; background: ${BRAND}; color: #fff;
+    font-weight: 700; letter-spacing: 0.04em; padding: 14px 16px; font-size: 13.5pt;
+  }
+  .eco-none {
+    background: #f7f4f4; color: #1a1a1a; border: 2.5px solid ${BRAND};
   }
   table.pillars { font-size: 8pt; }
   table.pillars th { white-space: normal; line-height: 1.2; font-size: 7.5pt; }
@@ -701,131 +704,133 @@ function thirdPillarPages(
 type WithdrawalPlanning = ReportPayload["withdrawalPlanning"];
 type WithdrawalScenario = WithdrawalPlanning["scenarios"][number];
 
-function capitalKindLabel(kind: string): string {
-  if (kind === "lpp") return "2e pilier";
-  if (kind === "libre_passage") return "Libre passage";
-  if (kind === "3p") return "3e pilier";
-  if (kind === "autre") return "Autre";
-  return kind;
+function yearIsFullyExempt(year: WithdrawalScenario["byYear"][number]): boolean {
+  const lines = year.lines || [];
+  return lines.length > 0 && lines.every((line) => line.exonere);
 }
 
-function assureLabel(titulaire: string): string {
-  return titulaire === "conjoint" ? "Assuré 2" : "Assuré 1";
+function yearPrestationShort(year: WithdrawalScenario["byYear"][number]): string {
+  const lines = year.lines || [];
+  const parts: string[] = [];
+  if (lines.some((line) => line.kind === "lpp")) parts.push("LPP");
+  if (lines.some((line) => line.kind === "libre_passage")) parts.push("Libre passage");
+  if (lines.some((line) => line.kind === "3p" && line.contratType === "3A")) {
+    parts.push("3A");
+  }
+  if (lines.some((line) => line.kind === "3p" && line.contratType === "3B")) {
+    parts.push("3B");
+  }
+  if (
+    lines.some((line) => line.kind === "3p" && !line.contratType) &&
+    !lines.some((line) => line.kind === "3p" && line.contratType)
+  ) {
+    parts.push("3e pilier");
+  }
+  if (lines.some((line) => line.kind === "autre")) parts.push("Autre");
+  return parts.join(" + ") || "—";
 }
 
-function scenarioBlock(sc: WithdrawalScenario, title: string): string {
-  const nameNote =
-    title === sc.name.trim() || title.startsWith(sc.name.trim())
-      ? ""
-      : `<p class="note">${esc(sc.name)}</p>`;
-  const prestationRows = sc.byYear
-    .map(
-      (year) => `<tr>
-        <td class="lab">${year.year}</td>
-        <td>${yearPrestationLabel(year)}</td>
-      </tr>`,
-    )
-    .join("");
-  const taxRows = sc.byYear
-    .map(
-      (year) => `<tr>
-        <td class="lab">${year.year}</td>
-        <td class="num">${formatChf(year.capitalRetire)}</td>
-        <td class="num tax">${yearTaxLabel(year)}</td>
-      </tr>`,
-    )
-    .join("");
+function strategyScenario(wp: WithdrawalPlanning): WithdrawalScenario | null {
+  if (!wp.scenarios.length) return null;
+  if (wp.strategyScenarioId) {
+    const found = wp.scenarios.find((scenario) => scenario.id === wp.strategyScenarioId);
+    if (found) return found;
+  }
+  return [...wp.scenarios].sort(
+    (a, b) => a.byYear.length - b.byYear.length || a.id.localeCompare(b.id),
+  )[wp.scenarios.length - 1];
+}
+
+function sameYearBlock(wp: WithdrawalPlanning): string {
+  const ref = wp.sameYearReference;
+  if (!ref) return "";
   return `
-  <div class="sec-title">${title}</div>
-  ${nameNote}
+  <div class="sec-title">RETRAITS LA MÊME ANNÉE FISCALE</div>
+  <p class="note">Année fiscale ${ref.year}. Tous les capitaux de la stratégie préparée sont retirés ensemble. Les 3B restent dans le capital retiré et sont exonérés d'impôt.</p>
   <table class="data">
-    <colgroup><col style="width:18%" /><col style="width:82%" /></colgroup>
-    <tr><th>Année</th><th>Prestation et capital retiré</th></tr>
-    ${prestationRows || `<tr><td colspan="2">—</td></tr>`}
-  </table>
-  <table class="data">
-    <colgroup><col style="width:22%" /><col style="width:39%" /><col style="width:39%" /></colgroup>
-    <tr><th>Année</th><th>Capital retiré</th><th>Impôt</th></tr>
-    ${taxRows}
-    <tr><td class="lab">Total</td><td class="num">${formatChf(sc.capitalRetireTotal)}</td><td class="num tax">${formatChf(sc.impotTotal)}</td></tr>
-    <tr><td class="lab">Capital net</td><td class="num" colspan="2">${formatChf(sc.capitalNet)}</td></tr>
+    <colgroup>
+      <col style="width:34%" />
+      <col style="width:33%" />
+      <col style="width:33%" />
+    </colgroup>
+    <tr>
+      <th>Capital retiré</th>
+      <th>Impôt total</th>
+      <th>Capital net</th>
+    </tr>
+    <tr>
+      <td class="num">${formatChf(ref.capitalRetire)}</td>
+      <td class="num tax">${formatChf(ref.impotTotal)}</td>
+      <td class="num">${formatChf(ref.capitalNet)}</td>
+    </tr>
   </table>`;
 }
 
-function yearPrestationLabel(year: WithdrawalScenario["byYear"][number]): string {
-  const lines = year.lines || [];
-  const parts: string[] = [];
-  const lpp = lines.filter((line) => line.kind === "lpp");
-  if (lpp.length) {
-    const who = [...new Set(lpp.map((line) => assureLabel(line.titulaire)))];
-    const whoLabel = who.length > 1 ? "Assuré 1 et Assuré 2" : who[0];
-    const sum = lpp.reduce((total, line) => total + line.montantRetire, 0);
-    parts.push(`LPP ${whoLabel} : ${formatChf(sum)}`);
-  }
-  for (const type of ["3A", "3B"] as const) {
-    const rows = lines.filter(
-      (line) => line.kind === "3p" && (line.contratType || "3A") === type,
-    );
-    if (!rows.length) continue;
-    const sum = rows.reduce((total, line) => total + line.montantRetire, 0);
-    parts.push(`3e pilier ${type} : ${formatChf(sum)}`);
-  }
-  const other3p = lines.filter((line) => line.kind === "3p" && !line.contratType);
-  if (other3p.length && !lines.some((line) => line.kind === "3p" && line.contratType)) {
-    const sum = other3p.reduce((total, line) => total + line.montantRetire, 0);
-    parts.push(`3e piliers : ${formatChf(sum)}`);
-  }
-  const lp = lines.filter((line) => line.kind === "libre_passage");
-  if (lp.length) {
-    const sum = lp.reduce((total, line) => total + line.montantRetire, 0);
-    parts.push(`Libre passage : ${formatChf(sum)}`);
-  }
-  return parts.join("<br/>") || "—";
+function strategyBlock(sc: WithdrawalScenario): string {
+  const rows = sc.byYear
+    .map((year) => {
+      const exempt = yearIsFullyExempt(year);
+      const tax = exempt ? "Exonéré d'impôt" : formatChf(year.impot);
+      return `<tr>
+        <td class="lab">${year.year}</td>
+        <td>${yearPrestationShort(year)}</td>
+        <td class="num">${formatChf(year.capitalRetire)}</td>
+        <td class="num${exempt ? "" : " tax"}">${tax}</td>
+      </tr>`;
+    })
+    .join("");
+  return `
+  <div class="sec-title">STRATÉGIE DE RETRAITS PRÉPARÉE</div>
+  <p class="note">${esc(sc.name)}</p>
+  <table class="data">
+    <colgroup>
+      <col style="width:14%" />
+      <col style="width:32%" />
+      <col style="width:27%" />
+      <col style="width:27%" />
+    </colgroup>
+    <tr>
+      <th>Année</th>
+      <th>Prestations retirées</th>
+      <th>Capital retiré</th>
+      <th>Impôt</th>
+    </tr>
+    ${rows || `<tr><td colspan="4">—</td></tr>`}
+    <tr>
+      <td class="lab" colspan="2">Total des capitaux</td>
+      <td class="num">${formatChf(sc.capitalRetireTotal)}</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="lab" colspan="2">Total des impôts</td>
+      <td></td>
+      <td class="num tax">${formatChf(sc.impotTotal)}</td>
+    </tr>
+    <tr>
+      <td class="lab" colspan="2">Capital net</td>
+      <td class="num" colspan="2">${formatChf(sc.capitalNet)}</td>
+    </tr>
+  </table>`;
 }
 
-function yearTaxLabel(year: WithdrawalScenario["byYear"][number]): string {
-  const lines = year.lines || [];
-  const onlyExempt = lines.length > 0 && lines.every((line) => line.exonere);
-  if (onlyExempt) return "Exonéré d'impôt";
-  return formatChf(year.impot);
+function economieBanner(gain: number | null): string {
+  const formula = `<p class="note">Économie = impôt si tous les capitaux imposables étaient retirés la même année − total des impôts du scénario échelonné.</p>`;
+  if (gain == null) {
+    return `<p class="note">Économie fiscale non estimée : un impôt manque sur la référence ou sur la stratégie.</p>`;
+  }
+  if (gain > 0) {
+    return `<div class="eco"><span>ÉCONOMIE FISCALE ESTIMÉE : ${formatChf(gain)}</span></div>${formula}`;
+  }
+  return `<div class="eco eco-none"><span>ÉCONOMIE FISCALE ESTIMÉE : 0 CHF — l'échelonnement n'est pas plus favorable</span></div>${formula}`;
 }
 
 function planningReportHtml(wp: WithdrawalPlanning): string {
-  const ordered = [...wp.scenarios].sort(
-    (a, b) => a.byYear.length - b.byYear.length,
-  );
-  const grouped = ordered[0];
-  const spread = ordered.length > 1 ? ordered[ordered.length - 1] : null;
-  const blocks = ordered
-    .map((scenario, index) => {
-      const title =
-        ordered.length > 1
-          ? index === 0
-            ? "Retraits regroupés"
-            : "Retraits répartis sur plusieurs années fiscales"
-          : scenario.byYear.length <= 1
-            ? "Retraits regroupés"
-            : "Retraits répartis sur plusieurs années fiscales";
-      return scenarioBlock(scenario, title);
-    })
-    .join("");
-  let economie = "";
-  if (
-    grouped &&
-    spread &&
-    spread.id !== grouped.id &&
-    grouped.impotTotal != null &&
-    spread.impotTotal != null
-  ) {
-    const gain = Math.round((grouped.impotTotal - spread.impotTotal) * 100) / 100;
-    if (gain > 0) {
-      economie = `<div class="eco"><span>ÉCONOMIE FISCALE ESTIMÉE</span><span>${formatChf(gain)}</span></div>`;
-    }
-  }
+  const strategy = strategyScenario(wp);
   return `
   <div class="page-title">Planification des retraits de capitaux</div>
-  ${blocks}
-  ${economie}`;
+  ${sameYearBlock(wp)}
+  ${strategy ? strategyBlock(strategy) : ""}
+  ${economieBanner(wp.economieFiscale)}`;
 }
 
 function withdrawalPlanningPages(
@@ -833,7 +838,10 @@ function withdrawalPlanningPages(
   next: () => number,
   total: number,
 ): string[] {
-  return [`${planningReportHtml(p.withdrawalPlanning)}${footer(next(), total)}`];
+  const demo = p.meta.conseillerNom.includes("DOSSIER DÉMO")
+    ? `<p class="note"><strong>Dossier de démonstration.</strong> Les impôts de ce fichier sont simulés pour la validation locale. Ce ne sont pas des résultats ESTV.</p>`
+    : "";
+  return [`${demo}${planningReportHtml(p.withdrawalPlanning)}${footer(next(), total)}`];
 }
 
 function pageFrise(p: ReportPayload, n: number, total: number): string {

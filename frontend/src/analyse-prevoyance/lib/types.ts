@@ -376,12 +376,31 @@ export interface WithdrawalScenarioResult {
       label: string;
       institution: string;
       montantRetire: number;
+      contratType?: "3A" | "3B" | null;
+      exonere?: boolean;
     }>;
   }>;
 }
 
+/**
+ * Référence « tout retirer la même année fiscale ».
+ * Les 3B restent dans le capital affiché et ne partent pas vers l'ESTV.
+ */
+export interface WithdrawalSameYearReference {
+  year: number;
+  sourceScenarioId: string;
+  capitalRetire: number;
+  impotTotal: number | null;
+  capitalNet: number | null;
+  audits: WithdrawalTaxAudit[];
+}
+
 export interface WithdrawalPlanningResult {
   scenarios: WithdrawalScenarioResult[];
+  strategyScenarioId: string | null;
+  sameYearReference: WithdrawalSameYearReference | null;
+  /** Impôt même année − impôt de la stratégie. ≤ 0 : pas un gain. */
+  economieFiscale: number | null;
   /** Écarts d’impôt entre scénarios (sans qualifier « meilleur »). */
   comparisons: Array<{
     fromId: string;

@@ -307,12 +307,12 @@ export function AnalysePrevoyanceApp({
 
   function createPdf() {
     if (!record?.id || !record?.results) {
-      setError("Calculez l'analyse avant de créer le PDF.");
+      setError("Calculez l'analyse avant de générer le PDF.");
       return;
     }
     if (!resultsAreCurrent()) {
       setError(
-        "Les données ont changé depuis le dernier calcul. Recalculez avant de créer le PDF.",
+        "Les données ont changé depuis le dernier calcul. Recalculez avant de générer le PDF.",
       );
       return;
     }
@@ -703,11 +703,10 @@ export function AnalysePrevoyanceApp({
         </Section>
       </div>
 
-      <div className="mt-10">
-        <ResultsPanel record={record} />
-      </div>
-
-      <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-border pt-6">
+      <div
+        id="actions-calcul-pdf"
+        className="mt-8 flex flex-wrap items-center gap-3 border-t border-border pt-6"
+      >
         <button
           type="button"
           className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#002FA7] px-6 text-base font-semibold text-white hover:bg-[#00248a] disabled:opacity-50"
@@ -728,8 +727,12 @@ export function AnalysePrevoyanceApp({
           disabled={pending || !record?.results}
         >
           <FileText className="size-4" />
-          Créer le PDF
+          Générer le PDF
         </button>
+      </div>
+
+      <div className="mt-10">
+        <ResultsPanel record={record} />
       </div>
     </div>
   );
