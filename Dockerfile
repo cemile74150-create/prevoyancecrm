@@ -28,9 +28,9 @@ COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 # Node 20 from the frontend stage: the analysis engine runs under FastAPI via tsx.
 COPY --from=frontend-build /usr/local/bin/node /usr/local/bin/node
-COPY --from=frontend-build /usr/local/bin/npm /usr/local/bin/npm
-COPY --from=frontend-build /usr/local/bin/npx /usr/local/bin/npx
 COPY --from=frontend-build /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 # Bust cache when templates change (Railway / BuildKit)
 ARG TEMPLATE_CACHEBUST=mg_lsa_v2_20260826
 RUN echo "templates=$TEMPLATE_CACHEBUST"
