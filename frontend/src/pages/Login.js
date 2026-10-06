@@ -40,12 +40,6 @@ export default function Login() {
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-background">
       <div className="flex flex-col justify-between p-8 lg:p-14">
-        <img
-          src="/brand/logo-leosoft.png?v=2"
-          alt={APP_NAME}
-          className="block w-[220px] max-w-full h-auto object-contain"
-        />
-
         <div className="max-w-md w-full mx-auto lg:mx-0 animate-fade-up">
           <p className="text-[#002FA7] font-semibold text-sm uppercase tracking-wider mb-3">
             Connexion sécurisée
