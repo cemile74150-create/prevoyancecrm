@@ -79,6 +79,39 @@ def test_compute_stats_separates_origine_conseiller_vs_attribuee():
     assert s["by_origine"]["attribuee"] == 1
 
 
+def test_compute_stats_demandes_modifiees_same_set_as_gestion():
+    """Encadré et carte « Offres à modifier » : même définition, sans reclasser le reste."""
+    from demandes_offres_3p import (
+        STATUT_OFFRE_A_MODIFIER,
+        STATUT_OFFRE_MODIFIEE,
+        is_demande_offre_modifiee,
+    )
+
+    rows = [
+        _row(id="1", statut=STATUT_OFFRE_MODIFIEE),
+        _row(id="2", statut=STATUT_OFFRE_A_MODIFIER),
+        _row(id="3", statut=STATUT_ENVOYEE, modifications=[{"field": "prime", "old": 1, "new": 2}]),
+        _row(id="4", statut=STATUT_BROUILLON),
+        _row(id="5", statut="Offre signée"),
+        _row(id="6", statut=STATUT_OFFRE_MODIFIEE, is_deleted=True),
+        _row(id="7", statut="Offre reçue"),
+    ]
+    s = compute_stats(rows)
+    assert s["demandes_modifiees"] == 2
+    assert s["gestion"]["a_modifier"] == s["demandes_modifiees"]
+    assert s["gestion"]["modifiees"] == 1
+    assert s["en_attente"] == 1
+    assert s["nb_brouillons"] == 1
+    assert s["offres_recues"] == 1
+    assert s["offres_signees"] == 1
+    assert is_demande_offre_modifiee({"statut": STATUT_ENVOYEE}) is False
+    assert is_demande_offre_modifiee({"statut": STATUT_OFFRE_MODIFIEE, "is_deleted": True}) is False
+    kanban = {col["id"]: col for col in s["gestion_kanban"]}
+    assert kanban["a_modifier"]["label"] == "Offre à modifier"
+    assert set(kanban["a_modifier"]["statuts"]) == {STATUT_OFFRE_A_MODIFIER, STATUT_OFFRE_MODIFIEE}
+    assert "modifiees" not in kanban
+
+
 def test_compute_stats_offres_recues_kpi_counts_offre_recue_only():
     """KPI dashboard « Offres reçues » : statut « Offre reçue » uniquement."""
     from demandes_offres_3p import (

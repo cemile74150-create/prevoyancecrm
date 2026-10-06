@@ -52,10 +52,15 @@ function prioRank(p) {
   return 2;
 }
 
+function isOffreAModifier(row) {
+  const st = row?.statut;
+  return st === "Offre à modifier" || st === "Offre modifiée";
+}
+
 function rowHighlight(row) {
   const p = row?.priorite;
   const st = row?.statut;
-  return p === "urgent" || p === "surveiller" || st === "Demande incomplète" || st === "Offre reçue";
+  return p === "urgent" || p === "surveiller" || st === "Demande incomplète" || st === "Offre reçue" || isOffreAModifier(row);
 }
 
 function sortQueue(rows) {
@@ -585,13 +590,15 @@ export default function GestionReponsesOffres() {
                         <tr
                           key={r.id}
                           className={`border-t border-slate-100 hover:bg-slate-50/60 ${
-                            hi
-                              ? r.priorite === "urgent"
-                                ? "bg-red-50/40"
-                                : r.priorite === "surveiller" || r.statut === "Demande incomplète"
-                                  ? "bg-amber-50/40"
-                                  : "bg-violet-50/30"
-                              : ""
+                            r.priorite === "urgent"
+                              ? "bg-red-50/40"
+                              : isOffreAModifier(r)
+                                ? "bg-amber-50/70"
+                                : hi
+                                  ? r.priorite === "surveiller" || r.statut === "Demande incomplète"
+                                    ? "bg-amber-50/40"
+                                    : "bg-violet-50/30"
+                                  : ""
                           }`}
                         >
                           <td className="px-3 py-2 font-medium text-slate-900 whitespace-nowrap">
@@ -611,7 +618,12 @@ export default function GestionReponsesOffres() {
                           <td className="px-3 py-2 text-slate-600 text-xs max-w-[140px]">
                             {formatVariantesSummary(r) || compsShort(r)}
                           </td>
-                          <td className="px-3 py-2"><StatutBadge statut={r.statut} /></td>
+                          <td className="px-3 py-2">
+                            <StatutBadge statut={r.statut} />
+                            {r.statut === "Offre modifiée" && (
+                              <span className="mt-1 block text-[10px] font-semibold text-amber-950">Offre à modifier</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2">
                             {canProcess ? (
                               <label

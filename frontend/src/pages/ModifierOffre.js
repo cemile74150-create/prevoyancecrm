@@ -24,7 +24,7 @@ import {
 } from "@/lib/demandesOffres";
 import { agentIdentityFromUser } from "@/lib/offreAgentIdentity";
 import {
-  ArrowLeft, FileUp, Loader2, Pencil, Send, ShieldCheck,
+  ArrowLeft, FileUp, Loader2, Pencil, Search, Send, ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,9 +40,9 @@ function errorMessage(e, fallback) {
 
 function Field({ label, children, changed, className = "" }) {
   return (
-    <div className={`space-y-1.5 ${className}`}>
+    <div className={`space-y-1.5 rounded-md ${changed ? "border border-rose-600 bg-rose-50/80 px-2.5 py-2" : ""} ${className}`}>
       <div className="flex items-center gap-2">
-        <Label className="text-xs text-muted-foreground">{label}</Label>
+        <Label className={`text-xs ${changed ? "text-rose-700 font-semibold" : "text-muted-foreground"}`}>{label}</Label>
         {changed && (
           <span className="inline-flex rounded-full bg-rose-500/15 text-rose-800 ring-1 ring-inset ring-rose-500/30 px-1.5 py-0.5 text-[10px] font-semibold">
             Modifié
@@ -54,13 +54,31 @@ function Field({ label, children, changed, className = "" }) {
   );
 }
 
+const CHANGED_CONTROL =
+  "border-rose-600 bg-rose-50 text-rose-700 placeholder:text-rose-400 focus-visible:ring-rose-400";
+
 function ChangedInput({ changed, className = "", ...props }) {
   return (
     <Input
       {...props}
-      className={`${className} ${changed ? "border-rose-400 bg-rose-50/60 focus-visible:ring-rose-300" : ""}`}
+      className={`${className} ${changed ? CHANGED_CONTROL : ""}`}
     />
   );
+}
+
+function modificationsComment(note, changes) {
+  const parts = [];
+  const cleaned = (note || "").trim();
+  if (cleaned) parts.push(cleaned);
+  if (changes?.length) {
+    if (parts.length) parts.push("");
+    parts.push("Modifications :");
+    for (const change of changes) {
+      const label = change.label || change.field || "Champ";
+      parts.push(`- ${label} : ${formatChangeVal(change.old)} → ${formatChangeVal(change.new)}`);
+    }
+  }
+  return parts.join("\n");
 }
 
 function formatChangeVal(v) {
@@ -86,7 +104,12 @@ export default function ModifierOffre() {
   const [selectedType, setSelectedType] = useState(null); // { form_type, label }
 
   const [demande, setDemande] = useState(null);
-  const [numeroInput, setNumeroInput] = useState("");
+  const [source, setSource] = useState(null); // null | "pdf" | "leosoft"
+  const [draftId, setDraftId] = useState(null);
+  const [nameQuery, setNameQuery] = useState("");
+  const [searchHits, setSearchHits] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searchDone, setSearchDone] = useState(false);
   const [snapshot, setSnapshot] = useState(null);
   const [form, setForm] = useState(() => emptyForm());
   const [formPayload, setFormPayload] = useState({});
@@ -119,7 +142,8 @@ export default function ModifierOffre() {
 
   const resetWorkspace = () => {
     setDemande(null);
-    setNumeroInput("");
+    setSource(null);
+    setDraftId(null);
     setSnapshot(null);
     setForm(emptyForm());
     setFormPayload({});
@@ -172,15 +196,12 @@ export default function ModifierOffre() {
     setPayloadSnapshot({ ...payload });
     setExtracted(data.extracted || null);
     setPdfReady(true);
+    setSource("pdf");
     userTouchedRef.current = false;
     setManualKeys(new Set());
     setPrefilledCount(Array.isArray(data.filled_keys) ? data.filled_keys.length : 0);
-    if (data.demande) {
-      setDemande(data.demande);
-      setNumeroInput(data.demande.numero || data.numero || "");
-    } else if (data.numero || data.numero_detecte) {
-      setNumeroInput(data.numero || data.numero_detecte || "");
-    }
+    // Le PDF hors LeoSoft ne rattache jamais une demande existante.
+    setDemande(null);
   };
 
   const uploadPdf = async (event) => {
@@ -191,28 +212,14 @@ export default function ModifierOffre() {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("form_type", selectedType.form_type);
-      if (numeroInput.trim()) fd.append("numero", numeroInput.trim());
 
-      let data;
-      if (demande?.id) {
-        const res = await api.post(`/demandes-offres/${demande.id}/modifier/extract-pdf`, fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        data = res.data;
-        // Conserver le lien demande + email_subject
-        if (!data.demande && demande) {
-          data.demande = {
-            id: demande.id,
-            numero: demande.numero || data.numero,
-            email_subject: data.email_subject || demande.email_subject || "",
-            statut: demande.statut,
-          };
-        }
-      } else {
-        const res = await api.post("/demandes-offres/modifier/analyse-pdf", fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        data = res.data;
+      const res = await api.post("/demandes-offres/modifier/analyse-pdf", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const data = res.data;
+      if (source === "leosoft") {
+        toast.message("PDF hors LeoSoft : une nouvelle demande sera créée. L'offre déjà enregistrée n'est pas modifiée.");
+        setDraftId(null);
       }
       applyPrefill(data);
       const nFilled = Array.isArray(data.filled_keys)
@@ -231,13 +238,85 @@ export default function ModifierOffre() {
     }
   };
 
-  const resolveDemandeByNumero = async (numero) => {
-    const q = (numero || "").trim();
-    if (!q) return null;
-    const res = await api.get("/demandes-offres", { params: { q, limit: 10 } });
-    const rows = Array.isArray(res.data) ? res.data : [];
-    const exact = rows.find((r) => String(r.numero || "").toUpperCase() === q.toUpperCase());
-    return exact || rows[0] || null;
+  const rechercherClient = async () => {
+    const q = nameQuery.trim();
+    if (q.length < 2) {
+      toast.error("Saisissez au moins 2 caractères du nom du client");
+      return;
+    }
+    setSearching(true);
+    setSearchDone(false);
+    try {
+      const res = await api.get("/demandes-offres/modifier/recherche", { params: { q, limit: 30 } });
+      setSearchHits(Array.isArray(res.data) ? res.data : []);
+      setSearchDone(true);
+    } catch (e) {
+      toast.error(errorMessage(e, "Recherche impossible"));
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const selectLeosoft = async (hit) => {
+    if (!hit?.id) return;
+    setBusy(true);
+    try {
+      const res = await api.get(`/demandes-offres/${hit.id}`);
+      const data = res.data || {};
+      const formType = data.form_type || hit.form_type || "pilier3_legacy";
+      const label = data.form_type_label || hit.form_type_label || formType;
+      setSelectedType({ form_type: formType, label });
+      setSource("leosoft");
+      setDraftId(null);
+      setDemande({
+        id: data.id,
+        numero: data.numero || hit.numero || "",
+        email_subject: data.email_subject || "",
+        statut: data.statut,
+        prenom: data.prenom || hit.prenom || "",
+        nom: data.nom || hit.nom || "",
+      });
+      setPdfReady(false);
+      setExtracted(null);
+      setNote("");
+      userTouchedRef.current = false;
+      setManualKeys(new Set());
+      const payload = data.form_payload && typeof data.form_payload === "object" ? data.form_payload : {};
+      setFormPayload(payload);
+      setPayloadSnapshot({ ...payload });
+      const nextForm = { ...emptyForm() };
+      for (const key of Object.keys(nextForm)) {
+        if (data[key] !== undefined && data[key] !== null) nextForm[key] = data[key];
+      }
+      if (data.date_naissance) nextForm.date_naissance = toSwissDate(data.date_naissance) || data.date_naissance || "";
+      setForm(nextForm);
+      setSnapshot({ ...nextForm, compagnies: [...(nextForm.compagnies || [])] });
+      const filled = Object.keys(payload).filter((key) => {
+        const value = payload[key];
+        if (value == null || value === "") return false;
+        if (Array.isArray(value) && value.length === 0) return false;
+        return true;
+      });
+      setPrefilledCount(filled.length);
+      if (!isLegacyType(formType)) {
+        try {
+          const schemaRes = await api.get(`/demandes-offres/form-types/${formType}`);
+          setSchema(schemaRes.data?.schema || schemaRes.data || null);
+        } catch {
+          setSchema(null);
+          toast.message("Schéma du formulaire indisponible");
+        }
+      } else {
+        setSchema(null);
+      }
+      setPhase("workspace");
+      const who = [hit.prenom, hit.nom].filter(Boolean).join(" ") || hit.client_label || "ce client";
+      toast.success(`Formulaire d'origine prérempli — ${who}`);
+    } catch (e) {
+      toast.error(errorMessage(e, "Impossible de charger cette offre"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const setValue = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
@@ -304,66 +383,99 @@ export default function ModifierOffre() {
     return [...manualKeys].filter((k) => !valuesEqual(oldFp[k], newFp[k]));
   }, [payloadSnapshot, formPayload, manualKeys]);
 
+  const legacyFields = () => {
+    const fields = { ...form };
+    if (fields.montant_prime === "") fields.montant_prime = null;
+    if (fields.date_naissance) fields.date_naissance = toIsoDate(fields.date_naissance) || fields.date_naissance;
+    if (fields.date_debut) fields.date_debut = toIsoDate(fields.date_debut) || fields.date_debut;
+    delete fields.numero;
+    delete fields.id;
+    return fields;
+  };
+
+  const warnEmail = (res) => {
+    if (res?.data?.email_sent === false && res.data?.email_error) {
+      toast.warning("Statut enregistré, mais e-mail non envoyé", {
+        description: String(res.data.email_error).slice(0, 200),
+      });
+    }
+  };
+
   const envoyer = async () => {
     if (!selectedType) return;
-    if (!pdfReady) {
+    if (source !== "pdf" && source !== "leosoft") {
+      return toast.error("Importez un PDF ou choisissez une offre LeoSoft par le nom du client");
+    }
+    if (source === "pdf" && !pdfReady) {
       return toast.error("Importez d'abord la police / l'offre PDF pour préremplir le formulaire");
     }
-    if (!changes.length && !note.trim() && prefilledCount <= 0) {
+    if (source === "leosoft" && !demande?.id) {
+      return toast.error("Choisissez l'offre du client dans la liste");
+    }
+    if (source === "leosoft" && !changes.length && !note.trim()) {
+      return toast.error("Modifiez au moins un champ ou ajoutez une note avant l'envoi");
+    }
+    if (source === "pdf" && !changes.length && !note.trim() && prefilledCount <= 0) {
       return toast.error("Le PDF n'a rempli aucun champ. Modifiez le formulaire ou ajoutez une note avant l'envoi.");
     }
 
     setBusy(true);
     try {
-      let target = demande;
-      if (!target?.id) {
-        const found = await resolveDemandeByNumero(numeroInput);
-        if (!found?.id) {
-          toast.error("Saisissez le n° d'offre existant (OFF-AAAA-NNNN) pour conserver le numéro et l'objet e-mail");
-          setBusy(false);
-          return;
+      if (source === "leosoft") {
+        if (!demande.snapshot_original) {
+          await api.post(`/demandes-offres/${demande.id}/modifier/start`);
         }
-        target = found;
-        setDemande(found);
-        setNumeroInput(found.numero || numeroInput);
+        const body = {
+          note_service_offre: note.trim() || null,
+          changes,
+        };
+        if (isLegacyType(selectedType.form_type)) {
+          body.fields = legacyFields();
+        } else {
+          body.form_payload = formPayload;
+          body.form_type = selectedType.form_type;
+          body.form_type_label = selectedType.label;
+        }
+        const res = await api.post(`/demandes-offres/${demande.id}/modifier/envoyer`, body);
+        toast.success("Modification envoyée au service Offre");
+        warnEmail(res);
+        navigate(`/demandes-offres/${demande.id}`);
+        return;
       }
 
-      // Snapshot serveur (numéro + email_subject inchangés)
-      if (!target.snapshot_original) {
-        await api.post(`/demandes-offres/${target.id}/modifier/start`);
+      const comment = modificationsComment(note, changes);
+      let id = draftId;
+      if (!id) {
+        const created = await api.post("/demandes-offres", {
+          form_type: selectedType.form_type,
+          form_type_label: selectedType.label,
+        });
+        id = created.data?.id;
+        if (!id) throw new Error("Création de la demande impossible");
+        setDraftId(id);
       }
-
-      // Stocker aussi le PDF sur la demande si analyse sans id préalable
-      if (pdfRef.current?.files?.[0] && !demande?.id) {
-        // déjà analysé ; le document sera lié à l'envoi via les champs
-      }
-
-      const body = {
-        note_service_offre: note.trim() || null,
-        changes,
-      };
       if (isLegacyType(selectedType.form_type)) {
-        const fields = { ...form };
-        if (fields.montant_prime === "") fields.montant_prime = null;
-        if (fields.date_naissance) fields.date_naissance = toIsoDate(fields.date_naissance) || fields.date_naissance;
-        if (fields.date_debut) fields.date_debut = toIsoDate(fields.date_debut) || fields.date_debut;
-        body.fields = fields;
+        const fields = legacyFields();
+        if (comment) {
+          fields.commentaires = comment;
+          fields.note_service_offre = comment;
+        }
+        await api.put(`/demandes-offres/${id}`, fields);
       } else {
-        body.form_payload = formPayload;
-        body.form_type = selectedType.form_type;
-        body.form_type_label = selectedType.label;
-      }
-
-      const res = await api.post(`/demandes-offres/${target.id}/modifier/envoyer`, body);
-      toast.success("Modification envoyée au service Offre — numéro et objet e-mail conservés");
-      if (res.data?.email_sent === false && res.data?.email_error) {
-        toast.warning("Statut enregistré, mais e-mail non envoyé", {
-          description: String(res.data.email_error).slice(0, 200),
+        await api.put(`/demandes-offres/${id}`, {
+          form_type: selectedType.form_type,
+          form_payload: formPayload,
+          commentaires: comment,
+          note_service_offre: comment || null,
         });
       }
-      navigate(`/demandes-offres/${target.id}`);
+      await api.post(`/demandes-offres/${id}/validate`);
+      const res = await api.post(`/demandes-offres/${id}/envoyer`);
+      toast.success("Nouvelle demande envoyée au service Offre");
+      warnEmail(res);
+      navigate(`/demandes-offres/${id}`);
     } catch (e) {
-      toast.error(errorMessage(e, "Envoi de la modification impossible"));
+      toast.error(errorMessage(e, "Envoi au service Offre impossible"));
     } finally {
       setBusy(false);
     }
@@ -401,13 +513,82 @@ export default function ModifierOffre() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             {phase === "catalog"
-              ? "Choisissez le type de formulaire, importez la police PDF — le CRM préremplit automatiquement tous les champs."
-              : "Importez le PDF, vérifiez le formulaire prérempli, modifiez uniquement le nécessaire, puis envoyez."}
+              ? "Offre déjà dans LeoSoft : cherchez par le nom du client. Offre hors LeoSoft : choisissez le type et importez le PDF. Aucun numéro OFF à saisir."
+              : source === "leosoft"
+                ? "Le formulaire d'origine est prérempli. Les champs que vous modifiez passent en rouge, puis vous envoyez."
+                : "Le PDF préremplit le formulaire. Les champs que vous modifiez passent en rouge. L'envoi crée une nouvelle demande."}
           </p>
         </div>
 
+        <Card className="p-5 space-y-3 border-[#002FA7]/20" data-testid="modifier-offre-recherche">
+          <div>
+            <h2 className="font-display font-bold text-lg text-[#002FA7]">Offre déjà dans LeoSoft</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Recherchez par le nom du client. S&apos;il y a plusieurs personnes ou plusieurs offres, choisissez la bonne dans la liste.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              value={nameQuery}
+              onChange={(e) => setNameQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  rechercherClient();
+                }
+              }}
+              placeholder="Nom ou prénom du client"
+              data-testid="modifier-offre-nom-client"
+            />
+            <Button
+              type="button"
+              disabled={searching || busy}
+              onClick={rechercherClient}
+              className="gap-2 bg-[#002FA7] hover:bg-[#00248a] shrink-0"
+              data-testid="modifier-offre-rechercher"
+            >
+              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Rechercher
+            </Button>
+          </div>
+          {searchDone && searchHits.length === 0 && (
+            <p className="text-sm text-muted-foreground" data-testid="modifier-offre-recherche-vide">
+              Aucune offre pour ce nom. Pour une police hors LeoSoft, choisissez le type puis importez le PDF.
+            </p>
+          )}
+          {searchHits.length > 0 && (
+            <ul className="divide-y rounded-md border border-border" data-testid="modifier-offre-recherche-liste">
+              {searchHits.map((hit) => {
+                const who = [hit.prenom, hit.nom].filter(Boolean).join(" ") || hit.client_label || "Client";
+                const selected = source === "leosoft" && demande?.id === hit.id;
+                return (
+                  <li key={hit.id}>
+                    <button
+                      type="button"
+                      onClick={() => selectLeosoft(hit)}
+                      disabled={busy}
+                      className={`w-full text-left px-3 py-2.5 hover:bg-[#002FA7]/5 ${selected ? "bg-[#002FA7]/10" : ""}`}
+                      data-testid={`modifier-offre-hit-${hit.id}`}
+                    >
+                      <span className="block text-sm font-semibold text-slate-900">{who}</span>
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        {[hit.form_type_label || hit.form_type, hit.date ? formatDateFr(hit.date) : null, hit.statut]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
+
         {phase === "catalog" && (
           <div className="space-y-6" data-testid="modifier-offre-catalog">
+            <p className="text-sm text-muted-foreground">
+              Offre hors LeoSoft : choisissez le type, puis importez le PDF. Les champs absents du PDF restent vides.
+            </p>
             {families.map((family) => (
               <Card key={family.id || family.label} className="p-5 space-y-4 border-[#002FA7]/15">
                 <h2 className="font-display font-bold text-lg text-[#002FA7]">{family.label}</h2>
@@ -454,17 +635,17 @@ export default function ModifierOffre() {
                   <h2 className="font-display font-bold text-xl text-[#002FA7] mt-0.5">
                     {selectedType.label}
                   </h2>
-                  {(demande?.numero || numeroInput) && (
-                    <p className="font-mono text-sm font-semibold text-slate-800 mt-2">
-                      {demande?.numero || numeroInput}
-                      {demande?.email_subject ? (
-                        <span className="block font-sans font-medium text-slate-600 mt-0.5">
-                          {demande.email_subject}
-                        </span>
-                      ) : null}
+                  {source === "leosoft" && (demande?.prenom || demande?.nom) && (
+                    <p className="text-sm font-medium text-slate-800 mt-2">
+                      {[demande.prenom, demande.nom].filter(Boolean).join(" ")}
                     </p>
                   )}
-                  {demande?.statut && (
+                  {source === "pdf" && (
+                    <p className="text-sm text-slate-700 mt-2">
+                      Nouvelle demande — aucun numéro OFF à saisir
+                    </p>
+                  )}
+                  {demande?.statut && source === "leosoft" && (
                     <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${STATUT_STYLE[demande.statut] || ""}`}>
                       {demande.statut}
                     </span>
@@ -491,28 +672,16 @@ export default function ModifierOffre() {
                 </div>
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-3">
-                <Field label="N° d'offre existant (conservé à l'envoi)">
-                  <Input
-                    value={numeroInput}
-                    onChange={(e) => setNumeroInput(e.target.value)}
-                    placeholder="OFF-2026-0042"
-                    className="font-mono"
-                    data-testid="modifier-offre-numero"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Détecté automatiquement dans le PDF si présent. L&apos;objet e-mail associé est conservé.
-                  </p>
-                </Field>
+              <div className="grid sm:grid-cols-1 gap-3">
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 flex gap-2 items-start">
                   <ShieldCheck className="h-4 w-4 text-[#002FA7] shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium text-slate-900">Flux recommandé</p>
                     <ol className="mt-1 text-xs space-y-0.5 list-decimal list-inside text-muted-foreground">
-                      <li>Importer le PDF de la police / offre</li>
-                      <li>Vérifier le formulaire 100 % prérempli</li>
-                      <li>Modifier uniquement les champs nécessaires (marqués en rouge)</li>
-                      <li>Ajouter une note → Envoyer au service Offre</li>
+                      <li>Offre LeoSoft : choisir le client dans la liste, ou hors LeoSoft : importer le PDF</li>
+                      <li>Vérifier le formulaire prérempli (champs introuvables laissés vides)</li>
+                      <li>Modifier uniquement le nécessaire — ces champs passent en rouge</li>
+                      <li>Envoyer au service Offre le formulaire complet et les modifications</li>
                     </ol>
                   </div>
                 </div>
@@ -535,13 +704,14 @@ export default function ModifierOffre() {
               )}
             </Card>
 
-            {pdfReady && (
+            {(source === "leosoft" || pdfReady) && (
               <Card className="p-5 space-y-5">
                 <div>
                   <h2 className="font-display font-bold text-[#002FA7]">Formulaire prérempli</h2>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Toutes les informations détectées dans le PDF sont déjà saisies. Les champs que vous
-                    changez sont marqués en rouge « Modifié ».
+                    {source === "leosoft"
+                      ? "Même formulaire que celui enregistré pour cette demande. Seuls les champs que vous changez s'affichent en rouge."
+                      : "Champs remplis depuis le PDF. Ceux que vous changez s'affichent en rouge. Les autres restent tels quels."}
                   </p>
                 </div>
 
@@ -564,7 +734,7 @@ export default function ModifierOffre() {
                               rows={key === "commentaires" ? 3 : 2}
                               value={form[key] ?? ""}
                               onChange={(e) => setValue(key, e.target.value)}
-                              className={changed ? "border-rose-400 bg-rose-50/60" : ""}
+                              className={changed ? CHANGED_CONTROL : ""}
                             />
                           ) : (
                             <ChangedInput
@@ -598,7 +768,7 @@ export default function ModifierOffre() {
                             e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
                           )
                         }
-                        className={isChanged("compagnies") ? "border-rose-400 bg-rose-50/60" : ""}
+                        className={isChanged("compagnies") ? CHANGED_CONTROL : ""}
                         placeholder="Vaudoise, Swiss Life…"
                       />
                     </Field>
@@ -610,8 +780,9 @@ export default function ModifierOffre() {
                     onChange={onSchemaChange}
                     onManualEdit={onManualEdit}
                     changedKeys={changedPayloadKeys}
-                    agentIdentity={agentIdentity}
-                    lockAgent={!isAdmin}
+                    agentIdentity={source === "leosoft" ? null : agentIdentity}
+                    lockAgent={source === "leosoft" ? false : !isAdmin}
+                    skipDefaults
                   />
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -686,7 +857,7 @@ export default function ModifierOffre() {
               </Card>
             )}
 
-            {!pdfReady && (
+            {source !== "leosoft" && !pdfReady && (
               <Card className="p-8 text-center border-dashed">
                 <FileUp className="h-10 w-10 mx-auto text-[#002FA7]/70" />
                 <p className="mt-3 font-medium text-slate-800">

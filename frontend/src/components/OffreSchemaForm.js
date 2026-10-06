@@ -24,11 +24,17 @@ import {
   isAgentIdentityField,
 } from "@/lib/offreAgentIdentity";
 
+const CHANGED_CONTROL =
+  "border-rose-600 bg-rose-50 text-rose-700 placeholder:text-rose-400 focus-visible:ring-rose-400";
+
 function FieldShell({ label, required, changed, description, children, commentSlot }) {
   return (
-    <div className="space-y-1.5">
+    <div
+      className={`space-y-1.5 rounded-md ${changed ? "border border-rose-600 bg-rose-50/80 px-2.5 py-2" : ""}`}
+      data-changed={changed ? "true" : "false"}
+    >
       <div className="flex items-center gap-2">
-        <Label className="text-xs text-muted-foreground">
+        <Label className={`text-xs ${changed ? "text-rose-700 font-semibold" : "text-muted-foreground"}`}>
           {label}
           {required ? <span className="text-rose-600"> *</span> : null}
         </Label>
@@ -39,17 +45,17 @@ function FieldShell({ label, required, changed, description, children, commentSl
         ) : null}
       </div>
       {children}
-      {description ? <p className="text-[11px] text-muted-foreground leading-snug">{description}</p> : null}
+      {description ? <p className={`text-[11px] leading-snug ${changed ? "text-rose-800/80" : "text-muted-foreground"}`}>{description}</p> : null}
       {commentSlot}
     </div>
   );
 }
 
-function ChoiceSelect({ value, onChange, options, placeholder = "Sélectionner", disabled }) {
+function ChoiceSelect({ value, onChange, options, placeholder = "Sélectionner", disabled, changed }) {
   const normalized = value || "__none";
   return (
     <Select value={normalized} onValueChange={(v) => onChange(v === "__none" ? "" : v)} disabled={disabled}>
-      <SelectTrigger>
+      <SelectTrigger className={changed ? CHANGED_CONTROL : ""}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
@@ -64,7 +70,7 @@ function ChoiceSelect({ value, onChange, options, placeholder = "Sélectionner",
   );
 }
 
-function RadioGroup({ value, onChange, options, disabled, name }) {
+function RadioGroup({ value, onChange, options, disabled, name, changed }) {
   return (
     <div className="flex flex-wrap gap-3">
       {(options || []).map((option) => {
@@ -74,7 +80,13 @@ function RadioGroup({ value, onChange, options, disabled, name }) {
             key={option}
             className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
               disabled ? "opacity-70 cursor-default" : "cursor-pointer"
-            } ${checked ? "border-[#002FA7]/40 bg-[#002FA7]/5" : "border-border"}`}
+            } ${
+              changed
+                ? "border-rose-600 bg-rose-50 text-rose-700"
+                : checked
+                  ? "border-[#002FA7]/40 bg-[#002FA7]/5"
+                  : "border-border"
+            }`}
           >
             <input
               type="radio"
@@ -82,7 +94,7 @@ function RadioGroup({ value, onChange, options, disabled, name }) {
               checked={checked}
               disabled={disabled}
               onChange={() => onChange(option)}
-              className="accent-[#002FA7]"
+              className={changed ? "accent-rose-700" : "accent-[#002FA7]"}
             />
             {option}
           </label>
@@ -92,7 +104,7 @@ function RadioGroup({ value, onChange, options, disabled, name }) {
   );
 }
 
-function CheckGrid({ options, selected, onToggle, disabled }) {
+function CheckGrid({ options, selected, onToggle, disabled, changed }) {
   const list = Array.isArray(selected) ? selected : [];
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -103,14 +115,20 @@ function CheckGrid({ options, selected, onToggle, disabled }) {
             key={option}
             className={`flex items-center gap-2 rounded-md border p-2.5 text-sm ${
               disabled ? "opacity-70 cursor-default" : "cursor-pointer"
-            } ${checked ? "border-[#002FA7]/40 bg-[#002FA7]/5" : "border-border"}`}
+            } ${
+              changed
+                ? "border-rose-600 bg-rose-50 text-rose-700"
+                : checked
+                  ? "border-[#002FA7]/40 bg-[#002FA7]/5"
+                  : "border-border"
+            }`}
           >
             <input
               type="checkbox"
               checked={checked}
               disabled={disabled}
               onChange={() => onToggle(option)}
-              className="accent-[#002FA7]"
+              className={changed ? "accent-rose-700" : "accent-[#002FA7]"}
             />
             {option}
           </label>
@@ -120,7 +138,7 @@ function CheckGrid({ options, selected, onToggle, disabled }) {
   );
 }
 
-function ListField({ columns, value, onChange, disabled }) {
+function ListField({ columns, value, onChange, disabled, changed }) {
   const cols = columns?.length ? columns : ["Valeur"];
   const rows = Array.isArray(value) && value.length
     ? value
@@ -150,6 +168,7 @@ function ListField({ columns, value, onChange, disabled }) {
                 value={row?.[col] || ""}
                 disabled={disabled}
                 onChange={(e) => update(idx, col, e.target.value)}
+                className={changed ? CHANGED_CONTROL : ""}
               />
             </div>
           ))}
@@ -294,6 +313,7 @@ export default function OffreSchemaForm({
   agentIdentity = null,
   lockAgent = true,
   onManualEdit = null,
+  skipDefaults = false,
 }) {
   const fields = useMemo(() => schema?.fields || [], [schema?.fields]);
   const pages = useMemo(() => schema?.pages || [], [schema?.pages]);
@@ -375,7 +395,7 @@ export default function OffreSchemaForm({
     if (readOnly || !onChange || !schema) return;
     // Changement de form_type / schéma : purger les clés étrangères puis defaults + règles nationalité
     let next = stripToSchema(schema, values);
-    next = applyDefaults(schema, next);
+    if (!skipDefaults) next = applyDefaults(schema, next);
     if (agentIdentity) {
       next = injectAgentIdentity(schema, next, agentIdentity, { overwrite: lockAgent || Boolean(agentIdentity.prenom || agentIdentity.nom) });
     }
@@ -414,7 +434,7 @@ export default function OffreSchemaForm({
   }
 
   const mark = (name) => changedSet.has(name);
-  const inputCls = (name) => (mark(name) ? "border-rose-400 bg-rose-50/60 focus-visible:ring-rose-300" : "");
+  const inputCls = (name) => (mark(name) ? CHANGED_CONTROL : "");
 
   const currentPage = pageNums.includes(page) ? page : pageNums[0];
   const pageLabel = pages.find((p) => p.page === currentPage)?.label || `Étape ${currentPage}`;
@@ -454,7 +474,7 @@ export default function OffreSchemaForm({
           disabled={fieldDisabled}
           placeholder="Précision pour le service Offres…"
           onChange={(e) => setField(commentKey, e.target.value)}
-          className="mt-1 text-sm"
+          className={`mt-1 text-sm ${mark(commentKey) ? CHANGED_CONTROL : ""}`}
         />
       </div>
     ) : null;
@@ -479,6 +499,7 @@ export default function OffreSchemaForm({
             value={values?.[name]}
             onChange={(v) => setField(name, v)}
             disabled={fieldDisabled}
+            changed={changed}
           />
         </FieldShell>
       );
@@ -492,6 +513,7 @@ export default function OffreSchemaForm({
             selected={Array.isArray(values?.[name]) ? values[name] : []}
             onToggle={(opt) => toggleMulti(name, opt)}
             disabled={fieldDisabled}
+            changed={changed}
           />
         </FieldShell>
       );
@@ -506,6 +528,7 @@ export default function OffreSchemaForm({
             onChange={(v) => setField(name, v)}
             options={options}
             disabled={fieldDisabled}
+            changed={changed}
           />
         </FieldShell>
       );
@@ -519,6 +542,7 @@ export default function OffreSchemaForm({
             onChange={(v) => setField(name, v)}
             options={options}
             disabled={fieldDisabled}
+            changed={changed}
           />
         </FieldShell>
       );

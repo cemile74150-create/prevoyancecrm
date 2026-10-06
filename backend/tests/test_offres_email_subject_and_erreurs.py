@@ -121,6 +121,10 @@ def test_field_changes():
 def test_gestion_categories_modifiee():
     ids = gestion_categorie_ids({"statut": STATUT_OFFRE_A_MODIFIER})
     assert "a_modifier" in ids
+    sent = gestion_categorie_ids({"statut": STATUT_OFFRE_MODIFIEE})
+    assert "a_modifier" in sent
+    assert "modifiees" in sent
+    assert "a_modifier" not in gestion_categorie_ids({"statut": "Demande envoyée", "modifications": [{"field": "x"}]})
     assert DEMANDE_ORIGINE_ATTRIBUEE
     assert normalize_statut("Demande envoyée")
     assert isinstance(compute_erreur_stats([]), dict)

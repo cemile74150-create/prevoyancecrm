@@ -945,6 +945,51 @@ def attach_demandes_offres_routes(
                 return email
         return await resolve_conseiller_notify_email(doc)
 
+    @api_router.get("/demandes-offres/modifier/recherche")
+    async def recherche_offres_par_nom_client(
+        q: str = Query(""),
+        limit: int = Query(30, ge=1, le=50),
+        user: User = Depends(current_user_dependency),
+    ):
+        """
+        Liste les demandes d'un client par nom / prénom (pas par numéro OFF).
+        Lecture seule : aucune demande n'est réécrite.
+        """
+        require_perm(user, PERM_DEMANDES_OFFRES_EDIT, detail="Permission d'édition des demandes requise")
+        query = (q or "").strip()
+        if client_name_query_too_short(query):
+            raise HTTPException(
+                status_code=422,
+                detail="Saisissez au moins 2 caractères du nom du client",
+            )
+        base = demandes_offres_base_query(user, None)
+        rows = await db[COLLECTION].find(
+            base,
+            {
+                "_id": 0,
+                "id": 1,
+                "nom": 1,
+                "prenom": 1,
+                "client_label": 1,
+                "form_type": 1,
+                "form_type_label": 1,
+                "form_payload": 1,
+                "created_at": 1,
+                "date_envoi": 1,
+                "updated_at": 1,
+                "statut": 1,
+                "numero": 1,
+            },
+        ).sort("updated_at", -1).to_list(5000)
+        hits = []
+        for row in rows:
+            if not demande_matches_client_name(row, query):
+                continue
+            hits.append(modifier_client_search_hit(row))
+            if len(hits) >= limit:
+                break
+        return hits
+
     @api_router.post("/demandes-offres/modifier/analyse-pdf")
     async def analyse_pdf_for_modification(
         file: UploadFile = File(...),
@@ -954,8 +999,9 @@ def attach_demandes_offres_routes(
     ):
         """
         Analyse un PDF d'offre / police et préremplit le formulaire du type choisi.
-        Lie éventuellement la demande existante via le n° OFF trouvé ou fourni
-        (numéro + objet e-mail conservés à l'envoi).
+        Ne rattache pas une demande existante : une offre hors LeoSoft devient
+        une nouvelle demande à l'envoi. Une offre déjà dans LeoSoft se choisit
+        par le nom du client (GET .../modifier/recherche).
         """
         require_perm(user, PERM_DEMANDES_OFFRES_EDIT, detail="Permission d'édition des demandes requise")
         data = await file.read()
@@ -972,35 +1018,12 @@ def attach_demandes_offres_routes(
         form_payload = mapped.get("form_payload") or {}
         numero_detecte = (numero or "").strip() or (mapped.get("numero_offre") or raw.get("numero_offre") or "")
         numero_detecte = numero_detecte.strip().upper() if numero_detecte else ""
-
-        matched = None
         if numero_detecte:
-            # Normaliser OFF-YYYY-NNNN
             m = re.match(r"OFF-?(\d{4})-?(\d{3,6})", numero_detecte.replace(" ", ""))
             if m:
                 numero_detecte = f"OFF-{m.group(1)}-{m.group(2).zfill(4)}"
-            doc = await db[COLLECTION].find_one(
-                {
-                    "user_id": TENANT_USER_ID,
-                    "is_deleted": {"$ne": True},
-                    "numero": {"$regex": f"^{re.escape(numero_detecte)}$", "$options": "i"},
-                },
-                {"_id": 0},
-            )
-            if doc and can_access_demande(user, doc):
-                await ensure_permanent_subject(doc)
-                matched = {
-                    "id": doc.get("id"),
-                    "numero": doc.get("numero"),
-                    "email_subject": doc.get("email_subject") or "",
-                    "statut": doc.get("statut"),
-                    "form_type": doc.get("form_type"),
-                    "form_type_label": doc.get("form_type_label"),
-                    "prenom": doc.get("prenom"),
-                    "nom": doc.get("nom"),
-                }
-                # Le formulaire affiché vient du PDF. On ne réinjecte pas l'ancien
-                # form_payload : un champ absent du PDF reste vide.
+        # Le numéro lu dans le PDF n'est pas une clé de liaison : on ne charge
+        # pas la demande existante et on ne l'écrit pas.
 
         # Labels utiles pour l'UI
         labels = {
@@ -1030,15 +1053,15 @@ def attach_demandes_offres_routes(
         return {
             "form_type": form_type,
             "filename": filename,
-            "numero": matched["numero"] if matched else (numero_detecte or None),
+            "numero": None,
             "numero_detecte": numero_detecte or None,
-            "demande": matched,
+            "demande": None,
             "fields": fields,
             "form_payload": form_payload,
             "filled_keys": mapped.get("filled_keys") or [],
             "extracted": extracted_ui,
             "reference_police": mapped.get("reference_police") or raw.get("reference_police"),
-            "hint": "Formulaire prérempli depuis le PDF. Modifiez uniquement les champs nécessaires, puis envoyez.",
+            "hint": "Formulaire prérempli depuis le PDF. Aucun numéro OFF à saisir : l'envoi crée une nouvelle demande.",
         }
 
     @api_router.get("/demandes-offres/meta")

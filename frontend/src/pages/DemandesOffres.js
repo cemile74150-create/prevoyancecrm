@@ -20,7 +20,7 @@ import {
 import { uniqueConseillerNames } from "@/lib/conseillers";
 import {
   BarChart3, Briefcase, CheckCircle2, Clock3, FilePlus2, FileSpreadsheet,
-  FileText, Layers, Loader2, Mail, RotateCcw, Search, Tag, Trash2, TriangleAlert,
+  FileText, Layers, Loader2, Mail, Pencil, RotateCcw, Search, Tag, Trash2, TriangleAlert,
   UserRound, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -135,6 +135,7 @@ const KPI_FEATURED = [
 ];
 
 const KPI_SECONDARY = [
+  ["demandes_modifiees", "Demandes d'offres modifiées", Pencil, "bg-teal-100 text-teal-800"],
   ["incompletes", "Offres incomplètes", TriangleAlert, "bg-rose-100 text-rose-700"],
   ["offres_signees", "Offres signées", CheckCircle2, "bg-emerald-100 text-emerald-700"],
   ["offres_envoyees_client", "Offres envoyées au client", Mail, "bg-purple-100 text-purple-800"],
@@ -181,6 +182,11 @@ const KPI_CLICK_FILTERS = {
   nb_offres_recues_detail: { kind: "has_offres", label: "Réponses comparées" },
   offres_signees: { kind: "statut", value: "Offre signée", label: "Offres signées" },
   taux_signature: { kind: "statut", value: "Offre signée", label: "Offres signées (taux)" },
+  demandes_modifiees: {
+    kind: "categorie",
+    value: "a_modifier",
+    label: "Demandes d'offres modifiées",
+  },
 };
 
 function rowMatchesKpi(row, kpiKey) {
@@ -392,6 +398,8 @@ export default function DemandesOffres({ mode = "conseiller" }) {
       const kpiConf = kpiFilter ? KPI_CLICK_FILTERS[kpiFilter] : null;
       if (kpiConf?.kind === "statut" && kpiConf.value) {
         params.statut = kpiConf.value;
+      } else if (kpiConf?.kind === "categorie" && kpiConf.value) {
+        params.categorie = kpiConf.value;
       } else if (!kpiFilter && statut !== "all") {
         params.statut = statut;
       }
@@ -409,6 +417,7 @@ export default function DemandesOffres({ mode = "conseiller" }) {
       const statsParams = { ...params };
       // Stats globales de période (sans filtre KPI) pour garder les cartes cohérentes
       delete statsParams.statut;
+      delete statsParams.categorie;
       if (isGlobal && conseiller !== "all" && !statsParams.conseiller) {
         statsParams.conseiller = conseiller;
       }
@@ -480,7 +489,7 @@ export default function DemandesOffres({ mode = "conseiller" }) {
   const filteredRows = useMemo(() => {
     if (!kpiFilter) return rows;
     const conf = KPI_CLICK_FILTERS[kpiFilter];
-    if (!conf || conf.kind === "statut") return rows;
+    if (!conf || conf.kind === "statut" || conf.kind === "categorie") return rows;
     return rows.filter((r) => rowMatchesKpi(r, kpiFilter));
   }, [rows, kpiFilter]);
 

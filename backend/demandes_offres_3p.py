@@ -533,6 +533,13 @@ KANBAN_COLUMNS = [
 OFFRES_DELAI_SURVEILLER_JOURS = 5
 OFFRES_DELAI_URGENT_JOURS = 10  # 2 × délai minimum documenté
 
+# Flux « Modifier une offre » uniquement (aucun autre statut n'y entre).
+# « Offre à modifier » = démarrage (snapshot). « Offre modifiée » = envoyée au service Offre.
+STATUTS_DEMANDE_MODIFIEE = (
+    STATUT_OFFRE_A_MODIFIER,
+    STATUT_OFFRE_MODIFIEE,
+)
+
 # Catégories d'affichage gestionnaire (pas de nouveaux statuts DB)
 GESTION_CATEGORIES = {
     "a_traiter": {
@@ -561,7 +568,7 @@ GESTION_CATEGORIES = {
     },
     "a_modifier": {
         "label": "Offres à modifier",
-        "statuts": [STATUT_OFFRE_A_MODIFIER],
+        "statuts": list(STATUTS_DEMANDE_MODIFIEE),
     },
     "modifiees": {
         "label": "Offres modifiées",
@@ -591,8 +598,7 @@ GESTION_KANBAN_COLUMNS = [
     {"id": "en_attente", "label": "En attente", "statuts": [STATUT_ATTENTE_INFOS]},
     {"id": "incompletes", "label": "Incomplètes", "statuts": [STATUT_INCOMPLETE]},
     {"id": "offres_recues", "label": "Offres reçues", "statuts": [STATUT_OFFRE_RECUE]},
-    {"id": "a_modifier", "label": "À modifier", "statuts": [STATUT_OFFRE_A_MODIFIER]},
-    {"id": "modifiees", "label": "Modifiées", "statuts": [STATUT_OFFRE_MODIFIEE]},
+    {"id": "a_modifier", "label": "Offre à modifier", "statuts": list(STATUTS_DEMANDE_MODIFIEE)},
     {"id": "completes", "label": "Complètes", "statuts": [STATUT_OFFRE_COMPLETE, STATUT_OFFRE_CHOISIE, STATUT_EN_CONCLUSION]},
     {"id": "envoyee_client", "label": "Chez le client", "statuts": [STATUT_OFFRE_ENVOYEE_CLIENT]},
     {"id": "signees", "label": "Signées", "statuts": [STATUT_OFFRE_SIGNEE]},
@@ -721,6 +727,20 @@ def is_demande_annulee_statut(value: Any) -> bool:
         .replace(" ", "_")
     )
     return folded == "demande_annulee"
+
+
+def is_demande_offre_modifiee(doc: dict) -> bool:
+    """Demande passée par « Modifier une offre ».
+
+    Vrai seulement si le statut courant est « Offre à modifier » ou « Offre modifiée ».
+    Ces statuts ne sont écrits que par ce flux. Une demande classique
+    (« Demande envoyée », y compris un PDF hors LeoSoft) ne compte pas,
+    même si elle porte une note ou une liste de changements.
+    Une demande supprimée ne compte pas. Le statut stocké n'est pas réécrit.
+    """
+    if not isinstance(doc, dict) or doc.get("is_deleted"):
+        return False
+    return normalize_statut(doc.get("statut")) in STATUTS_DEMANDE_MODIFIEE
 
 
 def normalize_statut(value: Any) -> str:
@@ -1213,6 +1233,167 @@ def can_access_demande(user, doc: dict) -> bool:
     if email_matches_conseiller(doc, user):
         return True
     return False
+
+
+def client_identity_for_search(doc: dict) -> dict[str, str]:
+    """Nom / prénom affichés pour la recherche. Ne modifie pas le document."""
+    prenom = str((doc or {}).get("prenom") or "").strip()
+    nom = str((doc or {}).get("nom") or "").strip()
+    label = str((doc or {}).get("client_label") or "").strip()
+    if prenom or nom or label:
+        return {"prenom": prenom, "nom": nom, "label": label}
+    payload = (doc or {}).get("form_payload")
+    form_type = str((doc or {}).get("form_type") or "").strip()
+    if not isinstance(payload, dict) or not form_type or form_type == "pilier3_legacy":
+        return {"prenom": "", "nom": "", "label": ""}
+    tmp: dict[str, Any] = {}
+    try:
+        from offre_form_types import sync_crm_fields_from_payload
+
+        sync_crm_fields_from_payload(tmp, form_type, payload)
+    except Exception:
+        return {"prenom": "", "nom": "", "label": ""}
+    return {
+        "prenom": str(tmp.get("prenom") or "").strip(),
+        "nom": str(tmp.get("nom") or "").strip(),
+        "label": str(tmp.get("client_label") or "").strip(),
+    }
+
+
+def _fold_client_query(value: str) -> str:
+    from offre_agent_identity import fold_label
+
+    return fold_label(value)
+
+
+def client_name_query_too_short(query: str) -> bool:
+    return len(_fold_client_query(query)) < 2
+
+
+def demande_matches_client_name(doc: dict, query: str) -> bool:
+    """
+    Vrai si chaque mot de la requête est dans le nom / prénom / libellé client.
+    Un numéro OFF ne sélectionne pas une demande.
+    """
+    tokens = [part for part in _fold_client_query(query).split() if part]
+    if not tokens:
+        return False
+    if len(tokens) == 1 and tokens[0].startswith("off-") and any(ch.isdigit() for ch in tokens[0]):
+        return False
+    ident = client_identity_for_search(doc)
+    blob = _fold_client_query(" ".join(
+        part for part in (ident["prenom"], ident["nom"], ident["label"]) if part
+    ))
+    if not blob:
+        return False
+    return all(token in blob for token in tokens)
+
+
+def modifier_client_search_hit(doc: dict) -> dict[str, Any]:
+    """Résumé de choix : nom, prénom, type, date. Le numéro reste interne."""
+    ident = client_identity_for_search(doc)
+    date = ""
+    for key in ("date_envoi", "created_at", "updated_at"):
+        raw = str((doc or {}).get(key) or "").strip()
+        if raw:
+            date = raw[:10]
+            break
+    return {
+        "id": (doc or {}).get("id"),
+        "prenom": ident["prenom"],
+        "nom": ident["nom"],
+        "client_label": ident["label"],
+        "form_type": (doc or {}).get("form_type") or "",
+        "form_type_label": (doc or {}).get("form_type_label") or "",
+        "date": date,
+        "statut": (doc or {}).get("statut") or "",
+        "numero": (doc or {}).get("numero") or "",
+    }
+
+
+def format_modifications_comment(note: Optional[str], changes: Optional[list]) -> str:
+    """Note + liste des champs réellement modifiés (aucune valeur inventée)."""
+    parts: list[str] = []
+    cleaned = (note or "").strip()
+    if cleaned:
+        parts.append(cleaned)
+    rows: list[str] = []
+    for change in changes or []:
+        if not isinstance(change, dict):
+            continue
+        label = str(change.get("label") or change.get("field") or "Champ").strip() or "Champ"
+        old = change.get("old")
+        new = change.get("new")
+        old_s = "—" if old in (None, "") else str(old)
+        new_s = "—" if new in (None, "") else str(new)
+        rows.append(f"- {label} : {old_s} → {new_s}")
+    if rows:
+        if parts:
+            parts.append("")
+        parts.append("Modifications :")
+        parts.extend(rows)
+    return "\n".join(parts)
+
+
+def payload_nouvelle_demande_pdf(
+    *,
+    form_type: str,
+    form_payload: Optional[dict] = None,
+    fields: Optional[dict] = None,
+    note: Optional[str] = None,
+    changes: Optional[list] = None,
+) -> dict:
+    """
+    Corps du PUT d'une demande classique (création puis envoi).
+    Pas de numéro OFF : il est attribué à la création.
+    Le form_payload envoyé est le formulaire complet (prérempli + modifications).
+    """
+    comment = format_modifications_comment(note, changes)
+    form_type_id = (form_type or "pilier3_legacy").strip() or "pilier3_legacy"
+    if form_type_id == "pilier3_legacy":
+        body = dict(fields or {})
+        body.pop("numero", None)
+        body.pop("id", None)
+        if comment:
+            body["commentaires"] = comment
+            body["note_service_offre"] = comment
+        return body
+    return {
+        "form_type": form_type_id,
+        "form_payload": dict(form_payload or {}),
+        "commentaires": comment,
+        "note_service_offre": comment or None,
+    }
+
+
+def payload_modification_leosoft(
+    *,
+    form_type: str,
+    form_type_label: Optional[str] = None,
+    form_payload: Optional[dict] = None,
+    fields: Optional[dict] = None,
+    note: Optional[str] = None,
+    changes: Optional[list] = None,
+) -> dict:
+    """
+    Corps de POST .../modifier/envoyer pour une offre déjà choisie.
+    Le numéro n'est pas saisi : il est celui de la demande sélectionnée.
+    """
+    form_type_id = (form_type or "pilier3_legacy").strip() or "pilier3_legacy"
+    body: dict[str, Any] = {
+        "note_service_offre": (note or "").strip() or None,
+        "changes": list(changes or []),
+    }
+    if form_type_id == "pilier3_legacy":
+        legacy = dict(fields or {})
+        legacy.pop("numero", None)
+        legacy.pop("id", None)
+        body["fields"] = legacy
+        return body
+    body["form_type"] = form_type_id
+    body["form_type_label"] = (form_type_label or "").strip() or None
+    body["form_payload"] = dict(form_payload or {})
+    return body
 
 
 def _json_safe(value: Any) -> Any:
@@ -2291,12 +2472,15 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
     refusees = 0
     nb_brouillons = 0
     nb_demandes = 0
+    demandes_modifiees = 0
     by_statut = {s: 0 for s in STATUTS}
 
     for r in rows:
         st = normalize_statut(r.get("statut") or STATUT_BROUILLON)
         st_norm = st
         by_statut[st] = by_statut.get(st, 0) + 1
+        if is_demande_offre_modifiee(r):
+            demandes_modifiees += 1
         created = str(r.get("created_at") or "")[:7]
         if created == month_prefix:
             this_month += 1
@@ -2386,6 +2570,7 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
         "offres_attente_reponse": offres_attente_reponse,
         "offres_signees": signees,
         "offres_refusees": refusees,
+        "demandes_modifiees": demandes_modifiees,
         "taux_signature": taux,
         "by_statut": by_statut,
         "by_form_type": by_form_type,
