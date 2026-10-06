@@ -251,6 +251,28 @@ def test_format_demande_offre_email_menage_rc_no_tech_ids(monkeypatch):
     assert "Paul" in text
     assert "Nom" in text
 
+
+def test_format_demande_offre_email_menage_rc_statut_occupation(monkeypatch):
+    """Le statut d'occupation ne doit pas être masqué par le statut workflow « Statut »."""
+    monkeypatch.setenv("PUBLIC_APP_URL", "https://crm.example.ch")
+    _, text, html = es.format_demande_offre_email(
+        {
+            "id": "d-rc-occ",
+            "numero": "OFF-2026-0201",
+            "statut": "Demande envoyée",
+            "form_type": "menage_rc",
+            "form_type_label": "RC-Ménage",
+            "form_category": "Particulier",
+            "form_payload": {
+                "input_7": "Locataire",
+            },
+        }
+    )
+    assert "Statut : Demande envoyée" in text
+    assert "Statut d'occupation du logement : Locataire" in text
+    assert "Statut d&#x27;occupation du logement" in html
+    assert "Locataire" in html
+
 def test_format_offre_recue_email(monkeypatch):
     monkeypatch.setenv("PUBLIC_APP_URL", "https://crm.example.ch")
     subject, text, html = es.format_offre_recue_email(

@@ -293,6 +293,7 @@ export default function OffreSchemaForm({
   onPageChange,
   agentIdentity = null,
   lockAgent = true,
+  onManualEdit = null,
 }) {
   const fields = useMemo(() => schema?.fields || [], [schema?.fields]);
   const pages = useMemo(() => schema?.pages || [], [schema?.pages]);
@@ -389,6 +390,7 @@ export default function OffreSchemaForm({
     if (isPermisLockedByNationalite(schema, values, name)) return;
     let next = { ...(values || {}), [name]: value };
     next = applyNationalitePermisRules(schema, next);
+    if (typeof onManualEdit === "function") onManualEdit(name);
     onChange(next);
   };
 
@@ -398,6 +400,7 @@ export default function OffreSchemaForm({
     const current = Array.isArray(values?.[name]) ? values[name] : [];
     const field = (schema?.fields || []).find((f) => (f.name || f.id) === name);
     const next = toggleExclusiveCheckboxSelection(current, option, field?.exclusive_none);
+    if (typeof onManualEdit === "function") onManualEdit(name);
     onChange({ ...(values || {}), [name]: next });
   };
 
@@ -431,7 +434,7 @@ export default function OffreSchemaForm({
       : (field.options || []).filter((o) => o != null && String(o).trim() !== "");
     const required = Boolean(field.required);
     const label = field.label || name;
-    const changed = mark(name);
+    const changed = mark(name) || mark(fieldCommentKey(name));
     const description = field.description || "";
     const lockedByNat = isPermisLockedByNationalite(schema, values, name);
     const lockedByAgent = lockAgent && (lockedAgentNames.has(name) || isAgentIdentityField(field));

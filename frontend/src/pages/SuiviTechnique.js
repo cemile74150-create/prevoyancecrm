@@ -9,7 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import api, { downloadAuthenticatedBlob } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  Activity, Cloud, Database, Server, Archive, CheckCircle2, FileDown, Shield, RefreshCw, AlertTriangle, Mail,
+  Activity, Cloud, Database, Server, Archive, CheckCircle2, FileDown, RefreshCw, AlertTriangle, Mail,
 } from "lucide-react";
 
 const GLOBAL_STATUS = {
@@ -295,7 +295,6 @@ export default function SuiviTechnique() {
   const backup = data?.backup || {};
   const mongo = data?.mongodb || {};
   const hosting = data?.hosting || {};
-  const emergent = data?.emergent || {};
   const tests = data?.functional_tests || {};
   const history = data?.history || [];
   const anomalies = data?.anomalies || [];
@@ -543,13 +542,6 @@ export default function SuiviTechnique() {
             </div>
 
             <div className="grid gap-6 md:grid-cols-2">
-              <SectionCard title="Emergent" icon={Shield} accent="bg-slate-100 text-slate-600">
-                <StatusPill status={emergent.status} label={emergent.required === false ? "Non requis" : undefined} className="mb-4" />
-                <Metric label="Dépendance runtime" value={emergent.runtime_dependency ?? 0} />
-                <Metric label="Documents actifs hors S3 (legacy)" value={emergent.active_docs_on_emergent ?? 0} />
-                <Metric label="Stockage actuel" value={emergent.current_storage || "Infomaniak S3"} />
-              </SectionCard>
-
               <SectionCard title="Tests fonctionnels" icon={CheckCircle2} accent="bg-emerald-100 text-emerald-700">
                 <div className="space-y-1 mb-4">
                   {(tests.items || []).map((item) => (
@@ -570,14 +562,13 @@ export default function SuiviTechnique() {
                       <th className="py-3 pr-3 font-medium">MongoDB</th>
                       <th className="py-3 pr-3 font-medium">S3</th>
                       <th className="py-3 pr-3 font-medium">Sauvegarde</th>
-                      <th className="py-3 pr-3 font-medium">Emergent</th>
                       <th className="py-3 font-medium">Résultat</th>
                     </tr>
                   </thead>
                   <tbody>
                     {history.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="py-6 text-center text-muted-foreground">
+                        <td colSpan={6} className="py-6 text-center text-muted-foreground">
                           Aucun contrôle enregistré pour le moment.
                         </td>
                       </tr>
@@ -612,7 +603,6 @@ export default function SuiviTechnique() {
                             </div>
                           </td>
                           <td className="py-3 pr-3"><StatusPill status={cellStatus(row, "backup")} /></td>
-                          <td className="py-3 pr-3"><StatusPill status={cellStatus(row, "emergent")} /></td>
                           <td className="py-3 font-medium whitespace-nowrap">
                             {g.emoji} {row.result || g.label}
                           </td>

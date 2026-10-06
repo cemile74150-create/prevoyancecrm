@@ -15,12 +15,14 @@ import {
   STATUT_STYLE,
   buildModificationChanges,
   emptyForm,
+  fieldCommentKey,
   formatDateFr,
   formatChf,
   toIsoDate,
   toSwissDate,
   valuesEqual,
 } from "@/lib/demandesOffres";
+import { agentIdentityFromUser } from "@/lib/offreAgentIdentity";
 import {
   ArrowLeft, FileUp, Loader2, Pencil, Send, ShieldCheck,
 } from "lucide-react";
@@ -73,9 +75,11 @@ function isLegacyType(formType) {
 
 export default function ModifierOffre() {
   const navigate = useNavigate();
-  const { hasPerm } = useAuth();
+  const { hasPerm, user, isAdmin } = useAuth();
   const canEdit = hasPerm("demandes_offres.edit");
   const pdfRef = useRef(null);
+  const userTouchedRef = useRef(false);
+  const agentIdentity = useMemo(() => agentIdentityFromUser(user), [user]);
 
   const [formMenu, setFormMenu] = useState(null);
   const [phase, setPhase] = useState("catalog"); // catalog | workspace
@@ -93,6 +97,8 @@ export default function ModifierOffre() {
   const [pdfReady, setPdfReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [manualKeys, setManualKeys] = useState(() => new Set());
+  const [prefilledCount, setPrefilledCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,6 +128,9 @@ export default function ModifierOffre() {
     setNote("");
     setExtracted(null);
     setPdfReady(false);
+    setManualKeys(new Set());
+    setPrefilledCount(0);
+    userTouchedRef.current = false;
   };
 
   const openFormType = async (item) => {
@@ -163,6 +172,9 @@ export default function ModifierOffre() {
     setPayloadSnapshot({ ...payload });
     setExtracted(data.extracted || null);
     setPdfReady(true);
+    userTouchedRef.current = false;
+    setManualKeys(new Set());
+    setPrefilledCount(Array.isArray(data.filled_keys) ? data.filled_keys.length : 0);
     if (data.demande) {
       setDemande(data.demande);
       setNumeroInput(data.demande.numero || data.numero || "");
@@ -203,7 +215,9 @@ export default function ModifierOffre() {
         data = res.data;
       }
       applyPrefill(data);
-      const nFilled = Object.keys(data.fields || {}).length + Object.keys(data.form_payload || {}).length;
+      const nFilled = Array.isArray(data.filled_keys)
+        ? data.filled_keys.length
+        : Object.keys(data.fields || {}).filter((k) => data.fields[k] != null && data.fields[k] !== "").length;
       toast.success(
         nFilled
           ? `PDF analysé — ${nFilled} champ(s) prérempli(s)`
@@ -228,23 +242,53 @@ export default function ModifierOffre() {
 
   const setValue = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
+  const labelForPayloadKey = useCallback((key) => {
+    const fields = schema?.fields || [];
+    const field = fields.find((f) => {
+      const name = f.name || f.id;
+      return name === key || fieldCommentKey(name) === key;
+    });
+    if (!field) return key;
+    const name = field.name || field.id;
+    if (fieldCommentKey(name) === key) return `${field.label || name} — précision`;
+    return field.label || key;
+  }, [schema]);
+
+  const onManualEdit = useCallback((name) => {
+    userTouchedRef.current = true;
+    setManualKeys((prev) => {
+      if (prev.has(name)) return prev;
+      const next = new Set(prev);
+      next.add(name);
+      return next;
+    });
+  }, []);
+
+  const onSchemaChange = useCallback((next) => {
+    setFormPayload(next);
+    if (!userTouchedRef.current) {
+      setPayloadSnapshot(next);
+    }
+  }, []);
+
   const changes = useMemo(() => {
-    const base = buildModificationChanges(snapshot || {}, form);
     if (!isLegacyType(selectedType?.form_type)) {
       const oldFp = payloadSnapshot || {};
       const newFp = formPayload || {};
-      for (const k of new Set([...Object.keys(oldFp), ...Object.keys(newFp)])) {
+      const rows = [];
+      for (const k of manualKeys) {
         if (valuesEqual(oldFp[k], newFp[k])) continue;
-        base.push({
+        rows.push({
           field: `form_payload.${k}`,
-          label: k,
+          label: labelForPayloadKey(k),
           old: oldFp[k] ?? null,
           new: newFp[k] ?? null,
         });
       }
+      return rows;
     }
-    return base;
-  }, [snapshot, form, payloadSnapshot, formPayload, selectedType]);
+    return buildModificationChanges(snapshot || {}, form);
+  }, [snapshot, form, payloadSnapshot, formPayload, selectedType, manualKeys, labelForPayloadKey]);
 
   const isChanged = useCallback(
     (key) => {
@@ -255,22 +299,18 @@ export default function ModifierOffre() {
   );
 
   const changedPayloadKeys = useMemo(() => {
-    const keys = [];
     const oldFp = payloadSnapshot || {};
     const newFp = formPayload || {};
-    for (const k of new Set([...Object.keys(oldFp), ...Object.keys(newFp)])) {
-      if (!valuesEqual(oldFp[k], newFp[k])) keys.push(k);
-    }
-    return keys;
-  }, [payloadSnapshot, formPayload]);
+    return [...manualKeys].filter((k) => !valuesEqual(oldFp[k], newFp[k]));
+  }, [payloadSnapshot, formPayload, manualKeys]);
 
   const envoyer = async () => {
     if (!selectedType) return;
     if (!pdfReady) {
       return toast.error("Importez d'abord la police / l'offre PDF pour préremplir le formulaire");
     }
-    if (!changes.length && !note.trim()) {
-      return toast.error("Indiquez au moins une modification ou une note au service Offre");
+    if (!changes.length && !note.trim() && prefilledCount <= 0) {
+      return toast.error("Le PDF n'a rempli aucun champ. Modifiez le formulaire ou ajoutez une note avant l'envoi.");
     }
 
     setBusy(true);
@@ -298,18 +338,20 @@ export default function ModifierOffre() {
         // déjà analysé ; le document sera lié à l'envoi via les champs
       }
 
-      const fields = { ...form };
-      if (fields.montant_prime === "") fields.montant_prime = null;
-      if (fields.date_naissance) fields.date_naissance = toIsoDate(fields.date_naissance) || fields.date_naissance;
-      if (fields.date_debut) fields.date_debut = toIsoDate(fields.date_debut) || fields.date_debut;
-
       const body = {
-        fields,
         note_service_offre: note.trim() || null,
         changes,
       };
-      if (!isLegacyType(selectedType.form_type)) {
+      if (isLegacyType(selectedType.form_type)) {
+        const fields = { ...form };
+        if (fields.montant_prime === "") fields.montant_prime = null;
+        if (fields.date_naissance) fields.date_naissance = toIsoDate(fields.date_naissance) || fields.date_naissance;
+        if (fields.date_debut) fields.date_debut = toIsoDate(fields.date_debut) || fields.date_debut;
+        body.fields = fields;
+      } else {
         body.form_payload = formPayload;
+        body.form_type = selectedType.form_type;
+        body.form_type_label = selectedType.label;
       }
 
       const res = await api.post(`/demandes-offres/${target.id}/modifier/envoyer`, body);
@@ -565,8 +607,11 @@ export default function ModifierOffre() {
                   <OffreSchemaForm
                     schema={schema}
                     values={formPayload}
-                    onChange={setFormPayload}
+                    onChange={onSchemaChange}
+                    onManualEdit={onManualEdit}
                     changedKeys={changedPayloadKeys}
+                    agentIdentity={agentIdentity}
+                    lockAgent={!isAdmin}
                   />
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -581,9 +626,10 @@ export default function ModifierOffre() {
                           <Field key={key} label={key} changed={changed}>
                             <ChangedInput
                               value={formPayload[key] ?? ""}
-                              onChange={(e) =>
-                                setFormPayload((prev) => ({ ...prev, [key]: e.target.value }))
-                              }
+                              onChange={(e) => {
+                                onManualEdit(key);
+                                setFormPayload((prev) => ({ ...prev, [key]: e.target.value }));
+                              }}
                               changed={changed}
                             />
                           </Field>
@@ -634,7 +680,7 @@ export default function ModifierOffre() {
                     data-testid="modifier-offre-envoyer"
                   >
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    Envoyer
+                    Envoyer au service Offre
                   </Button>
                 </div>
               </Card>

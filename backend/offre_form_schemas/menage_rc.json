@@ -286,12 +286,12 @@
       "id": "1_7",
       "gf_field_id": 7,
       "name": "input_7",
-      "label": "Statut",
+      "label": "Statut d'occupation du logement",
       "type": "radio",
       "required": true,
       "options": [
-        "Propriétaire",
-        "Locataire"
+        "Locataire",
+        "Propriétaire"
       ],
       "page": 1
     },

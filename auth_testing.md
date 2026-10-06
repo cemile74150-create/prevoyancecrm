@@ -1,4 +1,4 @@
-# Auth Testing Playbook (Emergent Google Auth)
+# Auth Testing Playbook
 
 See integration playbook. Test user/session creation:
 

@@ -157,7 +157,7 @@ def classify_storage_path(path: str) -> str:
         return "s3"
     if sp.startswith("local://"):
         return "local"
-    return "emergent"
+    return "other"
 
 
 def status_label(status: str) -> str:
@@ -505,7 +505,6 @@ async def _scan_storage_refs(db, *, s3_enabled: bool) -> dict:
     total_active_refs = 0
     s3_refs = 0
     non_s3_count = 0
-    emergent_count = 0
     unique_s3_paths: set[str] = set()
     s3_read_failures = 0
 
@@ -527,11 +526,6 @@ async def _scan_storage_refs(db, *, s3_enabled: bool) -> dict:
                 if kind == "s3":
                     s3_refs += 1
                     unique_s3_paths.add(sp)
-                elif kind == "emergent":
-                    emergent_count += 1
-                    non_s3_count += 1
-                elif kind == "local":
-                    non_s3_count += 1
                 else:
                     non_s3_count += 1
 
@@ -562,7 +556,6 @@ async def _scan_storage_refs(db, *, s3_enabled: bool) -> dict:
         "missing_docs": missing_files,
         "s3_read_failures": s3_read_failures,
         "non_s3_active_refs": non_s3_count,
-        "emergent_active_refs": emergent_count,
     }
 
 
@@ -773,32 +766,6 @@ def _check_backup(*, in_process: bool) -> Tuple[str, dict, List[str]]:
         return st, detail, anomalies
 
 
-async def _check_emergent(db, scan: Optional[dict] = None) -> Tuple[str, dict, List[str]]:
-    anomalies: List[str] = []
-    from object_storage import configured
-
-    scan = scan or await _scan_storage_refs(db, s3_enabled=configured())
-    emergent_refs = int(scan.get("emergent_active_refs") or 0)
-    runtime_key = bool((os.environ.get("EMERGENT_LLM_KEY") or "").strip())
-    detail = {
-        "required": False,
-        "runtime_dependency": 1 if runtime_key else 0,
-        "active_docs_on_emergent": emergent_refs,
-        "current_storage": "Infomaniak S3",
-    }
-    status = "ok"
-    if emergent_refs > 0:
-        status = "warning"
-        anomalies.append(
-            f"Emergent: {emergent_refs} document(s) actif(s) encore référencé(s) hors S3"
-        )
-    if runtime_key:
-        status = "warning" if status == "ok" else status
-        anomalies.append("Emergent: variable EMERGENT_LLM_KEY encore présente (non requise)")
-    detail["status"] = status
-    return status, detail, anomalies
-
-
 async def run_daily_audit(db, *, force: bool = False, in_process: bool = False) -> dict:
     """Exécute le contrôle quotidien et enregistre le résultat (sans doublon journalier)."""
     await ensure_tech_audit_indexes(db)
@@ -829,11 +796,10 @@ async def run_daily_audit(db, *, force: bool = False, in_process: bool = False) 
     scan = await _scan_storage_refs(db, s3_enabled=s3_ok)
     s3_st, storage, an_s = await _check_s3(db, in_process=in_process, scan=scan)
     backup_st, backup, an_b = await asyncio.to_thread(_check_backup, in_process=in_process)
-    emergent_st, emergent, an_e = await _check_emergent(db, scan=scan)
 
-    anomalies = an_r + an_m + an_s + an_b + an_e
+    anomalies = an_r + an_m + an_s + an_b
     global_status = aggregate_global(
-        railway_st, mongo_st, s3_st, backup_st, emergent_st, in_process=in_process
+        railway_st, mongo_st, s3_st, backup_st, in_process=in_process
     )
     result = status_label(global_status)
 
@@ -848,7 +814,6 @@ async def run_daily_audit(db, *, force: bool = False, in_process: bool = False) 
         "mongodb": {**mongo, "status": mongo_st},
         "storage": {**storage, "status": s3_st},
         "backup": {**backup, "status": backup_st},
-        "emergent": {**emergent, "status": emergent_st},
         "crm": {"status": railway_st},
         "anomalies": anomalies,
     }
@@ -889,7 +854,6 @@ async def run_daily_audit(db, *, force: bool = False, in_process: bool = False) 
             "health_method": railway.get("method"),
             "last_deploy": audit_day,
         },
-        "emergent": emergent,
         "anomalies": anomalies,
         "functional_tests": (await load_snapshot(db)).get("functional_tests") or {},
     }
@@ -965,7 +929,6 @@ async def build_tech_status_from_db(db) -> dict:
         "backup": dict(snapshot.get("backup") or {}),
         "mongodb": dict(snapshot.get("mongodb") or {}),
         "hosting": dict(snapshot.get("hosting") or {}),
-        "emergent": dict(snapshot.get("emergent") or {}),
         "functional_tests": dict(snapshot.get("functional_tests") or {}),
         "history": history,
         "anomalies": anomalies,

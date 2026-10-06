@@ -228,6 +228,8 @@ class OffreNonSigneeRequest(BaseModel):
 class ModificationRequest(BaseModel):
     form_payload: Optional[dict[str, Any]] = None
     fields: Optional[dict[str, Any]] = None
+    form_type: Optional[str] = None
+    form_type_label: Optional[str] = None
     note_service_offre: Optional[str] = None
     changes: Optional[list[dict[str, Any]]] = None
 
@@ -997,17 +999,8 @@ def attach_demandes_offres_routes(
                     "prenom": doc.get("prenom"),
                     "nom": doc.get("nom"),
                 }
-                # Compléter les trous avec les données déjà en base (PDF prioritaire)
-                for k, v in list(fields.items()):
-                    if v in (None, ""):
-                        if doc.get(k) not in (None, ""):
-                            fields[k] = doc.get(k)
-                if not form_payload and isinstance(doc.get("form_payload"), dict):
-                    form_payload = dict(doc.get("form_payload") or {})
-                elif isinstance(doc.get("form_payload"), dict):
-                    merged_fp = dict(doc.get("form_payload") or {})
-                    merged_fp.update({k: v for k, v in form_payload.items() if v not in (None, "")})
-                    form_payload = merged_fp
+                # Le formulaire affiché vient du PDF. On ne réinjecte pas l'ancien
+                # form_payload : un champ absent du PDF reste vide.
 
         # Labels utiles pour l'UI
         labels = {
@@ -1025,6 +1018,12 @@ def attach_demandes_offres_routes(
             "ville": raw.get("ville"),
             "date_debut": raw.get("date_debut"),
             "date_fin": raw.get("date_fin"),
+            "profession": raw.get("profession"),
+            "email": raw.get("email"),
+            "telephone": raw.get("telephone"),
+            "nationalite": raw.get("nationalite"),
+            "periodicite": raw.get("periodicite"),
+            "type_pilier": raw.get("type_pilier"),
         }
         extracted_ui = {k: v for k, v in labels.items() if v not in (None, "", "Non indiqué")}
 
@@ -1036,6 +1035,7 @@ def attach_demandes_offres_routes(
             "demande": matched,
             "fields": fields,
             "form_payload": form_payload,
+            "filled_keys": mapped.get("filled_keys") or [],
             "extracted": extracted_ui,
             "reference_police": mapped.get("reference_police") or raw.get("reference_police"),
             "hint": "Formulaire prérempli depuis le PDF. Modifiez uniquement les champs nécessaires, puis envoyez.",
@@ -2924,30 +2924,66 @@ def attach_demandes_offres_routes(
         doc = await require_demande(demande_id, user)
         await ensure_permanent_subject(doc)
         snapshot = doc.get("snapshot_original") or {}
-        # Appliquer les champs fournis
+        form_type_id = (payload.form_type or doc.get("form_type") or "pilier3_legacy").strip() or "pilier3_legacy"
+        is_schema = form_type_id != "pilier3_legacy"
         updates: dict = {}
-        if payload.fields:
+        # Le wizard legacy envoie ses colonnes CRM. Un formulaire schéma envoie
+        # le form_payload du type choisi ; les colonnes liste sont dérivées du schéma.
+        if payload.fields and not is_schema:
             for k, v in payload.fields.items():
                 updates[k] = v
         if payload.form_payload is not None:
-            updates["form_payload"] = payload.form_payload
+            form_payload = payload.form_payload
+            if is_schema:
+                from offre_form_types import (
+                    filter_form_payload_to_schema,
+                    get_form_type,
+                    sync_crm_fields_from_payload,
+                )
+
+                form_payload = filter_form_payload_to_schema(form_type_id, form_payload)
+                synced: dict = {}
+                sync_crm_fields_from_payload(synced, form_type_id, form_payload)
+                for key, value in synced.items():
+                    if value not in (None, ""):
+                        updates[key] = value
+                meta = get_form_type(form_type_id) or {}
+                updates["form_type"] = form_type_id
+                updates["form_type_label"] = (
+                    (payload.form_type_label or "").strip()
+                    or meta.get("label")
+                    or doc.get("form_type_label")
+                )
+            updates["form_payload"] = form_payload
+        elif payload.form_type and is_schema:
+            from offre_form_types import get_form_type
+
+            meta = get_form_type(form_type_id) or {}
+            updates["form_type"] = form_type_id
+            updates["form_type_label"] = (
+                (payload.form_type_label or "").strip() or meta.get("label") or doc.get("form_type_label")
+            )
         note = (payload.note_service_offre or "").strip() or None
         if note is not None:
             updates["note_service_offre"] = note
         merged = {**doc, **updates}
-        changes = payload.changes or build_field_changes(snapshot, merged)
-        if payload.form_payload is not None and snapshot.get("form_payload") != payload.form_payload:
-            # Diff au niveau form_payload keys
-            old_fp = snapshot.get("form_payload") or {}
-            new_fp = payload.form_payload or {}
-            for k in set(list(old_fp.keys()) + list(new_fp.keys())):
-                if old_fp.get(k) != new_fp.get(k):
-                    changes.append({
-                        "field": f"form_payload.{k}",
-                        "label": k,
-                        "old": old_fp.get(k),
-                        "new": new_fp.get(k),
-                    })
+        # changes explicites = éditions manuelles après préremplissage.
+        # On ne réécrit pas ce diff avec chaque clé du formulaire prérempli.
+        if payload.changes is not None:
+            changes = list(payload.changes)
+        else:
+            changes = build_field_changes(snapshot, merged)
+            if payload.form_payload is not None and snapshot.get("form_payload") != updates.get("form_payload"):
+                old_fp = snapshot.get("form_payload") or {}
+                new_fp = updates.get("form_payload") or {}
+                for k in set(list(old_fp.keys()) + list(new_fp.keys())):
+                    if old_fp.get(k) != new_fp.get(k):
+                        changes.append({
+                            "field": f"form_payload.{k}",
+                            "label": k,
+                            "old": old_fp.get(k),
+                            "new": new_fp.get(k),
+                        })
         updates["modifications"] = changes
         updates["note_service_offre"] = note or doc.get("note_service_offre") or ""
         result = await save_status(
@@ -2980,6 +3016,7 @@ def attach_demandes_offres_routes(
     async def extract_pdf_for_modification(
         demande_id: str,
         file: UploadFile = File(...),
+        form_type: Optional[str] = Form(None),
         user: User = Depends(current_user_dependency),
     ):
         """
@@ -3002,14 +3039,17 @@ def attach_demandes_offres_routes(
         fields: dict = {}
         form_payload: dict = {}
         extracted_ui: dict = {}
+        filled_keys: list = []
+        chosen_type = (form_type or doc.get("form_type") or "pilier3_legacy").strip() or "pilier3_legacy"
         if data:
             try:
                 from offre_extract import extract_offre_fields, map_extract_to_form, offre_fields_for_storage
 
                 raw = extract_offre_fields(data, filename=filename)
-                mapped = map_extract_to_form(raw, form_type=doc.get("form_type") or "pilier3_legacy")
+                mapped = map_extract_to_form(raw, form_type=chosen_type)
                 fields = mapped.get("fields") or {}
                 form_payload = mapped.get("form_payload") or {}
+                filled_keys = list(mapped.get("filled_keys") or [])
                 storage = offre_fields_for_storage(raw)
                 oe = (storage or {}).get("offre_extract") or {}
                 extracted_ui = {
@@ -3054,9 +3094,10 @@ def attach_demandes_offres_routes(
             "extracted": extracted_ui,
             "fields": fields,
             "form_payload": form_payload,
+            "filled_keys": filled_keys,
             "numero": doc.get("numero"),
             "email_subject": doc.get("email_subject") or "",
-            "form_type": doc.get("form_type"),
+            "form_type": chosen_type,
             "hint": "Formulaire prérempli depuis le PDF. Vérifiez puis modifiez uniquement le nécessaire.",
         }
 

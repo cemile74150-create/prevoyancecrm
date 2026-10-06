@@ -275,10 +275,16 @@ def _find_offre_numero(text: str, filename: str = "") -> Optional[str]:
 def _find_labeled_value(text: str, labels: Tuple[str, ...], *, max_len: int = 80) -> Optional[str]:
     flat = text or ""
     for label in labels:
-        # Label : valeur  OR Label valeur
-        pat = rf"(?:^|\n)\s*{label}\s*[:\-–]?\s*([^\n\r]{{2,{max_len}}})"
-        m = re.search(pat, flat, re.I | re.M)
-        if m:
+        # Début de ligne, puis repli « Label : valeur » au milieu d'une ligne (PDF aplati).
+        patterns = (
+            rf"(?:^|\n)\s*{label}\s*[:\-–]?\s*([^\n\r]{{2,{max_len}}})",
+            # Ne pas matcher « nom » à l'intérieur de « Prénom ».
+            rf"(?<![A-Za-zÀ-ÿ]){label}\s*[:：]\s*([^\n\r]{{2,{max_len}}})",
+        )
+        for pat in patterns:
+            m = re.search(pat, flat, re.I | re.M)
+            if not m:
+                continue
             val = m.group(1).strip(" \t.:;,-–")
             if val and len(val) >= 2:
                 return val
@@ -374,7 +380,16 @@ def _find_adresse_block(text: str) -> Dict[str, Optional[str]]:
         if m3:
             npa = npa or m3.group(1)
             ville = ville or m3.group(2).strip()
-    return {"adresse": adresse, "npa": npa, "ville": ville, "pays": "Suisse" if npa else None}
+    # Pays uniquement s'il est écrit dans le PDF (un NPA suisse ne suffit pas).
+    pays = None
+    pays_match = re.search(
+        r"(?:^|\n)\s*Pays\s*[:：]\s*([A-Za-zÀ-ÿ' .\-]{2,40})",
+        text or "",
+        re.I,
+    )
+    if pays_match:
+        pays = pays_match.group(1).strip(" \t.:;,-–") or None
+    return {"adresse": adresse, "npa": npa, "ville": ville, "pays": pays}
 
 
 def _find_police_number(text: str) -> Optional[str]:
@@ -423,6 +438,66 @@ def _find_prime_annuelle(text: str) -> Optional[float]:
         if 20 <= val <= 20_000 and score >= 70:
             return round(val * 12, 2)
     return None
+
+
+def _find_periodicite(text: str) -> Optional[str]:
+    """Périodicité seulement si le PDF la nomme explicitement."""
+    flat = _norm(text or "")
+    labeled = _find_labeled_value(
+        text or "",
+        (r"p[ée]riodicit[ée](?:\s+de\s+la\s+prime)?",),
+        max_len=30,
+    )
+    if labeled:
+        low = _norm(labeled)
+        for token, label in (
+            ("prime unique", "Prime unique"),
+            ("mensuel", "Mensuel"),
+            ("semestriel", "Semestriel"),
+            ("trimestriel", "Trimestriel"),
+            ("annuel", "Annuel"),
+        ):
+            if token in low:
+                return label
+    if "prime unique" in flat or "versement unique" in flat:
+        return "Prime unique"
+    if "prime mensuelle" in flat or "cotisation mensuelle" in flat:
+        return "Mensuel"
+    if "prime semestrielle" in flat:
+        return "Semestriel"
+    if "prime trimestrielle" in flat:
+        return "Trimestriel"
+    if "prime annuelle" in flat or "cotisation annuelle" in flat:
+        return "Annuel"
+    return None
+
+
+def _find_type_pilier(text: str) -> Optional[str]:
+    """3a / 3b seulement si les deux ne sont pas cités ensemble."""
+    flat = _norm(text or "")
+    has_a = bool(re.search(r"pilier\s*(?:li[ée]\s*)?3\s*a|pr[ée]voyance\s+3\s*a|\b3e?\s*pilier\s+a\b|\b3a\b", flat))
+    has_b = bool(re.search(r"pilier\s*(?:libre\s*)?3\s*b|pr[ée]voyance\s+3\s*b|\b3e?\s*pilier\s+b\b|\b3b\b", flat))
+    if has_a and not has_b:
+        return "3a"
+    if has_b and not has_a:
+        return "3b"
+    return None
+
+
+def _find_email(text: str) -> Optional[str]:
+    raw = _find_labeled_value(text, (r"e-?mail", r"courriel"), max_len=80)
+    if not raw:
+        return None
+    m = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", raw)
+    return m.group(0) if m else None
+
+
+def _find_telephone(text: str) -> Optional[str]:
+    return _find_labeled_value(
+        text,
+        (r"t[ée]l[ée]phone", r"mobile", r"natel", r"t[ée]l\."),
+        max_len=30,
+    )
 
 
 def extract_offre_fields(
@@ -493,10 +568,20 @@ def extract_offre_fields(
         "ville": addr.get("ville"),
         "pays": addr.get("pays"),
         "reference_police": _find_police_number(text),
-        "montant_prime": _find_prime_annuelle(text) or montant,
+        "montant_prime": _find_prime_annuelle(text),
         "date_debut": date_debut,
         "date_fin": date_fin,
         "nationalite": _find_labeled_value(text, (r"nationalit[ée]", r"staatsangehörigkeit"), max_len=30),
+        "profession": _find_labeled_value(text, (r"profession", r"beruf", r"activit[ée]\s+professionnelle"), max_len=80),
+        "email": _find_email(text),
+        "telephone": _find_telephone(text),
+        "permis": _find_labeled_value(text, (r"permis(?:\s+de\s+s[ée]jour)?",), max_len=40),
+        "sexe": _find_labeled_value(text, (r"sexe", r"geschlecht"), max_len=20),
+        "statut_professionnel": _find_labeled_value(text, (r"statut\s+professionnel",), max_len=40),
+        "fumeur": _find_labeled_value(text, (r"fumeur",), max_len=20),
+        "periodicite": _find_periodicite(text),
+        "type_pilier": _find_type_pilier(text),
+        "_text": text or "",
         "_raw_text_len": len(text or ""),
     }
 
@@ -524,8 +609,38 @@ def map_extract_to_form(
         fields["compagnies"] = [extracted["compagnie"]]
     if extracted.get("rente_mensuelle_garantie") is not None:
         fields["rente_invalidite"] = str(extracted["rente_mensuelle_garantie"])
+    for extra in ("profession", "email", "telephone", "permis", "sexe", "statut_professionnel", "periodicite"):
+        val = extracted.get(extra)
+        if val not in (None, "", NON_INDIQUE):
+            fields[extra] = val
 
-    # Payload schéma : clés courantes + miroir des champs
+    # Wizard CRM historique : aliases génériques. Les autres types reçoivent
+    # le payload du schéma réel (input_*), identique à une demande classique.
+    if form_type == "pilier3_legacy":
+        payload = _legacy_alias_payload(extracted)
+        filled_keys: List[str] = []
+    else:
+        from offre_pdf_form_fill import fill_form_payload_from_pdf
+
+        filled = fill_form_payload_from_pdf(
+            form_type,
+            extracted,
+            text=str(extracted.get("_text") or ""),
+        )
+        payload = filled.get("form_payload") or {}
+        filled_keys = list(filled.get("filled_keys") or [])
+
+    return {
+        "fields": fields,
+        "form_payload": payload,
+        "filled_keys": filled_keys,
+        "numero_offre": extracted.get("numero_offre"),
+        "reference_police": extracted.get("reference_police"),
+    }
+
+
+def _legacy_alias_payload(extracted: Dict[str, Any]) -> Dict[str, Any]:
+    """Ancien miroir de clés (wizard 3P). Pas utilisé pour les schémas GF."""
     payload: Dict[str, Any] = {}
     mapping_payload = {
         "prenom": ("prenom", "prénom", "vorname", "first_name"),
@@ -548,20 +663,7 @@ def map_extract_to_form(
         for alias in aliases:
             payload[alias] = val
         payload[src] = val
-
-    if form_type == "pilier3_legacy" or form_type.startswith("pilier3"):
-        return {
-            "fields": fields,
-            "form_payload": payload,
-            "numero_offre": extracted.get("numero_offre"),
-            "reference_police": extracted.get("reference_police"),
-        }
-    return {
-        "fields": fields,
-        "form_payload": payload,
-        "numero_offre": extracted.get("numero_offre"),
-        "reference_police": extracted.get("reference_police"),
-    }
+    return payload
 
 
 def offre_fields_for_storage(extracted: Dict[str, Any]) -> Dict[str, Any]:

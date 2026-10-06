@@ -93,6 +93,27 @@ def test_civilite_is_radio_madame_monsieur():
     assert civ["options"] == ["Monsieur", "Madame"]
 
 
+def test_menage_rc_statut_occupation_logement_required():
+    """Habitation RC-Ménage : statut d'occupation obligatoire (Locataire / Propriétaire)."""
+    from offre_form_types import empty_form_payload, missing_schema_required
+
+    data = _load("menage_rc.json")
+    field = next(f for f in data["fields"] if f.get("name") == "input_7")
+    assert field["label"] == "Statut d'occupation du logement"
+    assert field["type"] == "radio"
+    assert field["required"] is True
+    assert field["options"] == ["Locataire", "Propriétaire"]
+    assert field["page"] == 1
+    names = [f.get("name") for f in data["fields"]]
+    # Dans « Renseignements sur l'habitation », avant le nombre de pièces.
+    assert names.index("input_33") < names.index("input_7") < names.index("input_8")
+
+    payload = empty_form_payload("menage_rc")
+    assert "Statut d'occupation du logement" in missing_schema_required("menage_rc", payload)
+    payload["input_7"] = "Locataire"
+    assert "Statut d'occupation du logement" not in missing_schema_required("menage_rc", payload)
+
+
 def test_menage_rc_six_pages_and_core_sections():
     data = _load("menage_rc.json")
     assert data["gravity_form_id"] == 1
