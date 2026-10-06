@@ -1140,8 +1140,8 @@ def build_field_changes(original: dict, current: dict, fields: Optional[list] = 
     """Compare deux dicts et retourne la liste des champs modifiés."""
     keys = fields or sorted(set(list(original.keys()) + list(current.keys())))
     skip = {
-        "id", "numero", "historique", "notes_internes", "documents", "offres", "offre",
-        "updated_at", "created_at", "email_subject", "modifications", "snapshot_original",
+        "id", "numero", "historique", "notes_internes", "notes_externes", "documents", "offres", "offre",
+        "updated_at", "created_at", "email_subject", "offres_thread_message_id", "modifications", "snapshot_original",
         "erreurs_incomplete", "signature", "envoi_client", "conclusion",
     }
     changes = []
@@ -1327,6 +1327,7 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "email_sent": bool(doc.get("email_sent")),
         "email_error": doc.get("email_error"),
         "email_subject": doc.get("email_subject") or "",
+        "notes_externes": list(doc.get("notes_externes") or []),
         "demande_origine": normalize_demande_origine(doc.get("demande_origine")),
         "type_client": normalize_type_client(doc.get("type_client"), client_id=doc.get("client_id")),
         "erreurs_incomplete": list(doc.get("erreurs_incomplete") or []),

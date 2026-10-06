@@ -50,6 +50,7 @@ def test_erreurs_and_checklist_routes_require_process():
     assert permission_for_request("POST", "/api/demandes-offres/abc/offre") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/offres-completes") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/notes-internes") == PERM_DEMANDES_OFFRES_PROCESS
+    assert permission_for_request("POST", "/api/demandes-offres/abc/notes-externes") == PERM_DEMANDES_OFFRES_PROCESS
 
 
 def test_erreurs_champs_catalog_covers_required_fields():

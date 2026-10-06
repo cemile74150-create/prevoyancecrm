@@ -117,6 +117,8 @@ export default function DemandeOffreFiche() {
   const [incompleteErreurs, setIncompleteErreurs] = useState({});
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
+  const [externalNoteOpen, setExternalNoteOpen] = useState(false);
+  const [externalNoteText, setExternalNoteText] = useState("");
   const [offresCompletesOpen, setOffresCompletesOpen] = useState(false);
   const [offresCompletesNote, setOffresCompletesNote] = useState("");
   const [erreursOpen, setErreursOpen] = useState(false);
@@ -399,7 +401,7 @@ export default function DemandeOffreFiche() {
     return values;
   }, [form, formPayload, isLegacy, schema, finmaWarning]);
 
-  const refreshFromAction = (data, message) => {
+  const applyDemande = (data) => {
     setDemande(data);
     setForm((prev) => ({
       ...prev,
@@ -408,6 +410,10 @@ export default function DemandeOffreFiche() {
       date_naissance: toSwissDate(data.date_naissance) || "",
     }));
     setFormPayload(data.form_payload || {});
+  };
+
+  const refreshFromAction = (data, message) => {
+    applyDemande(data);
     toast.success(message);
     if (data?.email_sent === true) {
       toast.message("E-mail de notification envoyé", {
@@ -598,6 +604,31 @@ export default function DemandeOffreFiche() {
     if (await runAction("notes-internes", { note: noteText.trim() }, "Note interne enregistrée")) {
       setNoteOpen(false);
       setNoteText("");
+    }
+  };
+
+  const addExternalNote = async () => {
+    if (!externalNoteText.trim()) return toast.error("La note est obligatoire");
+    setActionBusy(true);
+    try {
+      const res = await api.post(`/demandes-offres/${demandeId}/notes-externes`, {
+        note: externalNoteText.trim(),
+      });
+      applyDemande(res.data);
+      const addr = (res.data?.notify_email || "").trim();
+      if (res.data?.note_email_sent) {
+        toast.success(addr ? `Note envoyée au conseiller (${addr})` : "Note envoyée au conseiller");
+      } else {
+        toast.warning("Note enregistrée, mais l'e-mail n'a pas été envoyé", {
+          description: String(res.data?.note_email_error || "E-mail du conseiller introuvable").slice(0, 200),
+        });
+      }
+      setExternalNoteOpen(false);
+      setExternalNoteText("");
+    } catch (e) {
+      toast.error(errorMessage(e, "Envoi de la note impossible"));
+    } finally {
+      setActionBusy(false);
     }
   };
 
@@ -819,6 +850,8 @@ export default function DemandeOffreFiche() {
   const hasIncompleteCompany = reponsesCompagnies.some((c) => String(c.statut || "").toLowerCase().includes("incompl"));
   const variantes = demande.variantes || [];
   const notesInternes = canProcess ? (demande.notes_internes || []) : [];
+  const notesExternes = Array.isArray(demande.notes_externes) ? demande.notes_externes : [];
+  const conseillerCible = demande.created_by_name || demande.agent_label || "le conseiller qui a créé la demande";
   const erreursAgent = Array.isArray(demande.erreurs_agent) ? demande.erreurs_agent : [];
   const canFollowSignature = Boolean(demande.can_follow_signature);
   const canMarkOffreNonSignee = (canProcess || canFollowSignature)
@@ -1188,6 +1221,24 @@ export default function DemandeOffreFiche() {
                   </ul>
                 </Card>
               )}
+              {notesExternes.length > 0 && (
+                <Card className="p-5 space-y-3">
+                  <h2 className="font-display font-bold flex items-center gap-2"><Mail className="h-5 w-5 text-[#002FA7]" /> Notes envoyées au conseiller</h2>
+                  <p className="text-xs text-muted-foreground">Conservées dans LeoSoft et transmises par e-mail au conseiller créateur.</p>
+                  <ul className="space-y-3">
+                    {[...notesExternes].reverse().map((n) => (
+                      <li key={n.id} className="rounded-md border bg-white px-3 py-2 text-sm">
+                        <p className="whitespace-pre-wrap">{n.note}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {formatDateFr(n.at)}{n.by_name ? ` · ${n.by_name}` : ""}
+                          {n.email_sent && n.email_to ? ` · envoyée à ${n.email_to}` : ""}
+                          {n.email_sent === false ? " · e-mail non envoyé" : ""}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
               {(canProcess || isAdmin) && (
                 <Card className="p-5 space-y-3">
                   <div className="flex items-center justify-between gap-2">
@@ -1255,6 +1306,7 @@ export default function DemandeOffreFiche() {
               onOffresCompletes={markOffresCompletes}
               onErreurs={openErreursDialog}
               onNote={() => setNoteOpen(true)}
+              onExternalNote={() => setExternalNoteOpen(true)}
               onDoc={() => fileRef.current?.click()}
               onConclusion={markConclusion}
               onSendClient={() => runAction("envoyer-client", {}, "Offre envoyée au client")}
@@ -1369,6 +1421,31 @@ export default function DemandeOffreFiche() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setNoteOpen(false)}>Annuler</Button>
             <Button onClick={addInternalNote} disabled={actionBusy}>Enregistrer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={externalNoteOpen} onOpenChange={setExternalNoteOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Note externe</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Cette note sera enregistrée dans LeoSoft et envoyée par e-mail à {conseillerCible}, le conseiller qui a créé la demande.
+            Elle n&apos;est pas une note interne.
+          </p>
+          <Field label="Note pour le conseiller" required>
+            <Textarea
+              rows={4}
+              value={externalNoteText}
+              onChange={(e) => setExternalNoteText(e.target.value)}
+              placeholder="Message à transmettre au conseiller…"
+              data-testid="note-externe-text"
+            />
+          </Field>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExternalNoteOpen(false)}>Annuler</Button>
+            <Button onClick={addExternalNote} disabled={actionBusy || !externalNoteText.trim()} data-testid="note-externe-confirm">
+              <Mail className="h-4 w-4 mr-2" /> Envoyer au conseiller
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2321,7 +2398,7 @@ function ReadOnlyData({ data }) {
 
 function ActionPanel({
   demande, canEdit, canProcess, canFollowSignature, isAdmin, busy, hasOffers, hasIncompleteCompany,
-  onIncomplete, onOffer, onOffresCompletes, onErreurs, onNote, onDoc, onConclusion, onSendClient,
+  onIncomplete, onOffer, onOffresCompletes, onErreurs, onNote, onExternalNote, onDoc, onConclusion, onSendClient,
   onSignature, onSoumisCompagnie, onDemandeAnnulee, onCancel, onRestore, onDelete,
 }) {
   const terminal = ["Offre signée", "Offre refusée"].includes(demande.statut) || isHorsCours(demande.statut);
@@ -2376,6 +2453,11 @@ function ActionPanel({
     {showProcess && !terminal && (
       <Button className="w-full justify-start bg-rose-700 hover:bg-rose-800" onClick={onErreurs} disabled={busy} data-testid="erreurs-btn">
         <AlertTriangle className="h-4 w-4 mr-2" /> Erreurs
+      </Button>
+    )}
+    {showProcess && (
+      <Button variant="outline" className="w-full justify-start" onClick={onExternalNote} disabled={busy} data-testid="note-externe-btn">
+        <Mail className="h-4 w-4 mr-2" /> Ajouter une note externe
       </Button>
     )}
     {showProcess && (

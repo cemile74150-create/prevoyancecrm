@@ -182,6 +182,11 @@ class InternalNoteRequest(BaseModel):
     note: str = Field(min_length=1)
 
 
+class ExternalNoteRequest(BaseModel):
+    """Note visible dans LeoSoft et envoyée par e-mail au conseiller créateur."""
+    note: str = Field(min_length=1)
+
+
 class OffresCompletesRequest(BaseModel):
     """Note optionnelle destinée à l'agent (e-mail Offres complètes)."""
     message_conseiller: Optional[str] = None
@@ -625,18 +630,22 @@ def attach_demandes_offres_routes(
                 MAIL_TYPE_OFFRE_RECUE,
                 MAIL_TYPE_OFFRES_COMPLETES,
                 MAIL_TYPE_OFFRE_SIGNEE,
+                MAIL_TYPE_NOTE_EXTERNE,
                 format_demande_incomplete_email,
                 format_demande_offre_email,
                 format_demande_offre_recap_conseiller_email,
                 format_offre_modifiee_email,
                 format_offre_recue_email,
                 format_offres_completes_email,
+                format_note_externe_email,
                 format_offre_signee_email,
+                normalize_message_id,
                 office_email_to,
                 offre_notify_role,
                 offres_email_enabled,
                 offres_email_to,
                 send_email_async,
+                should_remember_offres_thread_message_id,
             )
         except Exception as exc:
             logger.warning("Email service unavailable: %s", exc)
@@ -691,6 +700,12 @@ def attach_demandes_offres_routes(
                 doc, changes=changes, note=note
             )
             to_addr = to_override or offres_email_to()
+        elif event_key in {"note_externe", "note-externe", "external_note"}:
+            mail_type = MAIL_TYPE_NOTE_EXTERNE
+            subject, body_text, body_html = format_note_externe_email(doc, note=note)
+            to_addr = to_override or await resolve_demande_creator_email(doc)
+            if not to_addr:
+                return False, "E-mail du créateur introuvable sur la demande"
         else:
             mail_type = MAIL_TYPE_DEMANDE_OFFRE
             subject, body_text, body_html = format_demande_offre_email(doc)
@@ -715,6 +730,9 @@ def attach_demandes_offres_routes(
             meta_event: str,
             meta_role: str,
             dest_cc: Optional[list] = None,
+            in_reply_to: Optional[str] = None,
+            references: Optional[str] = None,
+            result_out: Optional[dict] = None,
         ) -> tuple[bool, Optional[str]]:
             log_meta = {
                 "client_id": doc.get("client_id"),
@@ -741,6 +759,9 @@ def attach_demandes_offres_routes(
                         cc=dest_cc or None,
                         mail_type=mtype,
                         log_meta=log_meta,
+                        in_reply_to=in_reply_to,
+                        references=references,
+                        result_out=result_out,
                     )
                 )
                 if isinstance(result, tuple):
@@ -759,6 +780,9 @@ def attach_demandes_offres_routes(
                             cc=dest_cc or None,
                             mail_type=mtype,
                             log_meta=log_meta,
+                            in_reply_to=in_reply_to,
+                            references=references,
+                            result_out=result_out,
                         )
                     )
                     if isinstance(result, tuple):
@@ -771,6 +795,15 @@ def attach_demandes_offres_routes(
                 logger.exception("Offer email failed event=%s", meta_event)
                 return False, str(exc)[:500]
 
+        thread_message_id = None
+        if event_key in {"signee", "signée", "signed"}:
+            thread_message_id = await resolve_offres_thread_message_id(doc)
+            if not thread_message_id:
+                logger.warning(
+                    "Offre signée sans Message-ID du mail initial demande=%s — envoi hors fil",
+                    doc.get("id"),
+                )
+        send_meta: dict = {}
         sent, error = await _dispatch(
             dest=to_addr,
             subj=subject,
@@ -780,7 +813,27 @@ def attach_demandes_offres_routes(
             meta_event=event_key,
             meta_role=offre_notify_role(event_key),
             dest_cc=cc_list or None,
+            in_reply_to=thread_message_id,
+            references=thread_message_id,
+            result_out=send_meta,
         )
+        remembered_id = normalize_message_id(send_meta.get("message_id"))
+        if should_remember_offres_thread_message_id(
+            doc, event=event_key, sent=sent, message_id=remembered_id
+        ):
+            doc["offres_thread_message_id"] = remembered_id
+            demande_id = doc.get("id")
+            if demande_id:
+                try:
+                    await db[COLLECTION].update_one(
+                        {"id": demande_id, "user_id": TENANT_USER_ID},
+                        {"$set": {
+                            "offres_thread_message_id": remembered_id,
+                            "updated_at": now_iso(),
+                        }},
+                    )
+                except Exception:
+                    logger.exception("persist offres_thread_message_id failed")
 
         # Copie récapitulatif au conseiller (envoi / renvoi / compléter-renvoyer)
         if send_conseiller_recap:
@@ -859,6 +912,38 @@ def attach_demandes_offres_routes(
             if role in {"admin", "ceo", "gestionnaire_offres"}:
                 ids.append(u.get("user_id"))
         return [i for i in ids if i]
+
+    async def resolve_offres_thread_message_id(doc: dict) -> Optional[str]:
+        """
+        Message-ID du mail initial envoyé à l'équipe Offres.
+        D'abord le champ mémorisé sur la demande, sinon le plus ancien journal SMTP réussi.
+        """
+        from email_service import (
+            MAIL_TYPE_DEMANDE_OFFRE,
+            normalize_message_id as _norm_mid,
+            pick_initial_offres_message_id,
+        )
+
+        stored = _norm_mid((doc or {}).get("offres_thread_message_id"))
+        if stored:
+            return stored
+        demande_id = ((doc or {}).get("id") or "").strip()
+        if not demande_id:
+            return None
+        try:
+            rows = await db.email_logs.find(
+                {
+                    "ref_id": demande_id,
+                    "type": MAIL_TYPE_DEMANDE_OFFRE,
+                    "event": "envoyee",
+                    "status": "sent",
+                },
+                {"_id": 0},
+            ).to_list(200)
+        except Exception:
+            logger.exception("lookup offres thread message id failed")
+            return None
+        return pick_initial_offres_message_id(rows)
 
     async def resolve_conseiller_notify_email(doc: dict) -> Optional[str]:
         """
@@ -2424,6 +2509,62 @@ def attach_demandes_offres_routes(
         )
         fresh = await require_demande(demande_id, user)
         return serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
+
+    @api_router.post("/demandes-offres/{demande_id}/notes-externes")
+    async def add_external_note(
+        demande_id: str,
+        payload: ExternalNoteRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        """
+        Note destinée au conseiller créateur : historique LeoSoft + e-mail.
+        Le destinataire est le créateur de la demande, pas le gestionnaire connecté.
+        """
+        require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        doc = await require_demande(demande_id, user)
+        note = payload.note.strip()
+        if not note:
+            raise HTTPException(status_code=422, detail="La note est obligatoire")
+        author = actor_name(user)
+        to_addr = await resolve_demande_creator_email(doc)
+        sent = False
+        email_error = None
+        if to_addr:
+            mail_doc = {**doc, "note_externe_author": author}
+            sent, email_error = await try_send_email(
+                mail_doc,
+                event="note_externe",
+                note=note,
+                to_override=to_addr,
+            )
+        else:
+            email_error = "E-mail du créateur introuvable sur la demande"
+        entry = {
+            "id": str(uuid.uuid4()),
+            "at": now_iso(),
+            "by_name": author,
+            "by_id": user.account_id,
+            "note": note,
+            "email_to": to_addr,
+            "email_sent": bool(sent),
+            "email_error": email_error,
+        }
+        notes = list(doc.get("notes_externes") or [])
+        notes.append(entry)
+        await db[COLLECTION].update_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID},
+            {
+                "$set": {"notes_externes": notes, "updated_at": now_iso()},
+                "$push": {"historique": history("Note externe", user, note)},
+            },
+        )
+        fresh = await require_demande(demande_id, user)
+        result = serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
+        if isinstance(result, dict):
+            result["note_email_sent"] = bool(sent)
+            result["note_email_error"] = email_error
+            result["notify_email"] = to_addr
+        return result
 
     @api_router.get("/notifications/offres")
     async def list_offre_notifications(
