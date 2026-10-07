@@ -351,7 +351,7 @@ describe("5 contrats 3A/3B", () => {
     assert.ok(html.includes("LPP – Deux – Capital"));
     assert.ok(html.includes("Analyse des contrats de prévoyance 3A/3B"));
     assert.equal(html.includes("(suite)"), false);
-    assert.ok(html.includes("Revenu touché"));
+    assert.ok(html.includes("Revenu de référence (AVS + LPP complète)"));
     assert.ok(html.includes("Manque de revenu"));
     assert.equal(html.includes("hatchGreen"), false);
     assert.equal(pages.length, payload.meta.pageCount);

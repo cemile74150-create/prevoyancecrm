@@ -21,8 +21,10 @@ export interface EvolutionResult {
  * Évolution après retraite — formules Excel feuille homonyme.
  * Cible lacune : 90 % (C = revenu − salaires×90 % si pas en phase salaire pure).
  *
- * Le revenu après retraite additionne l'AVS et la rente LPP résiduelle
- * (après pourcentage déblocable) des deux assurés.
+ * Ce graphique partage la rente des indicateurs de maintien du niveau de vie :
+ * AVS + rente LPP complète (renteTotale65), sans retrait en capital.
+ * Le pourcentage déblocable reste utilisé par la planification, les offres
+ * et les comparaisons, pas par ces barres.
  */
 export class PostRetirementEvolutionService {
   build(
@@ -34,10 +36,8 @@ export class PostRetirementEvolutionService {
     const married = input.etatCivil === "Marié(e)" && !!conjoint;
     const salaire1 = input.salaireClient1 || 0;
     const salaire2 = married ? input.salaireConjoint || 0 : 0;
-    const rente1 = round2(client1.avsAnnuel + client1.renteLppResiduelle65);
-    const rente2 = married
-      ? round2(conjoint!.avsAnnuel + conjoint!.renteLppResiduelle65)
-      : 0;
+    const rente1 = client1.renteTotale65;
+    const rente2 = married ? conjoint!.renteTotale65 : 0;
     const salaireReference = round2(salaire1 + salaire2);
     const renteReference = round2(rente1 + rente2);
 

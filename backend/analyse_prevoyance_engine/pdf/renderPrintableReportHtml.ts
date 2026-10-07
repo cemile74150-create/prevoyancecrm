@@ -591,7 +591,7 @@ function formatAxisChf(n: number): string {
 
 /**
  * Barres empilées : hauteur totale = revenu avant retraite.
- * Bas = revenu touché (AVS + LPP résiduelle). Haut = manque.
+ * Bas = revenu de référence (AVS + rente LPP complète). Haut = manque.
  */
 function renderEvolutionChart(p: ReportPayload): string {
   const points = p.evolution.points;
@@ -661,14 +661,14 @@ function renderEvolutionChart(p: ReportPayload): string {
   <div class="chart-wrap">
     <div class="chart-title">ÉVOLUTION REVENU APRÈS LA RETRAITE</div>
     <div class="chart-legend">
-      <span><i class="sw before"></i> Revenu touché (AVS + LPP)</span>
+      <span><i class="sw before"></i> Revenu de référence (AVS + LPP complète)</span>
       <span><i class="sw after"></i> Manque de revenu</span>
     </div>
     <svg class="chart-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Évolution revenu après retraite">
       ${yTicks.join("\n")}
       ${bars}
     </svg>
-    <p class="note">La hauteur de chaque barre correspond au revenu avant retraite. Le bas est le revenu réellement perçu, le haut est le manque pour retrouver ce niveau. Les rentes LPP tiennent compte du pourcentage déblocable.</p>
+    <p class="note">La hauteur de chaque barre correspond au revenu avant retraite. Le bas est le revenu de retraite de référence (AVS + rente LPP complète, sans retrait en capital), le haut est le manque pour retrouver ce niveau.</p>
   </div>`;
 }
 
