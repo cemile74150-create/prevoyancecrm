@@ -32,3 +32,12 @@ export function personDisplayName(
   const name = `${p.prenom || ""} ${p.nom || ""}`.trim();
   return name || "—";
 }
+
+/** Prénom saisi. S'il manque, on garde le libellé neutre déjà utilisé. */
+export function personFirstName(
+  person: { prenom?: string | null } | null | undefined,
+  fallback: string,
+): string {
+  const prenom = (person?.prenom || "").trim();
+  return prenom || fallback;
+}

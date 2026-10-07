@@ -296,8 +296,9 @@ export class RetirementScenarioService {
 
 /**
  * Service planification multi-scénarios.
- * Agrégation fiscale : **personne + année fiscale** → un appel ESTV
- * (somme des capitaux retirés), jamais somme d’impôts unitaires.
+ * Couple marié : un appel ESTV par année fiscale, sur la somme des
+ * capitaux imposables des deux assurés. Personne seule : un appel par
+ * assuré et par année. Les 3B restent dans le capital affiché et hors assiette.
  */
 export class WithdrawalPlanningService {
   async run(
@@ -464,8 +465,10 @@ export class WithdrawalPlanningService {
     taxGroupId: number,
     relationship: number,
   ): Promise<WithdrawalScenarioResult> {
-    // Group by titulaire + year
+    // Couple marié : une clé par année. Sinon : une clé par assuré et par année.
+    const taxTogether = relationship === 2 && !!input.conjoint;
     type Line = {
+      titulaire: PersonKey;
       kind: CapitalKind;
       label: string;
       institution: string;
@@ -475,7 +478,6 @@ export class WithdrawalPlanningService {
     };
     type Bucket = {
       year: number;
-      titulaire: PersonKey;
       items: Line[];
     };
     const buckets = new Map<string, Bucket>();
@@ -486,13 +488,15 @@ export class WithdrawalPlanningService {
       if (montantRetire <= 0) continue;
       const contratType = thirdPillarTypeForItem(input, item);
       const exonere = this.isExemptCapital(input, item);
-      const key = `${item.titulaire}|${item.anneeRetraitPrevue}`;
+      const key = taxTogether
+        ? String(item.anneeRetraitPrevue)
+        : `${item.titulaire}|${item.anneeRetraitPrevue}`;
       const cur = buckets.get(key) || {
         year: item.anneeRetraitPrevue,
-        titulaire: item.titulaire,
         items: [],
       };
       cur.items.push({
+        titulaire: item.titulaire,
         kind: item.kind,
         label: item.label,
         institution: item.institution || "",
@@ -516,8 +520,19 @@ export class WithdrawalPlanningService {
       }
     >();
 
+    const payerFor = (items: Line[]): PersonKey => {
+      const taxable = [
+        ...new Set(items.filter((item) => !item.exonere).map((item) => item.titulaire)),
+      ];
+      if (taxable.length === 1) return taxable[0];
+      if (taxable.length > 1) return "client1";
+      return items[0]?.titulaire ?? "client1";
+    };
+
     for (const bucket of [...buckets.values()].sort(
-      (a, b) => a.year - b.year || a.titulaire.localeCompare(b.titulaire),
+      (a, b) =>
+        a.year - b.year ||
+        (a.items[0]?.titulaire || "").localeCompare(b.items[0]?.titulaire || ""),
     )) {
       const capitalAll = round2(
         bucket.items.reduce((s, i) => s + i.montantRetire, 0),
@@ -534,9 +549,10 @@ export class WithdrawalPlanningService {
         impot: 0 as number | null,
         lines: [],
       };
+      const payer = payerFor(bucket.items);
       for (const it of bucket.items) {
         yearEntry.lines.push({
-          titulaire: bucket.titulaire,
+          titulaire: it.titulaire,
           kind: it.kind,
           label: it.label,
           institution: it.institution,
@@ -555,11 +571,11 @@ export class WithdrawalPlanningService {
           scenarioId: sc.id,
           scenarioName: sc.name,
           year: bucket.year,
-          titulaire: bucket.titulaire,
+          titulaire: payer,
           taxLocationId: input.taxLocationId || taxGroupId,
           etatCivil: input.etatCivil,
           gender: genderFromCivilite(
-            (bucket.titulaire === "client1" ? input.client1 : input.conjoint)
+            (payer === "client1" ? input.client1 : input.conjoint)
               ?.civilite || "Monsieur",
           ),
           relationship,
@@ -573,14 +589,13 @@ export class WithdrawalPlanningService {
         continue;
       }
 
-      const person =
-        bucket.titulaire === "client1" ? input.client1 : input.conjoint;
+      const person = payer === "client1" ? input.client1 : input.conjoint;
       if (!person) {
         audits.push({
           scenarioId: sc.id,
           scenarioName: sc.name,
           year: bucket.year,
-          titulaire: bucket.titulaire,
+          titulaire: payer,
           taxLocationId: input.taxLocationId || 0,
           etatCivil: input.etatCivil,
           gender: 1,
@@ -605,9 +620,7 @@ export class WithdrawalPlanningService {
       const ageAtPayment = ageInYear(
         person.dateNaissance,
         bucket.year,
-        bucket.titulaire === "client1"
-          ? client1.ageLegal
-          : (conjoint?.ageLegal ?? 65),
+        payer === "client1" ? client1.ageLegal : (conjoint?.ageLegal ?? 65),
       );
       const gender = genderFromCivilite(person.civilite);
 
@@ -624,7 +637,7 @@ export class WithdrawalPlanningService {
           scenarioId: sc.id,
           scenarioName: sc.name,
           year: bucket.year,
-          titulaire: bucket.titulaire,
+          titulaire: payer,
           taxLocationId: input.taxLocationId || taxGroupId,
           etatCivil: input.etatCivil,
           gender,
@@ -651,7 +664,7 @@ export class WithdrawalPlanningService {
           scenarioId: sc.id,
           scenarioName: sc.name,
           year: bucket.year,
-          titulaire: bucket.titulaire,
+          titulaire: payer,
           taxLocationId: input.taxLocationId || taxGroupId,
           etatCivil: input.etatCivil,
           gender,

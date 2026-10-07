@@ -343,8 +343,12 @@ describe("5 contrats 3A/3B", () => {
     assert.equal(html.includes("Affichage"), false);
     assert.ok(html.includes("Exonéré d'impôt"));
     assert.ok(html.includes("Capital 2e pilier retirable, y compris libre passage"));
-    assert.ok(html.includes("Rente LPP – Assuré 1"));
-    assert.ok(html.includes("Rente LPP – Assuré 2"));
+    assert.ok(html.includes("Rente LPP – Assuré"));
+    assert.ok(html.includes("Rente LPP – Deux"));
+    assert.equal(html.includes("Assuré 1"), false);
+    assert.equal(html.includes("Assuré 2"), false);
+    assert.ok(html.includes("LPP – Assuré – Capital + rente"));
+    assert.ok(html.includes("LPP – Deux – Capital"));
     assert.ok(html.includes("Analyse des contrats de prévoyance 3A/3B"));
     assert.equal(html.includes("(suite)"), false);
     assert.ok(html.includes("Revenu touché"));
@@ -378,7 +382,7 @@ describe("5 contrats 3A/3B", () => {
         .map((audit) => audit.montantSoumis)
         .filter((amount) => amount > 0)
         .sort((a, b) => a - b),
-      [200_000 + 55_872, 400_000 + 45_813].sort((a, b) => a - b),
+      [200_000 + 55_872 + 400_000 + 45_813],
     );
     for (const audit of ref.audits) {
       assert.equal(FORBIDDEN_3B.includes(audit.montantSoumis), false);
@@ -401,8 +405,9 @@ describe("5 contrats 3A/3B", () => {
       ),
       false,
     );
-    assert.ok(capitalsSent.includes(200_000 + 55_872));
-    assert.ok(capitalsSent.includes(400_000 + 45_813));
+    assert.ok(capitalsSent.includes(200_000 + 400_000 + 55_872 + 45_813));
+    assert.equal(capitalsSent.includes(200_000 + 55_872), false);
+    assert.equal(capitalsSent.includes(400_000 + 45_813), false);
     const spreadResult = planning.scenarios.find((scenario) => scenario.scenarioId === "spread");
     assert.ok(spreadResult);
     assert.equal(ref.impotTotal != null && spreadResult.impotTotal != null, true);
@@ -505,7 +510,8 @@ describe("5 contrats 3A/3B", () => {
       for (const forbidden of FORBIDDEN_3B) {
         assert.equal(sent.includes(forbidden), false);
       }
-      assert.ok(sent.includes(200_000 + 55_872));
+      assert.ok(sent.includes(200_000 + 400_000 + 55_872 + 45_813));
+      assert.equal(sent.includes(200_000 + 55_872), false);
       assert.equal(sent.includes(800_000), false);
       const record: AnalyseRecord = {
         id: "validation-eco-nulle",

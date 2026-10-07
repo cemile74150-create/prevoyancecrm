@@ -373,6 +373,7 @@ function buildPersonBlock(
 ): ReportPersonBlock {
   return {
     displayName: personDisplayName(person),
+    prenom: (person.prenom || "").trim(),
     civilite: person.civilite,
     dateNaissance: person.dateNaissance || null,
     dateNaissanceLabel: person.dateNaissance

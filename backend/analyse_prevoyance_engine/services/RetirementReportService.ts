@@ -1,5 +1,5 @@
 import { formatDateFr } from "../rules/avs-age";
-import { formatChf, formatPct, personDisplayName } from "../mappers";
+import { formatChf, formatPct, personDisplayName, personFirstName } from "../mappers";
 import type { AnalyseRecord } from "../types";
 
 /**
@@ -19,6 +19,9 @@ export class RetirementReportService {
     const c2 = input.conjoint;
     const r1 = results.client1;
     const r2 = results.conjoint;
+    const who1 = esc(personFirstName(c1, "Assuré 1"));
+    const who2 = c2 ? esc(personFirstName(c2, "Assuré 2")) : "";
+    const personHead = `<th></th><th>${who1}</th>${who2 ? `<th>${who2}</th>` : ""}`;
     const couple1 = results.incomeScenarios.find((s) => s.foyer === "Couple1");
 
     const sections: string[] = [];
@@ -38,7 +41,7 @@ export class RetirementReportService {
       <section>
         <h2>1. Profil des assurés</h2>
         <table>
-          <thead><tr><th></th><th>Assuré 1</th>${r2 ? "<th>Assuré 2</th>" : ""}</tr></thead>
+          <thead><tr>${personHead}</tr></thead>
           <tbody>
             <tr><td>Nom</td><td>${esc(personDisplayName(c1))}</td>${r2 ? `<td>${esc(personDisplayName(c2!))}</td>` : ""}</tr>
             <tr><td>Situation</td><td colspan="${r2 ? 2 : 1}">${esc(input.etatCivil)} · ${esc(input.villeRecherche || "—")}</td></tr>
@@ -53,7 +56,7 @@ export class RetirementReportService {
       <section>
         <h2>2. Hypothèse de planification</h2>
         <table>
-          <thead><tr><th></th><th>Assuré 1</th>${r2 ? "<th>Assuré 2</th>" : ""}</tr></thead>
+          <thead><tr>${personHead}</tr></thead>
           <tbody>
             <tr><td>Âge légal AVS</td><td>${esc(r1.ageLegalLabel)}</td>${r2 ? `<td>${esc(r2.ageLegalLabel)}</td>` : ""}</tr>
             <tr><td>Date de départ</td><td>${esc(formatDateFr(r1.dateDepart))}</td>${r2 ? `<td>${esc(formatDateFr(r2.dateDepart))}</td>` : ""}</tr>
@@ -66,7 +69,7 @@ export class RetirementReportService {
       <section>
         <h2>3. Patrimoine de prévoyance actuel</h2>
         <table>
-          <thead><tr><th></th><th>Assuré 1</th>${r2 ? "<th>Assuré 2</th>" : ""}</tr></thead>
+          <thead><tr>${personHead}</tr></thead>
           <tbody>
             <tr><td>AVS annuelle estimée</td><td>${formatChf(r1.avsAnnuel)}</td>${r2 ? `<td>${formatChf(r2.avsAnnuel)}</td>` : ""}</tr>
             <tr><td>Capital LPP (65)</td><td>${formatChf(r1.capitalLpp65)}</td>${r2 ? `<td>${formatChf(r2.capitalLpp65)}</td>` : ""}</tr>
@@ -81,8 +84,8 @@ export class RetirementReportService {
       <section>
         <h2>4. Synthèse des prestations attendues (65)</h2>
         <ul>
-          <li>Rente totale assuré 1 : <strong>${formatChf(r1.renteTotale65)}</strong></li>
-          ${r2 ? `<li>Rente totale assuré 2 : <strong>${formatChf(r2.renteTotale65)}</strong></li>` : ""}
+          <li>Rente totale ${who1} : <strong>${formatChf(r1.renteTotale65)}</strong></li>
+          ${r2 ? `<li>Rente totale ${who2} : <strong>${formatChf(r2.renteTotale65)}</strong></li>` : ""}
           <li>Commune fiscale : ${esc(input.villeRecherche || "—")} (TaxLocationID ${results.taxLocation?.TaxLocationID ?? "—"})</li>
         </ul>
       </section>

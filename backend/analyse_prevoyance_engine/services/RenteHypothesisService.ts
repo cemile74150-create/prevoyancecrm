@@ -6,11 +6,13 @@ import type {
   RenteHypothesisInput,
 } from "../types";
 import { taxCalculationService } from "./TaxCalculationService";
+import { lppCalculationService } from "./LPPCalculationService";
 import {
   revenuBrutEncaisse,
   revenuFiscalImposable,
   revenuFiscalRenteLpp,
   revenuNetApresImpot,
+  roundMoney,
 } from "../rules/rente-hypotheses";
 
 function avsPrincipale65(person: PersonInput): number {
@@ -50,6 +52,21 @@ function typeLabel(type: RenteHypothesisInput["type"]): string {
   return type === "viagere" ? "Viagère" : "Certaine";
 }
 
+/** Rente LPP non retirée en capital. 100 % déblocable → 0. Couple : somme des deux assurés. */
+function renteLppResiduelleFoyer(
+  input: AnalyseInput,
+  age: number | null,
+  married: boolean,
+): number {
+  const part = (person: PersonInput) =>
+    lppCalculationService.renteResiduelle(
+      lppRentePourAge(person, age),
+      person.lppPctDeblocable,
+    );
+  const total = part(input.client1) + (married && input.conjoint ? part(input.conjoint) : 0);
+  return roundMoney(total);
+}
+
 /**
  * Comparatif des offres de rente. Chaque colonne a son impôt ESTV
  * calculé sur le revenu fiscal, pas sur le revenu encaissé.
@@ -70,13 +87,14 @@ export class RenteHypothesisService {
     const lpp =
       lppRentePourAge(input.client1, age) +
       (married && input.conjoint ? lppRentePourAge(input.conjoint, age) : 0);
+    const residuelle = renteLppResiduelleFoyer(input, age, married);
 
     const columns: RenteHypothesisColumn[] = [];
     if (withLpp) {
       columns.push(await this.columnLpp(input, avs, lpp, age));
     }
     for (const [index, row] of hypotheses.entries()) {
-      columns.push(await this.columnOffre(input, row, index, avs, age));
+      columns.push(await this.columnOffre(input, row, index, avs, residuelle, age));
     }
 
     const lppNet = columns.find((col) => col.kind === "lpp")?.revenuNetApresImpot;
@@ -139,6 +157,7 @@ export class RenteHypothesisService {
       capitalPlace: null,
       dureeAnnees: null,
       renteAvs: avs,
+      renteLppResiduelle: null,
       renteGarantie: lpp,
       participationExcedents: 0,
       revenuBrutEncaisse: brut,
@@ -155,6 +174,7 @@ export class RenteHypothesisService {
     row: RenteHypothesisInput,
     index: number,
     avs: number,
+    renteLppResiduelle: number,
     age: number | null,
   ): Promise<RenteHypothesisColumn> {
     const garantie = row.renteGarantieAnnuelle || 0;
@@ -164,11 +184,13 @@ export class RenteHypothesisService {
       renteAvs: avs,
       renteGarantie: garantie,
       participationExcedents: participation,
+      renteLppResiduelle,
     });
     const brut = revenuBrutEncaisse({
       renteAvs: avs,
       renteGarantie: garantie,
       participationExcedents: participation,
+      renteLppResiduelle,
     });
     const impot = await this.taxOn(input, fiscal, age);
     const capital = row.capitalPlace || 0;
@@ -181,6 +203,7 @@ export class RenteHypothesisService {
       capitalPlace: capital || null,
       dureeAnnees: row.type === "certaine" ? row.dureeAnnees : null,
       renteAvs: avs,
+      renteLppResiduelle,
       renteGarantie: garantie,
       participationExcedents: participation,
       revenuBrutEncaisse: brut,

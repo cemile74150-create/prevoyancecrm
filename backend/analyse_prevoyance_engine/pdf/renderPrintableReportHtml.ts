@@ -3,7 +3,7 @@
  * Aucun calcul métier ici — montants = payload.coherence / aggregates.
  */
 
-import { formatChf } from "../mappers";
+import { formatChf, personFirstName } from "../mappers";
 import type { ReportPayload } from "../report/ReportPayload";
 
 const BRAND = "#800000";
@@ -326,6 +326,44 @@ export function reportCss(forceOrient?: ReportPageKind) {
     text-align: center; letter-spacing: 0.14em; margin-bottom: 12px;
     font-size: 10pt; color: #3A3838;
   }
+  /* Comparaison des rentes : une colonne visuelle par offre, filets fins. */
+  table.data.compare th,
+  table.data.compare td,
+  table.data.compare td.num {
+    text-align: center;
+  }
+  table.data.compare th.lab,
+  table.data.compare td.lab {
+    text-align: left;
+  }
+  table.data.compare th {
+    white-space: normal;
+    overflow-wrap: break-word;
+    line-height: 1.25;
+    padding: 8px 6px;
+    vertical-align: bottom;
+  }
+  table.data.compare td.num {
+    font-variant-numeric: tabular-nums;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  table.data.compare th.col-lpp,
+  table.data.compare td.col-lpp {
+    border-left: 1px solid #e4e4e4;
+  }
+  table.data.compare td.col-offer {
+    border-left: 1px solid #d5d5d5;
+  }
+  table.data.compare th.col-offer {
+    border-left: 1px solid rgba(255, 255, 255, 0.35);
+  }
+  table.data.compare td.col-after-lpp {
+    border-left: 1px solid #8a8a8a;
+  }
+  table.data.compare th.col-after-lpp {
+    border-left: 1px solid rgba(255, 255, 255, 0.85);
+  }
   .plain { font-size: 10.5pt; line-height: 1.4; margin: 0 0 8px; }
   `;
 }
@@ -497,7 +535,7 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
     <tr>
       <td>${formatChf(p.aggregates.avsTotal)}</td>
       <td>${formatChf(p.aggregates.capitalLppAvecLibrePassage)}</td>
-      <td style="font-size:9pt">Assuré 1 : ${esc(p.client1.ageLegalLabel)}${c2 ? `<br/>Assuré 2 : ${esc(c2.ageLegalLabel)}` : ""}</td>
+      <td style="font-size:9pt">${esc(insuredName(p.client1, "Assuré 1"))} : ${esc(p.client1.ageLegalLabel)}${c2 ? `<br/>${esc(insuredName(c2, "Assuré 2"))} : ${esc(c2.ageLegalLabel)}` : ""}</td>
     </tr>
   </table>
   ${footer(n, total)}`;
@@ -513,7 +551,7 @@ function pageCompareRenteCapital(
   const notePct =
     p.client1.lppPctDeblocable < 100 ||
     (p.conjoint != null && p.conjoint.lppPctDeblocable < 100)
-      ? `<p class="note">Capital LPP retiré selon % déblocable saisi (assuré 1 : ${p.client1.lppPctDeblocable} %${p.conjoint ? ` · assuré 2 : ${p.conjoint.lppPctDeblocable} %` : ""}). Rente LPP résiduelle maintenue sur le solde.</p>`
+      ? `<p class="note">Capital LPP retiré selon % déblocable saisi (${esc(insuredName(p.client1, "Assuré 1"))} : ${p.client1.lppPctDeblocable} %${p.conjoint ? ` · ${esc(insuredName(p.conjoint, "Assuré 2"))} : ${p.conjoint.lppPctDeblocable} %` : ""}). Rente LPP résiduelle maintenue sur le solde.</p>`
       : "";
 
   return `
@@ -524,8 +562,8 @@ function pageCompareRenteCapital(
     <tr><td class="lab">Capital LPP</td><td class="num">—</td><td class="num">${formatChf(a.capitalLppRetireTotal)}</td></tr>
     <tr><td class="lab">Impôt sur les capitaux</td><td class="num">—</td><td class="num tax">${formatChf(a.impotCapital65)}</td></tr>
     <tr><td class="lab">Capitaux après impôt</td><td class="num">—</td><td class="num">${formatChf(a.capitalNet65)}</td></tr>
-    <tr><td class="lab">Rente LPP – Assuré 1</td><td class="num">${formatChf(p.client1.renteLpp65)}</td><td class="num">${formatChf(p.client1.renteLppResiduelle65)}</td></tr>
-    ${p.conjoint ? `<tr><td class="lab">Rente LPP – Assuré 2</td><td class="num">${formatChf(p.conjoint.renteLpp65)}</td><td class="num">${formatChf(p.conjoint.renteLppResiduelle65)}</td></tr>` : ""}
+    <tr><td class="lab">Rente LPP – ${esc(insuredName(p.client1, "Assuré 1"))}</td><td class="num">${formatChf(p.client1.renteLpp65)}</td><td class="num">${formatChf(p.client1.renteLppResiduelle65)}</td></tr>
+    ${p.conjoint ? `<tr><td class="lab">Rente LPP – ${esc(insuredName(p.conjoint, "Assuré 2"))}</td><td class="num">${formatChf(p.conjoint.renteLpp65)}</td><td class="num">${formatChf(p.conjoint.renteLppResiduelle65)}</td></tr>` : ""}
     <tr><td class="lab">Rente AVS</td><td class="num">${formatChf(a.avsTotal)}</td><td class="num">${formatChf(a.avsTotal)}</td></tr>
     <tr><td class="lab">Impôts ICC &amp; IFD</td><td class="num tax">${formatChf(a.impotRevenuCouple1)}</td><td class="num tax">${formatChf(a.impotRevenuCouple2)}</td></tr>
     <tr><td class="lab">Rente après impôt</td><td class="num">${formatChf(a.renteApresImpot)}</td><td class="num">${formatChf(a.renteNetteCheminCapital)}</td></tr>
@@ -643,6 +681,11 @@ function thirdPillarPages(
 ): string[] {
   const rows = p.thirdPillarRows;
   if (!rows.length) return [];
+  const has3b = rows.some((row) => row.type === "3B");
+  const contratsLabel = `${rows.length} contrat${rows.length > 1 ? "s" : ""} saisi${rows.length > 1 ? "s" : ""}.`;
+  const note3b = has3b
+    ? " Les 3B restent dans le capital et ne sont pas soumis à l'impôt sur les prestations en capital."
+    : "";
   const pages: string[] = [];
   for (let offset = 0; offset < rows.length; offset += THIRD_PILLAR_ROWS_PER_PAGE) {
     const slice = rows.slice(offset, offset + THIRD_PILLAR_ROWS_PER_PAGE);
@@ -655,7 +698,7 @@ function thirdPillarPages(
             : formatChf(row.impot);
         const net = row.capitalNet == null ? "—" : formatChf(row.capitalNet);
         return `<tr>
-          <td>${esc(row.personKey === "conjoint" ? "Assuré 2" : "Assuré 1")}</td>
+          <td>${esc(row.personKey === "conjoint" ? insuredName(p.conjoint, "Assuré 2") : insuredName(p.client1, "Assuré 1"))}</td>
           <td>${esc(row.compagnie)}</td>
           <td>${esc(row.police)}</td>
           <td>${esc(row.type)}</td>
@@ -695,7 +738,7 @@ function thirdPillarPages(
     </tr>
     ${body}
   </table>
-  <p class="note">${rows.length} contrat${rows.length > 1 ? "s" : ""} saisi${rows.length > 1 ? "s" : ""}. Les 3B restent dans le capital et ne sont pas soumis à l'impôt sur les prestations en capital.</p>
+  <p class="note">${contratsLabel}${note3b}</p>
   ${footer(next(), total)}`);
   }
   return pages;
@@ -858,7 +901,7 @@ function pageFrise(p: ReportPayload, n: number, total: number): string {
   const detail = p.timeline.events
     .map(
       (e) =>
-        `<tr><td>${esc(e.label)}</td><td class="num">${formatChf(e.amount)}${e.kind === "avs" ? " /an" : ""}</td></tr>`,
+        `<tr><td>${esc(e.label)}</td><td class="num">${formatChf(e.amount)}${timelineAmountSuffix(e)}</td></tr>`,
     )
     .join("");
 
@@ -889,17 +932,27 @@ function pageHypothesesRente(p: ReportPayload, n: number, total: number): string
     : "à l'âge du dossier";
   const money = (value: number | null) =>
     value == null ? "—" : formatChf(value);
+  const colRole = (index: number) => {
+    const col = cols[index];
+    if (col.kind === "lpp") return "col-lpp";
+    const prev = index > 0 ? cols[index - 1] : null;
+    return prev?.kind === "lpp" ? "col-offer col-after-lpp" : "col-offer";
+  };
   const row = (label: string, values: string[]) =>
-    `<tr><td class="lab">${label}</td>${values.map((v) => `<td class="num">${v}</td>`).join("")}</tr>`;
+    `<tr><td class="lab">${label}</td>${values.map((v, i) => `<td class="num ${colRole(i)}">${v}</td>`).join("")}</tr>`;
   const showDuree = cols.some((c) => c.dureeAnnees != null);
   const head = cols
-    .map((c) => `<th>${esc(c.label)}</th>`)
+    .map((c, i) => `<th class="${colRole(i)}">${esc(c.label)}</th>`)
     .join("");
   const lines = [
     row("Capital placé", cols.map((c) => money(c.capitalPlace))),
     row("Compagnie", cols.map((c) => esc(c.compagnie || "—"))),
     row("Type de rente", cols.map((c) => esc(c.typeLabel))),
     row("Rente AVS", cols.map((c) => money(c.renteAvs))),
+    row(
+      "Rente LPP résiduelle",
+      cols.map((c) => (c.kind === "lpp" ? "—" : money(c.renteLppResiduelle))),
+    ),
     row("Rente garantie", cols.map((c) => money(c.renteGarantie))),
     row(
       "Participation aux excédents",
@@ -965,7 +1018,7 @@ function pageHypothesesRente(p: ReportPayload, n: number, total: number): string
     ${lines.join("")}
   </table>
   ${note}
-  <p class="note">Le revenu fiscal imposable suit la règle de l’offre (rente certaine ou viagère) et sert uniquement au calcul ESTV. Il est distinct du revenu total encaissé.</p>
+  <p class="note">Le revenu fiscal imposable suit la règle de l’offre (rente certaine ou viagère) et sert uniquement au calcul ESTV. La rente LPP résiduelle est encaissée et imposable en totalité. Il est distinct du revenu total encaissé.</p>
   ${footer(n, total)}`;
 }
 
@@ -1046,8 +1099,8 @@ function pageComparatifVaudoise(
   <table class="data" style="font-size:8.5pt">
     <tr><th class="gray"></th>${head}</tr>
     <tr><td>Rente AVS</td>${renteAvs}</tr>
-    <tr><td>Rente LPP – Assuré 1</td>${cell(cols.map((c) => c.id === "lpp" ? formatChf(p.client1.renteLpp65) : formatChf(0)))}</tr>
-    ${p.conjoint ? `<tr><td>Rente LPP – Assuré 2</td>${cell(cols.map((c) => c.id === "lpp" ? formatChf(p.conjoint!.renteLpp65) : formatChf(0)))}</tr>` : ""}
+    <tr><td>Rente LPP – ${esc(insuredName(p.client1, "Assuré 1"))}</td>${cell(cols.map((c) => c.id === "lpp" ? formatChf(p.client1.renteLpp65) : formatChf(0)))}</tr>
+    ${p.conjoint ? `<tr><td>Rente LPP – ${esc(insuredName(p.conjoint, "Assuré 2"))}</td>${cell(cols.map((c) => c.id === "lpp" ? formatChf(p.conjoint!.renteLpp65) : formatChf(0)))}</tr>` : ""}
     <tr><td>Rente certaine</td>${renteCert}</tr>
     <tr><td>Part imposable</td>${part}</tr>
     <tr><td>Impôts ICC &amp; IFD</td>${impot}</tr>
@@ -1062,6 +1115,19 @@ function pageComparatifVaudoise(
     <tr><td>Économie fiscale annuelle (LPP vs AVS-seul)</td><td class="num">${formatChf(v.indicateurs.economieFiscaleAnnuelle)}</td></tr>
   </table>
   ${footer(n, total)}`;
+}
+
+function insuredName(
+  person: { prenom?: string | null } | null | undefined,
+  fallback: "Assuré 1" | "Assuré 2",
+): string {
+  return personFirstName(person, fallback);
+}
+
+function timelineAmountSuffix(event: { kind: string; label: string }): string {
+  if (event.kind === "avs") return " /an";
+  if (event.kind === "lpp" && event.label.endsWith("– Rente")) return " /an";
+  return "";
 }
 
 function esc(s: string): string {

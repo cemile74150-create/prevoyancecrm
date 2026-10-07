@@ -499,6 +499,7 @@ export function ResultsPanel({ record }: Props) {
                   ["Compagnie", (col) => col.compagnie || "—"],
                   ["Type", (col) => col.typeLabel],
                   ["Rente AVS", (col) => formatChf(col.renteAvs)],
+                  ["Rente LPP résiduelle", (col) => col.kind === "lpp" ? "—" : formatChf(col.renteLppResiduelle)],
                   ["Rente garantie", (col) => formatChf(col.renteGarantie)],
                   ["Participation", (col) => col.kind === "lpp" ? "—" : formatChf(col.participationExcedents)],
                   ["Revenu total encaissé", (col) => formatChf(col.revenuBrutEncaisse)],

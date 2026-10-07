@@ -10,6 +10,8 @@ export interface ReportMoney {
 
 export interface ReportPersonBlock {
   displayName: string;
+  /** Prénom seul. Vide si le dossier n'en a pas — le PDF retombe alors sur Assuré 1 / 2. */
+  prenom: string;
   civilite: string;
   dateNaissance: string | null;
   dateNaissanceLabel: string;

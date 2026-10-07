@@ -149,6 +149,11 @@ export interface RenteHypothesisColumn {
   capitalPlace: number | null;
   dureeAnnees: number | null;
   renteAvs: number;
+  /**
+   * Rente LPP conservée parce que le capital n'est pas déblocable à 100 %.
+   * Null sur la colonne de référence, qui garde la rente LPP entière.
+   */
+  renteLppResiduelle: number | null;
   renteGarantie: number;
   participationExcedents: number;
   revenuBrutEncaisse: number;

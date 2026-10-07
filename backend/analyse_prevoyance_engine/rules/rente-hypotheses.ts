@@ -2,8 +2,11 @@
  * Règles métier des hypothèses de rente (hors ESTV).
  *
  * Le revenu fiscal n'est pas le revenu encaissé :
- * - certaine : AVS + 70 % des participations (la rente garantie n'est pas imposable) ;
- * - viagère : AVS + 4 % de la rente garantie + 70 % des participations.
+ * - certaine : AVS + rente LPP résiduelle + 70 % des participations
+ *   (la rente garantie n'est pas imposable) ;
+ * - viagère : AVS + rente LPP résiduelle + 4 % de la rente garantie
+ *   + 70 % des participations.
+ * La rente LPP résiduelle est imposable en totalité, comme une rente LPP.
  * L'impôt est ensuite calculé par ESTV sur ce revenu fiscal.
  */
 
@@ -14,6 +17,8 @@ export interface RevenuRenteInput {
   renteAvs: number;
   renteGarantie: number;
   participationExcedents: number;
+  /** Part de rente LPP conservée. 100 % imposable. 0 si tout le capital est déblocable. */
+  renteLppResiduelle?: number;
 }
 
 export function roundMoney(n: number): number {
@@ -24,14 +29,18 @@ function n(value: number): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-/** Ce que le client encaisse : AVS + rente garantie + participations. */
+/** Ce que le client encaisse : AVS + rente LPP résiduelle + rente garantie + participations. */
 export function revenuBrutEncaisse(input: {
   renteAvs: number;
   renteGarantie: number;
   participationExcedents: number;
+  renteLppResiduelle?: number;
 }): number {
   return roundMoney(
-    n(input.renteAvs) + n(input.renteGarantie) + n(input.participationExcedents),
+    n(input.renteAvs) +
+      n(input.renteLppResiduelle) +
+      n(input.renteGarantie) +
+      n(input.participationExcedents),
   );
 }
 
@@ -41,11 +50,12 @@ export function revenuBrutEncaisse(input: {
  */
 export function revenuFiscalImposable(input: RevenuRenteInput): number {
   const avs = n(input.renteAvs);
+  const residuelle = n(input.renteLppResiduelle);
   const participation = n(input.participationExcedents) * 0.7;
   if (input.type === "viagere") {
-    return roundMoney(avs + n(input.renteGarantie) * 0.04 + participation);
+    return roundMoney(avs + residuelle + n(input.renteGarantie) * 0.04 + participation);
   }
-  return roundMoney(avs + participation);
+  return roundMoney(avs + residuelle + participation);
 }
 
 /** Revenu net annuel = encaissé − impôt ESTV. */

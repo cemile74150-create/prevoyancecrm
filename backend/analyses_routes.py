@@ -21,7 +21,11 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 from access_control import User, can_access_client
-from analyses_prefill import prefill_from_clients
+from analyses_prefill import (
+    apply_crm_display_prenoms,
+    prefill_from_clients,
+    refresh_report_display_prenoms,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +180,31 @@ def attach_analyses_routes(
             await _client_or_403(doc["client_id"], user)
         return doc
 
+    async def _crm_cards(doc: dict, user: User):
+        """Fiche du client principal et, s'il existe, le conjoint lié."""
+        client_id = doc.get("client_id")
+        if not client_id:
+            return None, None
+        client = await _client_or_403(client_id, user)
+        spouse = None
+        spouse_id = client.get("linked_spouse_id")
+        if spouse_id:
+            try:
+                spouse = await _client_or_403(spouse_id, user)
+            except HTTPException:
+                spouse = None
+        return client, spouse
+
+    async def _displayed(doc: dict, user: User) -> dict:
+        """Réponse ou dossier moteur : prénoms CRM, sans réécrire le calcul stocké."""
+        client, spouse = await _crm_cards(doc, user)
+        return refresh_report_display_prenoms(_public(doc), client, spouse)
+
+    def _with_crm_prenoms(data, client, spouse):
+        if not isinstance(data, dict):
+            return data
+        return apply_crm_display_prenoms(data, client, spouse)
+
     async def _active_for_client(user: User, client_id: str, *, exclude_id: Optional[str] = None) -> list:
         rows = await db.analyses.find(
             {
@@ -253,12 +282,21 @@ def attach_analyses_routes(
         ]).to_list(200)
         visible = []
         for row in rows:
+            client = None
             if row.get("client_id"):
                 try:
-                    await _client_or_403(row["client_id"], user)
+                    client = await _client_or_403(row["client_id"], user)
                 except HTTPException:
                     continue
-            visible.append(_summary(row))
+            item = _summary(row)
+            if client:
+                person = apply_crm_display_prenoms(
+                    {"client1": (row.get("input") or {}).get("client1") or {}},
+                    client,
+                    None,
+                )["client1"]
+                item["clientName"] = f"{person.get('prenom') or ''} {person.get('nom') or ''}".strip()
+            visible.append(item)
         return {"items": visible}
 
     @api_router.post("/analyses-prevoyance")
@@ -281,6 +319,7 @@ def attach_analyses_routes(
             data = prefill_from_clients(client, spouse_arg, conseiller_nom=user.name or "")
         else:
             data = prefill_from_clients({}, conseiller_nom=user.name or "")
+        data = _with_crm_prenoms(data, client, spouse)
         if payload.clientId:
             active = await _active_for_client(user, payload.clientId)
             primary = _pick_primary(active)
@@ -306,7 +345,7 @@ def attach_analyses_routes(
 
     @api_router.get("/analyses-prevoyance/{analyse_id}")
     async def get_analyse(analyse_id: str, user: User = Depends(get_current_user)):
-        return _public(await _get_owned(analyse_id, user))
+        return await _displayed(await _get_owned(analyse_id, user), user)
 
     @api_router.get("/analyses-prevoyance/{analyse_id}/versions")
     async def list_versions(analyse_id: str, user: User = Depends(get_current_user)):
@@ -328,8 +367,10 @@ def attach_analyses_routes(
             raise HTTPException(status_code=404, detail="Version introuvable")
         snap = versions[index] or {}
         versions.append(_snapshot(doc, user))
+        client, spouse = await _crm_cards(doc, user)
+        restored_input = snap.get("input") if snap.get("input") is not None else doc.get("input")
         updated = {
-            "input": snap.get("input") if snap.get("input") is not None else doc.get("input"),
+            "input": _with_crm_prenoms(restored_input, client, spouse),
             "results": snap.get("results"),
             "status": snap.get("status") or "brouillon",
             "version": _version_number(doc) + 1,
@@ -338,7 +379,7 @@ def attach_analyses_routes(
         }
         await db.analyses.update_one({"id": analyse_id}, {"$set": updated})
         doc.update(updated)
-        return _public(doc)
+        return await _displayed(doc, user)
 
     @api_router.put("/analyses-prevoyance/{analyse_id}")
     async def save_analyse(analyse_id: str, payload: AnalyseUpdate, user: User = Depends(get_current_user)):
@@ -356,8 +397,10 @@ def attach_analyses_routes(
             primary = _pick_primary(others)
             if primary:
                 raise _exists_conflict(primary)
+        client, spouse = await _crm_cards(doc, user)
+        saved_input = payload.input if payload.input is not None else doc.get("input")
         updated = {
-            "input": payload.input if payload.input is not None else doc.get("input"),
+            "input": _with_crm_prenoms(saved_input, client, spouse),
             "status": status,
             "version": _version_number(doc) + 1,
             "versions": versions,
@@ -365,7 +408,7 @@ def attach_analyses_routes(
         }
         await db.analyses.update_one({"id": analyse_id}, {"$set": updated})
         doc.update(updated)
-        return _public(doc)
+        return await _displayed(doc, user)
 
     @api_router.post("/analyses-prevoyance/{analyse_id}/calculate")
     async def calculate_analyse(analyse_id: str, payload: AnalyseUpdate, user: User = Depends(get_current_user)):
@@ -373,6 +416,9 @@ def attach_analyses_routes(
         data = payload.input if payload.input is not None else doc.get("input")
         if not data:
             raise HTTPException(status_code=400, detail="input requis")
+        client, spouse = await _crm_cards(doc, user)
+        # Le moteur ne voit que ce JSON : les prénoms CRM remplacent la copie figée.
+        data = _with_crm_prenoms(data, client, spouse)
         raw = run_engine("calculate", {"input": data}, timeout=180)
         try:
             parsed = json.loads(raw)
@@ -396,14 +442,15 @@ def attach_analyses_routes(
         }
         await db.analyses.update_one({"id": analyse_id}, {"$set": updated})
         doc.update(updated)
-        return _public(doc)
+        return await _displayed(doc, user)
 
     @api_router.get("/analyses-prevoyance/{analyse_id}/report")
     async def preview_report(analyse_id: str, user: User = Depends(get_current_user)):
         doc = await _get_owned(analyse_id, user)
         if not doc.get("results"):
             raise HTTPException(status_code=400, detail="Calculez l'analyse avant l'aperçu.")
-        html = run_engine("html", {"record": _public(doc)}, timeout=60)
+        record = await _displayed(doc, user)
+        html = run_engine("html", {"record": record}, timeout=60)
         return HTMLResponse(html)
 
     @api_router.get("/analyses-prevoyance/{analyse_id}/pdf")
@@ -411,11 +458,12 @@ def attach_analyses_routes(
         doc = await _get_owned(analyse_id, user)
         if not doc.get("results"):
             raise HTTPException(status_code=400, detail="Calculez l'analyse avant le PDF.")
+        record = await _displayed(doc, user)
         with tempfile.TemporaryDirectory() as tmp:
             path = str(Path(tmp) / "analyse.pdf")
-            run_engine("pdf", {"record": _public(doc)}, pdf_path=path, timeout=180)
+            run_engine("pdf", {"record": record}, pdf_path=path, timeout=180)
             data = Path(path).read_bytes()
-        person = (doc.get("input") or {}).get("client1") or {}
+        person = (record.get("input") or {}).get("client1") or {}
         name = f"Analyse_{person.get('nom') or 'client'}.pdf"
         return Response(
             content=data,
@@ -437,11 +485,12 @@ def attach_analyses_routes(
             if primary:
                 raise _exists_conflict(primary)
         client = await _client_or_403(client_id, user)
+        record = await _displayed(doc, user)
         with tempfile.TemporaryDirectory() as tmp:
             path = str(Path(tmp) / "analyse.pdf")
-            run_engine("pdf", {"record": _public(doc)}, pdf_path=path, timeout=180)
+            run_engine("pdf", {"record": record}, pdf_path=path, timeout=180)
             data = Path(path).read_bytes()
-        person = (doc.get("input") or {}).get("client1") or {}
+        person = (record.get("input") or {}).get("client1") or {}
         filename = f"Analyse_prevoyance_{person.get('nom') or 'client'}_{person.get('prenom') or ''}.pdf".replace(" ", "_")
         stored = await store_document(
             client=client,
