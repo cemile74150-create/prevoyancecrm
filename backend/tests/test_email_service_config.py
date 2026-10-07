@@ -527,3 +527,5 @@ def test_build_message_sets_message_id_and_bcc_recipients(monkeypatch):
     assert bcc == ["bcc@example.ch"]
     # Bcc ne doit pas apparaître dans les en-têtes visibles
     assert msg.get("Bcc") is None
+    assert msg.get("In-Reply-To") is None
+    assert msg.get("References") is None

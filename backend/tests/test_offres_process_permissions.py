@@ -72,6 +72,7 @@ def test_process_routes_require_process_perm():
     assert permission_for_request("POST", "/api/demandes-offres/abc/offres-completes") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/offre") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/notes-internes") == PERM_DEMANDES_OFFRES_PROCESS
+    assert permission_for_request("POST", "/api/demandes-offres/abc/notes-externes") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/erreurs") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/soumis-compagnie") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/envoyer") == PERM_DEMANDES_OFFRES_EDIT
@@ -132,16 +133,21 @@ def test_serialize_hides_internal_notes_for_conseiller():
         "id": "d1",
         "statut": "Demande envoyée",
         "notes_internes": [{"note": "secret"}],
+        "notes_externes": [{"id": "e1", "note": "pour le conseiller"}],
         "historique": [
             {"action": "Demande envoyée", "at": "2026-01-01"},
             {"action": "Note interne", "detail": "secret", "at": "2026-01-02"},
+            {"action": "Note externe", "detail": "pour le conseiller", "at": "2026-01-03"},
         ],
     }
     conseiller = _user(ROLE_CONSEILLER)
     out = serialize_demande(doc, viewer=conseiller)
     assert out["notes_internes"] == []
+    assert out["notes_externes"][0]["note"] == "pour le conseiller"
     assert out["can_process"] is False
-    assert all(not str(e.get("action") or "").lower().startswith("note interne") for e in out["historique"])
+    actions = [str(e.get("action") or "") for e in out["historique"]]
+    assert all(not a.lower().startswith("note interne") for a in actions)
+    assert "Note externe" in actions
 
     gestionnaire = _user(ROLE_GESTIONNAIRE_OFFRES, see_all_dossiers=True)
     out2 = serialize_demande(doc, viewer=gestionnaire)

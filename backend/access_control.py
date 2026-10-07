@@ -756,6 +756,7 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("POST",), r"^/demandes-offres/[^/]+/offres-completes$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/offre$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/notes-internes$", PERM_DEMANDES_OFFRES_PROCESS),
+    (("POST",), r"^/demandes-offres/[^/]+/notes-externes$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/erreurs$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/soumis-compagnie$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/demande-annulee$", PERM_DEMANDES_OFFRES_PROCESS),

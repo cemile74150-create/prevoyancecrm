@@ -182,6 +182,11 @@ class InternalNoteRequest(BaseModel):
     note: str = Field(min_length=1)
 
 
+class ExternalNoteRequest(BaseModel):
+    """Note visible dans LeoSoft et envoyée par e-mail au conseiller créateur."""
+    note: str = Field(min_length=1)
+
+
 class OffresCompletesRequest(BaseModel):
     """Note optionnelle destinée à l'agent (e-mail Offres complètes)."""
     message_conseiller: Optional[str] = None
@@ -625,18 +630,22 @@ def attach_demandes_offres_routes(
                 MAIL_TYPE_OFFRE_RECUE,
                 MAIL_TYPE_OFFRES_COMPLETES,
                 MAIL_TYPE_OFFRE_SIGNEE,
+                MAIL_TYPE_NOTE_EXTERNE,
                 format_demande_incomplete_email,
                 format_demande_offre_email,
                 format_demande_offre_recap_conseiller_email,
                 format_offre_modifiee_email,
                 format_offre_recue_email,
                 format_offres_completes_email,
+                format_note_externe_email,
                 format_offre_signee_email,
+                normalize_message_id,
                 office_email_to,
                 offre_notify_role,
                 offres_email_enabled,
                 offres_email_to,
                 send_email_async,
+                should_remember_offres_thread_message_id,
             )
         except Exception as exc:
             logger.warning("Email service unavailable: %s", exc)
@@ -691,6 +700,12 @@ def attach_demandes_offres_routes(
                 doc, changes=changes, note=note
             )
             to_addr = to_override or offres_email_to()
+        elif event_key in {"note_externe", "note-externe", "external_note"}:
+            mail_type = MAIL_TYPE_NOTE_EXTERNE
+            subject, body_text, body_html = format_note_externe_email(doc, note=note)
+            to_addr = to_override or await resolve_demande_creator_email(doc)
+            if not to_addr:
+                return False, "E-mail du créateur introuvable sur la demande"
         else:
             mail_type = MAIL_TYPE_DEMANDE_OFFRE
             subject, body_text, body_html = format_demande_offre_email(doc)
@@ -715,6 +730,9 @@ def attach_demandes_offres_routes(
             meta_event: str,
             meta_role: str,
             dest_cc: Optional[list] = None,
+            in_reply_to: Optional[str] = None,
+            references: Optional[str] = None,
+            result_out: Optional[dict] = None,
         ) -> tuple[bool, Optional[str]]:
             log_meta = {
                 "client_id": doc.get("client_id"),
@@ -741,6 +759,9 @@ def attach_demandes_offres_routes(
                         cc=dest_cc or None,
                         mail_type=mtype,
                         log_meta=log_meta,
+                        in_reply_to=in_reply_to,
+                        references=references,
+                        result_out=result_out,
                     )
                 )
                 if isinstance(result, tuple):
@@ -759,6 +780,9 @@ def attach_demandes_offres_routes(
                             cc=dest_cc or None,
                             mail_type=mtype,
                             log_meta=log_meta,
+                            in_reply_to=in_reply_to,
+                            references=references,
+                            result_out=result_out,
                         )
                     )
                     if isinstance(result, tuple):
@@ -771,6 +795,15 @@ def attach_demandes_offres_routes(
                 logger.exception("Offer email failed event=%s", meta_event)
                 return False, str(exc)[:500]
 
+        thread_message_id = None
+        if event_key in {"signee", "signée", "signed"}:
+            thread_message_id = await resolve_offres_thread_message_id(doc)
+            if not thread_message_id:
+                logger.warning(
+                    "Offre signée sans Message-ID du mail initial demande=%s — envoi hors fil",
+                    doc.get("id"),
+                )
+        send_meta: dict = {}
         sent, error = await _dispatch(
             dest=to_addr,
             subj=subject,
@@ -780,7 +813,27 @@ def attach_demandes_offres_routes(
             meta_event=event_key,
             meta_role=offre_notify_role(event_key),
             dest_cc=cc_list or None,
+            in_reply_to=thread_message_id,
+            references=thread_message_id,
+            result_out=send_meta,
         )
+        remembered_id = normalize_message_id(send_meta.get("message_id"))
+        if should_remember_offres_thread_message_id(
+            doc, event=event_key, sent=sent, message_id=remembered_id
+        ):
+            doc["offres_thread_message_id"] = remembered_id
+            demande_id = doc.get("id")
+            if demande_id:
+                try:
+                    await db[COLLECTION].update_one(
+                        {"id": demande_id, "user_id": TENANT_USER_ID},
+                        {"$set": {
+                            "offres_thread_message_id": remembered_id,
+                            "updated_at": now_iso(),
+                        }},
+                    )
+                except Exception:
+                    logger.exception("persist offres_thread_message_id failed")
 
         # Copie récapitulatif au conseiller (envoi / renvoi / compléter-renvoyer)
         if send_conseiller_recap:
@@ -859,6 +912,38 @@ def attach_demandes_offres_routes(
             if role in {"admin", "ceo", "gestionnaire_offres"}:
                 ids.append(u.get("user_id"))
         return [i for i in ids if i]
+
+    async def resolve_offres_thread_message_id(doc: dict) -> Optional[str]:
+        """
+        Message-ID du mail initial envoyé à l'équipe Offres.
+        D'abord le champ mémorisé sur la demande, sinon le plus ancien journal SMTP réussi.
+        """
+        from email_service import (
+            MAIL_TYPE_DEMANDE_OFFRE,
+            normalize_message_id as _norm_mid,
+            pick_initial_offres_message_id,
+        )
+
+        stored = _norm_mid((doc or {}).get("offres_thread_message_id"))
+        if stored:
+            return stored
+        demande_id = ((doc or {}).get("id") or "").strip()
+        if not demande_id:
+            return None
+        try:
+            rows = await db.email_logs.find(
+                {
+                    "ref_id": demande_id,
+                    "type": MAIL_TYPE_DEMANDE_OFFRE,
+                    "event": "envoyee",
+                    "status": "sent",
+                },
+                {"_id": 0},
+            ).to_list(200)
+        except Exception:
+            logger.exception("lookup offres thread message id failed")
+            return None
+        return pick_initial_offres_message_id(rows)
 
     async def resolve_conseiller_notify_email(doc: dict) -> Optional[str]:
         """
@@ -990,6 +1075,32 @@ def attach_demandes_offres_routes(
                 break
         return hits
 
+    @api_router.get("/demandes-offres/modifier/recherche-numero")
+    async def recherche_offre_par_numero(
+        numero: str = Query(""),
+        user: User = Depends(current_user_dependency),
+    ):
+        """Ouvre une demande déjà dans LeoSoft par son numéro OFF. Lecture seule."""
+        require_perm(user, PERM_DEMANDES_OFFRES_EDIT, detail="Permission d'édition des demandes requise")
+        normalized = normalize_offre_numero(numero)
+        if not normalized:
+            raise HTTPException(status_code=422, detail="Saisissez un numéro OFF-AAAA-NNNN")
+        doc = await db[COLLECTION].find_one(
+            {
+                "user_id": TENANT_USER_ID,
+                "is_deleted": {"$ne": True},
+                "numero": {"$regex": f"^{re.escape(normalized)}$", "$options": "i"},
+            },
+            {"_id": 0},
+        )
+        if not doc or not can_access_demande(user, doc):
+            raise HTTPException(status_code=404, detail="Aucune demande pour ce numéro OFF")
+        await ensure_permanent_subject(doc)
+        hit = modifier_client_search_hit(doc)
+        hit["email_subject"] = doc.get("email_subject") or ""
+        hit["numero"] = doc.get("numero") or normalized
+        return hit
+
     @api_router.post("/demandes-offres/modifier/analyse-pdf")
     async def analyse_pdf_for_modification(
         file: UploadFile = File(...),
@@ -999,9 +1110,9 @@ def attach_demandes_offres_routes(
     ):
         """
         Analyse un PDF d'offre / police et préremplit le formulaire du type choisi.
-        Ne rattache pas une demande existante : une offre hors LeoSoft devient
-        une nouvelle demande à l'envoi. Une offre déjà dans LeoSoft se choisit
-        par le nom du client (GET .../modifier/recherche).
+        Si un numéro OFF (saisi ou lu dans le PDF) correspond à une demande :
+        rattacher cette demande, conserver le numéro et l'objet e-mail, ne pas
+        en créer une autre. Sans numéro OFF : préremplissage hors LeoSoft.
         """
         require_perm(user, PERM_DEMANDES_OFFRES_EDIT, detail="Permission d'édition des demandes requise")
         data = await file.read()
@@ -1016,14 +1127,25 @@ def attach_demandes_offres_routes(
         mapped = map_extract_to_form(raw, form_type=form_type)
         fields = mapped.get("fields") or {}
         form_payload = mapped.get("form_payload") or {}
-        numero_detecte = (numero or "").strip() or (mapped.get("numero_offre") or raw.get("numero_offre") or "")
-        numero_detecte = numero_detecte.strip().upper() if numero_detecte else ""
-        if numero_detecte:
-            m = re.match(r"OFF-?(\d{4})-?(\d{3,6})", numero_detecte.replace(" ", ""))
-            if m:
-                numero_detecte = f"OFF-{m.group(1)}-{m.group(2).zfill(4)}"
-        # Le numéro lu dans le PDF n'est pas une clé de liaison : on ne charge
-        # pas la demande existante et on ne l'écrit pas.
+        lu_dans_pdf = mapped.get("numero_offre") or raw.get("numero_offre") or ""
+        candidate = (numero or "").strip() or lu_dans_pdf
+        numero_detecte = normalize_offre_numero(lu_dans_pdf) or normalize_offre_numero(candidate)
+        pool: list = []
+        normalized = normalize_offre_numero(candidate)
+        if normalized:
+            doc = await db[COLLECTION].find_one(
+                {
+                    "user_id": TENANT_USER_ID,
+                    "is_deleted": {"$ne": True},
+                    "numero": {"$regex": f"^{re.escape(normalized)}$", "$options": "i"},
+                },
+                {"_id": 0},
+            )
+            if doc and can_access_demande(user, doc):
+                await ensure_permanent_subject(doc)
+                pool = [doc]
+        decision = resolve_pdf_offre_target(pool, candidate)
+        matched = decision.get("demande") if decision.get("action") == "rattacher" else None
 
         # Labels utiles pour l'UI
         labels = {
@@ -1050,18 +1172,27 @@ def attach_demandes_offres_routes(
         }
         extracted_ui = {k: v for k, v in labels.items() if v not in (None, "", "Non indiqué")}
 
+        action = decision.get("action") or "creer"
+        if action == "rattacher":
+            hint = "PDF rattaché à la demande existante. Le numéro OFF et l'objet e-mail sont conservés."
+        elif action == "refus":
+            hint = "Ce numéro OFF ne correspond à aucune demande. Aucune nouvelle demande n'est créée."
+        else:
+            hint = "Formulaire prérempli depuis le PDF. Aucun numéro OFF : l'envoi crée une nouvelle demande."
         return {
             "form_type": form_type,
             "filename": filename,
-            "numero": None,
+            "action": action,
+            "numero": (matched or {}).get("numero") if matched else (decision.get("numero") if action == "refus" else None),
             "numero_detecte": numero_detecte or None,
-            "demande": None,
+            "email_subject": (matched or {}).get("email_subject") or "",
+            "demande": matched,
             "fields": fields,
             "form_payload": form_payload,
             "filled_keys": mapped.get("filled_keys") or [],
             "extracted": extracted_ui,
             "reference_police": mapped.get("reference_police") or raw.get("reference_police"),
-            "hint": "Formulaire prérempli depuis le PDF. Aucun numéro OFF à saisir : l'envoi crée une nouvelle demande.",
+            "hint": hint,
         }
 
     @api_router.get("/demandes-offres/meta")
@@ -2448,6 +2579,62 @@ def attach_demandes_offres_routes(
         fresh = await require_demande(demande_id, user)
         return serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
 
+    @api_router.post("/demandes-offres/{demande_id}/notes-externes")
+    async def add_external_note(
+        demande_id: str,
+        payload: ExternalNoteRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        """
+        Note destinée au conseiller créateur : historique LeoSoft + e-mail.
+        Le destinataire est le créateur de la demande, pas le gestionnaire connecté.
+        """
+        require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        doc = await require_demande(demande_id, user)
+        note = payload.note.strip()
+        if not note:
+            raise HTTPException(status_code=422, detail="La note est obligatoire")
+        author = actor_name(user)
+        to_addr = await resolve_demande_creator_email(doc)
+        sent = False
+        email_error = None
+        if to_addr:
+            mail_doc = {**doc, "note_externe_author": author}
+            sent, email_error = await try_send_email(
+                mail_doc,
+                event="note_externe",
+                note=note,
+                to_override=to_addr,
+            )
+        else:
+            email_error = "E-mail du créateur introuvable sur la demande"
+        entry = {
+            "id": str(uuid.uuid4()),
+            "at": now_iso(),
+            "by_name": author,
+            "by_id": user.account_id,
+            "note": note,
+            "email_to": to_addr,
+            "email_sent": bool(sent),
+            "email_error": email_error,
+        }
+        notes = list(doc.get("notes_externes") or [])
+        notes.append(entry)
+        await db[COLLECTION].update_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID},
+            {
+                "$set": {"notes_externes": notes, "updated_at": now_iso()},
+                "$push": {"historique": history("Note externe", user, note)},
+            },
+        )
+        fresh = await require_demande(demande_id, user)
+        result = serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
+        if isinstance(result, dict):
+            result["note_email_sent"] = bool(sent)
+            result["note_email_error"] = email_error
+            result["notify_email"] = to_addr
+        return result
+
     @api_router.get("/notifications/offres")
     async def list_offre_notifications(
         user: User = Depends(current_user_dependency),
@@ -3009,6 +3196,11 @@ def attach_demandes_offres_routes(
                         })
         updates["modifications"] = changes
         updates["note_service_offre"] = note or doc.get("note_service_offre") or ""
+        # Le numéro OFF et l'objet du fil ne changent pas lors d'une modification.
+        updates.pop("numero", None)
+        updates.pop("email_subject", None)
+        updates.pop("id", None)
+        updates.pop("_id", None)
         result = await save_status(
             demande_id,
             user,

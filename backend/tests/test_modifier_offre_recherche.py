@@ -158,3 +158,85 @@ def test_payload_leosoft_garde_le_formulaire_complet_et_les_seuls_changements():
     assert body["changes"] == changes
     assert body["form_type"] == "vehicule"
     assert body["note_service_offre"] is None
+
+
+def test_recherche_par_numero_off_trouve_la_demande_existante():
+    from demandes_offres_3p import find_demande_by_offre_numero, normalize_offre_numero
+
+    docs = [
+        {"id": "1", "numero": "OFF-2026-0042", "nom": "Dupont", "prenom": "Marie"},
+        {"id": "2", "numero": "OFF-2026-0007", "nom": "Martin", "prenom": "Paul"},
+    ]
+    assert normalize_offre_numero("off-2026-042") == "OFF-2026-0042"
+    assert normalize_offre_numero("OFF 2026 0042") == "OFF-2026-0042"
+    found = find_demande_by_offre_numero(docs, "OFF-2026-0042")
+    assert found["id"] == "1"
+    assert found["numero"] == "OFF-2026-0042"
+    assert find_demande_by_offre_numero(docs, "Marie") is None
+    assert demande_matches_client_name(docs[0], "Dupont") is True
+    assert demande_matches_client_name(docs[0], "OFF-2026-0042") is False
+
+
+def test_pdf_avec_off_existant_rattache_sans_doublon():
+    from demandes_offres_3p import resolve_pdf_offre_target
+
+    existing = {
+        "id": "demande-42",
+        "numero": "OFF-2026-0042",
+        "email_subject": "OFF-2026-0042-Dupont Jean -3e pilier",
+        "statut": "Offre reçue",
+        "prenom": "Marie",
+        "nom": "Dupont",
+    }
+    autre = {
+        "id": "demande-99",
+        "numero": "OFF-2026-0099",
+        "email_subject": "OFF-2026-0099-Martin Paul",
+    }
+    decision = resolve_pdf_offre_target([existing, autre], "OFF-2026-0042")
+    assert decision["action"] == "rattacher"
+    assert decision["demande"]["id"] == "demande-42"
+    assert decision["demande"]["numero"] == "OFF-2026-0042"
+    assert decision["numero"] == "OFF-2026-0042"
+    assert decision["email_subject"] == "OFF-2026-0042-Dupont Jean -3e pilier"
+    assert decision["action"] != "creer"
+    ids = {existing["id"], autre["id"]}
+    assert decision["demande"]["id"] in ids
+    assert len([d for d in (existing, autre) if d["numero"] == "OFF-2026-0042"]) == 1
+
+
+def test_pdf_sans_off_cree_et_off_inconnu_ne_cree_pas():
+    from demandes_offres_3p import resolve_pdf_offre_target
+
+    existing = {"id": "demande-42", "numero": "OFF-2026-0042", "email_subject": "fil"}
+    sans = resolve_pdf_offre_target([existing], "")
+    assert sans["action"] == "creer"
+    assert sans["demande"] is None
+    assert sans["numero"] is None
+    inconnu = resolve_pdf_offre_target([existing], "OFF-2026-0001")
+    assert inconnu["action"] == "refus"
+    assert inconnu["demande"] is None
+    assert inconnu["numero"] == "OFF-2026-0001"
+
+
+def test_kanban_et_page_gardent_off_nom_et_colonnes():
+    root = Path(__file__).resolve().parents[2]
+    page = (root / "frontend" / "src" / "pages" / "ModifierOffre.js").read_text(encoding="utf-8")
+    kanban = (root / "frontend" / "src" / "lib" / "demandesOffres.js").read_text(encoding="utf-8")
+    dashboard = (root / "frontend" / "src" / "pages" / "DemandesOffres.js").read_text(encoding="utf-8")
+    reponses = (root / "frontend" / "src" / "pages" / "GestionReponsesOffres.js").read_text(encoding="utf-8")
+    schema = (root / "frontend" / "src" / "components" / "OffreSchemaForm.js").read_text(encoding="utf-8")
+    assert "N° d'offre existant" in page
+    assert "modifier-offre-numero" in page
+    assert "/demandes-offres/modifier/recherche" in page
+    assert "modifier/recherche-numero" in page
+    assert 'setSource("off")' in page
+    assert 'action === "rattacher"' in page
+    assert "Aucune deuxième demande" in page or "deuxième demande" in page
+    assert '{ id: "a_modifier", label: "À modifier", statuts: ["Offre à modifier"] }' in kanban
+    assert '{ id: "modifiees", label: "Modifiées", statuts: ["Offre modifiée"] }' in kanban
+    assert "Demandes d'offres modifiées" in dashboard
+    assert "isOffreAModifier" in reponses
+    assert "bg-amber-50/70" in reponses
+    assert "border-rose-600" in schema
+    assert "changedKeys" in schema

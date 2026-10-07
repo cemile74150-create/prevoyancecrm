@@ -104,8 +104,11 @@ export default function ModifierOffre() {
   const [selectedType, setSelectedType] = useState(null); // { form_type, label }
 
   const [demande, setDemande] = useState(null);
-  const [source, setSource] = useState(null); // null | "pdf" | "leosoft"
+  const [source, setSource] = useState(null); // null | "pdf" | "leosoft" | "off" | "refus"
+  const [formOrigin, setFormOrigin] = useState(null); // null | "stored" | "pdf"
   const [draftId, setDraftId] = useState(null);
+  const [numeroInput, setNumeroInput] = useState("");
+  const [openingNumero, setOpeningNumero] = useState(false);
   const [nameQuery, setNameQuery] = useState("");
   const [searchHits, setSearchHits] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -143,6 +146,7 @@ export default function ModifierOffre() {
   const resetWorkspace = () => {
     setDemande(null);
     setSource(null);
+    setFormOrigin(null);
     setDraftId(null);
     setSnapshot(null);
     setForm(emptyForm());
@@ -196,12 +200,38 @@ export default function ModifierOffre() {
     setPayloadSnapshot({ ...payload });
     setExtracted(data.extracted || null);
     setPdfReady(true);
-    setSource("pdf");
+    setFormOrigin("pdf");
     userTouchedRef.current = false;
     setManualKeys(new Set());
     setPrefilledCount(Array.isArray(data.filled_keys) ? data.filled_keys.length : 0);
-    // Le PDF hors LeoSoft ne rattache jamais une demande existante.
+    const action = data.action || (data.demande?.id ? "rattacher" : "creer");
+    if (action === "rattacher" && data.demande?.id) {
+      const keptNumero = data.demande.numero || data.numero || "";
+      setDemande({
+        id: data.demande.id,
+        numero: keptNumero,
+        email_subject: data.demande.email_subject || data.email_subject || "",
+        statut: data.demande.statut,
+        prenom: data.demande.prenom || "",
+        nom: data.demande.nom || "",
+      });
+      if (keptNumero) setNumeroInput(keptNumero);
+      setSource("off");
+      setDraftId(null);
+      return;
+    }
+    if (action === "rattacher" || action === "refus") {
+      setDemande(null);
+      setSource("refus");
+      setDraftId(null);
+      const shown = data.numero || data.numero_detecte || "";
+      if (shown) setNumeroInput(shown);
+      return;
+    }
+    // PDF sans numéro OFF : préremplissage, nouvelle demande à l'envoi.
     setDemande(null);
+    setSource("pdf");
+    setDraftId(null);
   };
 
   const uploadPdf = async (event) => {
@@ -212,24 +242,32 @@ export default function ModifierOffre() {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("form_type", selectedType.form_type);
+      if (numeroInput.trim()) fd.append("numero", numeroInput.trim());
 
       const res = await api.post("/demandes-offres/modifier/analyse-pdf", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       const data = res.data;
-      if (source === "leosoft") {
+      const action = data.action || (data.demande?.id ? "rattacher" : "creer");
+      if (action === "creer" && source === "leosoft") {
         toast.message("PDF hors LeoSoft : une nouvelle demande sera créée. L'offre déjà enregistrée n'est pas modifiée.");
-        setDraftId(null);
       }
       applyPrefill(data);
       const nFilled = Array.isArray(data.filled_keys)
         ? data.filled_keys.length
         : Object.keys(data.fields || {}).filter((k) => data.fields[k] != null && data.fields[k] !== "").length;
-      toast.success(
-        nFilled
-          ? `PDF analysé — ${nFilled} champ(s) prérempli(s)`
-          : "PDF importé — peu de champs détectés, vérifiez manuellement",
-      );
+      if (action === "rattacher") {
+        const kept = data.demande?.numero || data.numero || "la demande existante";
+        toast.success(`PDF rattaché à ${kept} — numéro OFF et objet e-mail conservés`);
+      } else if (action === "refus") {
+        toast.error("Ce n° OFF ne correspond à aucune demande. Aucune nouvelle demande n'a été créée.");
+      } else {
+        toast.success(
+          nFilled
+            ? `PDF analysé — ${nFilled} champ(s) prérempli(s)`
+            : "PDF importé — peu de champs détectés, vérifiez manuellement",
+        );
+      }
     } catch (e) {
       toast.error(errorMessage(e, "Extraction PDF impossible"));
     } finally {
@@ -257,7 +295,7 @@ export default function ModifierOffre() {
     }
   };
 
-  const selectLeosoft = async (hit) => {
+  const selectExisting = async (hit, mode) => {
     if (!hit?.id) return;
     setBusy(true);
     try {
@@ -265,17 +303,20 @@ export default function ModifierOffre() {
       const data = res.data || {};
       const formType = data.form_type || hit.form_type || "pilier3_legacy";
       const label = data.form_type_label || hit.form_type_label || formType;
+      const keptNumero = data.numero || hit.numero || "";
       setSelectedType({ form_type: formType, label });
-      setSource("leosoft");
+      setSource(mode === "off" ? "off" : "leosoft");
+      setFormOrigin("stored");
       setDraftId(null);
       setDemande({
         id: data.id,
-        numero: data.numero || hit.numero || "",
-        email_subject: data.email_subject || "",
+        numero: keptNumero,
+        email_subject: data.email_subject || hit.email_subject || "",
         statut: data.statut,
         prenom: data.prenom || hit.prenom || "",
         nom: data.nom || hit.nom || "",
       });
+      if (mode === "off" && keptNumero) setNumeroInput(keptNumero);
       setPdfReady(false);
       setExtracted(null);
       setNote("");
@@ -310,12 +351,41 @@ export default function ModifierOffre() {
         setSchema(null);
       }
       setPhase("workspace");
-      const who = [hit.prenom, hit.nom].filter(Boolean).join(" ") || hit.client_label || "ce client";
-      toast.success(`Formulaire d'origine prérempli — ${who}`);
+      const who = mode === "off"
+        ? (keptNumero || "cette offre")
+        : ([hit.prenom, hit.nom].filter(Boolean).join(" ") || hit.client_label || "ce client");
+      toast.success(
+        mode === "off"
+          ? `Offre ${who} ouverte — numéro et objet e-mail conservés`
+          : `Formulaire d'origine prérempli — ${who}`,
+      );
     } catch (e) {
       toast.error(errorMessage(e, "Impossible de charger cette offre"));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const selectLeosoft = (hit) => selectExisting(hit, "leosoft");
+
+  const ouvrirParNumero = async () => {
+    const q = numeroInput.trim();
+    if (!q) {
+      toast.error("Saisissez un n° d'offre existant (OFF-AAAA-NNNN)");
+      return;
+    }
+    setOpeningNumero(true);
+    try {
+      const res = await api.get("/demandes-offres/modifier/recherche-numero", { params: { numero: q } });
+      if (!res.data?.id) {
+        toast.error("Aucune demande pour ce n° OFF. Aucune nouvelle demande n'a été créée.");
+        return;
+      }
+      await selectExisting(res.data, "off");
+    } catch (e) {
+      toast.error(errorMessage(e, "Aucune demande pour ce n° OFF"));
+    } finally {
+      setOpeningNumero(false);
     }
   };
 
@@ -403,25 +473,29 @@ export default function ModifierOffre() {
 
   const envoyer = async () => {
     if (!selectedType) return;
-    if (source !== "pdf" && source !== "leosoft") {
-      return toast.error("Importez un PDF ou choisissez une offre LeoSoft par le nom du client");
+    const attached = (source === "leosoft" || source === "off") && Boolean(demande?.id);
+    if (source === "refus") {
+      return toast.error("Ce n° OFF ne correspond à aucune demande. Corrigez-le ou effacez-le pour une offre hors LeoSoft.");
+    }
+    if (!attached && source !== "pdf") {
+      return toast.error("Ouvrez une offre par n° OFF ou par nom, ou importez un PDF sans numéro OFF");
     }
     if (source === "pdf" && !pdfReady) {
       return toast.error("Importez d'abord la police / l'offre PDF pour préremplir le formulaire");
     }
-    if (source === "leosoft" && !demande?.id) {
-      return toast.error("Choisissez l'offre du client dans la liste");
-    }
-    if (source === "leosoft" && !changes.length && !note.trim()) {
+    if (attached && formOrigin === "stored" && !changes.length && !note.trim()) {
       return toast.error("Modifiez au moins un champ ou ajoutez une note avant l'envoi");
     }
-    if (source === "pdf" && !changes.length && !note.trim() && prefilledCount <= 0) {
+    if ((source === "pdf" || (attached && formOrigin === "pdf")) && !changes.length && !note.trim() && prefilledCount <= 0) {
       return toast.error("Le PDF n'a rempli aucun champ. Modifiez le formulaire ou ajoutez une note avant l'envoi.");
+    }
+    if (source === "pdf" && numeroInput.trim()) {
+      return toast.error("Un n° OFF est saisi : ouvrez la demande existante. Aucune deuxième demande n'est créée.");
     }
 
     setBusy(true);
     try {
-      if (source === "leosoft") {
+      if (attached) {
         if (!demande.snapshot_original) {
           await api.post(`/demandes-offres/${demande.id}/modifier/start`);
         }
@@ -437,7 +511,7 @@ export default function ModifierOffre() {
           body.form_type_label = selectedType.label;
         }
         const res = await api.post(`/demandes-offres/${demande.id}/modifier/envoyer`, body);
-        toast.success("Modification envoyée au service Offre");
+        toast.success("Modification envoyée — numéro OFF et objet e-mail conservés");
         warnEmail(res);
         navigate(`/demandes-offres/${demande.id}`);
         return;
@@ -513,10 +587,12 @@ export default function ModifierOffre() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             {phase === "catalog"
-              ? "Offre déjà dans LeoSoft : cherchez par le nom du client. Offre hors LeoSoft : choisissez le type et importez le PDF. Aucun numéro OFF à saisir."
-              : source === "leosoft"
-                ? "Le formulaire d'origine est prérempli. Les champs que vous modifiez passent en rouge, puis vous envoyez."
-                : "Le PDF préremplit le formulaire. Les champs que vous modifiez passent en rouge. L'envoi crée une nouvelle demande."}
+              ? "Offre déjà dans LeoSoft : par n° OFF ou par nom et prénom. Sans numéro OFF : choisissez le type et importez le PDF."
+              : source === "leosoft" || source === "off"
+                ? "La demande existante est ouverte. Le numéro OFF et l'objet e-mail restent ceux du fil. Les champs modifiés passent en rouge."
+                : source === "refus"
+                  ? "Ce n° OFF ne correspond à aucune demande. Aucune nouvelle demande n'est créée."
+                  : "PDF sans numéro OFF : le formulaire est prérempli et l'envoi crée une nouvelle demande. Les champs modifiés passent en rouge."}
           </p>
         </div>
 
@@ -524,7 +600,7 @@ export default function ModifierOffre() {
           <div>
             <h2 className="font-display font-bold text-lg text-[#002FA7]">Offre déjà dans LeoSoft</h2>
             <p className="text-xs text-muted-foreground mt-1">
-              Recherchez par le nom du client. S&apos;il y a plusieurs personnes ou plusieurs offres, choisissez la bonne dans la liste.
+              Recherchez par le nom et le prénom du client. S&apos;il y a plusieurs personnes ou plusieurs offres, choisissez la bonne dans la liste.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
@@ -560,7 +636,7 @@ export default function ModifierOffre() {
             <ul className="divide-y rounded-md border border-border" data-testid="modifier-offre-recherche-liste">
               {searchHits.map((hit) => {
                 const who = [hit.prenom, hit.nom].filter(Boolean).join(" ") || hit.client_label || "Client";
-                const selected = source === "leosoft" && demande?.id === hit.id;
+                const selected = (source === "leosoft" || source === "off") && demande?.id === hit.id;
                 return (
                   <li key={hit.id}>
                     <button
@@ -572,7 +648,7 @@ export default function ModifierOffre() {
                     >
                       <span className="block text-sm font-semibold text-slate-900">{who}</span>
                       <span className="block text-xs text-muted-foreground mt-0.5">
-                        {[hit.form_type_label || hit.form_type, hit.date ? formatDateFr(hit.date) : null, hit.statut]
+                        {[hit.numero, hit.form_type_label || hit.form_type, hit.date ? formatDateFr(hit.date) : null, hit.statut]
                           .filter(Boolean)
                           .join(" · ")}
                       </span>
@@ -582,6 +658,37 @@ export default function ModifierOffre() {
               })}
             </ul>
           )}
+          <div className="pt-3 border-t border-border space-y-2">
+            <Label className="text-xs text-muted-foreground">{"N° d'offre existant"}</Label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                value={numeroInput}
+                onChange={(e) => setNumeroInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    ouvrirParNumero();
+                  }
+                }}
+                placeholder="OFF-2026-0042"
+                className="font-mono"
+                data-testid="modifier-offre-numero"
+              />
+              <Button
+                type="button"
+                disabled={openingNumero || busy}
+                onClick={ouvrirParNumero}
+                className="gap-2 bg-[#002FA7] hover:bg-[#00248a] shrink-0"
+                data-testid="modifier-offre-ouvrir-numero"
+              >
+                {openingNumero ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                Ouvrir
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Détecté automatiquement dans le PDF si présent. S&apos;il correspond à une demande, le numéro OFF et l&apos;objet e-mail sont conservés.
+            </p>
+          </div>
         </Card>
 
         {phase === "catalog" && (
@@ -635,17 +742,32 @@ export default function ModifierOffre() {
                   <h2 className="font-display font-bold text-xl text-[#002FA7] mt-0.5">
                     {selectedType.label}
                   </h2>
-                  {source === "leosoft" && (demande?.prenom || demande?.nom) && (
+                  {(source === "leosoft" || source === "off") && (demande?.prenom || demande?.nom) && (
                     <p className="text-sm font-medium text-slate-800 mt-2">
                       {[demande.prenom, demande.nom].filter(Boolean).join(" ")}
                     </p>
                   )}
-                  {source === "pdf" && (
-                    <p className="text-sm text-slate-700 mt-2">
-                      Nouvelle demande — aucun numéro OFF à saisir
+                  {(source === "leosoft" || source === "off") && (demande?.numero || numeroInput) && (
+                    <p className="font-mono text-sm font-semibold text-slate-800 mt-2">
+                      {demande?.numero || numeroInput}
+                      {demande?.email_subject ? (
+                        <span className="block font-sans font-medium text-slate-600 mt-0.5">
+                          {demande.email_subject}
+                        </span>
+                      ) : null}
                     </p>
                   )}
-                  {demande?.statut && source === "leosoft" && (
+                  {source === "pdf" && (
+                    <p className="text-sm text-slate-700 mt-2">
+                      Nouvelle demande — le PDF n&apos;a pas de numéro OFF
+                    </p>
+                  )}
+                  {source === "refus" && (
+                    <p className="text-sm text-rose-700 mt-2">
+                      N° OFF inconnu — aucune demande créée
+                    </p>
+                  )}
+                  {demande?.statut && (source === "leosoft" || source === "off") && (
                     <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${STATUT_STYLE[demande.statut] || ""}`}>
                       {demande.statut}
                     </span>
@@ -678,7 +800,7 @@ export default function ModifierOffre() {
                   <div>
                     <p className="font-medium text-slate-900">Flux recommandé</p>
                     <ol className="mt-1 text-xs space-y-0.5 list-decimal list-inside text-muted-foreground">
-                      <li>Offre LeoSoft : choisir le client dans la liste, ou hors LeoSoft : importer le PDF</li>
+                      <li>Par n° OFF ou par nom et prénom si l&apos;offre est dans LeoSoft ; sinon importez le PDF sans OFF</li>
                       <li>Vérifier le formulaire prérempli (champs introuvables laissés vides)</li>
                       <li>Modifier uniquement le nécessaire — ces champs passent en rouge</li>
                       <li>Envoyer au service Offre le formulaire complet et les modifications</li>
@@ -704,13 +826,13 @@ export default function ModifierOffre() {
               )}
             </Card>
 
-            {(source === "leosoft" || pdfReady) && (
+            {(source === "leosoft" || source === "off" || pdfReady) && (
               <Card className="p-5 space-y-5">
                 <div>
                   <h2 className="font-display font-bold text-[#002FA7]">Formulaire prérempli</h2>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {source === "leosoft"
-                      ? "Même formulaire que celui enregistré pour cette demande. Seuls les champs que vous changez s'affichent en rouge."
+                    {formOrigin === "stored"
+                      ? "Même formulaire que celui enregistré pour cette demande. Seuls les champs que vous changez s'affichent en rouge. Le numéro OFF et l'objet e-mail sont conservés."
                       : "Champs remplis depuis le PDF. Ceux que vous changez s'affichent en rouge. Les autres restent tels quels."}
                   </p>
                 </div>
@@ -780,8 +902,8 @@ export default function ModifierOffre() {
                     onChange={onSchemaChange}
                     onManualEdit={onManualEdit}
                     changedKeys={changedPayloadKeys}
-                    agentIdentity={source === "leosoft" ? null : agentIdentity}
-                    lockAgent={source === "leosoft" ? false : !isAdmin}
+                    agentIdentity={formOrigin === "stored" ? null : agentIdentity}
+                    lockAgent={formOrigin === "stored" ? false : !isAdmin}
                     skipDefaults
                   />
                 ) : (
@@ -857,7 +979,7 @@ export default function ModifierOffre() {
               </Card>
             )}
 
-            {source !== "leosoft" && !pdfReady && (
+            {source !== "leosoft" && source !== "off" && !pdfReady && (
               <Card className="p-8 text-center border-dashed">
                 <FileUp className="h-10 w-10 mx-auto text-[#002FA7]/70" />
                 <p className="mt-3 font-medium text-slate-800">

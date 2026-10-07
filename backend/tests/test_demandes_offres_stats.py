@@ -107,9 +107,12 @@ def test_compute_stats_demandes_modifiees_same_set_as_gestion():
     assert is_demande_offre_modifiee({"statut": STATUT_ENVOYEE}) is False
     assert is_demande_offre_modifiee({"statut": STATUT_OFFRE_MODIFIEE, "is_deleted": True}) is False
     kanban = {col["id"]: col for col in s["gestion_kanban"]}
-    assert kanban["a_modifier"]["label"] == "Offre à modifier"
-    assert set(kanban["a_modifier"]["statuts"]) == {STATUT_OFFRE_A_MODIFIER, STATUT_OFFRE_MODIFIEE}
-    assert "modifiees" not in kanban
+    ids = [col["id"] for col in s["gestion_kanban"]]
+    assert kanban["a_modifier"]["label"] == "À modifier"
+    assert kanban["a_modifier"]["statuts"] == [STATUT_OFFRE_A_MODIFIER]
+    assert kanban["modifiees"]["label"] == "Modifiées"
+    assert kanban["modifiees"]["statuts"] == [STATUT_OFFRE_MODIFIEE]
+    assert ids.index("modifiees") == ids.index("a_modifier") + 1
 
 
 def test_compute_stats_offres_recues_kpi_counts_offre_recue_only():

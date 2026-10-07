@@ -1,6 +1,7 @@
 """Module Demandes d'offres 3e pilier — collection Mongo dédiée."""
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional, Tuple
@@ -598,7 +599,8 @@ GESTION_KANBAN_COLUMNS = [
     {"id": "en_attente", "label": "En attente", "statuts": [STATUT_ATTENTE_INFOS]},
     {"id": "incompletes", "label": "Incomplètes", "statuts": [STATUT_INCOMPLETE]},
     {"id": "offres_recues", "label": "Offres reçues", "statuts": [STATUT_OFFRE_RECUE]},
-    {"id": "a_modifier", "label": "Offre à modifier", "statuts": list(STATUTS_DEMANDE_MODIFIEE)},
+    {"id": "a_modifier", "label": "À modifier", "statuts": [STATUT_OFFRE_A_MODIFIER]},
+    {"id": "modifiees", "label": "Modifiées", "statuts": [STATUT_OFFRE_MODIFIEE]},
     {"id": "completes", "label": "Complètes", "statuts": [STATUT_OFFRE_COMPLETE, STATUT_OFFRE_CHOISIE, STATUT_EN_CONCLUSION]},
     {"id": "envoyee_client", "label": "Chez le client", "statuts": [STATUT_OFFRE_ENVOYEE_CLIENT]},
     {"id": "signees", "label": "Signées", "statuts": [STATUT_OFFRE_SIGNEE]},
@@ -1160,8 +1162,8 @@ def build_field_changes(original: dict, current: dict, fields: Optional[list] = 
     """Compare deux dicts et retourne la liste des champs modifiés."""
     keys = fields or sorted(set(list(original.keys()) + list(current.keys())))
     skip = {
-        "id", "numero", "historique", "notes_internes", "documents", "offres", "offre",
-        "updated_at", "created_at", "email_subject", "modifications", "snapshot_original",
+        "id", "numero", "historique", "notes_internes", "notes_externes", "documents", "offres", "offre",
+        "updated_at", "created_at", "email_subject", "offres_thread_message_id", "modifications", "snapshot_original",
         "erreurs_incomplete", "signature", "envoi_client", "conclusion",
     }
     changes = []
@@ -1308,6 +1310,70 @@ def modifier_client_search_hit(doc: dict) -> dict[str, Any]:
         "date": date,
         "statut": (doc or {}).get("statut") or "",
         "numero": (doc or {}).get("numero") or "",
+    }
+
+
+_OFFRE_NUMERO_RE = re.compile(r"OFF-?(\d{4})-?(\d{3,6})", re.IGNORECASE)
+
+
+def normalize_offre_numero(raw: Optional[str]) -> Optional[str]:
+    """OFF-AAAA-NNNN canonique, ou None si le texte n'est pas un numéro OFF."""
+    text = str(raw or "").strip().upper().replace(" ", "")
+    if not text:
+        return None
+    match = _OFFRE_NUMERO_RE.search(text)
+    if not match:
+        return None
+    return f"OFF-{match.group(1)}-{match.group(2).zfill(4)}"
+
+
+def find_demande_by_offre_numero(docs, raw: Optional[str]) -> Optional[dict]:
+    """Retourne la demande dont le numéro OFF correspond, sans en créer une autre."""
+    numero = normalize_offre_numero(raw)
+    if not numero:
+        return None
+    for doc in docs or []:
+        if not isinstance(doc, dict) or doc.get("is_deleted"):
+            continue
+        stored = normalize_offre_numero(doc.get("numero"))
+        if stored and stored == numero:
+            return doc
+    return None
+
+
+def resolve_pdf_offre_target(docs, numero_raw: Optional[str]) -> dict:
+    """
+    Décision d'un PDF « Modifier une offre ».
+
+    - numéro OFF d'une demande existante : rattacher (même id, même numéro, même objet)
+    - numéro OFF inconnu ou illisible comme OFF : refuser, ne pas créer de doublon
+    - aucun numéro : nouvelle demande hors LeoSoft
+    """
+    raw = str(numero_raw or "").strip()
+    numero = normalize_offre_numero(raw)
+    if not raw:
+        return {"action": "creer", "demande": None, "numero": None, "email_subject": None}
+    if not numero:
+        return {"action": "refus", "demande": None, "numero": raw, "email_subject": None}
+    match = find_demande_by_offre_numero(docs, numero)
+    if not match:
+        return {"action": "refus", "demande": None, "numero": numero, "email_subject": None}
+    subject = str(match.get("email_subject") or "").strip()
+    kept = match.get("numero") or numero
+    return {
+        "action": "rattacher",
+        "demande": {
+            "id": match.get("id"),
+            "numero": kept,
+            "email_subject": subject,
+            "statut": match.get("statut"),
+            "form_type": match.get("form_type"),
+            "form_type_label": match.get("form_type_label"),
+            "prenom": match.get("prenom"),
+            "nom": match.get("nom"),
+        },
+        "numero": kept,
+        "email_subject": subject,
     }
 
 
@@ -1508,6 +1574,7 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "email_sent": bool(doc.get("email_sent")),
         "email_error": doc.get("email_error"),
         "email_subject": doc.get("email_subject") or "",
+        "notes_externes": list(doc.get("notes_externes") or []),
         "demande_origine": normalize_demande_origine(doc.get("demande_origine")),
         "type_client": normalize_type_client(doc.get("type_client"), client_id=doc.get("client_id")),
         "erreurs_incomplete": list(doc.get("erreurs_incomplete") or []),

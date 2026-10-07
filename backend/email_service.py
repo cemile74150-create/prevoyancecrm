@@ -55,6 +55,9 @@ CONSEILLER_OFFRE_EVENTS = frozenset(
         "offres_complètes",
         "modifiee",
         "modification",
+        "note_externe",
+        "note-externe",
+        "external_note",
     }
 )
 
@@ -63,6 +66,64 @@ def offre_notify_role(event: Optional[str]) -> str:
     """destinataire logique : createur | offres_mailbox"""
     key = (event or "envoyee").strip().lower()
     return "createur" if key in CONSEILLER_OFFRE_EVENTS else "offres_mailbox"
+
+
+def normalize_message_id(value: Optional[str]) -> Optional[str]:
+    """Forme RFC « <id@domaine> ». None si vide."""
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("<") and raw.endswith(">") and len(raw) > 2:
+        return raw
+    inner = raw.strip("<>").strip()
+    if not inner or any(ch.isspace() for ch in inner):
+        return None
+    return f"<{inner}>"
+
+
+def pick_initial_offres_message_id(logs: Optional[Sequence[dict]]) -> Optional[str]:
+    """
+    Message-ID du premier mail « demande envoyée » réussi vers l'équipe Offres.
+    Ignore le récap conseiller, les mails au conseiller et les envois en erreur.
+    """
+    best_stamp: Optional[str] = None
+    best_id: Optional[str] = None
+    for row in logs or []:
+        if not isinstance(row, dict):
+            continue
+        if (row.get("type") or "") != MAIL_TYPE_DEMANDE_OFFRE:
+            continue
+        if str(row.get("event") or "").strip().lower() != "envoyee":
+            continue
+        if str(row.get("status") or "").strip().lower() != "sent":
+            continue
+        mid = normalize_message_id(row.get("message_id"))
+        if not mid:
+            continue
+        stamp = str(row.get("sent_at") or row.get("created_at") or "")
+        if best_id is None or stamp < (best_stamp or ""):
+            best_stamp = stamp
+            best_id = mid
+    return best_id
+
+
+def should_remember_offres_thread_message_id(
+    doc: dict,
+    *,
+    event: str,
+    sent: bool,
+    message_id: Optional[str],
+) -> bool:
+    """Mémorise le fil uniquement au premier envoi réussi de la demande (pas un renvoi)."""
+    if not sent:
+        return False
+    if (event or "").strip().lower() != "envoyee":
+        return False
+    if not normalize_message_id(message_id):
+        return False
+    if normalize_message_id((doc or {}).get("offres_thread_message_id")):
+        return False
+    return True
 
 
 DEFAULT_SMTP_HOST = "mail.infomaniak.com"
@@ -78,6 +139,7 @@ MAIL_TYPE_OFFRES_COMPLETES = "offres_completes"
 MAIL_TYPE_OFFRE_INCOMPLETE = "offre_incomplete"
 MAIL_TYPE_OFFRE_SIGNEE = "offre_signee"
 MAIL_TYPE_OFFRE_MODIFIEE = "offre_modifiee"
+MAIL_TYPE_NOTE_EXTERNE = "note_externe"
 MAIL_TYPE_DOSSIER_PRESENTE = "dossier_presente"
 MAIL_TYPE_RDV_SUIVI_RELANCE = "rdv_suivi_relance"
 MAIL_TYPE_TEST = "smtp_test"
@@ -726,6 +788,8 @@ def _smtp_deliver(
     cc: Optional[Sequence[str]] = None,
     bcc: Optional[Sequence[str]] = None,
     attachments: Optional[Sequence[Attachment]] = None,
+    in_reply_to: Optional[str] = None,
+    references: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     """Envoi SMTP pur — sans journalisation. Retourne (ok, erreur, message_id)."""
     to_email = (to_email or "").strip()
@@ -742,6 +806,8 @@ def _smtp_deliver(
         cc=cc,
         bcc=bcc,
         attachments=attachments,
+        in_reply_to=in_reply_to,
+        references=references,
     )
     message_id = (msg.get("Message-ID") or "").strip() or None
     recipients = [to_email] + cc_clean + bcc_clean
@@ -786,6 +852,9 @@ def send_email(
     mail_type: Optional[str] = None,
     log_meta: Optional[dict] = None,
     persist_log: bool = True,
+    in_reply_to: Optional[str] = None,
+    references: Optional[str] = None,
+    result_out: Optional[dict] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     Envoie un e-mail via SMTP Infomaniak.
@@ -806,7 +875,12 @@ def send_email(
         cc=cc,
         bcc=bcc,
         attachments=attachments,
+        in_reply_to=in_reply_to,
+        references=references,
     )
+    if result_out is not None:
+        result_out["message_id"] = message_id
+        result_out["ok"] = ok
     if persist_log:
         status = "sent" if ok else "error"
         log_doc = _compose_send_log_doc(
@@ -839,6 +913,9 @@ async def send_email_async(
     mail_type: Optional[str] = None,
     log_meta: Optional[dict] = None,
     persist_log: bool = True,
+    in_reply_to: Optional[str] = None,
+    references: Optional[str] = None,
+    result_out: Optional[dict] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     Variante async : journal « pending » avant SMTP, puis sent/error après acceptation SMTP.
@@ -872,7 +949,12 @@ async def send_email_async(
         cc=cc,
         bcc=bcc,
         attachments=attachments,
+        in_reply_to=in_reply_to,
+        references=references,
     )
+    if result_out is not None:
+        result_out["message_id"] = message_id
+        result_out["ok"] = ok
     if persist_log:
         status = "sent" if ok else "error"
         log_doc = _compose_send_log_doc(
@@ -904,6 +986,8 @@ def _build_message(
     cc: Optional[Sequence[str]] = None,
     bcc: Optional[Sequence[str]] = None,
     attachments: Optional[Sequence[Attachment]] = None,
+    in_reply_to: Optional[str] = None,
+    references: Optional[str] = None,
 ) -> Tuple[EmailMessage, List[str], List[str]]:
     mail_from = smtp_from_address()
     from_header = smtp_from_header()
@@ -931,6 +1015,17 @@ def _build_message(
     msg["From"] = from_header if "<" in from_header else formataddr((DEFAULT_FROM_NAME, mail_from))
     msg["To"] = to_email
     msg["Message-ID"] = make_msgid(domain=(mail_from.split("@")[-1] if mail_from and "@" in mail_from else "leosoft.ch"))
+    parent_id = normalize_message_id(in_reply_to)
+    if parent_id:
+        msg["In-Reply-To"] = parent_id
+        ref_ids: List[str] = []
+        for part in str(references or "").split():
+            norm = normalize_message_id(part)
+            if norm and norm not in ref_ids:
+                ref_ids.append(norm)
+        if parent_id not in ref_ids:
+            ref_ids.append(parent_id)
+        msg["References"] = " ".join(ref_ids)
     if reply_to:
         msg["Reply-To"] = reply_to
     if cc_clean:
@@ -1462,6 +1557,59 @@ def format_offre_signee_email(doc: dict, *, signature: Optional[dict] = None) ->
         doc=doc,
     )
     return subject, body_text, body_html
+
+
+def format_note_externe_email(doc: dict, *, note: Optional[str] = None) -> Tuple[str, str, str]:
+    """
+    Note rédigée par un gestionnaire, envoyée au conseiller créateur de la demande.
+    Objet distinct des notifications Offres : ce mail ne rejoint pas le fil offres@.
+    """
+    client = _offre_client_name(doc)
+    numero = (doc.get("numero") or "").strip()
+    subject = f"Note sur votre demande d’offre – {client} – {numero or '—'}"
+    prenom = _agent_greeting_prenom(doc)
+    greeting = f"Bonjour {prenom}," if prenom else "Bonjour,"
+    author = (doc.get("note_externe_author") or "").strip()
+    note_text = (note or "").strip()
+    url = _demande_offre_url(doc.get("id"))
+    link_label = "Voir la demande dans LeoSoft"
+
+    text_lines = [
+        greeting,
+        "",
+        "Une note vous a été transmise concernant votre demande d’offre.",
+        "",
+        f"N° / référence : {numero or '—'}",
+        f"Client : {client}",
+    ]
+    if author:
+        text_lines.append(f"De : {author}")
+    text_lines.extend(["", "Note :", note_text or "—"])
+    if url:
+        text_lines.extend(["", f"{link_label} :", url])
+    text_lines.extend(["", "Cordialement,", "LeoSoft"])
+    body_text = "\n".join(text_lines)
+
+    html_parts = [
+        '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.5;">',
+        f"<p>{html.escape(greeting)}</p>",
+        "<p>Une note vous a été transmise concernant votre demande d’offre.</p>",
+        "<p>"
+        f"<strong>N° / référence</strong> : {html.escape(numero or '—')}<br/>"
+        f"<strong>Client</strong> : {html.escape(client)}",
+    ]
+    if author:
+        html_parts.append(f"<br/><strong>De</strong> : {html.escape(author)}")
+    html_parts.append("</p>")
+    html_parts.append(
+        "<p><strong>Note :</strong><br/>"
+        + html.escape(note_text or "—").replace("\n", "<br/>")
+        + "</p>"
+    )
+    if url:
+        html_parts.append(_html_button(url, link_label))
+    html_parts.append("<p>Cordialement,<br/>LeoSoft</p></div>")
+    return subject, body_text, "".join(html_parts)
 
 
 def format_offre_modifiee_email(
