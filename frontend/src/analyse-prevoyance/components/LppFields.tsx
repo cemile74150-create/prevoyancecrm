@@ -101,7 +101,7 @@ export function LppFields({
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div className="space-y-2">
-          <Label>% LPP déblocable en capital</Label>
+          <Label>% LPP disponible</Label>
           <Input
             type="number"
             min={0}
@@ -125,7 +125,7 @@ export function LppFields({
           />
           <p className="text-xs text-muted-foreground">
             Saisie libre (100, 50, 25…). Défaut {LPP_PCT_DEBLOCABLE_DEFAULT} % si
-            non renseigné. ESTV capital = capital × ce %.
+            non renseigné.
           </p>
         </div>
         <div className="space-y-1 rounded-md border bg-muted/30 px-3 py-2 text-sm">

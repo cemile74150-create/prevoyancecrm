@@ -18,6 +18,7 @@ import type {
   WithdrawalScenario,
   WithdrawalScenarioResult,
 } from "@/analyse-prevoyance/lib/types";
+import { ConfirmDeleteButton } from "@/analyse-prevoyance/components/ConfirmDeleteButton";
 import {
   buildDefaultWithdrawalItems,
   duplicateWithdrawalScenario,
@@ -27,6 +28,7 @@ import {
 import {
   itemMontantRetire,
   mergeCalendarWithResult,
+  scenarioWithdrawalYear,
 } from "@/analyse-prevoyance/lib/withdrawalPlanUtils";
 import { formatChf } from "@/analyse-prevoyance/lib/mappers";
 
@@ -74,10 +76,10 @@ export function WithdrawalPlanningFields({
       if (preset === "A") {
         name = "A — Regroupé (même année si possible)";
         const years = items
-          .map((i) => i.anneeRetraitPrevue)
+          .map((i) => scenarioWithdrawalYear(i))
           .filter((y): y is number => y != null);
         const y = years.length ? Math.min(...years) : null;
-        items = items.map((i) => ({ ...i, anneeRetraitPrevue: y }));
+        items = items.map((i) => ({ ...i, anneePremierePossible: y }));
       } else if (preset === "B") {
         name = "B — Réparti (dates sources)";
       } else {
@@ -170,7 +172,7 @@ export function WithdrawalPlanningFields({
         <div>
           <h3 className="text-sm font-medium">Planification des retraits</h3>
           <p className="text-xs text-muted-foreground">
-            Tableau interactif · calendrier · scénarios. Agrégation ESTV :
+            Tableau interactif · calendrier · scénarios. Agrégation fiscale :
             personne + année. Pas de qualification « meilleur ».
           </p>
         </div>
@@ -223,7 +225,7 @@ export function WithdrawalPlanningFields({
             >
               <Calculator className="size-4" />
               {recalculatePending
-                ? "Calcul ESTV…"
+                ? "Calcul…"
                 : "Recalculer la fiscalité"}
             </Button>
           )}
@@ -311,15 +313,13 @@ export function WithdrawalPlanningFields({
                     Recharger capitaux
                   </Button>
                 )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeScenario(active.id)}
+                <ConfirmDeleteButton
+                  ariaLabel="Supprimer le scénario"
+                  onConfirm={() => removeScenario(active.id)}
                 >
                   <Trash2 className="size-4" />
                   Supprimer
-                </Button>
+                </ConfirmDeleteButton>
               </div>
 
               {/* 1. Tableau interactif */}
@@ -398,16 +398,12 @@ export function WithdrawalPlanningFields({
                             </td>
                             <td className="px-2 py-1">
                               <Input
-                                type="number"
-                                className="h-8 w-24"
+                                type="text"
+                                readOnly
+                                disabled
+                                className="h-8 w-24 bg-muted text-muted-foreground"
                                 value={it.anneeRetraitPrevue ?? ""}
-                                onChange={(e) =>
-                                  updateItem(active.id, it.id, {
-                                    anneeRetraitPrevue: e.target.value
-                                      ? Number(e.target.value)
-                                      : null,
-                                  })
-                                }
+                                aria-label="Année prévue"
                               />
                             </td>
                             <td className="px-2 py-1">
@@ -441,14 +437,12 @@ export function WithdrawalPlanningFields({
                               />
                             </td>
                             <td className="px-2 py-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeItem(active.id, it.id)}
+                              <ConfirmDeleteButton
+                                ariaLabel="Supprimer la ligne"
+                                onConfirm={() => removeItem(active.id, it.id)}
                               >
                                 <Trash2 className="size-3.5" />
-                              </Button>
+                              </ConfirmDeleteButton>
                             </td>
                           </tr>
                         ))}
@@ -457,8 +451,9 @@ export function WithdrawalPlanningFields({
                   </div>
                 )}
                 <p className="mt-1 text-xs text-muted-foreground">
-                  1re / dernière année : contrainte saisie conseiller — pas
-                  d’AVS anticipée, plafonds ni indexation inventés.
+                  Année prévue : échéance du contrat, non modifiable. 1re
+                  possible : année de retrait du scénario, utilisée pour le
+                  calcul et le PDF.
                 </p>
               </div>
 
@@ -469,7 +464,7 @@ export function WithdrawalPlanningFields({
                 </h4>
                 {calendar.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    Aucune année prévue renseignée.
+                    Aucune année de retrait renseignée.
                   </p>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

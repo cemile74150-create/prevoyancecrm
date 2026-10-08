@@ -2,6 +2,7 @@ import { personFirstName } from "../mappers";
 import { anneeRetraitLibrePassage } from "../rules/libre-passage-annee";
 import type { AnalyseInput, PersonComputed, WithdrawalPlanItem } from "../types";
 import { librePassageRetire, normalizeThirdPillarType } from "../types";
+import { scenarioWithdrawalYear } from "../withdrawalPlanUtils";
 import { lppCalculationService } from "./LPPCalculationService";
 
 export interface TimelineEvent {
@@ -73,7 +74,7 @@ export class TimelineService {
       );
       const who = lp.titulaire === "conjoint" ? who2 : who1;
       events.push({
-        year: planned?.anneeRetraitPrevue ?? anneeRetraitLibrePassage(lp, birth),
+        year: (planned ? scenarioWithdrawalYear(planned) : null) ?? anneeRetraitLibrePassage(lp, birth),
         label: `Libre passage – ${who} – ${lp.institution || "libre passage"}`.trim(),
         amount: librePassageRetire(lp),
         kind: "lp",
@@ -129,7 +130,7 @@ function pushLpp(
   const year =
     fate === "Rente"
       ? yearOf(computed.dateDepart)
-      : (planned?.anneeRetraitPrevue ?? yearOf(computed.dateDepart));
+      : ((planned ? scenarioWithdrawalYear(planned) : null) ?? yearOf(computed.dateDepart));
   events.push({
     year,
     label: `LPP – ${who} – ${fate}`,
@@ -152,7 +153,7 @@ function pushPillars(
       (item) => item.kind === "3p" && item.sourceId === contract.id,
     );
     const type = normalizeThirdPillarType(contract.type);
-    const year = planned?.anneeRetraitPrevue ?? yearOf(contract.echeance);
+    const year = (planned ? scenarioWithdrawalYear(planned) : null) ?? yearOf(contract.echeance);
     events.push({
       year,
       label: [type, who, contract.compagnie, contract.police]

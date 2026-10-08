@@ -55,7 +55,10 @@ export interface LibrePassageAsset {
    * les deux peuvent être saisis, aucun n'écrase l'autre.
    */
   ageDeblocage?: number | null;
-  /** % effectivement retiré en capital (0–100). Défaut 100. */
+  /**
+   * Conservé pour les dossiers déjà enregistrés.
+   * Le formulaire affiche 100 % fixe : le calcul utilise toujours 100 %.
+   */
   pctRetire: number;
 }
 
@@ -71,8 +74,13 @@ export interface WithdrawalPlanItem {
   institution: string;
   montantDisponible: number;
   pctCapital: number;
+  /** Échéance / disponibilité du contrat d'origine. Non modifiée dans le tableau. */
   anneeRetraitPrevue: number | null;
-  /** Saisie libre conseiller — pas de règle légale inventée. */
+  /**
+   * Année de retrait du scénario (« 1re possible »).
+   * C'est cette année qui alimente les calculs, la projection et le PDF.
+   * Vide : on relit l'année prévue pour que les scénarios déjà enregistrés restent lisibles.
+   */
   anneePremierePossible: number | null;
   /** Saisie libre conseiller — pas de règle légale inventée. */
   anneeDernierePossible: number | null;
@@ -177,6 +185,11 @@ export interface PersonInput {
   troisiemePilier: ThirdPillarContract[];
   /** Rente pont (conjoint, colonne J Excel) — optionnel. */
   rentePont?: number;
+  /**
+   * Âge de retraite souhaité de cet assuré (début des rentes).
+   * Absent : on reprend l'âge du dossier, pour les analyses déjà enregistrées.
+   */
+  ageRetraiteSouhaite?: number | null;
 }
 
 export interface AnalyseInput {
@@ -527,10 +540,7 @@ export function emptyLibrePassage(
   };
 }
 
-/** Montant LP effectivement retiré. */
+/** Montant LP retiré. Le pourcentage disponible est fixe à 100 %. */
 export function librePassageRetire(lp: LibrePassageAsset): number {
-  const pct = Number.isFinite(lp.pctRetire)
-    ? Math.min(100, Math.max(0, lp.pctRetire))
-    : LP_PCT_RETIRE_DEFAULT;
-  return Math.round((lp.montant || 0) * (pct / 100) * 100) / 100;
+  return Math.round((lp.montant || 0) * 100) / 100;
 }

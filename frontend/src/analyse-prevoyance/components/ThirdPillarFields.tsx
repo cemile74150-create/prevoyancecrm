@@ -2,6 +2,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
+import { ConfirmDeleteButton } from "@/analyse-prevoyance/components/ConfirmDeleteButton";
 import { Button } from "@/analyse-prevoyance/ui/button";
 import { Input } from "@/analyse-prevoyance/ui/input";
 import { Label } from "@/analyse-prevoyance/ui/label";
@@ -152,15 +153,13 @@ export function ThirdPillarFields({
                     }
                   />
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
+                <ConfirmDeleteButton
                   size="icon"
-                  onClick={() => removeContract(c.id)}
-                  aria-label="Supprimer contrat"
+                  ariaLabel="Supprimer contrat"
+                  onConfirm={() => removeContract(c.id)}
                 >
                   <Trash2 className="size-4" />
-                </Button>
+                </ConfirmDeleteButton>
               </div>
             </div>
           ))}

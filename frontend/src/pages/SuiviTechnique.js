@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import {
   Activity, Cloud, Database, Server, Archive, CheckCircle2, FileDown, RefreshCw, AlertTriangle, Mail,
 } from "lucide-react";
+import { FiscalReferenceAdmin } from "@/analyse-prevoyance/components/FiscalReferenceAdmin";
 
 const GLOBAL_STATUS = {
   ok: { emoji: "🟢", label: "Conforme", pill: "bg-emerald-50 border-emerald-200 text-emerald-800", dot: "bg-emerald-500" },
@@ -333,6 +334,8 @@ export default function SuiviTechnique() {
             </Button>
           </div>
         </div>
+
+        <FiscalReferenceAdmin />
 
         <Card className={`p-6 border-border bg-gradient-to-br ${hasAnomaly ? "from-red-50/80" : hasWarning ? "from-amber-50/80" : "from-emerald-50/80"} to-white`}>
           <div className="flex flex-col gap-4">

@@ -2,6 +2,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
+import { ConfirmDeleteButton } from "@/analyse-prevoyance/components/ConfirmDeleteButton";
 import { Button } from "@/analyse-prevoyance/ui/button";
 import { Input } from "@/analyse-prevoyance/ui/input";
 import { Label } from "@/analyse-prevoyance/ui/label";
@@ -48,16 +49,14 @@ export function RenteHypothesisFields({
         <div key={row.id} className="space-y-3 rounded-md border p-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium">Hypothèse {index + 1}</p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() =>
+            <ConfirmDeleteButton
+              ariaLabel="Supprimer l'hypothèse"
+              onConfirm={() =>
                 onChange({ renteHypotheses: rows.filter((item) => item.id !== row.id) })
               }
             >
               <Trash2 className="size-4" />
-            </Button>
+            </ConfirmDeleteButton>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-1">

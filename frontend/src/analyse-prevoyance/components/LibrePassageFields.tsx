@@ -3,17 +3,15 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/analyse-prevoyance/ui/button";
+import { ConfirmDeleteButton } from "@/analyse-prevoyance/components/ConfirmDeleteButton";
 import { Input } from "@/analyse-prevoyance/ui/input";
 import { Label } from "@/analyse-prevoyance/ui/label";
 import {
   emptyLibrePassage,
-  librePassageRetire,
   type AnalyseInput,
   type LibrePassageAsset,
   type PersonKey,
 } from "@/analyse-prevoyance/lib/types";
-import { formatChf } from "@/analyse-prevoyance/lib/mappers";
-
 export function LibrePassageFields({
   input,
   onChange,
@@ -65,7 +63,6 @@ export function LibrePassageFields({
       ) : (
         <div className="space-y-3">
           {list.map((lp) => {
-            const retire = librePassageRetire(lp);
             return (
               <div
                 key={lp.id}
@@ -104,25 +101,20 @@ export function LibrePassageFields({
                     onChange={(e) =>
                       update(lp.id, {
                         montant: Number(e.target.value) || 0,
+                        pctRetire: 100,
                       })
                     }
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">% retiré</Label>
+                  <Label className="text-xs">% de capital disponible</Label>
                   <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={lp.pctRetire}
-                    onChange={(e) =>
-                      update(lp.id, {
-                        pctRetire: Math.min(
-                          100,
-                          Math.max(0, Number(e.target.value) || 0),
-                        ),
-                      })
-                    }
+                    type="text"
+                    readOnly
+                    disabled
+                    className="bg-muted text-muted-foreground"
+                    value="100 %"
+                    aria-label="% de capital disponible"
                   />
                 </div>
                 <div className="space-y-1">
@@ -151,18 +143,13 @@ export function LibrePassageFields({
                     }
                   />
                 </div>
-                <div className="flex items-end justify-between gap-2">
-                  <p className="text-xs text-muted-foreground">
-                    Capital effectivement retiré : <strong>{formatChf(retire)}</strong>
-                  </p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => remove(lp.id)}
+                <div className="flex items-end justify-end">
+                  <ConfirmDeleteButton
+                    ariaLabel="Supprimer le libre passage"
+                    onConfirm={() => remove(lp.id)}
                   >
                     <Trash2 className="size-4" />
-                  </Button>
+                  </ConfirmDeleteButton>
                 </div>
               </div>
             );

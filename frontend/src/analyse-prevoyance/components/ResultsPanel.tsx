@@ -35,7 +35,7 @@ export function ResultsPanel({ record }: Props) {
         <CardHeader>
           <CardTitle>Synthèse des résultats</CardTitle>
           <CardDescription>
-            Après « Calculer », la situation, les impôts ESTV, la lacune et les
+            Après « Calculer », la situation, les impôts, la lacune et les
             scénarios 60–65 s’affichent ici.
           </CardDescription>
         </CardHeader>
@@ -166,7 +166,7 @@ export function ResultsPanel({ record }: Props) {
         <MetricCard
           title="Rente LPP 65"
           value={formatChf(r1.renteLpp65)}
-          hint={`Capital ${formatChf(r1.capitalLpp65)} · déblocable ${r1.lppPctDeblocable} % → retiré ${formatChf(r1.capitalLppRetire65)}`}
+          hint={`Capital ${formatChf(r1.capitalLpp65)} · disponible ${r1.lppPctDeblocable} % → retiré ${formatChf(r1.capitalLppRetire65)}`}
         />
         <MetricCard
           title="Revenu après retraite"
@@ -174,7 +174,7 @@ export function ResultsPanel({ record }: Props) {
           hint="AVS + LPP 65 (foyer)"
         />
         <MetricCard
-          title="Impôt capital chemin (ESTV)"
+          title="Impôt sur le capital"
           value={formatChf(results.capitalPathFoyer?.impot ?? cap65?.impot)}
           hint={`Retiré ${formatChf(results.capitalPathFoyer?.capitalRetireTotal ?? cap65?.capital)} · net ${formatChf(results.capitalPathFoyer?.net ?? cap65?.net)}`}
         />
@@ -202,7 +202,7 @@ export function ResultsPanel({ record }: Props) {
               Chemin capital foyer (LPP × % + libres passages × %)
             </CardTitle>
             <CardDescription>
-              Impôt ESTV agrégé par personne sur les montants effectivement
+              Impôt agrégé par personne sur les montants effectivement
               retirés — pas de reproduction de l’incohérence Excel J7/J15.
             </CardDescription>
           </CardHeader>
@@ -236,7 +236,7 @@ export function ResultsPanel({ record }: Props) {
                 Planification des retraits — comparaison scénarios
               </CardTitle>
               <CardDescription>
-                Agrégation personne + année fiscale · appels ESTV réels · sans
+                Agrégation personne + année fiscale · calcul fiscal réel · sans
                 qualifier « meilleur ». PDF = scénarios « Inclure dans le
                 rapport » uniquement.
               </CardDescription>
@@ -347,7 +347,7 @@ export function ResultsPanel({ record }: Props) {
 
               <details className="text-sm">
                 <summary className="cursor-pointer text-muted-foreground">
-                  Détail fiscalité technique (buckets ESTV)
+                  Détail fiscalité technique
                 </summary>
                 <ul className="mt-2 space-y-2 text-xs">
                   {results.withdrawalPlanning.scenarios.flatMap((s) =>
@@ -372,7 +372,7 @@ export function ResultsPanel({ record }: Props) {
                           .join(" · ")}
                         <details className="mt-1">
                           <summary className="cursor-pointer text-muted-foreground">
-                            Params ESTV
+                            Paramètres fiscaux
                           </summary>
                           <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted/40 p-2 text-[10px]">
                             {JSON.stringify(a.request, null, 2)}
@@ -391,7 +391,7 @@ export function ResultsPanel({ record }: Props) {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">
-            Scénarios capital 60–65 (impôt ESTV)
+            Scénarios capital 60–65 (impôt)
           </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
@@ -477,7 +477,7 @@ export function ResultsPanel({ record }: Props) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Hypothèses de rente</CardTitle>
             <CardDescription>
-              Revenu encaissé, revenu fiscal et impôt ESTV sont séparés.
+              Revenu encaissé, revenu fiscal et impôt sont séparés.
               {results.renteHypotheses.ageRetraite
                 ? ` Âge de retraite souhaité : ${results.renteHypotheses.ageRetraite} ans.`
                 : " Âge applicable au dossier."}

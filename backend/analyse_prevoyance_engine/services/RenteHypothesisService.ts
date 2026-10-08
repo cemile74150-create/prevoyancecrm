@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import { taxCalculationService } from "./TaxCalculationService";
 import { lppCalculationService } from "./LPPCalculationService";
+import { ageRetraitePersonne } from "../rules/age-retraite";
 import {
   revenuBrutEncaisse,
   revenuFiscalImposable,
@@ -17,7 +18,7 @@ import {
 
 function avsPrincipale65(person: PersonInput): number {
   if (person.avsAnnuel != null && person.avsAnnuel > 0) return person.avsAnnuel;
-  return Math.round((person.avsMensuel || 0) * 13);
+  return Math.round((person.avsMensuel || 0) * 12);
 }
 
 /** AVS utilisée pour un âge : anticipée si saisie, sinon la rente à 65 ans. */
@@ -55,15 +56,18 @@ function typeLabel(type: RenteHypothesisInput["type"]): string {
 /** Rente LPP non retirée en capital. 100 % déblocable → 0. Couple : somme des deux assurés. */
 function renteLppResiduelleFoyer(
   input: AnalyseInput,
-  age: number | null,
+  age1: number | null,
+  age2: number | null,
   married: boolean,
 ): number {
-  const part = (person: PersonInput) =>
+  const part = (person: PersonInput, age: number | null) =>
     lppCalculationService.renteResiduelle(
       lppRentePourAge(person, age),
       person.lppPctDeblocable,
     );
-  const total = part(input.client1) + (married && input.conjoint ? part(input.conjoint) : 0);
+  const total =
+    part(input.client1, age1) +
+    (married && input.conjoint ? part(input.conjoint, age2) : 0);
   return roundMoney(total);
 }
 
@@ -79,22 +83,25 @@ export class RenteHypothesisService {
     const withLpp = Boolean(input.comparerAvecRenteLpp);
     if (!hypotheses.length && !withLpp) return null;
 
-    const age = input.ageRetraiteSouhaite ?? null;
+    const age1 = ageRetraitePersonne(input.client1, input.ageRetraiteSouhaite);
+    const age2 = input.conjoint
+      ? ageRetraitePersonne(input.conjoint, input.ageRetraiteSouhaite)
+      : null;
     const married = input.etatCivil === "Marié(e)" && !!input.conjoint;
     const avs =
-      avsPourAge(input.client1, age) +
-      (married && input.conjoint ? avsPourAge(input.conjoint, age) : 0);
+      avsPourAge(input.client1, age1) +
+      (married && input.conjoint ? avsPourAge(input.conjoint, age2) : 0);
     const lpp =
-      lppRentePourAge(input.client1, age) +
-      (married && input.conjoint ? lppRentePourAge(input.conjoint, age) : 0);
-    const residuelle = renteLppResiduelleFoyer(input, age, married);
+      lppRentePourAge(input.client1, age1) +
+      (married && input.conjoint ? lppRentePourAge(input.conjoint, age2) : 0);
+    const residuelle = renteLppResiduelleFoyer(input, age1, age2, married);
 
     const columns: RenteHypothesisColumn[] = [];
     if (withLpp) {
-      columns.push(await this.columnLpp(input, avs, lpp, age));
+      columns.push(await this.columnLpp(input, avs, lpp, age1, age2));
     }
     for (const [index, row] of hypotheses.entries()) {
-      columns.push(await this.columnOffre(input, row, index, avs, residuelle, age));
+      columns.push(await this.columnOffre(input, row, index, avs, residuelle, age1, age2));
     }
 
     const lppNet = columns.find((col) => col.kind === "lpp")?.revenuNetApresImpot;
@@ -107,7 +114,7 @@ export class RenteHypothesisService {
     }
 
     return {
-      ageRetraite: age,
+      ageRetraite: age1,
       comparerAvecRenteLpp: withLpp,
       columns,
     };
@@ -116,18 +123,20 @@ export class RenteHypothesisService {
   private async taxOn(
     input: AnalyseInput,
     revenuFiscal: number,
-    age: number | null,
+    age1: number | null,
+    age2: number | null,
   ): Promise<number | null> {
     if (!input.taxLocationId || revenuFiscal <= 0) return null;
     const married = input.etatCivil === "Marié(e)";
-    const age1 = age ?? 65;
+    const resolved1 = age1 ?? 65;
+    const resolved2 = age2 ?? resolved1;
     try {
       const tax = await taxCalculationService.calculateDetailedTaxes({
         foyer: "hypothese-rente",
         taxLocationId: input.taxLocationId,
         relationship: married ? 2 : 1,
-        age1,
-        age2: married ? age1 : 0,
+        age1: resolved1,
+        age2: married ? resolved2 : 0,
         revenue1: revenuFiscal,
         revenue2: 0,
         fortune: input.fortune || 0,
@@ -143,11 +152,12 @@ export class RenteHypothesisService {
     input: AnalyseInput,
     avs: number,
     lpp: number,
-    age: number | null,
+    age1: number | null,
+    age2: number | null,
   ): Promise<RenteHypothesisColumn> {
     const fiscal = revenuFiscalRenteLpp(avs, lpp);
     const brut = fiscal;
-    const impot = await this.taxOn(input, fiscal, age);
+    const impot = await this.taxOn(input, fiscal, age1, age2);
     return {
       id: "lpp",
       kind: "lpp",
@@ -175,7 +185,8 @@ export class RenteHypothesisService {
     index: number,
     avs: number,
     renteLppResiduelle: number,
-    age: number | null,
+    age1: number | null,
+    age2: number | null,
   ): Promise<RenteHypothesisColumn> {
     const garantie = row.renteGarantieAnnuelle || 0;
     const participation = row.participationExcedentsAnnuelle || 0;
@@ -192,7 +203,7 @@ export class RenteHypothesisService {
       participationExcedents: participation,
       renteLppResiduelle,
     });
-    const impot = await this.taxOn(input, fiscal, age);
+    const impot = await this.taxOn(input, fiscal, age1, age2);
     const capital = row.capitalPlace || 0;
     return {
       id: row.id || `h-${index + 1}`,

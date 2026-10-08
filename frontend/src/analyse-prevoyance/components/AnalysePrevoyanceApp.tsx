@@ -12,6 +12,7 @@ import { LibrePassageFields } from "@/analyse-prevoyance/components/LibrePassage
 import { RenteHypothesisFields } from "@/analyse-prevoyance/components/RenteHypothesisFields";
 import { WithdrawalPlanningFields } from "@/analyse-prevoyance/components/WithdrawalPlanningFields";
 import { ResultsPanel } from "@/analyse-prevoyance/components/ResultsPanel";
+import { FiscalUpdateAlert } from "@/analyse-prevoyance/components/FiscalUpdateAlert";
 import { Alert, AlertDescription, AlertTitle } from "@/analyse-prevoyance/ui/alert";
 import { buttonVariants } from "@/analyse-prevoyance/ui/button";
 import { Input } from "@/analyse-prevoyance/ui/input";
@@ -96,13 +97,36 @@ function sampleFerreyres(): AnalyseInput {
   };
 }
 
+function withMonthlyAvs(person) {
+  if (!person) return person;
+  const mensuel = Number(person.avsMensuel) || 0;
+  if (mensuel > 0) {
+    return { ...person, avsAnnuel: Math.round(mensuel * 12) };
+  }
+  return person;
+}
+
 function payloadFrom(source: AnalyseInput) {
+  const client1 = withMonthlyAvs(source.client1);
+  const married = source.etatCivil === "Marié(e)";
+  const conjointSource = married ? source.conjoint ?? emptyPerson("Madame") : null;
+  const conjoint = conjointSource ? withMonthlyAvs(conjointSource) : null;
+  const age1 = client1?.ageRetraiteSouhaite ?? source.ageRetraiteSouhaite ?? null;
   return {
     ...source,
-    conjoint:
-      source.etatCivil === "Marié(e)"
-        ? source.conjoint ?? emptyPerson("Madame")
-        : null,
+    client1: { ...client1, ageRetraiteSouhaite: age1 },
+    ageRetraiteSouhaite: age1,
+    conjoint: conjoint
+      ? {
+          ...conjoint,
+          ageRetraiteSouhaite:
+            conjoint.ageRetraiteSouhaite ?? source.ageRetraiteSouhaite ?? null,
+        }
+      : null,
+    libresPassages: (source.libresPassages || []).map((lp) => ({
+      ...lp,
+      pctRetire: 100,
+    })),
   };
 }
 
@@ -218,7 +242,7 @@ export function AnalysePrevoyanceApp({
       const res = await analyseFetch(`/${id}`, {
         method: "PUT",
         body: JSON.stringify({
-          input,
+          input: payloadFrom(input),
           status: record.status === "annulee"
             ? "annulee"
             : (record?.results ? record.status : "brouillon"),
@@ -295,7 +319,7 @@ export function AnalysePrevoyanceApp({
           });
         });
       } catch {
-        setError("Erreur réseau pendant le calcul ESTV");
+        setError("Erreur réseau pendant le calcul");
       }
     });
   }
@@ -321,8 +345,8 @@ export function AnalysePrevoyanceApp({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      <header className="mb-8 space-y-3">
+    <div className="mx-auto max-w-6xl px-4 pt-3 pb-8 sm:px-6 lg:px-8">
+      <header className="mb-6 space-y-2">
         <p className="text-sm font-medium tracking-[0.12em] text-[var(--ap-accent)] uppercase">
           LeoSoft · Effectuer une analyse
         </p>
@@ -330,10 +354,11 @@ export function AnalysePrevoyanceApp({
           Analyse de prévoyance
         </h1>
         <p className="max-w-2xl text-muted-foreground">
-          Saisie conseiller → calculs AVS / LPP / 3e pilier → impôts ESTV →
+          Saisie conseiller → calculs AVS / LPP / 3e pilier → impôts →
           scénarios, frise, planif retraits, rapport PDF.
         </p>
       </header>
+      <FiscalUpdateAlert />
 
       <div className="mb-6 flex flex-wrap gap-2">
         <button
@@ -402,6 +427,17 @@ export function AnalysePrevoyanceApp({
           title="1. Client"
           hint="Identité, commune fiscale et état civil du foyer."
         >
+          <PersonIdentityFields
+            person={input.client1}
+            onChange={(p) => patchInput({ client1: p })}
+            desiredAge={input.client1.ageRetraiteSouhaite ?? input.ageRetraiteSouhaite ?? null}
+            onDesiredAge={(age) =>
+              patchInput({
+                ageRetraiteSouhaite: age,
+                client1: { ...input.client1, ageRetraiteSouhaite: age },
+              })
+            }
+          />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <CommuneSearch
               value={input.villeRecherche}
@@ -434,76 +470,7 @@ export function AnalysePrevoyanceApp({
                 onChange={(e) => patchInput({ conseillerNom: e.target.value })}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Âge de retraite souhaité</Label>
-              <select
-                className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
-                value={input.ageRetraiteSouhaite ?? ""}
-                onChange={(e) =>
-                  patchInput({
-                    ageRetraiteSouhaite:
-                      e.target.value === "" ? null : Number(e.target.value),
-                  })
-                }
-              >
-                <option value="">Âge applicable au dossier</option>
-                {[65, 64, 63, 62, 61, 60].map((age) => (
-                  <option key={age} value={age}>
-                    {age} ans
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Âge de fin d'activité</Label>
-              <Input
-                type="number"
-                min={50}
-                max={70}
-                placeholder="distinct"
-                value={input.ageFinActivite ?? ""}
-                onChange={(e) =>
-                  patchInput({
-                    ageFinActivite: e.target.value === "" ? null : Number(e.target.value),
-                  })
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Âge de perception AVS</Label>
-              <Input
-                type="number"
-                min={50}
-                max={70}
-                placeholder="distinct"
-                value={input.agePerceptionAvs ?? ""}
-                onChange={(e) =>
-                  patchInput({
-                    agePerceptionAvs: e.target.value === "" ? null : Number(e.target.value),
-                  })
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Âge de retrait LPP</Label>
-              <Input
-                type="number"
-                min={50}
-                max={70}
-                placeholder="distinct"
-                value={input.ageRetraitLpp ?? ""}
-                onChange={(e) =>
-                  patchInput({
-                    ageRetraitLpp: e.target.value === "" ? null : Number(e.target.value),
-                  })
-                }
-              />
-            </div>
           </div>
-          <PersonIdentityFields
-            person={input.client1}
-            onChange={(p) => patchInput({ client1: p })}
-          />
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Salaire brut annuel (CHF)</Label>
@@ -526,6 +493,14 @@ export function AnalysePrevoyanceApp({
               <PersonIdentityFields
                 person={input.conjoint}
                 onChange={(p) => patchInput({ conjoint: p })}
+                desiredAge={
+                  input.conjoint.ageRetraiteSouhaite ?? input.ageRetraiteSouhaite ?? null
+                }
+                onDesiredAge={(age) =>
+                  patchInput({
+                    conjoint: { ...input.conjoint, ageRetraiteSouhaite: age },
+                  })
+                }
               />
               <div className="max-w-sm space-y-2">
                 <Label>Salaire brut annuel de l'assuré 2 (CHF)</Label>
@@ -547,7 +522,7 @@ export function AnalysePrevoyanceApp({
         <Separator />
         <Section
           title={isMarried ? "3. AVS" : "2. AVS"}
-          hint="Saisissez le mensuel : l’annuel est calculé × 13 (sauf si annuel forcé)."
+          hint="Saisissez la rente mensuelle. L’annuelle s’affiche tout de suite : mensuelle × 12."
         >
           <AvsFields
             title="Assuré 1"
@@ -566,7 +541,7 @@ export function AnalysePrevoyanceApp({
         <Separator />
         <Section
           title={isMarried ? "4. LPP" : "3. LPP"}
-          hint="Capital, rente annuelle par âge, et % déblocable en capital (paramétrable)."
+          hint="Capital, rente annuelle par âge, et % LPP disponible."
         >
           <LppFields
             title="Assuré 1"
@@ -622,7 +597,7 @@ export function AnalysePrevoyanceApp({
               ? "7. Planification des retraits / Fiscalité"
               : "6. Planification des retraits / Fiscalité"
           }
-          hint="LPP, libres passages, 3e piliers — scénarios A regroupé / B réparti / C perso. Agrégation ESTV : personne + année."
+          hint="LPP, libres passages, 3e piliers — scénarios A regroupé / B réparti / C perso. Agrégation fiscale : personne + année."
         >
           <WithdrawalPlanningFields
             input={input}
@@ -687,18 +662,8 @@ export function AnalysePrevoyanceApp({
               ? "9. Hypothèses de rente"
               : "8. Hypothèses de rente"
           }
-          hint="Offres saisies à la main. L'âge de retraite choisi en tête du dossier alimente l'AVS et la rente LPP de référence."
+          hint="Offres saisies à la main. L'âge de retraite souhaité de chaque assuré alimente l'AVS et la rente LPP de référence."
         >
-          <div className="mb-4 max-w-xs space-y-2">
-            <Label>Année fiscale ESTV</Label>
-            <Input
-              type="number"
-              value={input.taxYear}
-              onChange={(e) =>
-                patchInput({ taxYear: Number(e.target.value) || 2025 })
-              }
-            />
-          </div>
           <RenteHypothesisFields input={input} onChange={patchInput} />
         </Section>
       </div>
@@ -718,7 +683,7 @@ export function AnalysePrevoyanceApp({
           ) : (
             <Calculator className="size-4" />
           )}
-          {pending ? "Calcul ESTV en cours…" : "Calculer"}
+          {pending ? "Calcul en cours…" : "Calculer"}
         </button>
         <button
           type="button"

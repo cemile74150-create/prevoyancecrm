@@ -5,8 +5,8 @@ import { Input } from "@/analyse-prevoyance/ui/input";
 import { Label } from "@/analyse-prevoyance/ui/label";
 import { Button } from "@/analyse-prevoyance/ui/button";
 import type { AvsRenteAnticipee, PersonInput } from "@/analyse-prevoyance/lib/types";
-import { formatChf } from "@/analyse-prevoyance/lib/mappers";
 import { Plus, Trash2 } from "lucide-react";
+import { ConfirmDeleteButton } from "@/analyse-prevoyance/components/ConfirmDeleteButton";
 
 export function AvsFields({
   title,
@@ -17,9 +17,7 @@ export function AvsFields({
   person: PersonInput;
   onChange: (p: PersonInput) => void;
 }) {
-  const calcAnnuel = Math.round((person.avsMensuel || 0) * 13);
-  const annuelle =
-    person.avsAnnuel != null && person.avsAnnuel > 0 ? person.avsAnnuel : calcAnnuel;
+  const annuelle = Math.round((person.avsMensuel || 0) * 12);
   const anticipees = person.avsRentesAnticipees || [];
 
   function setAnticipees(next: AvsRenteAnticipee[]) {
@@ -36,28 +34,26 @@ export function AvsFields({
             type="number"
             min={0}
             value={person.avsMensuel || ""}
-            onChange={(e) =>
-              onChange({ ...person, avsMensuel: Number(e.target.value) || 0 })
-            }
+            onChange={(e) => {
+              const avsMensuel = Number(e.target.value) || 0;
+              onChange({
+                ...person,
+                avsMensuel,
+                avsAnnuel: Math.round(avsMensuel * 12),
+              });
+            }}
           />
         </div>
         <div className="space-y-2">
-          <Label>Rente AVS à 65 ans (CHF / an)</Label>
+          <Label>AVS annuelle (CHF)</Label>
           <Input
-            type="number"
-            min={0}
-            value={person.avsAnnuel ?? ""}
-            onChange={(e) =>
-              onChange({
-                ...person,
-                avsAnnuel:
-                  e.target.value === "" ? null : Number(e.target.value) || 0,
-              })
-            }
+            readOnly
+            disabled
+            className="bg-muted text-muted-foreground"
+            value={annuelle}
+            aria-label="AVS annuelle"
           />
-          <p className="text-sm tabular-nums">
-            Rente AVS à 65 ans : {formatChf(annuelle)} / an
-          </p>
+          <p className="text-xs text-muted-foreground">Mensuelle × 12</p>
         </div>
       </div>
       <div className="space-y-2">
@@ -99,14 +95,12 @@ export function AvsFields({
                 }
               />
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setAnticipees(anticipees.filter((item) => item.id !== row.id))}
+            <ConfirmDeleteButton
+              ariaLabel="Supprimer la rente AVS anticipée"
+              onConfirm={() => setAnticipees(anticipees.filter((item) => item.id !== row.id))}
             >
               <Trash2 className="size-4" />
-            </Button>
+            </ConfirmDeleteButton>
           </div>
         ))}
         <Button

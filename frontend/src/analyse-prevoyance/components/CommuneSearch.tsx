@@ -48,14 +48,14 @@ export function CommuneSearch({
         );
         const data = await res.json();
         if (!res.ok) {
-          setError(data.detail || data.error || "Erreur ESTV");
+          setError(data.detail || data.error || "Recherche de commune impossible");
           setResults([]);
         } else {
           setResults(data.locations || []);
           setOpen(true);
         }
       } catch {
-        setError("Impossible de joindre l’API ESTV");
+        setError("Impossible de joindre le service fiscal");
         setResults([]);
       } finally {
         setLoading(false);

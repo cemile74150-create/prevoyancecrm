@@ -20,7 +20,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
-from access_control import User, can_access_client
+from access_control import User, can_access_client, require_admin
+from fiscal_reference import (
+    apply_validation,
+    apply_year_change,
+    normalize_config,
+    parse_as_of,
+    public_status,
+)
 from analyses_prefill import (
     apply_crm_display_prenoms,
     prefill_from_clients,
@@ -42,6 +49,10 @@ class AnalyseCreate(BaseModel):
 class AnalyseUpdate(BaseModel):
     input: Optional[dict] = None
     status: Optional[str] = None
+
+
+class FiscalYearUpdate(BaseModel):
+    referenceYear: int
 
 
 def _now() -> str:
@@ -320,6 +331,10 @@ def attach_analyses_routes(
         else:
             data = prefill_from_clients({}, conseiller_nom=user.name or "")
         data = _with_crm_prenoms(data, client, spouse)
+        if isinstance(data, dict):
+            fiscal = await _fiscal_config()
+            data = dict(data)
+            data["taxYear"] = int(fiscal["referenceYear"])
         if payload.clientId:
             active = await _active_for_client(user, payload.clientId)
             primary = _pick_primary(active)
@@ -342,6 +357,49 @@ def attach_analyses_routes(
         await db.analyses.insert_one(doc)
         doc.pop("_id", None)
         return _public(doc)
+
+    async def _fiscal_config() -> dict:
+        doc = await db.analyse_fiscal_config.find_one({"id": "analyse-fiscal"}, {"_id": 0})
+        return normalize_config(doc)
+
+    async def _save_fiscal(config: dict) -> dict:
+        stored = {
+            "id": "analyse-fiscal",
+            "referenceYear": int(config["referenceYear"]),
+            "validatedReferenceYear": config.get("validatedReferenceYear"),
+            "validatedAt": config.get("validatedAt"),
+        }
+        await db.analyse_fiscal_config.update_one(
+            {"id": "analyse-fiscal"},
+            {"$set": stored},
+            upsert=True,
+        )
+        return stored
+
+    @api_router.get("/analyses-prevoyance/fiscal-config")
+    async def get_fiscal_config(asOf: Optional[str] = None, user: User = Depends(get_current_user)):
+        config = await _fiscal_config()
+        return public_status(config, parse_as_of(asOf))
+
+    @api_router.put("/analyses-prevoyance/fiscal-config")
+    async def put_fiscal_config(
+        payload: FiscalYearUpdate,
+        asOf: Optional[str] = None,
+        user: User = Depends(get_current_user),
+    ):
+        require_admin(user)
+        try:
+            config = apply_year_change(await _fiscal_config(), payload.referenceYear)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        saved = await _save_fiscal(config)
+        return public_status(saved, parse_as_of(asOf))
+
+    @api_router.post("/analyses-prevoyance/fiscal-config/validate")
+    async def validate_fiscal_config(asOf: Optional[str] = None, user: User = Depends(get_current_user)):
+        require_admin(user)
+        saved = await _save_fiscal(apply_validation(await _fiscal_config(), _now()))
+        return public_status(saved, parse_as_of(asOf))
 
     @api_router.get("/analyses-prevoyance/{analyse_id}")
     async def get_analyse(analyse_id: str, user: User = Depends(get_current_user)):

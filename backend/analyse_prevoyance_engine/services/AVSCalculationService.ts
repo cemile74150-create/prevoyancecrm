@@ -9,12 +9,13 @@ import type { PersonComputed, PersonInput } from "../types";
 
 /**
  * Service AVS — rentes et âge légal.
- * Mensuel × 13 → annuel (Excel E31 / E32).
- * Intègre le % LPP déblocable pour capital retiré / rente résiduelle.
+ * Mensuel × 12 → annuel lorsque l'annuel n'est pas déjà saisi.
+ * Un annuel déjà enregistré reste prioritaire (analyses existantes).
+ * Intègre le % LPP disponible pour capital retiré / rente résiduelle.
  */
 export class AVSCalculationService {
   annualFromMonthly(mensuel: number): number {
-    return round2(mensuel * 13);
+    return round2(mensuel * 12);
   }
 
   resolveAnnual(person: PersonInput): number {

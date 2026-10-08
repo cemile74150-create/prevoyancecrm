@@ -55,17 +55,27 @@ export function buildReportPages(payload: ReportPayload): ReportPageSpec[] {
 
   pages.push({ kind: "landscape", html: pageFrise(payload, next(), total) });
 
-  if (payload.vaudoise?.include) {
+  if (payload.vaudoise?.include && payload.hypothesesRente) {
     pages.push({
       kind: "landscape",
-      html: pageComparatifVaudoise(payload, next(), total),
+      html: pageComparatifVaudoise(payload, next(), total, "full"),
     });
   }
+
+  pages.push({
+    kind: "landscape",
+    html: pageSolutionsComparatif(next(), total),
+  });
 
   if (payload.hypothesesRente) {
     pages.push({
       kind: "landscape",
       html: pageHypothesesRente(payload, next(), total),
+    });
+  } else if (payload.vaudoise?.include) {
+    pages.push({
+      kind: "landscape",
+      html: pageComparatifVaudoise(payload, next(), total, "closing"),
     });
   }
 
@@ -365,6 +375,46 @@ export function reportCss(forceOrient?: ReportPageKind) {
     border-left: 1px solid rgba(255, 255, 255, 0.85);
   }
   .plain { font-size: 10.5pt; line-height: 1.4; margin: 0 0 8px; }
+  table.data.solutions {
+    font-size: 9.5pt;
+    margin: 0 0 8px;
+  }
+  table.data.solutions th {
+    font-size: 9pt;
+    line-height: 1.25;
+    padding: 7px 8px;
+    white-space: normal;
+  }
+  table.data.solutions td {
+    height: auto;
+    padding: 7px 8px;
+    line-height: 1.35;
+    hyphens: none;
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+  table.data.solutions th.lab,
+  table.data.solutions td.lab {
+    text-align: left;
+    font-weight: 600;
+  }
+  table.data.solutions td.sol {
+    text-align: center;
+  }
+  .solutions-block,
+  .keep-with-note {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .solutions-footnote,
+  .fiscal-note {
+    font-size: 8.5pt;
+    line-height: 1.45;
+    color: ${GRAY};
+    margin: 8px 0 10px;
+    text-align: left;
+    font-style: normal;
+  }
   `;
 }
 
@@ -1009,6 +1059,7 @@ function pageHypothesesRente(p: ReportPayload, n: number, total: number): string
 
   return `
   <div class="page-title">Comparaison des rentes ${esc(ageLabel)}</div>
+  <div class="keep-with-note">
   <table class="data compare">
     <colgroup>
       <col style="width:28%" />
@@ -1017,15 +1068,98 @@ function pageHypothesesRente(p: ReportPayload, n: number, total: number): string
     <tr><th class="lab"></th>${head}</tr>
     ${lines.join("")}
   </table>
+  ${fiscalNoteHtml()}
+  </div>
   ${note}
   <p class="note">Le revenu fiscal imposable suit la règle de l’offre (rente certaine ou viagère) et sert uniquement au calcul ESTV. La rente LPP résiduelle est encaissée et imposable en totalité. Il est distinct du revenu total encaissé.</p>
   ${footer(n, total)}`;
+}
+
+/** Texte exact de la note fiscale demandée, précédé d’un astérisque à l’affichage. */
+const FISCAL_NOTE =
+  "Le montant de l'impôt présenté est une estimation calculée uniquement sur la base des rentes AVS et LPP prises en compte dans cette analyse. Il ne tient pas compte des autres revenus éventuels du client, ni de sa fortune. L'imposition effective pourra donc différer selon sa situation fiscale globale.";
+
+function fiscalNoteHtml(): string {
+  return `<p class="fiscal-note">* ${esc(FISCAL_NOTE)}</p>`;
+}
+
+/**
+ * Contenu pédagogique fixe (identique pour tous les dossiers).
+ * Source : tableau « COMPARATIF DES SOLUTIONS DE RENTES » remis par l’agence.
+ */
+function pageSolutionsComparatif(n: number, total: number): string {
+  return `
+  <div class="page-title">Comparatif des solutions de rentes</div>
+  ${solutionsComparatifBlock()}
+  ${footer(n, total)}`;
+}
+
+function solutionsComparatifBlock(): string {
+  const rows: Array<[string, string, string, string]> = [
+    ["Durée de versement", "À vie", "Durée limitée", "À vie"],
+    ["Participation aux excédents", "Variable", "Variable", "Aucune"],
+    ["Financement", "Prime unique", "Prime unique", "Cotisations salariales et rachats"],
+    ["Bénéficiaires", "Libre choix", "Selon le droit successoral", "Selon la LPP et le règlement"],
+    ["En cas de décès", "Protection du patrimoine", "Protection du patrimoine", "Aucune prestation en capital"],
+    ["Début du versement", "Immédiat ou différé", "Immédiat ou différé", "Âge de la retraite réglementaire"],
+    [
+      "Condition d\u2019âge",
+      "Pas d\u2019exigence",
+      "Pas d\u2019exigence",
+      "Fixé par le règlement LPP ; en principe au plus tôt à 58 ans*",
+    ],
+    [
+      "Droit de timbre fédéral",
+      "Prime soumise au droit de timbre fédéral de 2,5 % selon la variante",
+      "Prime non soumise au droit de timbre fédéral",
+      "Cotisations et rachats non soumis au droit de timbre fédéral",
+    ],
+    [
+      "Part du revenu imposable",
+      "4 % de la rente garantie + 70 % de la participation aux excédents (contrats conclus en 2025, selon la diapositive)",
+      "Part des intérêts comprise dans la rente (rendement) et excédents ; diapositive : impôt anticipé 35 %",
+      "100 % de la rente versée",
+    ],
+  ];
+  const body = rows
+    .map((row, index) => {
+      const alt = index % 2 === 1 ? " class=\"alt\"" : "";
+      const cells = row
+        .map((value, col) =>
+          col === 0
+            ? `<td class="lab">${esc(value)}</td>`
+            : `<td class="sol">${esc(value)}</td>`,
+        )
+        .join("");
+      return `<tr${alt}>${cells}</tr>`;
+    })
+    .join("");
+  return `
+  <div class="solutions-block">
+  <table class="data solutions">
+    <colgroup>
+      <col style="width:22%" />
+      <col />
+      <col />
+      <col />
+    </colgroup>
+    <tr>
+      <th class="lab"></th>
+      <th>Rente Viagère</th>
+      <th>Rente Temporaire</th>
+      <th>Rente LPP</th>
+    </tr>
+    ${body}
+  </table>
+  <p class="solutions-footnote">* Pour les rentes LPP, les possibilités de prestations de décès et l'âge de retraite dépendent du règlement de l'institution de prévoyance.</p>
+  </div>`;
 }
 
 function pageComparatifVaudoise(
   p: ReportPayload,
   n: number,
   total: number,
+  layout: "full" | "closing" = "full",
 ): string {
   const v = p.vaudoise!;
   const cols = v.columns;
@@ -1079,12 +1213,7 @@ function pageComparatifVaudoise(
     )
     .join("");
 
-  return `
-  <div class="brand-row" style="margin-bottom:8px">
-    ${logoBlock(true)}
-    <div class="contacts" style="font-size:8pt">info@agencemendes.ch &nbsp; +41 22 339 30 10</div>
-  </div>
-  <div class="page-title" style="font-size:13pt;text-transform:none">Comparaison : Rente LPP vs Rente Certaine</div>
+  const capitalTable = `
   <table class="data">
     <tr>
       <td>Capital disponible à la retraite</td>
@@ -1095,7 +1224,9 @@ function pageComparatifVaudoise(
     </tr>
     <tr><td>Capital affecté à la rente</td>${capitalRows}</tr>
     <tr><td>Capital conservé disponible</td>${conserveRows}</tr>
-  </table>
+  </table>`;
+
+  const comparisonTable = `
   <table class="data" style="font-size:8.5pt">
     <tr><th class="gray"></th>${head}</tr>
     <tr><td>Rente AVS</td>${renteAvs}</tr>
@@ -1106,14 +1237,42 @@ function pageComparatifVaudoise(
     <tr><td>Impôts ICC &amp; IFD</td>${impot}</tr>
     <tr><td>Rente nette annuelle</td>${nette}</tr>
     <tr><td>Gain net annuel</td>${gain}</tr>
-  </table>
+  </table>`;
+
+  const indicateurs = `
   <div class="sec-title">Indicateurs clés de la recommandation</div>
   <table class="data">
     <tr><th class="gray">Indicateur</th><th class="gray">Valeur</th></tr>
     <tr><td>Revenu net supplémentaire annuel</td><td class="num gain">${formatChf(v.indicateurs.revenuNetSupplementaire)}</td></tr>
     <tr><td>Gain total cumulé sur 20 ans</td><td class="num gain">${formatChf(v.indicateurs.gainCumul20Ans)}</td></tr>
     <tr><td>Économie fiscale annuelle (LPP vs AVS-seul)</td><td class="num">${formatChf(v.indicateurs.economieFiscaleAnnuelle)}</td></tr>
-  </table>
+  </table>`;
+
+  if (layout === "closing") {
+    return `
+  <div class="brand-row" style="margin-bottom:8px">
+    ${logoBlock(true)}
+    <div class="contacts" style="font-size:8pt">info@agencemendes.ch &nbsp; +41 22 339 30 10</div>
+  </div>
+  <div class="page-title" style="font-size:13pt;text-transform:none">Comparaison : Rente LPP vs Rente Certaine</div>
+  ${capitalTable}
+  <div class="keep-with-note">
+  ${comparisonTable}
+  ${fiscalNoteHtml()}
+  </div>
+  ${indicateurs}
+  ${footer(n, total)}`;
+  }
+
+  return `
+  <div class="brand-row" style="margin-bottom:8px">
+    ${logoBlock(true)}
+    <div class="contacts" style="font-size:8pt">info@agencemendes.ch &nbsp; +41 22 339 30 10</div>
+  </div>
+  <div class="page-title" style="font-size:13pt;text-transform:none">Comparaison : Rente LPP vs Rente Certaine</div>
+  ${capitalTable}
+  ${comparisonTable}
+  ${indicateurs}
   ${footer(n, total)}`;
 }
 

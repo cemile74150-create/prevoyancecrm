@@ -6,7 +6,6 @@ import type {
   WithdrawalPlanItem,
   WithdrawalScenario,
 } from "./types";
-import { LP_PCT_RETIRE_DEFAULT } from "./types";
 import { anneeRetraitLibrePassage } from "./rules/libre-passage-annee";
 
 /**
@@ -59,9 +58,7 @@ export function buildDefaultWithdrawalItems(
       label: `Libre passage ${lp.institution || ""}`.trim(),
       institution: lp.institution || "Libre passage",
       montantDisponible: lp.montant,
-      pctCapital: Number.isFinite(lp.pctRetire)
-        ? lp.pctRetire
-        : LP_PCT_RETIRE_DEFAULT,
+      pctCapital: 100,
       anneeRetraitPrevue: anneeRetraitLibrePassage(
         lp,
         (lp.titulaire === "conjoint" ? input.conjoint : input.client1)

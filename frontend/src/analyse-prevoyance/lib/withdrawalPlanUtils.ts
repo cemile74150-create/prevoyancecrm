@@ -8,6 +8,24 @@ import type {
 } from "./types";
 import { WITHDRAWAL_COMPARE_WARNING } from "./types";
 
+/**
+ * Année de retrait du scénario.
+ * « 1re possible » si elle est saisie, sinon l'année prévue
+ * pour relire un scénario déjà enregistré.
+ */
+export function scenarioWithdrawalYear(item: {
+  anneePremierePossible?: number | null;
+  anneeRetraitPrevue?: number | null;
+}): number | null {
+  if (item.anneePremierePossible != null && Number.isFinite(Number(item.anneePremierePossible))) {
+    return Number(item.anneePremierePossible);
+  }
+  if (item.anneeRetraitPrevue != null && Number.isFinite(Number(item.anneeRetraitPrevue))) {
+    return Number(item.anneeRetraitPrevue);
+  }
+  return null;
+}
+
 /** Montant effectivement retiré d’une ligne. */
 export function itemMontantRetire(item: WithdrawalPlanItem): number {
   const pct = Math.min(100, Math.max(0, item.pctCapital || 0));
@@ -20,7 +38,7 @@ export function scenarioCapitalRetireTotal(
 ): number {
   return Math.round(
     items
-      .filter((i) => i.anneeRetraitPrevue != null)
+      .filter((i) => scenarioWithdrawalYear(i) != null)
       .reduce((s, i) => s + itemMontantRetire(i), 0) * 100,
   ) / 100;
 }
@@ -65,10 +83,11 @@ export function buildCalendarPreview(items: WithdrawalPlanItem[]): Array<{
   >();
 
   for (const it of items) {
-    if (it.anneeRetraitPrevue == null) continue;
+    const year = scenarioWithdrawalYear(it);
+    if (year == null) continue;
     const montant = itemMontantRetire(it);
     if (montant <= 0) continue;
-    const list = byYear.get(it.anneeRetraitPrevue) || [];
+    const list = byYear.get(year) || [];
     list.push({
       titulaire: it.titulaire,
       kind: it.kind,
@@ -76,7 +95,7 @@ export function buildCalendarPreview(items: WithdrawalPlanItem[]): Array<{
       institution: it.institution || "",
       montantRetire: montant,
     });
-    byYear.set(it.anneeRetraitPrevue, list);
+    byYear.set(year, list);
   }
 
   return [...byYear.entries()]

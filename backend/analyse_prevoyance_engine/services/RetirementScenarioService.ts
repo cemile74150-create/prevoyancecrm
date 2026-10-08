@@ -20,7 +20,7 @@ import {
   normalizeThirdPillarType,
   type ThirdPillarType,
 } from "../types";
-import { areScenariosComparable } from "../withdrawalPlanUtils";
+import { areScenariosComparable, scenarioWithdrawalYear } from "../withdrawalPlanUtils";
 import { lppCalculationService } from "./LPPCalculationService";
 import { taxCalculationService } from "./TaxCalculationService";
 import { genderFromCivilite, relationshipFromEtat } from "../mappers";
@@ -403,7 +403,7 @@ export class WithdrawalPlanningService {
       includeInReport: false,
       items: source.items.map((item) => ({
         ...item,
-        anneeRetraitPrevue: item.anneeRetraitPrevue == null ? null : year,
+        anneePremierePossible: scenarioWithdrawalYear(item) == null ? null : year,
       })),
     };
     const evaluated = await this.evaluateScenario(
@@ -431,7 +431,7 @@ export class WithdrawalPlanningService {
     let taxable: number | null = null;
     let any: number | null = null;
     for (const item of sc.items) {
-      const year = item.anneeRetraitPrevue;
+      const year = scenarioWithdrawalYear(item);
       if (year == null) continue;
       if (this.withdrawnAmount(input, item) <= 0) continue;
       if (any == null || year < any) any = year;
@@ -483,16 +483,17 @@ export class WithdrawalPlanningService {
     const buckets = new Map<string, Bucket>();
 
     for (const item of sc.items) {
-      if (item.anneeRetraitPrevue == null) continue;
+      const withdrawalYear = scenarioWithdrawalYear(item);
+      if (withdrawalYear == null) continue;
       const montantRetire = this.withdrawnAmount(input, item);
       if (montantRetire <= 0) continue;
       const contratType = thirdPillarTypeForItem(input, item);
       const exonere = this.isExemptCapital(input, item);
       const key = taxTogether
-        ? String(item.anneeRetraitPrevue)
-        : `${item.titulaire}|${item.anneeRetraitPrevue}`;
+        ? String(withdrawalYear)
+        : `${item.titulaire}|${withdrawalYear}`;
       const cur = buckets.get(key) || {
-        year: item.anneeRetraitPrevue,
+        year: withdrawalYear,
         items: [],
       };
       cur.items.push({
