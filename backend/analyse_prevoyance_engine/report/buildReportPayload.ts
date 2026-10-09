@@ -30,11 +30,13 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
   const isCouple =
     input.etatCivil === "Marié(e)" && !!input.conjoint && !!results.conjoint;
 
+  const path = results.capitalPathFoyer;
   const client1 = buildPersonBlock(
     input.client1,
     results.client1,
     input.salaireClient1,
     sumLibrePassage(input, "client1"),
+    path?.client1.capitalRetire ?? results.client1.capitalLppRetire65,
   );
   const conjoint = isCouple
     ? buildPersonBlock(
@@ -42,12 +44,12 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
         results.conjoint!,
         input.salaireConjoint,
         sumLibrePassage(input, "conjoint"),
+        path?.conjoint?.capitalRetire ?? results.conjoint!.capitalLppRetire65,
       )
     : null;
 
   const couple1 = results.incomeScenarios.find((s) => s.foyer === "Couple1");
   const couple2 = results.incomeScenarios.find((s) => s.foyer === "Couple2");
-  const path = results.capitalPathFoyer;
   const cap65 = results.capitalScenarios.find((s) => s.age === 65);
 
   const avsTotal = client1.avsAnnuel + (conjoint?.avsAnnuel ?? 0);
@@ -375,6 +377,7 @@ function buildPersonBlock(
   computed: NonNullable<AnalyseRecord["results"]>["client1"],
   salaire: number,
   librePassage: number,
+  capitalCheminCapital: number,
 ): ReportPersonBlock {
   return {
     displayName: personDisplayName(person),
@@ -393,6 +396,7 @@ function buildPersonBlock(
     renteLpp65: computed.renteLpp65,
     lppPctDeblocable: computed.lppPctDeblocable,
     capitalLppRetire65: computed.capitalLppRetire65,
+    capitalCheminCapital,
     renteLppResiduelle65: computed.renteLppResiduelle65,
     total3ePilier: computed.total3ePilier,
     librePassage,

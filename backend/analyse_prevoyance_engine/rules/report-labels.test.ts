@@ -206,6 +206,16 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", () => {
     assert.ok(html.includes("LPP – Ariane – Capital + rente"));
     assert.ok(html.includes("Rente LPP – Wiliam"));
     assert.ok(html.includes("Rente LPP – Ariane"));
+    assert.ok(html.includes("Capital LPP – Wiliam"));
+    assert.ok(html.includes("Capital LPP – Ariane"));
+    assert.equal(html.includes('<td class="lab">Capital LPP</td>'), false);
+    const payload = buildReportPayload(record);
+    const capitalSplit =
+      payload.client1.capitalCheminCapital +
+      (payload.conjoint?.capitalCheminCapital ?? 0);
+    assert.equal(Math.round(capitalSplit * 100) / 100, payload.aggregates.capitalLppRetireTotal);
+    assert.equal(payload.aggregates.impotCapital65, results.capitalPathFoyer?.impot ?? null);
+    assert.equal(payload.aggregates.capitalNet65, results.capitalPathFoyer?.net ?? null);
     assert.ok(html.includes("Comparaison des rentes à 65 ans"));
     assert.ok(html.includes('class="num col-lpp"'));
     assert.ok(html.includes('class="num col-offer col-after-lpp"'));
@@ -215,5 +225,39 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", () => {
     assert.equal(html.includes("Assuré 2"), false);
     assert.equal(html.includes("assuré 1"), false);
     assert.equal(html.includes("assuré 2"), false);
+  });
+
+  it("n'affiche qu'une ligne Capital LPP s'il n'y a qu'un assuré", async () => {
+    const input = emptyAnalyseInput();
+    input.etatCivil = "Personne vivant seule";
+    input.taxLocationId = 170_000_000;
+    input.taxGroupId = 170_000_000;
+    input.client1 = {
+      ...emptyPerson("Monsieur"),
+      prenom: "Marc",
+      nom: "Seul",
+      lppPctDeblocable: 100,
+      lpp: emptyPerson("Monsieur").lpp.map((row) =>
+        row.age === 65 ? { ...row, capital: 80_000, rente: 4_800 } : row,
+      ),
+    };
+    input.conjoint = null;
+    const results = await retirementAnalysisService.run(input);
+    const record: AnalyseRecord = {
+      id: "solo-capital",
+      createdAt: "2026-10-07T00:00:00.000Z",
+      updatedAt: "2026-10-07T00:00:00.000Z",
+      clientId: null,
+      status: "calculee",
+      input,
+      results,
+    };
+    const payload = buildReportPayload(record);
+    const html = renderPrintableReportHtml(payload);
+    assert.ok(html.includes("Capital LPP – Marc"));
+    assert.equal(html.includes("Capital LPP – Assuré 2"), false);
+    assert.equal((html.match(/Capital LPP – /g) || []).length, 1);
+    assert.equal(payload.conjoint, null);
+    assert.equal(payload.client1.capitalCheminCapital, payload.aggregates.capitalLppRetireTotal);
   });
 });

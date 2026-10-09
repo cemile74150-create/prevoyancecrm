@@ -609,7 +609,8 @@ function pageCompareRenteCapital(
   <table class="data pair">
     <colgroup><col class="lab" /><col class="val" /><col class="val" /></colgroup>
     <tr><th class="lab"></th><th class="val">Retraite avec rente</th><th class="val">Retraite avec capital</th></tr>
-    <tr><td class="lab">Capital LPP</td><td class="num">—</td><td class="num">${formatChf(a.capitalLppRetireTotal)}</td></tr>
+    <tr><td class="lab">Capital LPP – ${esc(insuredName(p.client1, "Assuré 1"))}</td><td class="num">—</td><td class="num">${formatChf(p.client1.capitalCheminCapital)}</td></tr>
+    ${p.conjoint ? `<tr><td class="lab">Capital LPP – ${esc(insuredName(p.conjoint, "Assuré 2"))}</td><td class="num">—</td><td class="num">${formatChf(p.conjoint.capitalCheminCapital)}</td></tr>` : ""}
     <tr><td class="lab">Impôt sur les capitaux</td><td class="num">—</td><td class="num tax">${formatChf(a.impotCapital65)}</td></tr>
     <tr><td class="lab">Capitaux après impôt</td><td class="num">—</td><td class="num">${formatChf(a.capitalNet65)}</td></tr>
     <tr><td class="lab">Rente LPP – ${esc(insuredName(p.client1, "Assuré 1"))}</td><td class="num">${formatChf(p.client1.renteLpp65)}</td><td class="num">${formatChf(p.client1.renteLppResiduelle65)}</td></tr>

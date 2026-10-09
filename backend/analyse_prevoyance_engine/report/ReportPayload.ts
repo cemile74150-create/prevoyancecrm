@@ -24,6 +24,11 @@ export interface ReportPersonBlock {
   renteLpp65: number;
   lppPctDeblocable: number;
   capitalLppRetire65: number;
+  /**
+   * Ligne « Capital LPP » du comparatif rente/capital :
+   * LPP retiré + libre passage retiré (même base que aggregates.capitalLppRetireTotal).
+   */
+  capitalCheminCapital: number;
   renteLppResiduelle65: number;
   total3ePilier: number;
   /** Somme des montants de libre passage saisis pour cette personne. */
