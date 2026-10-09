@@ -3,10 +3,12 @@
 
 import { Input } from "@/analyse-prevoyance/ui/input";
 import { Label } from "@/analyse-prevoyance/ui/label";
-import { Button } from "@/analyse-prevoyance/ui/button";
+import { Button, buttonVariants } from "@/analyse-prevoyance/ui/button";
 import type { AvsRenteAnticipee, PersonInput } from "@/analyse-prevoyance/lib/types";
-import { Plus, Trash2 } from "lucide-react";
+import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { ConfirmDeleteButton } from "@/analyse-prevoyance/components/ConfirmDeleteButton";
+
+const ACOR_AVS_URL = "https://acor-avs.ch/requerant";
 
 export function AvsFields({
   title,
@@ -54,6 +56,17 @@ export function AvsFields({
             aria-label="AVS annuelle"
           />
           <p className="text-xs text-muted-foreground">Mensuelle × 12</p>
+        </div>
+        <div className="flex items-end">
+          <a
+            href={ACOR_AVS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonVariants({ variant: "outline" })}
+          >
+            <ExternalLink className="size-4" />
+            Simuler l'AVS
+          </a>
         </div>
       </div>
       <div className="space-y-2">

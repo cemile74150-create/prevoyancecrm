@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { AlertCircle, FileText } from "lucide-react";
+import { AlertCircle, ChevronDown, FileText } from "lucide-react";
 import { analyseFetch, analyseUrl } from "@/analyse-prevoyance/api";
 import { Alert, AlertDescription, AlertTitle } from "@/analyse-prevoyance/ui/alert";
 import { Badge } from "@/analyse-prevoyance/ui/badge";
@@ -55,12 +55,29 @@ export function ResultsPanel({ record }: Props) {
   const cap65 = results.capitalScenarios.find((s) => s.age === 65);
 
   return (
-    <div className="space-y-6" id="resultats">
+    <div className="space-y-3" id="resultats">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-heading text-xl font-semibold tracking-tight">
-            Synthèse des résultats
-          </h2>
+        <h2 className="font-heading text-xl font-semibold tracking-tight">
+          Synthèse des résultats
+        </h2>
+        <a
+          href={analyseUrl(`/${id}/report`)}
+          target="_blank"
+          rel="noreferrer"
+          className={buttonVariants({ variant: "outline" })}
+        >
+          <FileText className="size-4" />
+          Prévisualiser le rapport
+        </a>
+      </div>
+
+      {/* Volet technique : alertes ESTV, TaxLocationID, KPIs, chemin capital, tableaux. Fermé par défaut. */}
+      <details className="group rounded-xl border bg-card text-card-foreground shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium select-none [&::-webkit-details-marker]:hidden">
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+          Détails des calculs
+        </summary>
+        <div className="space-y-6 border-t px-4 py-4">
           <p className="text-sm text-muted-foreground">
             Calculé le{" "}
             {new Date(results.computedAt).toLocaleString("fr-CH")}
@@ -68,19 +85,6 @@ export function ResultsPanel({ record }: Props) {
               <> · TaxLocationID {results.taxLocation.TaxLocationID}</>
             )}
           </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <a
-            href={analyseUrl(`/${id}/report`)}
-            target="_blank"
-            rel="noreferrer"
-            className={buttonVariants({ variant: "outline" })}
-          >
-            <FileText className="size-4" />
-            Prévisualiser le rapport
-          </a>
-        </div>
-      </div>
 
       {results.errors.length > 0 && (
         <Alert variant="destructive">
@@ -667,6 +671,8 @@ export function ResultsPanel({ record }: Props) {
           </CardContent>
         </Card>
       )}
+        </div>
+      </details>
     </div>
   );
 }
