@@ -49,6 +49,7 @@ class AnalyseCreate(BaseModel):
 class AnalyseUpdate(BaseModel):
     input: Optional[dict] = None
     status: Optional[str] = None
+    autosave: bool = False
 
 
 class FiscalYearUpdate(BaseModel):
@@ -95,6 +96,47 @@ def _summary(doc: dict) -> dict:
         "hasResults": doc["hasResults"] if "hasResults" in doc else bool(doc.get("results")),
         "version": _version_number(doc),
         "versionCount": doc["versionCount"] if "versionCount" in doc else len(doc.get("versions") or []),
+    }
+
+
+def plan_analyse_autosave(doc: dict, *, saved_input, snapshot: dict, now: str) -> dict:
+    """Réécrit le brouillon courant.
+
+    La première sauvegarde automatique d'une série conserve l'état précédent
+    dans l'historique (une seule fois). Les suivantes mettent à jour ce brouillon
+    sans nouvelle version, pour ne pas atteindre le plafond.
+    """
+    if doc.get("autosaved"):
+        return {"input": saved_input, "autosaved": True, "updated_at": now}
+    versions = list(doc.get("versions") or [])
+    versions.append(snapshot)
+    return {
+        "input": saved_input,
+        "autosaved": True,
+        "version": _version_number(doc) + 1,
+        "versions": versions[-MAX_VERSIONS:],
+        "updated_at": now,
+    }
+
+
+def plan_analyse_versioned_save(
+    doc: dict,
+    *,
+    saved_input,
+    status: str,
+    snapshot: dict,
+    now: str,
+) -> dict:
+    """Enregistrement explicite : une seule nouvelle version, historique conservé."""
+    versions = list(doc.get("versions") or [])
+    versions.append(snapshot)
+    return {
+        "input": saved_input,
+        "status": status,
+        "autosaved": False,
+        "version": _version_number(doc) + 1,
+        "versions": versions[-MAX_VERSIONS:],
+        "updated_at": now,
     }
 
 
@@ -431,6 +473,7 @@ def attach_analyses_routes(
             "input": _with_crm_prenoms(restored_input, client, spouse),
             "results": snap.get("results"),
             "status": snap.get("status") or "brouillon",
+            "autosaved": False,
             "version": _version_number(doc) + 1,
             "versions": versions[-MAX_VERSIONS:],
             "updated_at": _now(),
@@ -442,28 +485,36 @@ def attach_analyses_routes(
     @api_router.put("/analyses-prevoyance/{analyse_id}")
     async def save_analyse(analyse_id: str, payload: AnalyseUpdate, user: User = Depends(get_current_user)):
         doc = await _get_owned(analyse_id, user)
-        versions = list(doc.get("versions") or [])
-        versions.append(_snapshot(doc, user))
-        versions = versions[-MAX_VERSIONS:]
-        status = payload.status or doc.get("status") or "brouillon"
-        if (
-            status in ACTIVE_STATUSES
-            and doc.get("status") == "annulee"
-            and doc.get("client_id")
-        ):
-            others = await _active_for_client(user, doc["client_id"], exclude_id=analyse_id)
-            primary = _pick_primary(others)
-            if primary:
-                raise _exists_conflict(primary)
         client, spouse = await _crm_cards(doc, user)
         saved_input = payload.input if payload.input is not None else doc.get("input")
-        updated = {
-            "input": _with_crm_prenoms(saved_input, client, spouse),
-            "status": status,
-            "version": _version_number(doc) + 1,
-            "versions": versions,
-            "updated_at": _now(),
-        }
+        saved_input = _with_crm_prenoms(saved_input, client, spouse)
+        now = _now()
+        if payload.autosave:
+            # Même document : le brouillon courant est réécrit, sans empiler une version par frappe.
+            updated = plan_analyse_autosave(
+                doc,
+                saved_input=saved_input,
+                snapshot=_snapshot(doc, user),
+                now=now,
+            )
+        else:
+            status = payload.status or doc.get("status") or "brouillon"
+            if (
+                status in ACTIVE_STATUSES
+                and doc.get("status") == "annulee"
+                and doc.get("client_id")
+            ):
+                others = await _active_for_client(user, doc["client_id"], exclude_id=analyse_id)
+                primary = _pick_primary(others)
+                if primary:
+                    raise _exists_conflict(primary)
+            updated = plan_analyse_versioned_save(
+                doc,
+                saved_input=saved_input,
+                status=status,
+                snapshot=_snapshot(doc, user),
+                now=now,
+            )
         await db.analyses.update_one({"id": analyse_id}, {"$set": updated})
         doc.update(updated)
         return await _displayed(doc, user)
@@ -494,6 +545,7 @@ def attach_analyses_routes(
             "input": data,
             "results": results,
             "status": "calculee",
+            "autosaved": False,
             "version": _version_number(doc) + 1,
             "versions": versions[-MAX_VERSIONS:],
             "updated_at": _now(),
@@ -566,6 +618,7 @@ def attach_analyses_routes(
             {"$set": {
                 "status": "finalisee",
                 "document_id": stored.get("id"),
+                "autosaved": False,
                 "updated_at": _now(),
             }},
         )
@@ -580,6 +633,7 @@ def attach_analyses_routes(
         versions.append(_snapshot(doc, user))
         updated = {
             "status": "annulee",
+            "autosaved": False,
             "version": _version_number(doc) + 1,
             "versions": versions[-MAX_VERSIONS:],
             "updated_at": _now(),

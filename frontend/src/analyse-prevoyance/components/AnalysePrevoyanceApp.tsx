@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Calculator, FileText, Loader2, RotateCcw } from "lucide-react";
 import { CommuneSearch } from "@/analyse-prevoyance/components/CommuneSearch";
 import { PersonIdentityFields } from "@/analyse-prevoyance/components/PersonIdentityFields";
@@ -106,6 +106,18 @@ function withMonthlyAvs(person) {
   return person;
 }
 
+const AUTOSAVE_DELAY_MS = 1200;
+
+function fingerprintInput(source: AnalyseInput) {
+  return JSON.stringify(payloadFrom(source));
+}
+
+function statusForSave(record: AnalyseRecord | null) {
+  if (record?.status === "annulee") return "annulee";
+  if (record?.results) return record.status;
+  return "brouillon";
+}
+
 function payloadFrom(source: AnalyseInput) {
   const client1 = withMonthlyAvs(source.client1);
   const married = source.etatCivil === "Marié(e)";
@@ -177,7 +189,28 @@ export function AnalysePrevoyanceApp({
         : null,
   );
   const [pending, startTransition] = useTransition();
+  const [autosaveHint, setAutosaveHint] = useState("");
   const clientId = linkedClientId ?? record?.clientId ?? null;
+  const inputRef = useRef(input);
+  const recordRef = useRef(record);
+  const onSavedRef = useRef(onSaved);
+  inputRef.current = input;
+  recordRef.current = record;
+  onSavedRef.current = onSaved;
+  const savedFpRef = useRef(fingerprintInput(initialRecord?.input ?? emptyAnalyseInput()));
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chainRef = useRef(Promise.resolve());
+  const enqueueRef = useRef((job: () => Promise<unknown>) => {
+    const next = chainRef.current.then(job, job);
+    chainRef.current = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  });
+  const persistRef = useRef<(opts: { autosave: boolean }) => Promise<boolean>>(
+    async () => false,
+  );
 
   const isMarried = input.etatCivil === "Marié(e)";
   const showAssure2 = isMarried || Boolean(input.conjoint);
@@ -231,34 +264,92 @@ export function AnalysePrevoyanceApp({
     setError(null);
   }
 
-  async function saveDraft() {
-    const id = record?.id;
-    if (!id) {
-      setError("Analyse non enregistrée");
-      return;
+  async function persist({ autosave }: { autosave: boolean }) {
+    const current = recordRef.current;
+    if (!current?.id) {
+      if (!autosave) setError("Analyse non enregistrée");
+      return false;
     }
-    setError(null);
+    const bodyInput = payloadFrom(inputRef.current);
+    const fp = JSON.stringify(bodyInput);
+    if (autosave && fp === savedFpRef.current) return true;
+    if (!autosave) setError(null);
+    if (autosave) setAutosaveHint("Enregistrement…");
     try {
-      const res = await analyseFetch(`/${id}`, {
+      const res = await analyseFetch(`/${current.id}`, {
         method: "PUT",
-        body: JSON.stringify({
-          input: payloadFrom(input),
-          status: record.status === "annulee"
-            ? "annulee"
-            : (record?.results ? record.status : "brouillon"),
-        }),
+        body: JSON.stringify(
+          autosave
+            ? { input: bodyInput, autosave: true }
+            : { input: bodyInput, status: statusForSave(current) },
+        ),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.detail || "Enregistrement impossible");
-        return;
+        const detail = typeof data.detail === "string" ? data.detail : "";
+        if (autosave) setAutosaveHint("Enregistrement automatique impossible");
+        else setError(detail || "Enregistrement impossible");
+        return false;
       }
+      savedFpRef.current = fp;
       setRecord(data);
-      onSaved?.();
+      if (autosave) setAutosaveHint("Enregistré automatiquement");
+      else onSavedRef.current?.();
+      return true;
     } catch {
-      setError("Erreur réseau pendant l'enregistrement");
+      if (autosave) setAutosaveHint("Enregistrement automatique impossible");
+      else setError("Erreur réseau pendant l'enregistrement");
+      return false;
     }
   }
+  persistRef.current = persist;
+
+  function saveDraft() {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    return enqueueRef.current(() => persistRef.current({ autosave: false }));
+  }
+
+  useEffect(() => {
+    if (!record?.id || pending) return undefined;
+    const fp = fingerprintInput(input);
+    if (fp === savedFpRef.current) return undefined;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      void enqueueRef.current(() => persistRef.current({ autosave: true }));
+    }, AUTOSAVE_DELAY_MS);
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [input, record?.id, pending]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      if (!recordRef.current?.id) return;
+      if (fingerprintInput(inputRef.current) === savedFpRef.current) return;
+      void enqueueRef.current(() => persistRef.current({ autosave: true }));
+    };
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
 
   async function saveToClientFolder() {
     const id = record?.id;
@@ -291,10 +382,15 @@ export function AnalysePrevoyanceApp({
 
   function calculate() {
     setError(null);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
     startTransition(async () => {
       try {
-        const payload = payloadFrom(input);
-        const id = record?.id;
+        await chainRef.current;
+        const payload = payloadFrom(inputRef.current);
+        const id = recordRef.current?.id;
         if (!id) {
           setError("Analyse non enregistrée");
           return;
@@ -308,6 +404,7 @@ export function AnalysePrevoyanceApp({
           setError(data.detail || data.error || "Échec du calcul");
           return;
         }
+        savedFpRef.current = fingerprintInput(data.input);
         setRecord(data);
         setInput(data.input);
         setCalculatedSnapshot(JSON.stringify(payloadFrom(data.input)));
@@ -369,6 +466,11 @@ export function AnalysePrevoyanceApp({
         >
           Enregistrer le brouillon
         </button>
+        {autosaveHint ? (
+          <span className="self-center text-sm text-muted-foreground" data-testid="analyse-autosave-status">
+            {autosaveHint}
+          </span>
+        ) : null}
         <button
           type="button"
           className={cn(buttonVariants({ variant: "secondary" }))}

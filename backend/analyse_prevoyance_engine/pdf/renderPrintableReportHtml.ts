@@ -451,7 +451,7 @@ function pageCover(p: ReportPayload, n: number, total: number): string {
     : esc(p.client1.displayName);
   return `
   <div class="brand-row">${logoBlock()}${contactsBlock()}</div>
-  <h1 class="cover-title"><span class="l1">ANALYSE DE</span><span class="l2">PREVOYANCE</span></h1>
+  <h1 class="cover-title"><span class="l1">ANALYSE DE</span><span class="l2">RETRAITE</span></h1>
   <hr class="rules" /><hr class="rules" style="margin-top:8px" />
   <p class="subtitle">ETUDE DE RETRAITE ET OPTIMISATION PATRIMONIALE</p>
   <table class="meta-table">
@@ -467,7 +467,7 @@ function pageAgency(n: number, total: number): string {
   <div class="agency">
   <div class="pill">L'historique de<br/>l'Agence Mendes</div>
   <h3>1993 Plus de 30 ans d’expérience</h3>
-  <p>Depuis plus de 25 ans, nous sommes au service de nos clients dans toute la Suisse Romande et le Tessin. Notre spécialité : le conseil dans les domaines de l’assurance, de l’hypothèque et des placements garantis.</p>
+  <p>Depuis plus de 30 ans, nous sommes au service de nos clients dans toute la Suisse Romande et le Tessin. Notre spécialité : le conseil dans les domaines de l’assurance, de l’hypothèque et des placements garantis.</p>
   <h3>60'000 clients satisfaits</h3>
   <p>Nous défendons de nombreuses valeurs, dont la transparence et le conseil. Nos clients l’ont bien compris, nous avons établi avec eux une relation de confiance.</p>
   <h3>Plus de 30 collaborateurs</h3>
@@ -1071,7 +1071,6 @@ function pageHypothesesRente(p: ReportPayload, n: number, total: number): string
   ${fiscalNoteHtml()}
   </div>
   ${note}
-  <p class="note">Le revenu fiscal imposable suit la règle de l’offre (rente certaine ou viagère) et sert uniquement au calcul ESTV. La rente LPP résiduelle est encaissée et imposable en totalité. Il est distinct du revenu total encaissé.</p>
   ${footer(n, total)}`;
 }
 
