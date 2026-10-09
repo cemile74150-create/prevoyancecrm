@@ -5,6 +5,7 @@
 
 import { formatChf, personFirstName } from "../mappers";
 import type { ReportPayload } from "../report/ReportPayload";
+import type { RenteHypothesisColumn } from "../types";
 
 const BRAND = "#800000";
 const GREEN = "#255839";
@@ -348,15 +349,48 @@ export function reportCss(forceOrient?: ReportPageKind) {
   }
   table.data.compare th {
     white-space: normal;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere;
+    word-break: break-word;
     line-height: 1.25;
-    padding: 8px 6px;
-    vertical-align: bottom;
+    padding: 8px 5px;
+    vertical-align: top;
   }
   table.data.compare td.num {
     font-variant-numeric: tabular-nums;
     padding-left: 6px;
     padding-right: 6px;
+  }
+  table.data.compare tr.row-net td {
+    font-weight: 700;
+    background: #f7f0f0;
+  }
+  table.data.compare tr.row-ecart td {
+    font-weight: 700;
+    background: #f3eaea;
+  }
+  .compare-head-title {
+    display: block;
+    font-weight: 700;
+    font-size: 8pt;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    line-height: 1.25;
+  }
+  .compare-head-meta {
+    display: block;
+    margin-top: 3px;
+    font-weight: 600;
+    font-size: 7.5pt;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.3;
+  }
+  .compare-head-type {
+    display: block;
+    margin-top: 2px;
+    font-weight: 500;
+    font-size: 7pt;
+    line-height: 1.3;
+    opacity: 0.95;
   }
   table.data.compare th.col-lpp,
   table.data.compare td.col-lpp {
@@ -407,7 +441,8 @@ export function reportCss(forceOrient?: ReportPageKind) {
     break-inside: avoid;
   }
   .solutions-footnote,
-  .fiscal-note {
+  .fiscal-note,
+  .avs-sim-note {
     font-size: 8.5pt;
     line-height: 1.45;
     color: ${GRAY};
@@ -575,6 +610,7 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
       ${spouse(c2 ? formatChf(c2.librePassage) : "")}
     </tr>
   </table>
+  ${avsSimulationNoteHtml(p)}
   <div class="sec-title">4. Synthèse des prestations attendues à la retraite</div>
   <table class="synth">
     <tr>
@@ -620,6 +656,7 @@ function pageCompareRenteCapital(
     <tr><td class="lab">Rente après impôt</td><td class="num">${formatChf(a.renteApresImpot)}</td><td class="num">${formatChf(a.renteNetteCheminCapital)}</td></tr>
     <tr><td class="lab">Capital disponible</td><td class="num">—</td><td class="num">${formatChf(a.capitalNet65)}</td></tr>
   </table>
+  ${avsSimulationNoteHtml(p)}
   ${notePct}
   ${chart}
   <div class="sec-title">Indicateurs de maintien de niveau de vie</div>
@@ -973,6 +1010,32 @@ function pageFrise(p: ReportPayload, n: number, total: number): string {
   ${footer(n, total)}`;
 }
 
+function compareColgroup(colCount: number): string {
+  const labelPct =
+    colCount <= 1 ? 36 : colCount === 2 ? 28 : colCount === 3 ? 22 : colCount === 4 ? 18 : 16;
+  const rest = ((100 - labelPct) / Math.max(colCount, 1)).toFixed(2);
+  return `<colgroup><col style="width:${labelPct}%" />${Array.from({ length: colCount }, () => `<col style="width:${rest}%" />`).join("")}</colgroup>`;
+}
+
+function compareOfferTypeLine(col: RenteHypothesisColumn): string {
+  const viagere = /viag/i.test(col.typeLabel || "");
+  const typeText = viagere ? "Rente viagère" : "Rente certaine";
+  return col.dureeAnnees != null ? `${typeText} · ${col.dureeAnnees} ans` : typeText;
+}
+
+/** En-tête de colonne : identité de l'offre. Pas de montants de rente. */
+function compareColumnHeader(col: RenteHypothesisColumn): string {
+  if (col.kind === "lpp") {
+    return `<span class="compare-head-title">Rente LPP (référence)</span>`;
+  }
+  const company = esc((col.compagnie || col.label || "").trim() || "Offre");
+  const capital =
+    col.capitalPlace != null
+      ? `<span class="compare-head-meta">${esc(formatChf(col.capitalPlace))}</span>`
+      : "";
+  return `<span class="compare-head-title">${company}</span>${capital}<span class="compare-head-type">${esc(compareOfferTypeLine(col))}</span>`;
+}
+
 function pageHypothesesRente(p: ReportPayload, n: number, total: number): string {
   const block = p.hypothesesRente;
   if (!block) return "";
@@ -989,16 +1052,12 @@ function pageHypothesesRente(p: ReportPayload, n: number, total: number): string
     const prev = index > 0 ? cols[index - 1] : null;
     return prev?.kind === "lpp" ? "col-offer col-after-lpp" : "col-offer";
   };
-  const row = (label: string, values: string[]) =>
-    `<tr><td class="lab">${label}</td>${values.map((v, i) => `<td class="num ${colRole(i)}">${v}</td>`).join("")}</tr>`;
-  const showDuree = cols.some((c) => c.dureeAnnees != null);
+  const row = (label: string, values: string[], trClass = "") =>
+    `<tr${trClass ? ` class="${trClass}"` : ""}><td class="lab">${label}</td>${values.map((v, i) => `<td class="num ${colRole(i)}">${v}</td>`).join("")}</tr>`;
   const head = cols
-    .map((c, i) => `<th class="${colRole(i)}">${esc(c.label)}</th>`)
+    .map((c, i) => `<th class="${colRole(i)}">${compareColumnHeader(c)}</th>`)
     .join("");
   const lines = [
-    row("Capital placé", cols.map((c) => money(c.capitalPlace))),
-    row("Compagnie", cols.map((c) => esc(c.compagnie || "—"))),
-    row("Type de rente", cols.map((c) => esc(c.typeLabel))),
     row("Rente AVS", cols.map((c) => money(c.renteAvs))),
     row(
       "Rente LPP résiduelle",
@@ -1009,18 +1068,6 @@ function pageHypothesesRente(p: ReportPayload, n: number, total: number): string
       "Participation aux excédents",
       cols.map((c) => (c.kind === "lpp" ? "—" : money(c.participationExcedents))),
     ),
-  ];
-  if (showDuree) {
-    lines.splice(
-      3,
-      0,
-      row(
-        "Durée de la rente",
-        cols.map((c) => (c.dureeAnnees != null ? `${c.dureeAnnees} ans` : "—")),
-      ),
-    );
-  }
-  lines.push(
     row("Revenu total encaissé", cols.map((c) => money(c.revenuBrutEncaisse))),
     row("Revenu fiscal imposable", cols.map((c) => money(c.revenuFiscalImposable))),
     row(
@@ -1029,8 +1076,8 @@ function pageHypothesesRente(p: ReportPayload, n: number, total: number): string
         c.impotEstv == null ? "—" : `<span class="tax">${formatChf(c.impotEstv)}</span>`,
       ),
     ),
-    row("Revenu net annuel", cols.map((c) => money(c.revenuNetApresImpot))),
-  );
+    row("Revenu net annuel", cols.map((c) => money(c.revenuNetApresImpot)), "row-net"),
+  ];
   if (withLpp) {
     lines.push(
       row(
@@ -1040,6 +1087,7 @@ function pageHypothesesRente(p: ReportPayload, n: number, total: number): string
             ? "—"
             : formatChf(c.ecartNetAnnuelVsLpp),
         ),
+        "row-ecart",
       ),
     );
   }
@@ -1062,13 +1110,11 @@ function pageHypothesesRente(p: ReportPayload, n: number, total: number): string
   <div class="page-title">Comparaison des rentes ${esc(ageLabel)}</div>
   <div class="keep-with-note">
   <table class="data compare">
-    <colgroup>
-      <col style="width:28%" />
-      ${cols.map(() => `<col />`).join("")}
-    </colgroup>
+    ${compareColgroup(cols.length)}
     <tr><th class="lab"></th>${head}</tr>
     ${lines.join("")}
   </table>
+  ${avsSimulationNoteHtml(p)}
   ${fiscalNoteHtml()}
   </div>
   ${note}
@@ -1079,8 +1125,22 @@ function pageHypothesesRente(p: ReportPayload, n: number, total: number): string
 const FISCAL_NOTE =
   "Le montant de l'impôt présenté est une estimation calculée uniquement sur la base des rentes AVS et LPP prises en compte dans cette analyse. Il ne tient pas compte des autres revenus éventuels du client, ni de sa fortune. L'imposition effective pourra donc différer selon sa situation fiscale globale.";
 
+export const AVS_SIMULATION_DISCLAIMER =
+  "Le montant de la rente AVS présenté dans cette analyse est une estimation établie à l'aide du calculateur officiel AVS. Il repose sur les hypothèses et les informations disponibles au moment de la simulation. Le montant définitif pourra différer et devra être confirmé par la caisse de compensation compétente.";
+
 function fiscalNoteHtml(): string {
   return `<p class="fiscal-note">* ${esc(FISCAL_NOTE)}</p>`;
+}
+
+function hasAvsSimulationDisclaimer(p: ReportPayload): boolean {
+  return Boolean(
+    p.client1.avsMontantIssuSimulation || p.conjoint?.avsMontantIssuSimulation,
+  );
+}
+
+function avsSimulationNoteHtml(p: ReportPayload): string {
+  if (!hasAvsSimulationDisclaimer(p)) return "";
+  return `<p class="avs-sim-note">${esc(AVS_SIMULATION_DISCLAIMER)}</p>`;
 }
 
 /**
@@ -1258,6 +1318,7 @@ function pageComparatifVaudoise(
   ${capitalTable}
   <div class="keep-with-note">
   ${comparisonTable}
+  ${avsSimulationNoteHtml(p)}
   ${fiscalNoteHtml()}
   </div>
   ${indicateurs}
@@ -1272,6 +1333,7 @@ function pageComparatifVaudoise(
   <div class="page-title" style="font-size:13pt;text-transform:none">Comparaison : Rente LPP vs Rente Certaine</div>
   ${capitalTable}
   ${comparisonTable}
+  ${avsSimulationNoteHtml(p)}
   ${indicateurs}
   ${footer(n, total)}`;
 }

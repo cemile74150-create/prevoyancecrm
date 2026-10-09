@@ -20,6 +20,8 @@ export interface ReportPersonBlock {
   dateDepart: string;
   dateDepartLabel: string;
   avsAnnuel: number;
+  /** True si la case « montant AVS issu d'une simulation » est cochée. */
+  avsMontantIssuSimulation: boolean;
   capitalLpp65: number;
   renteLpp65: number;
   lppPctDeblocable: number;

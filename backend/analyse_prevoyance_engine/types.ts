@@ -191,6 +191,11 @@ export interface PersonInput {
    * comme dans Excel B12 / H12. Les rentes 63/64 ne sont pas déduites.
    */
   avsAnnuel?: number | null;
+  /**
+   * Case conseiller : le montant AVS saisi vient d'une simulation ACOR.
+   * Absent / false sur les dossiers déjà enregistrés — pas de mention PDF.
+   */
+  avsMontantIssuSimulation?: boolean;
   /** Rentes AVS anticipées saisies explicitement (63, 64, …). */
   avsRentesAnticipees?: AvsRenteAnticipee[];
   lpp: LppByAge[];
@@ -520,6 +525,7 @@ export function emptyPerson(civilite: Civilite = "Monsieur"): PersonInput {
     dateNaissance: "",
     avsMensuel: 0,
     avsAnnuel: null,
+    avsMontantIssuSimulation: false,
     avsRentesAnticipees: [],
     lpp: emptyLppRows(),
     lppPctDeblocable: LPP_PCT_DEBLOCABLE_DEFAULT,

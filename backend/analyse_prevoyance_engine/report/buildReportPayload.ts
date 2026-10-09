@@ -392,6 +392,7 @@ function buildPersonBlock(
     dateDepart: computed.dateDepart,
     dateDepartLabel: formatDateFr(computed.dateDepart),
     avsAnnuel: computed.avsAnnuel,
+    avsMontantIssuSimulation: Boolean(person.avsMontantIssuSimulation),
     capitalLpp65: computed.capitalLpp65,
     renteLpp65: computed.renteLpp65,
     lppPctDeblocable: computed.lppPctDeblocable,

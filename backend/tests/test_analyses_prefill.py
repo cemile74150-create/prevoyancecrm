@@ -1,4 +1,12 @@
-from analyses_prefill import civilite_from_client, is_married, prefill_from_clients, to_iso_date
+import json
+
+from analyses_prefill import (
+    civilite_from_client,
+    empty_analyse_input,
+    is_married,
+    prefill_from_clients,
+    to_iso_date,
+)
 
 
 def test_iso_and_swiss_dates():
@@ -88,3 +96,17 @@ def test_prefill_married_label_without_spouse_fiche():
     assert data["conjoint"]["prenom"] == "Anne"
     assert data["conjoint"]["nom"] == "Martin"
     assert data["conjoint"]["civilite"] == "Madame"
+
+
+def test_avs_simulation_flag_defaults_false_and_survives_json_roundtrip():
+    data = empty_analyse_input()
+    assert data["client1"]["avsMontantIssuSimulation"] is False
+    assert data["conjoint"] is None
+
+    legacy = {"client1": {"prenom": "Jean", "nom": "Helfer"}}
+    assert bool(legacy["client1"].get("avsMontantIssuSimulation")) is False
+
+    data["client1"]["avsMontantIssuSimulation"] = True
+    reopened = json.loads(json.dumps(data))
+    assert reopened["client1"]["avsMontantIssuSimulation"] is True
+    assert reopened["client1"]["avsAnnuel"] is None

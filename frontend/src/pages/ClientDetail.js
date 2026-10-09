@@ -18,6 +18,11 @@ import { STATUTS, normalizeStatut, DOCUMENT_TYPES_3P, NO_EXPIRY_DOC_TYPES_3P } f
 import { finmaByConseillerName, lookupConseillerFinma } from "@/lib/conseillers";
 import { useAuth } from "@/context/AuthContext";
 import { getInitialDocumentChecklistState, getNextDocumentStatus, getDemandesChecklistItems, getChecklistDisplayLabel, isStandardChecklistItem, omitChecklistItem } from "@/lib/documentChecklist";
+import {
+  LPP_DECOMPTE_PIECES_JOINTES_INTRO,
+  LPP_DECOMPTE_PIECES_JOINTES_ITEMS,
+  LPP_DECOMPTE_PIECES_JOINTES_TITLE,
+} from "@/lib/lppDecomptePiecesJointes";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -77,6 +82,26 @@ const formatLppDate = (iso) => {
     return String(iso).slice(0, 10);
   }
 };
+
+function LppDecomptePiecesJointesBanner() {
+  return (
+    <Alert
+      className="border-amber-400 bg-amber-50 text-amber-950"
+      data-testid="lpp-decompte-pieces-jointes"
+    >
+      <AlertTriangle className="h-4 w-4 text-amber-800" />
+      <AlertTitle>⚠️ {LPP_DECOMPTE_PIECES_JOINTES_TITLE}</AlertTitle>
+      <AlertDescription>
+        <p>{LPP_DECOMPTE_PIECES_JOINTES_INTRO}</p>
+        <ul className="mt-2 list-disc space-y-1 pl-4">
+          {LPP_DECOMPTE_PIECES_JOINTES_ITEMS.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </AlertDescription>
+    </Alert>
+  );
+}
 
 const personBadgeLabel = (person) => {
   const p = String(person || "").trim();
@@ -2740,6 +2765,7 @@ export default function ClientDetail() {
 
                   {(lppFunds.length > 0 || lppCaisseTracking.length > 0) && (
                     <div className="space-y-3 rounded-md border border-border p-4 bg-secondary/30">
+                      <LppDecomptePiecesJointesBanner />
                       <p className="text-sm font-medium">Caisses détectées</p>
                       <div className="space-y-3">
                         {(lppFunds.length > 0 ? lppFunds : lppCaisseTracking).map((fund, index) => {
@@ -2851,7 +2877,10 @@ export default function ClientDetail() {
                   )}
 
                   {getUnattachedDecompteDocs().length > 0 && (
-                    <div>
+                    <div className="space-y-3">
+                      {lppFunds.length === 0 && lppCaisseTracking.length === 0 && (
+                        <LppDecomptePiecesJointesBanner />
+                      )}
                       <p className="text-sm font-medium mb-2">Demandes générées (non rattachées)</p>
                       {renderDocList(getUnattachedDecompteDocs())}
                     </div>

@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 import { helferAnalyseInput } from "../fixtures/helfer.ts";
 import { buildReportPayload } from "../report/buildReportPayload.ts";
-import { renderPrintableReportHtml } from "../pdf/renderPrintableReportHtml.ts";
+import {
+  AVS_SIMULATION_DISCLAIMER,
+  renderPrintableReportHtml,
+} from "../pdf/renderPrintableReportHtml.ts";
 import { retirementAnalysisService } from "../services/RetirementAnalysisService.ts";
 import { taxCalculationService } from "../services/TaxCalculationService.ts";
 import {
@@ -12,6 +15,7 @@ import {
 import {
   emptyAnalyseInput,
   emptyPerson,
+  type AnalyseInput,
   type AnalyseRecord,
   type PersonComputed,
   type RenteHypothesisInput,
@@ -123,7 +127,44 @@ const offreB: RenteHypothesisInput = {
   participationExcedentsAnnuelle: 1_000,
 };
 
-describe("HTML Helfer — présentation sans calcul fiscal réel", () => {
+const offreC: RenteHypothesisInput = {
+  id: "swisslife",
+  type: "viagere",
+  compagnie: "Swiss Life",
+  capitalPlace: 150_000,
+  dureeAnnees: null,
+  renteGarantieAnnuelle: 7_500,
+  participationExcedentsAnnuelle: 800,
+};
+
+function comparaisonSection(html: string): string {
+  const start = html.indexOf("Comparaison des rentes à");
+  assert.ok(start >= 0, "page comparaison des rentes absente");
+  const tableStart = html.indexOf('<table class="data compare">', start);
+  assert.ok(tableStart >= 0, "tableau compare absent");
+  const tableEnd = html.indexOf("</table>", tableStart);
+  return html.slice(start, tableEnd + "</table>".length);
+}
+
+function compareBodyLabels(section: string): string[] {
+  return [...section.matchAll(/<td class="lab">([^<]*)<\/td>/g)].map((m) => m[1]);
+}
+
+async function htmlOf(input: AnalyseInput): Promise<string> {
+  const results = await retirementAnalysisService.run(input);
+  const record: AnalyseRecord = {
+    id: "compare-visual",
+    createdAt: "2026-10-07T00:00:00.000Z",
+    updatedAt: "2026-10-07T00:00:00.000Z",
+    clientId: null,
+    status: "calculee",
+    input,
+    results,
+  };
+  return renderPrintableReportHtml(buildReportPayload(record));
+}
+
+describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency: false }, () => {
   const originalCapital = taxCalculationService.calculateCapitalTax.bind(
     taxCalculationService,
   );
@@ -225,6 +266,109 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", () => {
     assert.equal(html.includes("Assuré 2"), false);
     assert.equal(html.includes("assuré 1"), false);
     assert.equal(html.includes("assuré 2"), false);
+
+    const compare = comparaisonSection(html);
+    assert.equal(compare.includes('<td class="lab">Capital placé</td>'), false);
+    assert.equal(compare.includes('<td class="lab">Compagnie</td>'), false);
+    assert.equal(compare.includes('<td class="lab">Type de rente</td>'), false);
+    assert.equal(compare.includes('<td class="lab">Durée de la rente</td>'), false);
+    assert.ok(compare.includes("Rente LPP (référence)"));
+    assert.ok(compare.includes("Vaudoise"));
+    assert.ok(compare.includes("Helvetia"));
+    assert.ok(compare.includes("Rente certaine"));
+    assert.ok(compare.includes("20 ans"));
+    assert.ok(compare.includes("Rente viagère"));
+    assert.deepEqual(compareBodyLabels(compare), [
+      "Rente AVS",
+      "Rente LPP résiduelle",
+      "Rente garantie",
+      "Participation aux excédents",
+      "Revenu total encaissé",
+      "Revenu fiscal imposable",
+      "Impôts ICC &amp; IFD",
+      "Revenu net annuel",
+      "Écart net annuel vs LPP",
+    ]);
+    assert.ok(compare.includes("row-net"));
+    assert.ok(compare.includes("row-ecart"));
+    assert.equal(compare.includes("calculateur officiel AVS"), false);
+  });
+
+  it("met la compagnie, le capital et le type dans l'en-tête — 1 offre certaine", async () => {
+    const input = helferAnalyseInput();
+    input.ageRetraiteSouhaite = 65;
+    input.comparerAvecRenteLpp = false;
+    input.renteHypotheses = [offreA];
+    const html = await htmlOf(input);
+    const compare = comparaisonSection(html);
+    assert.ok(compare.includes("Vaudoise"));
+    assert.ok(compare.includes("Rente certaine"));
+    assert.ok(compare.includes("20 ans"));
+    assert.equal(compare.includes("Rente LPP (référence)"), false);
+    assert.equal(compare.includes("Helvetia"), false);
+    assert.equal(compare.includes('<td class="lab">Capital placé</td>'), false);
+    assert.equal(compare.includes("Écart net annuel vs LPP"), false);
+    assert.ok(html.includes("Revenu annuel obtenu sur le capital placé"));
+  });
+
+  it("aligne N offres mixtes certaine et viagère", async () => {
+    const input = helferAnalyseInput();
+    input.ageRetraiteSouhaite = 65;
+    input.comparerAvecRenteLpp = true;
+    input.renteHypotheses = [offreA, offreB, offreC];
+    const html = await htmlOf(input);
+    const compare = comparaisonSection(html);
+    assert.ok(compare.includes("Vaudoise"));
+    assert.ok(compare.includes("Helvetia"));
+    assert.ok(compare.includes("Swiss Life"));
+    assert.ok(compare.includes("Rente certaine"));
+    assert.ok(compare.includes("Rente viagère"));
+    assert.equal((compare.match(/col-offer/g) || []).length >= 2, true);
+  });
+
+  it("ajoute la mention AVS simulation seulement si une case est cochée", async () => {
+    const off = helferAnalyseInput();
+    off.ageRetraiteSouhaite = 65;
+    off.comparerAvecRenteLpp = true;
+    off.renteHypotheses = [offreA];
+    const htmlOff = await htmlOf(off);
+    assert.equal(htmlOff.includes("calculateur officiel AVS"), false);
+
+    const on = helferAnalyseInput();
+    on.ageRetraiteSouhaite = 65;
+    on.comparerAvecRenteLpp = true;
+    on.renteHypotheses = [offreA];
+    on.client1 = { ...on.client1, avsMontantIssuSimulation: true };
+    const htmlOn = await htmlOf(on);
+    assert.ok(htmlOn.includes(AVS_SIMULATION_DISCLAIMER));
+    assert.ok(htmlOn.includes("calculateur officiel AVS"));
+    assert.ok(htmlOn.includes("avs-sim-note"));
+
+    const conjointOnly = helferAnalyseInput();
+    conjointOnly.ageRetraiteSouhaite = 65;
+    conjointOnly.comparerAvecRenteLpp = true;
+    conjointOnly.renteHypotheses = [offreA];
+    conjointOnly.conjoint = {
+      ...conjointOnly.conjoint!,
+      avsMontantIssuSimulation: true,
+    };
+    const htmlConjoint = await htmlOf(conjointOnly);
+    assert.ok(htmlConjoint.includes("calculateur officiel AVS"));
+  });
+
+  it("relit le booléen AVS simulation sans migration", () => {
+    assert.equal(emptyPerson().avsMontantIssuSimulation, false);
+    const legacy = JSON.parse(JSON.stringify({ client1: { prenom: "Jean" } }));
+    assert.equal(Boolean(legacy.client1.avsMontantIssuSimulation), false);
+    const saved = JSON.parse(
+      JSON.stringify({
+        ...emptyPerson("Monsieur"),
+        avsMontantIssuSimulation: true,
+      }),
+    );
+    assert.equal(saved.avsMontantIssuSimulation, true);
+    const reopened = JSON.parse(JSON.stringify(saved));
+    assert.equal(reopened.avsMontantIssuSimulation, true);
   });
 
   it("n'affiche qu'une ligne Capital LPP s'il n'y a qu'un assuré", async () => {

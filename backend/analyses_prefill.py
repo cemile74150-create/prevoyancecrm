@@ -67,6 +67,7 @@ def empty_analyse_input() -> dict:
             "dateNaissance": "",
             "avsMensuel": 0,
             "avsAnnuel": None,
+            "avsMontantIssuSimulation": False,
             "avsRentesAnticipees": [],
             "lpp": [{"age": age, "capital": 0, "rente": 0} for age in ages],
             "lppPctDeblocable": 100,

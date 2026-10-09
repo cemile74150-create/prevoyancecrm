@@ -68,6 +68,21 @@ export function AvsFields({
             Simuler l'AVS
           </a>
         </div>
+        <label className="flex items-start gap-2 text-sm sm:col-span-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0"
+            checked={Boolean(person.avsMontantIssuSimulation)}
+            onChange={(e) =>
+              onChange({
+                ...person,
+                avsMontantIssuSimulation: e.target.checked,
+              })
+            }
+            data-testid={`avs-simulation-checkbox-${title}`}
+          />
+          <span>Montant AVS issu d'une simulation (estimation)</span>
+        </label>
       </div>
       <div className="space-y-2">
         {anticipees.map((row) => (
