@@ -1,11 +1,21 @@
 /**
  * Même table que backend/analyse_prevoyance_engine/rules/avs-age.ts.
  * Affichage immédiat dans le formulaire, sans lancer le calcul général.
+ *
+ * Convention numérique (identique au moteur) : années + mois/12
+ * ex. 64 ans et 9 mois → 64.75, 64 ans et 3 mois → 64.25.
  */
+
+import { RETIREMENT_AGES } from "./types";
 
 export interface FemaleLegalAgeRow {
   birthYear: number;
   legalAge: number;
+}
+
+export interface DesiredRetirementAgeOption {
+  value: number;
+  label: string;
 }
 
 export const FEMALE_LEGAL_AGE_TABLE: FemaleLegalAgeRow[] = [
@@ -41,4 +51,28 @@ export function formatLegalAgeLabel(legalAge: number): string {
 export function legalAgeLabel(civilite: string, birthDate: string): string {
   if (!birthDate) return "—";
   return formatLegalAgeLabel(getLegalRetirementAge(civilite, birthDate));
+}
+
+/**
+ * Liste « Âge de retraite souhaité » : années entières 65→60, plus l'âge
+ * légal AVS de cette personne s'il n'est pas déjà un entier de la liste.
+ * L'âge légal fractionnel est en tête (après « Âge applicable au dossier »).
+ */
+export function desiredRetirementAgeOptions(
+  civilite: string,
+  birthDate: string,
+): DesiredRetirementAgeOption[] {
+  const integers: DesiredRetirementAgeOption[] = RETIREMENT_AGES.map((age) => ({
+    value: age,
+    label: `${age} ans`,
+  }));
+  if (!birthDate) return integers;
+
+  const legalAge = getLegalRetirementAge(civilite, birthDate);
+  if (RETIREMENT_AGES.some((age) => age === legalAge)) return integers;
+
+  return [
+    { value: legalAge, label: formatLegalAgeLabel(legalAge) },
+    ...integers,
+  ];
 }

@@ -11,9 +11,10 @@ import {
   SelectValue,
 } from "@/analyse-prevoyance/ui/select";
 import type { Civilite, PersonInput } from "@/analyse-prevoyance/lib/types";
-import { legalAgeLabel } from "@/analyse-prevoyance/lib/avsAge";
-
-const DESIRED_AGES = [65, 64, 63, 62, 61, 60];
+import {
+  desiredRetirementAgeOptions,
+  legalAgeLabel,
+} from "@/analyse-prevoyance/lib/avsAge";
 
 export function PersonIdentityFields({
   person,
@@ -83,15 +84,18 @@ export function PersonIdentityFields({
         <Label>Âge de retraite souhaité (début des rentes de retraite)</Label>
         <select
           className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
-          value={desiredAge ?? ""}
+          value={desiredAge == null ? "" : String(desiredAge)}
           onChange={(e) =>
             onDesiredAge(e.target.value === "" ? null : Number(e.target.value))
           }
         >
           <option value="">Âge applicable au dossier</option>
-          {DESIRED_AGES.map((age) => (
-            <option key={age} value={age}>
-              {age} ans
+          {desiredRetirementAgeOptions(
+            person.civilite,
+            person.dateNaissance,
+          ).map((opt) => (
+            <option key={String(opt.value)} value={String(opt.value)}>
+              {opt.label}
             </option>
           ))}
         </select>
