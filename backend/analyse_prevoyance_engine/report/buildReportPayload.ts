@@ -110,7 +110,7 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
     renteLppTotal,
     impotRevenuCouple1,
     impotRevenuCouple2,
-    capitalDispo: capitalLppTotal + total3ePilierFoyer,
+    capitalDispo: round2(capitalLppAvecLibrePassage + total3ePilierFoyer),
   });
 
   const fiscalOptimization = {
@@ -333,7 +333,8 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
     coherence: {
       avsClient1: client1.avsAnnuel,
       avsConjoint: conjoint?.avsAnnuel ?? null,
-      capitalLpp65: capitalLppRetireTotal,
+      capitalLpp65: capitalLppTotal,
+      capitalLppRetire65: lppRetireSeul,
       renteLpp65: renteLppTotal,
       total3ePilier: total3ePilierFoyer,
       lacune: results.lacune.lacune,

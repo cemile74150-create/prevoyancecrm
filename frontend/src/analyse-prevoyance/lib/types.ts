@@ -184,7 +184,8 @@ export interface PersonInput {
   /**
    * % du capital LPP disponible / déblocable en capital (0–100).
    * Saisie libre (100, 50, 25, …). Défaut {@link LPP_PCT_DEBLOCABLE_DEFAULT}.
-   * Capital retiré = capital × pct/100 ; solde → rente résiduelle.
+   * `lpp[].capital` = avoir total avant retrait. Le % s’applique UNE fois :
+   * retirable = avoir × pct/100. Ne pas stocker le retirable dans capital.
    */
   lppPctDeblocable?: number;
   troisiemePilier: ThirdPillarContract[];

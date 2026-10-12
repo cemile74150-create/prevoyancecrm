@@ -54,7 +54,14 @@ export const HELFER_EXCEL = {
     ageLegalLabelAffiche: "64 ans et 11 mois", // I5 texte libre
     avsMensuel: 1_965,
     avsAnnuel: 25_545,
-    lpp65Capital: 148_678,
+    /**
+     * Avoir LPP total avant retrait (référence).
+     * Excel affichait 148 678 = déjà 50 % de 297 356 ; le stocker comme
+     * capital puis réappliquer 50 % produisait 74 339 + LP ≈ 75 356.
+     */
+    lpp65Capital: 297_356,
+    /** Excel J14 — retirable déjà calculé (50 % de 297 356). Ne pas resaisir ici. */
+    lpp65RetirableExcel: 148_678,
     lpp65Rente: 16_057,
     /** J15 — 50 % déblocable Mme */
     pctDeblocable: 0.5,
@@ -130,6 +137,21 @@ export const HELFER_EXCEL = {
     revenuApres2027: 118_460, // rente Mr + salaire Mme (L3 bug/formule)
     lacune90_2027: -41_044.4,
   },
+} as const;
+
+/** Valeurs métier LPP après correction (avoir × % une fois). */
+export const HELFER_LPP_ONCE = {
+  wiliamAvoir: 350_359,
+  wiliamPct: 100,
+  wiliamRetirable: 350_359,
+  arianeAvoir: 297_356,
+  arianePct: 50,
+  arianeRetirable: 148_678,
+  arianeRenteTotale: 16_057,
+  arianeRenteResiduelle: 8_028.5,
+  arianeLp: 1_016.75,
+  arianeAssietteFiscale: 149_694.75,
+  doublePctBug: 75_355.75,
 } as const;
 
 /** Payload formulaire module pour le dossier HELFER. */

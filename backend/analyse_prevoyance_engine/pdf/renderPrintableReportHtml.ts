@@ -585,14 +585,19 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
       ${spouse(c2 ? `${formatChf(c2.avsAnnuel)} /an` : "")}
     </tr>
     <tr>
-      <td class="lab">Capital 2e pilier (LPP)</td>
+      <td class="lab">Avoir LPP total</td>
       <td class="val">${formatChf(p.client1.capitalLpp65)}</td>
       ${spouse(c2 ? formatChf(c2.capitalLpp65) : "")}
     </tr>
     <tr>
-      <td class="lab">% LPP déblocable</td>
+      <td class="lab">% LPP disponible</td>
       <td class="val">${p.client1.lppPctDeblocable} %</td>
       ${spouse(c2 ? `${c2.lppPctDeblocable} %` : "")}
+    </tr>
+    <tr>
+      <td class="lab">Capital LPP retirable</td>
+      <td class="val">${formatChf(p.client1.capitalLppRetire65)}</td>
+      ${spouse(c2 ? formatChf(c2.capitalLppRetire65) : "")}
     </tr>
     <tr>
       <td class="lab">3e pilier</td>
@@ -645,8 +650,8 @@ function pageCompareRenteCapital(
   <table class="data pair">
     <colgroup><col class="lab" /><col class="val" /><col class="val" /></colgroup>
     <tr><th class="lab"></th><th class="val">Retraite avec rente</th><th class="val">Retraite avec capital</th></tr>
-    <tr><td class="lab">Capital LPP – ${esc(insuredName(p.client1, "Assuré 1"))}</td><td class="num">—</td><td class="num">${formatChf(p.client1.capitalCheminCapital)}</td></tr>
-    ${p.conjoint ? `<tr><td class="lab">Capital LPP – ${esc(insuredName(p.conjoint, "Assuré 2"))}</td><td class="num">—</td><td class="num">${formatChf(p.conjoint.capitalCheminCapital)}</td></tr>` : ""}
+    <tr><td class="lab">Capital LPP – ${esc(insuredName(p.client1, "Assuré 1"))}</td><td class="num">—</td><td class="num">${formatChf(p.client1.capitalLppRetire65)}</td></tr>
+    ${p.conjoint ? `<tr><td class="lab">Capital LPP – ${esc(insuredName(p.conjoint, "Assuré 2"))}</td><td class="num">—</td><td class="num">${formatChf(p.conjoint.capitalLppRetire65)}</td></tr>` : ""}
     <tr><td class="lab">Impôt sur les capitaux</td><td class="num">—</td><td class="num tax">${formatChf(a.impotCapital65)}</td></tr>
     <tr><td class="lab">Capitaux après impôt</td><td class="num">—</td><td class="num">${formatChf(a.capitalNet65)}</td></tr>
     <tr><td class="lab">Rente LPP – ${esc(insuredName(p.client1, "Assuré 1"))}</td><td class="num">${formatChf(p.client1.renteLpp65)}</td><td class="num">${formatChf(p.client1.renteLppResiduelle65)}</td></tr>

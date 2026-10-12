@@ -27,8 +27,8 @@ export interface ReportPersonBlock {
   lppPctDeblocable: number;
   capitalLppRetire65: number;
   /**
-   * Ligne « Capital LPP » du comparatif rente/capital :
-   * LPP retiré + libre passage retiré (même base que aggregates.capitalLppRetireTotal).
+   * LPP retiré + libre passage retiré (assiette fiscale personne).
+   * La ligne PDF « Capital LPP » utilise capitalLppRetire65 (LPP seul, % une fois).
    */
   capitalCheminCapital: number;
   renteLppResiduelle65: number;
@@ -260,7 +260,10 @@ export interface ReportPayload {
   coherence: {
     avsClient1: number;
     avsConjoint: number | null;
+    /** Avoir LPP total foyer (avant %). */
     capitalLpp65: number;
+    /** Capital LPP retirable foyer (× % une fois, hors LP). */
+    capitalLppRetire65: number;
     renteLpp65: number;
     total3ePilier: number;
     lacune: number;

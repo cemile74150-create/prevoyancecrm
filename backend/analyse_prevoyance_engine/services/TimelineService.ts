@@ -122,7 +122,7 @@ function pushLpp(
   const pct = lppCalculationService.resolvePctDeblocable(computed.lppPctDeblocable);
   const fate = lppTimelineFate(pct);
   const capital = computed.capitalLppRetire65;
-  const rente = lppCalculationService.renteResiduelle(computed.renteLpp65, pct);
+  const rente = computed.renteLppResiduelle65;
   if (fate === "Capital" && !(capital > 0)) return;
   if (fate === "Rente" && !(rente > 0)) return;
   if (fate === "Capital + rente" && !(capital > 0) && !(rente > 0)) return;

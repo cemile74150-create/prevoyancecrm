@@ -441,14 +441,28 @@ export class WithdrawalPlanningService {
     return taxable ?? any;
   }
 
-  /** LPP : % déblocable de l'assuré. Autres capitaux : % de la ligne. */
+  /**
+   * LPP : avoir total de l’assuré × % déblocable, une seule fois.
+   * On ne part jamais de `montantDisponible` déjà réduit (reopen / mapping
+   * historique), ce qui réappliquerait le %. Autres capitaux : % de la ligne.
+   */
   private withdrawnAmount(input: AnalyseInput, item: WithdrawalPlanItem): number {
-    const holder =
-      item.titulaire === "client1" ? input.client1 : input.conjoint;
-    const pct =
-      item.kind === "lpp" && holder
-        ? lppCalculationService.resolvePctDeblocable(holder.lppPctDeblocable)
-        : Math.min(100, Math.max(0, item.pctCapital || 0));
+    if (item.kind === "lpp") {
+      const holder =
+        item.titulaire === "client1" ? input.client1 : input.conjoint;
+      if (!holder) return 0;
+      const reference = lppCalculationService.referenceCapital(holder.lpp);
+      const pct = lppCalculationService.resolvePctDeblocable(
+        holder.lppPctDeblocable,
+      );
+      const once = lppCalculationService.capitalRetire(reference, pct);
+      const line = item.montantDisponible || 0;
+      if (lppCalculationService.isAlreadyRetirable(line, reference, pct)) {
+        return once;
+      }
+      return once;
+    }
+    const pct = Math.min(100, Math.max(0, item.pctCapital || 0));
     return round2((item.montantDisponible || 0) * (pct / 100));
   }
 

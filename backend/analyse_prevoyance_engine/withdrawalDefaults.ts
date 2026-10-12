@@ -28,6 +28,7 @@ export function buildDefaultWithdrawalItems(
     titulaire: "client1",
     label: `LPP ${input.client1.prenom || "assuré 1"}`,
     institution: "LPP",
+    // Avoir total — le moteur applique le % une fois. Jamais le retirable.
     montantDisponible: client1.capitalLpp65,
     pctCapital: client1.lppPctDeblocable,
     anneeRetraitPrevue: yearOf(client1.dateDepart),

@@ -29,17 +29,16 @@ export class AVSCalculationService {
     const ageLegal = getLegalRetirementAge(person.civilite, person.dateNaissance);
     const dateDepart = getRetirementStartDate(person.dateNaissance, ageLegal);
     const avsAnnuel = this.resolveAnnual(person);
-    const lpp65 = person.lpp.find((r) => r.age === 65) ?? {
-      age: 65 as const,
-      capital: 0,
-      rente: 0,
-    };
-    const capitalLpp65 = round2(lpp65.capital || 0);
+    const lpp65 = lppCalculationService.getAtAge(
+      lppCalculationService.normalizeRows(person.lpp || []),
+      65,
+    );
+    const capitalLpp65 = lppCalculationService.referenceCapital(person.lpp);
     const renteLpp65 = round2(lpp65.rente || 0);
     const lppPctDeblocable = lppCalculationService.resolvePctDeblocable(
       person.lppPctDeblocable,
     );
-    const capitalLppRetire65 = lppCalculationService.capitalRetire(
+    const capitalLppRetire65 = lppCalculationService.capitalEffectivementRetirable(
       capitalLpp65,
       lppPctDeblocable,
     );
