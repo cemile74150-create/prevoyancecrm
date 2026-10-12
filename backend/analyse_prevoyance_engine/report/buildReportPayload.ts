@@ -219,13 +219,10 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
     results.renteHypotheses.columns.some((col) => col.kind === "hypothese")
       ? results.renteHypotheses
       : null;
-  if (vaudoise?.include && hypothesesRente) {
-    pageCount += 1; // comparatif Vaudoise complet
-  } else if (vaudoise?.include) {
-    pageCount += 1; // capitaux, tableau chiffré et note fiscale
-  }
   pageCount += 1; // comparatif pédagogique des solutions de rentes
-  if (hypothesesRente) pageCount += 1;
+  if (hypothesesRente || vaudoise?.include) {
+    pageCount += 1; // dernière page COMPARATIF DES RENTES
+  }
 
   const evo = results.evolution;
   const timeline = results.timeline;

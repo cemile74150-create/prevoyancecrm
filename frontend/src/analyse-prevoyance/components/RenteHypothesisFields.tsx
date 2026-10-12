@@ -7,6 +7,7 @@ import { Button } from "@/analyse-prevoyance/ui/button";
 import { Input } from "@/analyse-prevoyance/ui/input";
 import { Label } from "@/analyse-prevoyance/ui/label";
 import type { AnalyseInput, RenteHypothesisInput } from "@/analyse-prevoyance/lib/types";
+import { withSingleRecommander } from "@/analyse-prevoyance/lib/analyseWizard";
 
 function emptyHypothesis(): RenteHypothesisInput {
   return {
@@ -17,6 +18,7 @@ function emptyHypothesis(): RenteHypothesisInput {
     dureeAnnees: null,
     renteGarantieAnnuelle: 0,
     participationExcedentsAnnuelle: 0,
+    recommander: false,
   };
 }
 
@@ -47,16 +49,37 @@ export function RenteHypothesisFields({
       </label>
       {rows.map((row, index) => (
         <div key={row.id} className="space-y-3 rounded-md border p-3">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium">Hypothèse {index + 1}</p>
-            <ConfirmDeleteButton
-              ariaLabel="Supprimer l'hypothèse"
-              onConfirm={() =>
-                onChange({ renteHypotheses: rows.filter((item) => item.id !== row.id) })
-              }
-            >
-              <Trash2 className="size-4" />
-            </ConfirmDeleteButton>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(row.recommander)}
+                  onChange={(e) =>
+                    onChange({
+                      renteHypotheses: withSingleRecommander(
+                        rows,
+                        row.id,
+                        e.target.checked,
+                      ),
+                    })
+                  }
+                  data-testid={`rente-recommander-${row.id}`}
+                />
+                Inclure / Recommander
+              </label>
+              <ConfirmDeleteButton
+                ariaLabel="Supprimer l'hypothèse"
+                onConfirm={() =>
+                  onChange({
+                    renteHypotheses: rows.filter((item) => item.id !== row.id),
+                  })
+                }
+              >
+                <Trash2 className="size-4" />
+              </ConfirmDeleteButton>
+            </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-1">

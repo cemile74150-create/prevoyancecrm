@@ -43,8 +43,8 @@ export default function EffectuerAnalyseEditor() {
 
   return (
     <Layout>
-      <div className="analyse-module" style={{ ["--ap-accent"]: "#002FA7" }}>
-        <div className="mx-auto max-w-6xl px-4 pt-3">
+      <div className="analyse-module min-h-screen bg-[#f4f5f7]" style={{ ["--ap-accent"]: "#002FA7" }}>
+        <div className="mx-auto max-w-[1680px] px-4 pt-3">
           <Link to="/effectuer-une-analyse" className="text-sm underline text-[#002FA7]">← Analyses</Link>
         </div>
         <AnalysePrevoyanceApp

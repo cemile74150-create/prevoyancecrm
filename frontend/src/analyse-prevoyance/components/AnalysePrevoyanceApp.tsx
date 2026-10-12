@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Calculator, FileText, Loader2, RotateCcw } from "lucide-react";
+import { Calculator, ChevronLeft, ChevronRight, FileText, Loader2, RotateCcw } from "lucide-react";
 import { CommuneSearch } from "@/analyse-prevoyance/components/CommuneSearch";
 import { PersonIdentityFields } from "@/analyse-prevoyance/components/PersonIdentityFields";
 import { AvsFields } from "@/analyse-prevoyance/components/AvsFields";
@@ -13,6 +13,22 @@ import { RenteHypothesisFields } from "@/analyse-prevoyance/components/RenteHypo
 import { WithdrawalPlanningFields } from "@/analyse-prevoyance/components/WithdrawalPlanningFields";
 import { ResultsPanel } from "@/analyse-prevoyance/components/ResultsPanel";
 import { FiscalUpdateAlert } from "@/analyse-prevoyance/components/FiscalUpdateAlert";
+import { AnalyseWizardNav } from "@/analyse-prevoyance/components/AnalyseWizardNav";
+import { AnalyseDossierRecap } from "@/analyse-prevoyance/components/AnalyseDossierRecap";
+import {
+  ANALYSE_STEPS,
+  adjacentStep,
+  autosaveLabel,
+  buildDossierRecap,
+  isStepComplete,
+  type AnalyseStepId,
+  type AutosavePhase,
+} from "@/analyse-prevoyance/lib/analyseWizard";
+import {
+  PDF_POPUP_BLOCKED,
+  openAnalysePdfWindow,
+  planAnalysePdf,
+} from "@/analyse-prevoyance/lib/analysePdfAction";
 import { Alert, AlertDescription, AlertTitle } from "@/analyse-prevoyance/ui/alert";
 import { buttonVariants } from "@/analyse-prevoyance/ui/button";
 import { Input } from "@/analyse-prevoyance/ui/input";
@@ -24,7 +40,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/analyse-prevoyance/ui/select";
-import { Separator } from "@/analyse-prevoyance/ui/separator";
 import {
   emptyAnalyseInput,
   emptyPerson,
@@ -189,7 +204,9 @@ export function AnalysePrevoyanceApp({
         : null,
   );
   const [pending, startTransition] = useTransition();
-  const [autosaveHint, setAutosaveHint] = useState("");
+  const [autosavePhase, setAutosavePhase] = useState<AutosavePhase>("idle");
+  const [pdfHint, setPdfHint] = useState("");
+  const [stepId, setStepId] = useState<AnalyseStepId>("client");
   const clientId = linkedClientId ?? record?.clientId ?? null;
   const inputRef = useRef(input);
   const recordRef = useRef(record);
@@ -274,7 +291,7 @@ export function AnalysePrevoyanceApp({
     const fp = JSON.stringify(bodyInput);
     if (autosave && fp === savedFpRef.current) return true;
     if (!autosave) setError(null);
-    if (autosave) setAutosaveHint("Enregistrement…");
+    if (autosave) setAutosavePhase("saving");
     try {
       const res = await analyseFetch(`/${current.id}`, {
         method: "PUT",
@@ -287,17 +304,17 @@ export function AnalysePrevoyanceApp({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const detail = typeof data.detail === "string" ? data.detail : "";
-        if (autosave) setAutosaveHint("Enregistrement automatique impossible");
+        if (autosave) setAutosavePhase("error");
         else setError(detail || "Enregistrement impossible");
         return false;
       }
       savedFpRef.current = fp;
       setRecord(data);
-      if (autosave) setAutosaveHint("Enregistré automatiquement");
+      if (autosave) setAutosavePhase("saved");
       else onSavedRef.current?.();
       return true;
     } catch {
-      if (autosave) setAutosaveHint("Enregistrement automatique impossible");
+      if (autosave) setAutosavePhase("error");
       else setError("Erreur réseau pendant l'enregistrement");
       return false;
     }
@@ -427,22 +444,305 @@ export function AnalysePrevoyanceApp({
   }
 
   function createPdf() {
-    if (!record?.id || !record?.results) {
-      setError("Calculez l'analyse avant de générer le PDF.");
-      return;
-    }
-    if (!resultsAreCurrent()) {
-      setError(
-        "Les données ont changé depuis le dernier calcul. Recalculez avant de générer le PDF.",
-      );
+    const plan = planAnalysePdf({
+      hasId: Boolean(record?.id),
+      hasResults: Boolean(record?.results),
+      isCurrent: resultsAreCurrent(),
+    });
+    if (!plan.allow) {
+      setPdfHint("");
+      setError(plan.message);
       return;
     }
     setError(null);
-    window.open(analyseUrl(`/${record.id}/pdf`), "_blank", "noopener");
+    setPdfHint(plan.message || "");
+    const opened = openAnalysePdfWindow(
+      (...args) => window.open(...args),
+      analyseUrl(`/${record.id}/pdf`),
+    );
+    if (!opened) setError(PDF_POPUP_BLOCKED);
+  }
+
+  const completed = useMemo(() => {
+    const map = {};
+    for (const step of ANALYSE_STEPS) {
+      map[step.id] = isStepComplete(step.id, input);
+    }
+    return map;
+  }, [input]);
+
+  const recap = useMemo(
+    () =>
+      buildDossierRecap(
+        input,
+        record,
+        autosavePhase,
+        record?.results?.taxLocation?.Canton,
+      ),
+    [input, record, autosavePhase],
+  );
+
+  const stepMeta = ANALYSE_STEPS.find((s) => s.id === stepId) || ANALYSE_STEPS[0];
+  const autosaveHint = autosaveLabel(autosavePhase);
+
+  function renderActiveSection() {
+    switch (stepId) {
+      case "client":
+        return (
+          <Section
+            title="1. Client"
+            hint="Identité, commune fiscale et état civil du foyer."
+          >
+            <PersonIdentityFields
+              person={input.client1}
+              onChange={(p) => patchInput({ client1: p })}
+              desiredAge={input.client1.ageRetraiteSouhaite ?? input.ageRetraiteSouhaite ?? null}
+              onDesiredAge={(age) =>
+                patchInput({
+                  ageRetraiteSouhaite: age,
+                  client1: { ...input.client1, ageRetraiteSouhaite: age },
+                })
+              }
+            />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <CommuneSearch
+                value={input.villeRecherche}
+                taxLocationId={input.taxLocationId}
+                taxYear={input.taxYear}
+                onChange={onCommune}
+                disabled={pending}
+              />
+              <div className="space-y-2">
+                <Label>État civil</Label>
+                <Select
+                  value={input.etatCivil}
+                  onValueChange={(v) => onEtatCivil(v as EtatCivil)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Personne vivant seule">
+                      Personne vivant seule
+                    </SelectItem>
+                    <SelectItem value="Marié(e)">Marié(e)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Conseiller</Label>
+                <Input
+                  value={input.conseillerNom || ""}
+                  onChange={(e) => patchInput({ conseillerNom: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Salaire brut annuel (CHF)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={input.salaireClient1 || ""}
+                  onChange={(e) =>
+                    patchInput({ salaireClient1: Number(e.target.value) || 0 })
+                  }
+                />
+              </div>
+            </div>
+          </Section>
+        );
+      case "assure2":
+        return (
+          <Section
+            title="2. Assuré 2"
+            hint="Identité et âge de retraite souhaité du conjoint. Visible pour les couples."
+          >
+            {isMarried && input.conjoint ? (
+              <>
+                <PersonIdentityFields
+                  person={input.conjoint}
+                  onChange={(p) => patchInput({ conjoint: p })}
+                  desiredAge={
+                    input.conjoint.ageRetraiteSouhaite ?? input.ageRetraiteSouhaite ?? null
+                  }
+                  onDesiredAge={(age) =>
+                    patchInput({
+                      conjoint: { ...input.conjoint, ageRetraiteSouhaite: age },
+                    })
+                  }
+                />
+                <div className="max-w-sm space-y-2">
+                  <Label>Salaire brut annuel de l'assuré 2 (CHF)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={input.salaireConjoint || ""}
+                    onChange={(e) =>
+                      patchInput({
+                        salaireConjoint: Number(e.target.value) || 0,
+                      })
+                    }
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                Choisissez l&apos;état civil « Marié(e) » à l&apos;étape Client
+                pour saisir l&apos;assuré 2. Les autres étapes restent
+                accessibles.
+              </p>
+            )}
+          </Section>
+        );
+      case "avs":
+        return (
+          <Section
+            title="3. AVS"
+            hint="Saisissez la rente mensuelle. L’annuelle s’affiche tout de suite : mensuelle × 12."
+          >
+            <AvsFields
+              title="Assuré 1"
+              person={input.client1}
+              onChange={(p) => patchInput({ client1: p })}
+            />
+            {isMarried && input.conjoint && (
+              <AvsFields
+                title="Assuré 2"
+                person={input.conjoint}
+                onChange={(p) => patchInput({ conjoint: p })}
+              />
+            )}
+          </Section>
+        );
+      case "lpp":
+        return (
+          <Section
+            title="4. LPP"
+            hint="Capital, rente annuelle par âge, et % LPP disponible."
+          >
+            <LppFields
+              title="Assuré 1"
+              person={input.client1}
+              onChange={(p) => patchInput({ client1: p })}
+            />
+            {isMarried && input.conjoint && (
+              <LppFields
+                title="Assuré 2"
+                person={input.conjoint}
+                showRentePont
+                onChange={(p) => patchInput({ conjoint: p })}
+              />
+            )}
+          </Section>
+        );
+      case "piliers3":
+        return (
+          <Section
+            title="5. 3e piliers"
+            hint="Jusqu’à 4 contrats par personne — ajout / suppression."
+          >
+            <div className="space-y-4">
+              <ThirdPillarFields
+                title="Assuré 1"
+                person={input.client1}
+                onChange={(p) => patchInput({ client1: p })}
+              />
+              {showAssure2 && (
+                <ThirdPillarFields
+                  title="Assuré 2"
+                  person={assure2Person}
+                  onChange={(p) => patchInput({ conjoint: p })}
+                />
+              )}
+            </div>
+          </Section>
+        );
+      case "libresPassages":
+        return (
+          <Section
+            title="6. Libres passages"
+            hint="0..N avoirs — montant retiré = montant × % / 100 (impôt sur le retiré uniquement). % disponible fixé à 100 %."
+          >
+            <LibrePassageFields
+              input={input}
+              onChange={(libresPassages) => patchInput({ libresPassages })}
+            />
+          </Section>
+        );
+      case "retraits":
+        return (
+          <Section
+            title="7. Retraits / Fiscalité"
+            hint="LPP, libres passages, 3e piliers — scénarios A regroupé / B réparti / C perso. Année prévue en lecture seule, 1re possible saisie. Agrégation fiscale : personne + année."
+          >
+            <WithdrawalPlanningFields
+              input={input}
+              onChange={(withdrawalScenarios) =>
+                patchInput({ withdrawalScenarios })
+              }
+              previewBasics={
+                record?.results
+                  ? {
+                      client1: record.results.client1,
+                      conjoint: record.results.conjoint,
+                    }
+                  : null
+              }
+              planningResults={record?.results?.withdrawalPlanning?.scenarios}
+              onRecalculate={calculate}
+              recalculatePending={pending}
+            />
+          </Section>
+        );
+      case "fortune":
+        return (
+          <Section title="8. Fortune / autres revenus">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Fortune fiscale (CHF)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={input.fortune || ""}
+                  onChange={(e) =>
+                    patchInput({ fortune: Number(e.target.value) || 0 })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Excel Couple1 : fortune vide → 0. Couple4 force 0.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Autres revenus annuels (CHF)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={input.autresRevenus || ""}
+                  onChange={(e) =>
+                    patchInput({ autresRevenus: Number(e.target.value) || 0 })
+                  }
+                />
+              </div>
+            </div>
+          </Section>
+        );
+      case "hypotheses":
+        return (
+          <Section
+            title="9. Hypothèses de rente"
+            hint="Offres saisies à la main. Cochez « Inclure / Recommander » pour le cadre vert du PDF. L'âge de retraite souhaité de chaque assuré alimente l'AVS et la rente LPP de référence."
+          >
+            <RenteHypothesisFields input={input} onChange={patchInput} />
+          </Section>
+        );
+      default:
+        return null;
+    }
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-3 pb-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-[1680px] px-4 pt-3 pb-8 sm:px-6 lg:px-8 [&_.rounded-md.border]:rounded-xl">
       <header className="mb-6 space-y-2">
         <p className="text-sm font-medium tracking-[0.12em] text-[var(--ap-accent)] uppercase">
           LeoSoft · Effectuer une analyse
@@ -524,278 +824,82 @@ export function AnalysePrevoyanceApp({
         </Alert>
       )}
 
-      <div className="space-y-8 rounded-xl border bg-card/80 p-4 shadow-sm sm:p-6">
-        <Section
-          title="1. Client"
-          hint="Identité, commune fiscale et état civil du foyer."
-        >
-          <PersonIdentityFields
-            person={input.client1}
-            onChange={(p) => patchInput({ client1: p })}
-            desiredAge={input.client1.ageRetraiteSouhaite ?? input.ageRetraiteSouhaite ?? null}
-            onDesiredAge={(age) =>
-              patchInput({
-                ageRetraiteSouhaite: age,
-                client1: { ...input.client1, ageRetraiteSouhaite: age },
-              })
-            }
-          />
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <CommuneSearch
-              value={input.villeRecherche}
-              taxLocationId={input.taxLocationId}
-              taxYear={input.taxYear}
-              onChange={onCommune}
-              disabled={pending}
-            />
-            <div className="space-y-2">
-              <Label>État civil</Label>
-              <Select
-                value={input.etatCivil}
-                onValueChange={(v) => onEtatCivil(v as EtatCivil)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Personne vivant seule">
-                    Personne vivant seule
-                  </SelectItem>
-                  <SelectItem value="Marié(e)">Marié(e)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Conseiller</Label>
-              <Input
-                value={input.conseillerNom || ""}
-                onChange={(e) => patchInput({ conseillerNom: e.target.value })}
-              />
-            </div>
+      <div className="grid items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
+        <AnalyseWizardNav
+          activeId={stepId}
+          completed={completed}
+          onSelect={setStepId}
+        />
+
+        <div className="space-y-4">
+          <div
+            className="space-y-6 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-7"
+            data-testid={`analyse-step-panel-${stepId}`}
+          >
+            {renderActiveSection()}
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Salaire brut annuel (CHF)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={input.salaireClient1 || ""}
-                onChange={(e) =>
-                  patchInput({ salaireClient1: Number(e.target.value) || 0 })
-                }
-              />
-            </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
+            <button
+              type="button"
+              className={cn(buttonVariants({ variant: "outline" }))}
+              onClick={() => setStepId(adjacentStep(stepId, -1))}
+              disabled={stepId === "client"}
+              data-testid="analyse-step-prev"
+            >
+              <ChevronLeft className="size-4" />
+              Précédent
+            </button>
+            <p className="text-xs text-slate-500">
+              Étape {stepMeta.n} / {ANALYSE_STEPS.length}
+            </p>
+            <button
+              type="button"
+              className={cn(buttonVariants({ variant: "outline" }))}
+              onClick={() => setStepId(adjacentStep(stepId, 1))}
+              disabled={stepId === "hypotheses"}
+              data-testid="analyse-step-next"
+            >
+              Suivant
+              <ChevronRight className="size-4" />
+            </button>
           </div>
-        </Section>
 
-        {isMarried && input.conjoint && (
-          <>
-            <Separator />
-            <Section title="2. Assuré 2">
-              <PersonIdentityFields
-                person={input.conjoint}
-                onChange={(p) => patchInput({ conjoint: p })}
-                desiredAge={
-                  input.conjoint.ageRetraiteSouhaite ?? input.ageRetraiteSouhaite ?? null
-                }
-                onDesiredAge={(age) =>
-                  patchInput({
-                    conjoint: { ...input.conjoint, ageRetraiteSouhaite: age },
-                  })
-                }
-              />
-              <div className="max-w-sm space-y-2">
-                <Label>Salaire brut annuel de l'assuré 2 (CHF)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={input.salaireConjoint || ""}
-                  onChange={(e) =>
-                    patchInput({
-                      salaireConjoint: Number(e.target.value) || 0,
-                    })
-                  }
-                />
-              </div>
-            </Section>
-          </>
-        )}
-
-        <Separator />
-        <Section
-          title={isMarried ? "3. AVS" : "2. AVS"}
-          hint="Saisissez la rente mensuelle. L’annuelle s’affiche tout de suite : mensuelle × 12."
-        >
-          <AvsFields
-            title="Assuré 1"
-            person={input.client1}
-            onChange={(p) => patchInput({ client1: p })}
-          />
-          {isMarried && input.conjoint && (
-            <AvsFields
-              title="Assuré 2"
-              person={input.conjoint}
-              onChange={(p) => patchInput({ conjoint: p })}
-            />
-          )}
-        </Section>
-
-        <Separator />
-        <Section
-          title={isMarried ? "4. LPP" : "3. LPP"}
-          hint="Capital, rente annuelle par âge, et % LPP disponible."
-        >
-          <LppFields
-            title="Assuré 1"
-            person={input.client1}
-            onChange={(p) => patchInput({ client1: p })}
-          />
-          {isMarried && input.conjoint && (
-            <LppFields
-              title="Assuré 2"
-              person={input.conjoint}
-              showRentePont
-              onChange={(p) => patchInput({ conjoint: p })}
-            />
-          )}
-        </Section>
-
-        <Separator />
-        <Section
-          title={isMarried ? "5. 3e piliers" : "4. 3e piliers"}
-          hint="Jusqu’à 4 contrats par personne — ajout / suppression."
-        >
-          <div className="space-y-4">
-            <ThirdPillarFields
-              title="Assuré 1"
-              person={input.client1}
-              onChange={(p) => patchInput({ client1: p })}
-            />
-            {showAssure2 && (
-              <ThirdPillarFields
-                title="Assuré 2"
-                person={assure2Person}
-                onChange={(p) => patchInput({ conjoint: p })}
-              />
-            )}
-          </div>
-        </Section>
-
-        <Separator />
-        <Section
-          title={isMarried ? "6. Libres passages" : "5. Libres passages"}
-          hint="0..N avoirs — montant retiré = montant × % / 100 (impôt sur le retiré uniquement)."
-        >
-          <LibrePassageFields
-            input={input}
-            onChange={(libresPassages) => patchInput({ libresPassages })}
-          />
-        </Section>
-
-        <Separator />
-        <Section
-          title={
-            isMarried
-              ? "7. Planification des retraits / Fiscalité"
-              : "6. Planification des retraits / Fiscalité"
-          }
-          hint="LPP, libres passages, 3e piliers — scénarios A regroupé / B réparti / C perso. Agrégation fiscale : personne + année."
-        >
-          <WithdrawalPlanningFields
-            input={input}
-            onChange={(withdrawalScenarios) =>
-              patchInput({ withdrawalScenarios })
-            }
-            previewBasics={
-              record?.results
-                ? {
-                    client1: record.results.client1,
-                    conjoint: record.results.conjoint,
-                  }
-                : null
-            }
-            planningResults={record?.results?.withdrawalPlanning?.scenarios}
-            onRecalculate={calculate}
-            recalculatePending={pending}
-          />
-        </Section>
-
-        <Separator />
-        <Section
-          title={
-            isMarried
-              ? "8. Fortune / autres revenus"
-              : "7. Fortune / autres revenus"
-          }
-        >
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Fortune fiscale (CHF)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={input.fortune || ""}
-                onChange={(e) =>
-                  patchInput({ fortune: Number(e.target.value) || 0 })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Excel Couple1 : fortune vide → 0. Couple4 force 0.
+          <div id="actions-calcul-pdf" className="space-y-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            {pdfHint ? (
+              <p className="text-sm text-amber-800" data-testid="analyse-pdf-hint">
+                {pdfHint}
               </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Autres revenus annuels (CHF)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={input.autresRevenus || ""}
-                onChange={(e) =>
-                  patchInput({ autresRevenus: Number(e.target.value) || 0 })
-                }
-              />
+            ) : null}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#002FA7] px-6 text-base font-semibold text-white hover:bg-[#00248a] disabled:opacity-50"
+                onClick={calculate}
+                disabled={pending || !canCalculate}
+              >
+                {pending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Calculator className="size-4" />
+                )}
+                {pending ? "Calcul en cours…" : "Calculer"}
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-md border-2 border-[#002FA7] bg-white px-6 text-base font-semibold text-[#002FA7] hover:bg-[#002FA7]/5 disabled:opacity-50"
+                onClick={createPdf}
+                disabled={pending || !record?.results}
+              >
+                <FileText className="size-4" />
+                Générer le PDF
+              </button>
             </div>
           </div>
-        </Section>
 
-        <Separator />
-        <Section
-          title={
-            isMarried
-              ? "9. Hypothèses de rente"
-              : "8. Hypothèses de rente"
-          }
-          hint="Offres saisies à la main. L'âge de retraite souhaité de chaque assuré alimente l'AVS et la rente LPP de référence."
-        >
-          <RenteHypothesisFields input={input} onChange={patchInput} />
-        </Section>
-      </div>
+        </div>
 
-      <div
-        id="actions-calcul-pdf"
-        className="mt-8 flex flex-wrap items-center gap-3 border-t border-border pt-6"
-      >
-        <button
-          type="button"
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#002FA7] px-6 text-base font-semibold text-white hover:bg-[#00248a] disabled:opacity-50"
-          onClick={calculate}
-          disabled={pending || !canCalculate}
-        >
-          {pending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Calculator className="size-4" />
-          )}
-          {pending ? "Calcul en cours…" : "Calculer"}
-        </button>
-        <button
-          type="button"
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-md border-2 border-[#002FA7] bg-white px-6 text-base font-semibold text-[#002FA7] hover:bg-[#002FA7]/5 disabled:opacity-50"
-          onClick={createPdf}
-          disabled={pending || !record?.results}
-        >
-          <FileText className="size-4" />
-          Générer le PDF
-        </button>
+        <AnalyseDossierRecap recap={recap} />
       </div>
 
       <div className="mt-10">

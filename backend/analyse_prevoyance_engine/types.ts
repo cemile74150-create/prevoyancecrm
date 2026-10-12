@@ -146,6 +146,12 @@ export interface RenteHypothesisInput {
   dureeAnnees: number | null;
   renteGarantieAnnuelle: number;
   participationExcedentsAnnuelle: number;
+  /**
+   * Case conseiller « Inclure / Recommander ».
+   * Seule une offre cochée reçoit le cadre vert PDF.
+   * Absent / false : pas de recommandation automatique.
+   */
+  recommander?: boolean;
 }
 
 export interface RenteHypothesisColumn {
@@ -172,6 +178,8 @@ export interface RenteHypothesisColumn {
   ecartNetAnnuelVsLpp: number | null;
   /** Revenu encaissé / capital placé. Ce n'est pas un gain en capital. */
   revenuAnnuelSurCapital: number | null;
+  /** Recopie du flag conseiller — pas un choix automatique au revenu max. */
+  recommander?: boolean;
 }
 
 export interface RenteHypothesisComparison {

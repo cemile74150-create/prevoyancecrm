@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Démo UI — Effectuer une analyse (données fictives)</title>
+  <style>
+    :root { --leo: #002FA7; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Calibri, sans-serif;
+      background: #f4f5f7;
+      color: #1f2933;
+    }
+    .wrap { max-width: 1680px; margin: 0 auto; padding: 20px; }
+    h1 { font-size: 28px; margin: 0 0 6px; }
+    .sub { color: #64748b; margin-bottom: 18px; }
+    .grid {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr) 280px;
+      gap: 16px;
+      align-items: start;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    nav button {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      background: transparent;
+      border-radius: 12px;
+      padding: 10px 12px;
+      cursor: pointer;
+      text-align: left;
+      font-size: 14px;
+    }
+    nav button.active { background: var(--leo); color: #fff; font-weight: 600; }
+    .n {
+      width: 22px; height: 22px; border-radius: 999px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 11px; background: #eef2ff; color: #334155;
+    }
+    button.active .n { background: rgba(255,255,255,.18); color: #fff; }
+    .ok { color: #059669; font-weight: 700; margin-left: auto; }
+    button.active .ok { color: #6ee7b7; }
+    h2 { margin: 0 0 8px; font-size: 20px; }
+    .hint { color: #64748b; font-size: 13px; margin-bottom: 16px; }
+    .field { margin-bottom: 12px; }
+    label { display: block; font-size: 12px; color: #64748b; margin-bottom: 4px; }
+    input, select {
+      width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 10px;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .nav-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+    .nav-bottom button, .actions button {
+      border-radius: 8px; padding: 10px 16px; cursor: pointer; font-weight: 600;
+    }
+    .primary { background: var(--leo); color: #fff; border: 0; }
+    .ghost { background: #fff; border: 1px solid #cbd5e1; }
+    dl { margin: 0; }
+    dt { font-size: 12px; color: #64748b; }
+    dd { margin: 0 0 10px; text-align: right; font-weight: 600; }
+    .empty { color: #94a3b8; font-style: italic; font-weight: 400; }
+    .line { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #f1f5f9; padding: 6px 0; }
+    .badge { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #94a3b8; }
+    @media (max-width: 960px) {
+      .grid { grid-template-columns: 1fr; }
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="badge">LeoSoft · données FICTIVES — pas un client prod</p>
+    <h1>Analyse de prévoyance</h1>
+    <p class="sub">Démo visuelle des 9 étapes. Aucun calcul moteur. Dossier fictif Dupont.</p>
+    <div class="grid">
+      <nav class="card" id="nav" aria-label="Étapes de l'analyse"></nav>
+      <div>
+        <div class="card" id="panel"></div>
+        <div class="card nav-bottom">
+          <button class="ghost" id="prev" type="button">Précédent</button>
+          <span id="counter"></span>
+          <button class="ghost" id="next" type="button">Suivant</button>
+        </div>
+        <div class="card actions" style="margin-top:12px">
+          <button class="primary" type="button">Calculer</button>
+          <button class="ghost" type="button">Générer le PDF</button>
+        </div>
+      </div>
+      <aside class="card" id="recap"></aside>
+    </div>
+  </div>
+  <script>
+    const STEPS = [
+      { id: "client", n: 1, label: "Client" },
+      { id: "assure2", n: 2, label: "Assuré 2" },
+      { id: "avs", n: 3, label: "AVS" },
+      { id: "lpp", n: 4, label: "LPP" },
+      { id: "piliers3", n: 5, label: "3e piliers" },
+      { id: "libresPassages", n: 6, label: "Libres passages" },
+      { id: "retraits", n: 7, label: "Retraits/Fiscalité" },
+      { id: "fortune", n: 8, label: "Fortune" },
+      { id: "hypotheses", n: 9, label: "Hypothèses" },
+    ];
+    const dossier = {
+      prenom: "Paul", nom: "Dupont", conjoint: "Léa Dupont",
+      commune: "1003 Lausanne", avs: "CHF 2'100", lpp: "CHF 400'000",
+      p3: "CHF 80'000", lp: "Non renseigné", scenario: "A regroupé", statut: "Enregistré",
+    };
+    const html = {
+      client: `<h2>1. Client</h2><p class="hint">Identité, commune fiscale, état civil.</p>
+        <div class="row"><div class="field"><label>Prénom</label><input value="Paul"></div>
+        <div class="field"><label>Nom</label><input value="Dupont"></div>
+        <div class="field"><label>État civil</label><select><option>Marié(e)</option></select></div></div>`,
+      assure2: `<h2>2. Assuré 2</h2><p class="hint">Conjoint — couple fictif.</p>
+        <div class="row"><div class="field"><label>Prénom</label><input value="Léa"></div>
+        <div class="field"><label>Nom</label><input value="Dupont"></div>
+        <div class="field"><label>Âge souhaité</label><select><option>64 ans et 9 mois</option><option>65 ans</option></select></div></div>`,
+      avs: `<h2>3. AVS</h2><p class="hint">Mensuelle × 12. Bouton ACOR et case simulation.</p>
+        <div class="row"><div class="field"><label>Rente mensuelle</label><input value="2100"></div>
+        <div class="field"><label>AVS annuelle</label><input value="25200" disabled></div></div>
+        <label><input type="checkbox" checked> Montant AVS issu d'une simulation</label>`,
+      lpp: `<h2>4. LPP</h2><p class="hint">% LPP disponible conservé. Confirmation de suppression inchangée dans l'app réelle.</p>
+        <div class="field"><label>% LPP disponible</label><input value="100"></div>`,
+      piliers3: `<h2>5. 3e piliers</h2><p class="hint">Contrats fictifs Dupont.</p><p>Generali 3A — CHF 80'000</p>`,
+      libresPassages: `<h2>6. Libres passages</h2><p class="hint">% disponible fixe 100 %.</p><p class="empty">Non renseigné</p>`,
+      retraits: `<h2>7. Retraits / Fiscalité</h2><p class="hint">Année prévue lecture seule · 1re possible saisie.</p><p>Scénario A regroupé</p>`,
+      fortune: `<h2>8. Fortune</h2><div class="field"><label>Fortune fiscale</label><input value="50000"></div>`,
+      hypotheses: `<h2>9. Hypothèses</h2><p class="hint">Case Inclure / Recommander — pas le revenu max auto.</p>
+        <label><input type="checkbox" checked> Comparer avec la rente LPP</label><br>
+        <label><input type="checkbox"> Inclure / Recommander — Vaudoise 530'000 / 20 ans</label>`,
+    };
+    const done = { client: true, assure2: true, avs: true, lpp: true, piliers3: true, libresPassages: false, retraits: true, fortune: true, hypotheses: true };
+    let step = 0;
+    function render() {
+      document.getElementById("nav").innerHTML = STEPS.map((s, i) =>
+        `<button type="button" class="${i===step?"active":""}" data-i="${i}">
+          <span class="n">${s.n}</span>${s.label}${done[s.id] ? '<span class="ok">✓</span>' : ""}
+        </button>`
+      ).join("");
+      document.getElementById("panel").innerHTML = html[STEPS[step].id];
+      document.getElementById("counter").textContent = `Étape ${step+1} / ${STEPS.length}`;
+      document.getElementById("prev").disabled = step === 0;
+      document.getElementById("next").disabled = step === STEPS.length - 1;
+      document.getElementById("recap").innerHTML = `
+        <p class="badge">Dossier</p><h2>Récapitulatif</h2>
+        ${[
+          ["Nom", dossier.prenom + " " + dossier.nom],
+          ["Conjoint", dossier.conjoint],
+          ["Commune / canton", dossier.commune],
+          ["AVS mensuelle", dossier.avs],
+          ["LPP total", dossier.lpp],
+          ["3e piliers", dossier.p3],
+          ["Libres passages", dossier.lp],
+          ["Scénario", dossier.scenario],
+          ["Enregistrement", dossier.statut],
+        ].map(([k,v]) => `<div class="line"><dt>${k}</dt><dd class="${v==="Non renseigné"?"empty":""}">${v}</dd></div>`).join("")}`;
+      document.querySelectorAll("#nav button").forEach((b) => b.onclick = () => { step = Number(b.dataset.i); render(); });
+    }
+    document.getElementById("prev").onclick = () => { if (step>0) step--; render(); };
+    document.getElementById("next").onclick = () => { if (step<STEPS.length-1) step++; render(); };
+    render();
+  </script>
+</body>
+</html>

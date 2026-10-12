@@ -224,6 +224,8 @@ export class RenteHypothesisService {
       ecartNetAnnuelVsLpp: null,
       revenuAnnuelSurCapital:
         capital > 0 ? Math.round((brut / capital) * 10000) / 10000 : null,
+      // Recopie du flag conseiller uniquement — aucun recalcul LPP / fiscal.
+      recommander: Boolean(row.recommander),
     };
   }
 }

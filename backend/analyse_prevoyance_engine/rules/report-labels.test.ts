@@ -138,8 +138,8 @@ const offreC: RenteHypothesisInput = {
 };
 
 function comparaisonSection(html: string): string {
-  const start = html.indexOf("Comparaison des rentes à");
-  assert.ok(start >= 0, "page comparaison des rentes absente");
+  const start = html.indexOf("COMPARATIF DES RENTES");
+  assert.ok(start >= 0, "page COMPARATIF DES RENTES absente");
   const tableStart = html.indexOf('<table class="data compare">', start);
   assert.ok(tableStart >= 0, "tableau compare absent");
   const tableEnd = html.indexOf("</table>", tableStart);
@@ -257,7 +257,9 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     assert.equal(Math.round(capitalSplit * 100) / 100, payload.aggregates.capitalLppRetireTotal);
     assert.equal(payload.aggregates.impotCapital65, results.capitalPathFoyer?.impot ?? null);
     assert.equal(payload.aggregates.capitalNet65, results.capitalPathFoyer?.net ?? null);
-    assert.ok(html.includes("Comparaison des rentes à 65 ans"));
+    assert.ok(html.includes("COMPARATIF DES RENTES"));
+    assert.equal(html.includes("Comparaison des rentes à"), false);
+    assert.equal(html.includes("Comparaison : Rente LPP vs Rente Certaine"), false);
     assert.ok(html.includes('class="num col-lpp"'));
     assert.ok(html.includes('class="num col-offer col-after-lpp"'));
     assert.ok(html.includes("col-offer"));
@@ -270,27 +272,22 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     const compare = comparaisonSection(html);
     assert.equal(compare.includes('<td class="lab">Capital placé</td>'), false);
     assert.equal(compare.includes('<td class="lab">Compagnie</td>'), false);
-    assert.equal(compare.includes('<td class="lab">Type de rente</td>'), false);
-    assert.equal(compare.includes('<td class="lab">Durée de la rente</td>'), false);
     assert.ok(compare.includes("Rente LPP (référence)"));
     assert.ok(compare.includes("Vaudoise"));
     assert.ok(compare.includes("Helvetia"));
     assert.ok(compare.includes("Rente certaine"));
     assert.ok(compare.includes("20 ans"));
     assert.ok(compare.includes("Rente viagère"));
-    assert.deepEqual(compareBodyLabels(compare), [
-      "Rente AVS",
-      "Rente LPP résiduelle",
-      "Rente garantie",
-      "Participation aux excédents",
-      "Revenu total encaissé",
-      "Revenu fiscal imposable",
-      "Impôts ICC &amp; IFD",
-      "Revenu net annuel",
-      "Écart net annuel vs LPP",
-    ]);
+    assert.ok(compare.includes('<td class="lab">Type</td>'));
+    assert.ok(compare.includes('<td class="lab">Durée</td>'));
+    assert.ok(compare.includes('<td class="lab">Part imposable</td>'));
+    assert.ok(compare.includes('<td class="lab">Revenu net</td>'));
+    assert.ok(compare.includes("LPP – Wiliam"));
+    assert.ok(compare.includes("LPP – Ariane"));
     assert.ok(compare.includes("row-net"));
     assert.ok(compare.includes("row-ecart"));
+    assert.equal(compare.includes("Solution recommandée"), false);
+    assert.equal(/class="[^"]*col-reco/.test(compare), false);
     assert.equal(compare.includes("calculateur officiel AVS"), false);
   });
 
@@ -307,7 +304,7 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     assert.equal(compare.includes("Rente LPP (référence)"), false);
     assert.equal(compare.includes("Helvetia"), false);
     assert.equal(compare.includes('<td class="lab">Capital placé</td>'), false);
-    assert.equal(compare.includes("Écart net annuel vs LPP"), false);
+    assert.equal(compare.includes("Écart vs référence"), false);
     assert.ok(html.includes("Revenu annuel obtenu sur le capital placé"));
   });
 
@@ -403,5 +400,57 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     assert.equal((html.match(/Capital LPP – /g) || []).length, 1);
     assert.equal(payload.conjoint, null);
     assert.equal(payload.client1.capitalCheminCapital, payload.aggregates.capitalLppRetireTotal);
+  });
+
+  it("cadre vert uniquement si le conseiller coche Recommander", async () => {
+    const off = helferAnalyseInput();
+    off.ageRetraiteSouhaite = 65;
+    off.comparerAvecRenteLpp = true;
+    off.renteHypotheses = [offreA, offreB];
+    const htmlOff = await htmlOf(off);
+    assert.equal(htmlOff.includes("Solution recommandée"), false);
+    assert.equal(/class="[^"]*col-reco/.test(htmlOff), false);
+
+    const on = helferAnalyseInput();
+    on.ageRetraiteSouhaite = 65;
+    on.comparerAvecRenteLpp = true;
+    on.renteHypotheses = [{ ...offreA, recommander: true }, offreB];
+    const htmlOn = await htmlOf(on);
+    const compare = comparaisonSection(htmlOn);
+    assert.ok(compare.includes("Solution recommandée"));
+    assert.ok(/class="[^"]*col-reco/.test(compare));
+    const vaudoiseHead = compare.indexOf("Vaudoise");
+    const helvetiaHead = compare.indexOf("Helvetia");
+    const reco = compare.indexOf("Solution recommandée");
+    assert.ok(vaudoiseHead >= 0 && helvetiaHead >= 0 && reco >= 0);
+    assert.ok(reco > vaudoiseHead && reco < helvetiaHead);
+  });
+
+  it("affiche un tiret si N/A, distinct d'un zéro, sans 0 % forcé", async () => {
+    const input = helferAnalyseInput();
+    input.ageRetraiteSouhaite = 65;
+    input.comparerAvecRenteLpp = true;
+    input.renteHypotheses = [{ ...offreA, participationExcedentsAnnuelle: 0 }];
+    const html = await htmlOf(input);
+    const compare = comparaisonSection(html);
+    assert.ok(compare.includes("—"));
+    const partRow = (compare.split("Part imposable")[1] || "").split("</tr>")[0];
+    assert.equal(partRow.includes("0%"), false);
+    const seul = emptyAnalyseInput();
+    seul.etatCivil = "Personne vivant seule";
+    seul.taxLocationId = 170_000_000;
+    seul.taxGroupId = 170_000_000;
+    seul.comparerAvecRenteLpp = true;
+    seul.client1 = {
+      ...emptyPerson("Monsieur"),
+      prenom: "Marc",
+      nom: "Demo",
+      dateNaissance: "1960-01-01",
+    };
+    seul.renteHypotheses = [offreA];
+    const htmlSeul = await htmlOf(seul);
+    const last = comparaisonSection(htmlSeul);
+    assert.ok(last.includes("LPP – Marc"));
+    assert.equal(last.includes("LPP – Assuré 2"), false);
   });
 });
