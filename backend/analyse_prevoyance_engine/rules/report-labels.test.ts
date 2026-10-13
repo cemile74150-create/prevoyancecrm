@@ -4,6 +4,7 @@ import { helferAnalyseInput } from "../fixtures/helfer.ts";
 import { buildReportPayload } from "../report/buildReportPayload.ts";
 import {
   AVS_SIMULATION_DISCLAIMER,
+  REVENU_FISCAL_NOTE,
   renderPrintableReportHtml,
 } from "../pdf/renderPrintableReportHtml.ts";
 import { retirementAnalysisService } from "../services/RetirementAnalysisService.ts";
@@ -452,5 +453,30 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     const last = comparaisonSection(htmlSeul);
     assert.ok(last.includes("LPP – Marc"));
     assert.equal(last.includes("LPP – Assuré 2"), false);
+  });
+
+  it("place la note revenu fiscal sous le tableau COMPARATIF DES RENTES", async () => {
+    const input = helferAnalyseInput();
+    input.ageRetraiteSouhaite = 65;
+    input.comparerAvecRenteLpp = true;
+    input.renteHypotheses = [offreA];
+    const html = await htmlOf(input);
+    const start = html.indexOf("COMPARATIF DES RENTES");
+    assert.ok(start >= 0, "page COMPARATIF DES RENTES absente");
+    const tableStart = html.indexOf('<table class="data compare">', start);
+    assert.ok(tableStart >= 0, "tableau compare absent");
+    const tableEnd = html.indexOf("</table>", tableStart);
+    assert.ok(tableEnd >= 0);
+    const notePos = html.indexOf(REVENU_FISCAL_NOTE, start);
+    assert.ok(notePos >= 0, "note revenu fiscal absente");
+    assert.ok(
+      notePos > tableEnd,
+      "la note revenu fiscal doit suivre le tableau comparatif",
+    );
+    assert.ok(html.includes("revenu-fiscal-note"));
+    assert.equal(
+      REVENU_FISCAL_NOTE,
+      "Revenu fiscal = rente AVS + 70 % de la participation. La rente garantie est encaissée, elle n'entre pas dans l'impôt.",
+    );
   });
 });

@@ -430,7 +430,8 @@ export function reportCss(forceOrient?: ReportPageKind) {
   }
   .solutions-footnote,
   .fiscal-note,
-  .avs-sim-note {
+  .avs-sim-note,
+  .revenu-fiscal-note {
     font-size: 8.5pt;
     line-height: 1.45;
     color: ${GRAY};
@@ -1376,6 +1377,7 @@ function pageComparatifDesRentes(
     <tr><th class="lab"></th>${head}</tr>
     ${lines.filter(Boolean).join("")}
   </table>
+  ${revenuFiscalNoteHtml()}
   ${avsSimulationNoteHtml(p)}
   ${fiscalNoteHtml()}
   </div>
@@ -1389,11 +1391,19 @@ function pageComparatifDesRentes(
 const FISCAL_NOTE =
   "Le montant de l'impôt présenté est une estimation calculée uniquement sur la base des rentes AVS et LPP prises en compte dans cette analyse. Il ne tient pas compte des autres revenus éventuels du client, ni de sa fortune. L'imposition effective pourra donc différer selon sa situation fiscale globale.";
 
+/** Formule du revenu fiscal affichée sous le tableau COMPARATIF DES RENTES. */
+export const REVENU_FISCAL_NOTE =
+  "Revenu fiscal = rente AVS + 70 % de la participation. La rente garantie est encaissée, elle n'entre pas dans l'impôt.";
+
 export const AVS_SIMULATION_DISCLAIMER =
   "Le montant de la rente AVS présenté dans cette analyse est une estimation établie à l'aide du calculateur officiel AVS. Il repose sur les hypothèses et les informations disponibles au moment de la simulation. Le montant définitif pourra différer et devra être confirmé par la caisse de compensation compétente.";
 
 function fiscalNoteHtml(): string {
   return `<p class="fiscal-note">* ${esc(FISCAL_NOTE)}</p>`;
+}
+
+function revenuFiscalNoteHtml(): string {
+  return `<p class="revenu-fiscal-note">* ${esc(REVENU_FISCAL_NOTE)}</p>`;
 }
 
 function hasAvsSimulationDisclaimer(p: ReportPayload): boolean {
