@@ -1,6 +1,16 @@
 import { formatDateFr } from "../rules/avs-age";
 import { personDisplayName } from "../mappers";
-import type { AnalyseRecord } from "../types";
+import {
+  revenuBrutEncaisse,
+  revenuFiscalImposable,
+} from "../rules/rente-hypotheses";
+import type {
+  AnalyseInput,
+  AnalyseRecord,
+  RenteHypothesisColumn,
+  RenteHypothesisComparison,
+  RenteHypothesisInput,
+} from "../types";
 import { librePassageRetire, normalizeThirdPillarType } from "../types";
 import type {
   ReportPayload,
@@ -214,11 +224,10 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
     );
   }
   pageCount += 1; // frise always
-  const hypothesesRente =
-    results.renteHypotheses &&
-    results.renteHypotheses.columns.some((col) => col.kind === "hypothese")
-      ? results.renteHypotheses
-      : null;
+  const hypothesesRente = resolveHypothesesRente(input, results, {
+    avsTotal,
+    renteLppResiduelleTotal,
+  });
   pageCount += 1; // comparatif pédagogique des solutions de rentes
   if (hypothesesRente || vaudoise?.include) {
     pageCount += 1; // dernière page COMPARATIF DES RENTES
@@ -548,6 +557,99 @@ function buildVaudoise(
       economieFiscaleAnnuelle:
         taxLpp != null && taxV != null ? round2(taxLpp - taxV) : null,
     },
+  };
+}
+
+function hypotheseSaisie(row: RenteHypothesisInput): boolean {
+  return Boolean(
+    (row.compagnie || "").trim() ||
+      row.capitalPlace ||
+      row.renteGarantieAnnuelle ||
+      row.participationExcedentsAnnuelle,
+  );
+}
+
+/**
+ * Colonnes d'offres = saisie wizard (étape 9), même si le dernier calcul
+ * est antérieur. La case « Inclure / Recommander » ne sert qu'au cadre vert.
+ * Les colonnes déjà calculées (impôt ESTV) sont réutilisées par id.
+ */
+function resolveHypothesesRente(
+  input: AnalyseInput,
+  results: NonNullable<AnalyseRecord["results"]>,
+  ctx: { avsTotal: number; renteLppResiduelleTotal: number },
+): RenteHypothesisComparison | null {
+  const saisie = (input.renteHypotheses || []).filter(hypotheseSaisie);
+  const computed = results.renteHypotheses;
+  const computedOffres = (computed?.columns || []).filter(
+    (col) => col.kind === "hypothese",
+  );
+  const lppCol = computed?.columns?.find((col) => col.kind === "lpp");
+  if (!saisie.length && !computedOffres.length) return null;
+
+  const byId = new Map(computedOffres.map((col) => [col.id, col]));
+  const offerCols = saisie.length
+    ? saisie.map(
+        (row, index) =>
+          byId.get(row.id) ??
+          columnFromSaisie(row, index, ctx.avsTotal, ctx.renteLppResiduelleTotal),
+      )
+    : computedOffres;
+  const withLpp = Boolean(input.comparerAvecRenteLpp) || Boolean(lppCol);
+  const columns: RenteHypothesisColumn[] = [
+    ...(withLpp && lppCol ? [lppCol] : []),
+    ...offerCols,
+  ];
+  if (!columns.some((col) => col.kind === "hypothese")) return null;
+  return {
+    ageRetraite: computed?.ageRetraite ?? input.ageRetraiteSouhaite ?? null,
+    comparerAvecRenteLpp: withLpp,
+    columns,
+  };
+}
+
+function columnFromSaisie(
+  row: RenteHypothesisInput,
+  index: number,
+  avs: number,
+  renteLppResiduelle: number,
+): RenteHypothesisColumn {
+  const garantie = row.renteGarantieAnnuelle || 0;
+  const participation = row.participationExcedentsAnnuelle || 0;
+  const capital = row.capitalPlace || 0;
+  const brut = revenuBrutEncaisse({
+    renteAvs: avs,
+    renteGarantie: garantie,
+    participationExcedents: participation,
+    renteLppResiduelle,
+  });
+  const fiscal = revenuFiscalImposable({
+    type: row.type,
+    renteAvs: avs,
+    renteGarantie: garantie,
+    participationExcedents: participation,
+    renteLppResiduelle,
+  });
+  return {
+    id: row.id || `h-${index + 1}`,
+    kind: "hypothese",
+    label: (row.compagnie || "").trim() || `Hypothèse ${index + 1}`,
+    compagnie: (row.compagnie || "").trim() || null,
+    typeLabel: row.type === "viagere" ? "Viagère" : "Certaine",
+    capitalPlace: capital || null,
+    dureeAnnees: row.type === "certaine" ? row.dureeAnnees : null,
+    renteAvs: avs,
+    renteLppResiduelle,
+    renteGarantie: garantie,
+    participationExcedents: participation,
+    revenuBrutEncaisse: brut,
+    revenuFiscalImposable: fiscal,
+    impotEstv: null,
+    revenuNetApresImpot: null,
+    ecartNetAnnuelVsLpp: null,
+    revenuAnnuelSurCapital:
+      capital > 0 ? Math.round((brut / capital) * 10000) / 10000 : null,
+    recommander: Boolean(row.recommander),
   };
 }
 

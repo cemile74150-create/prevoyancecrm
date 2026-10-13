@@ -455,6 +455,41 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     assert.equal(last.includes("LPP – Assuré 2"), false);
   });
 
+  it("affiche les offres saisies même si le dernier calcul ne les contient pas", async () => {
+    const input = helferAnalyseInput();
+    input.ageRetraiteSouhaite = 65;
+    input.comparerAvecRenteLpp = true;
+    input.renteVaudoise15 = null;
+    input.renteVaudoise20 = null;
+    input.renteHypotheses = [];
+    const results = await retirementAnalysisService.run(input);
+    assert.equal(
+      Boolean(results.renteHypotheses?.columns.some((col) => col.kind === "hypothese")),
+      false,
+    );
+
+    const stale: AnalyseRecord = {
+      id: "stale-hypotheses",
+      createdAt: "2026-10-07T00:00:00.000Z",
+      updatedAt: "2026-10-07T00:00:00.000Z",
+      clientId: null,
+      status: "calculee",
+      input: { ...input, renteHypotheses: [offreA, offreB] },
+      results,
+    };
+    const html = renderPrintableReportHtml(buildReportPayload(stale));
+    assert.ok(html.includes("Comparatif des solutions de rentes"));
+    const compare = comparaisonSection(html);
+    assert.ok(compare.includes("Vaudoise"));
+    assert.ok(compare.includes("Helvetia"));
+    assert.ok(compare.includes("20 ans"));
+    assert.ok(compare.includes("Rente certaine"));
+    assert.ok(compare.includes("Rente viagère"));
+    assert.ok(/530\s*000/u.test(compare));
+    assert.ok(/200\s*000/u.test(compare));
+    assert.equal(compare.includes("Solution recommandée"), false);
+  });
+
   it("place la note revenu fiscal sous le tableau COMPARATIF DES RENTES", async () => {
     const input = helferAnalyseInput();
     input.ageRetraiteSouhaite = 65;
