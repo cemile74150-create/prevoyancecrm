@@ -444,10 +444,22 @@ export function AnalysePrevoyanceApp({
     return JSON.stringify(payloadFrom(input)) === calculatedSnapshot;
   }
 
-  function createPdf() {
+  async function createPdf() {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    await chainRef.current;
+    if (
+      recordRef.current?.id &&
+      fingerprintInput(inputRef.current) !== savedFpRef.current
+    ) {
+      await persistRef.current({ autosave: true });
+    }
+    const current = recordRef.current;
     const plan = planAnalysePdf({
-      hasId: Boolean(record?.id),
-      hasResults: Boolean(record?.results),
+      hasId: Boolean(current?.id),
+      hasResults: Boolean(current?.results),
       isCurrent: resultsAreCurrent(),
     });
     if (!plan.allow) {
@@ -459,7 +471,7 @@ export function AnalysePrevoyanceApp({
     setPdfHint(plan.message || "");
     const opened = openAnalysePdfWindow(
       (...args) => window.open(...args),
-      analyseUrl(`/${record.id}/pdf`),
+      analyseUrl(`/${current.id}/pdf`),
     );
     if (!opened) setError(PDF_POPUP_BLOCKED);
   }

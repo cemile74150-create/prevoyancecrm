@@ -423,10 +423,23 @@ export function reportCss(forceOrient?: ReportPageKind) {
   table.data.solutions td.sol {
     text-align: center;
   }
-  .solutions-block,
-  .keep-with-note {
+  .solutions-block {
     page-break-inside: avoid;
     break-inside: avoid;
+  }
+  /* Le tableau COMPARATIF DES RENTES doit rester sous le titre.
+     avoid sur .keep-with-note le poussait à la page suivante, puis
+     Playwright ne conservait que la page titre. */
+  .keep-with-note {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+  table.data.compare td {
+    height: auto;
+    padding: 4px 6px;
+  }
+  table.data.compare th {
+    padding: 6px 4px;
   }
   .solutions-footnote,
   .fiscal-note,

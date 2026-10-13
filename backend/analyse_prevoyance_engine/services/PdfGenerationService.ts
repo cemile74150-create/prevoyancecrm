@@ -1,3 +1,5 @@
+import { existsSync } from "fs";
+import { join } from "path";
 import { chromium, type Browser } from "playwright";
 import { PDFDocument } from "pdf-lib";
 import { buildReportPayload } from "../report/buildReportPayload";
@@ -12,8 +14,19 @@ import type { AnalyseRecord } from "../types";
 
 let browserPromise: Promise<Browser> | null = null;
 
+/** Même règle que analyses_routes._engine_env : Chromium local, pas un cache sandbox vide. */
+function useLocalPlaywrightBrowsers(): void {
+  const local = process.env.LOCALAPPDATA;
+  if (!local) return;
+  const ms = join(local, "ms-playwright");
+  if (existsSync(ms)) {
+    process.env.PLAYWRIGHT_BROWSERS_PATH = ms;
+  }
+}
+
 async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
+    useLocalPlaywrightBrowsers();
     browserPromise = chromium.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -25,7 +38,7 @@ async function getBrowser(): Promise<Browser> {
 /**
  * Génère un PDF A4 mixte portrait/paysage.
  * Source unique : ReportPayload (moteur) — aucun calcul métier ici.
- * Une page HTML = une page PDF (fiable pour orientation mixte).
+ * Une spec HTML peut produire plusieurs pages A4 ; toutes sont conservées.
  */
 export class PdfGenerationService {
   buildPayload(record: AnalyseRecord): ReportPayload {
@@ -49,7 +62,11 @@ export class PdfGenerationService {
       const bytes = await this.htmlToPdf(browser, html, spec.kind);
       const doc = await PDFDocument.load(bytes);
       const copied = await merged.copyPages(doc, doc.getPageIndices());
-      merged.addPage(copied[0]);
+      // Une spec HTML peut tenir sur plusieurs pages A4 (tableau comparatif).
+      // Ne garder que copied[0] faisait disparaître les colonnes d'offres.
+      for (const page of copied) {
+        merged.addPage(page);
+      }
     }
 
     const out = await merged.save();
