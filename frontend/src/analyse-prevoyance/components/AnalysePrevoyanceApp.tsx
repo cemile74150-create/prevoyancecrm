@@ -24,6 +24,7 @@ import {
   type AnalyseStepId,
   type AutosavePhase,
 } from "@/analyse-prevoyance/lib/analyseWizard";
+import { avsAnnuelFromMensuel } from "@/analyse-prevoyance/lib/avsAnnuel";
 import {
   PDF_POPUP_BLOCKED,
   openAnalysePdfWindow,
@@ -116,7 +117,7 @@ function withMonthlyAvs(person) {
   if (!person) return person;
   const mensuel = Number(person.avsMensuel) || 0;
   if (mensuel > 0) {
-    return { ...person, avsAnnuel: Math.round(mensuel * 12) };
+    return { ...person, avsAnnuel: avsAnnuelFromMensuel(mensuel) };
   }
   return person;
 }
@@ -599,7 +600,7 @@ export function AnalysePrevoyanceApp({
         return (
           <Section
             title="3. AVS"
-            hint="Saisissez la rente mensuelle. L’annuelle s’affiche tout de suite : mensuelle × 12."
+            hint="Saisissez la rente mensuelle. L’annuelle s’affiche tout de suite : mensuelle × 13."
           >
             <AvsFields
               title="Assuré 1"

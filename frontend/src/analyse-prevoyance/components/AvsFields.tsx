@@ -5,6 +5,7 @@ import { Input } from "@/analyse-prevoyance/ui/input";
 import { Label } from "@/analyse-prevoyance/ui/label";
 import { Button, buttonVariants } from "@/analyse-prevoyance/ui/button";
 import type { AvsRenteAnticipee, PersonInput } from "@/analyse-prevoyance/lib/types";
+import { avsAnnuelFromMensuel } from "@/analyse-prevoyance/lib/avsAnnuel";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { ConfirmDeleteButton } from "@/analyse-prevoyance/components/ConfirmDeleteButton";
 
@@ -19,7 +20,7 @@ export function AvsFields({
   person: PersonInput;
   onChange: (p: PersonInput) => void;
 }) {
-  const annuelle = Math.round((person.avsMensuel || 0) * 12);
+  const annuelle = avsAnnuelFromMensuel(person.avsMensuel);
   const anticipees = person.avsRentesAnticipees || [];
 
   function setAnticipees(next: AvsRenteAnticipee[]) {
@@ -41,7 +42,7 @@ export function AvsFields({
               onChange({
                 ...person,
                 avsMensuel,
-                avsAnnuel: Math.round(avsMensuel * 12),
+                avsAnnuel: avsAnnuelFromMensuel(avsMensuel),
               });
             }}
           />
@@ -55,7 +56,7 @@ export function AvsFields({
             value={annuelle}
             aria-label="AVS annuelle"
           />
-          <p className="text-xs text-muted-foreground">Mensuelle × 12</p>
+          <p className="text-xs text-muted-foreground">Mensuelle × 13</p>
         </div>
         <div className="flex items-end">
           <a

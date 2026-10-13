@@ -5,6 +5,7 @@ import type {
   RenteHypothesisComparison,
   RenteHypothesisInput,
 } from "../types";
+import { avsCalculationService } from "./AVSCalculationService";
 import { taxCalculationService } from "./TaxCalculationService";
 import { lppCalculationService } from "./LPPCalculationService";
 import { ageRetraitePersonne } from "../rules/age-retraite";
@@ -17,8 +18,7 @@ import {
 } from "../rules/rente-hypotheses";
 
 function avsPrincipale65(person: PersonInput): number {
-  if (person.avsAnnuel != null && person.avsAnnuel > 0) return person.avsAnnuel;
-  return Math.round((person.avsMensuel || 0) * 12);
+  return avsCalculationService.resolveAnnual(person);
 }
 
 /** AVS utilisée pour un âge : anticipée si saisie, sinon la rente à 65 ans. */

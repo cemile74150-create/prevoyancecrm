@@ -7,15 +7,18 @@ import {
 import { lppCalculationService } from "./LPPCalculationService";
 import type { PersonComputed, PersonInput } from "../types";
 
+/** Rente AVS annuelle = mensuelle × 13 (13e rente), pas × 12. */
+export const AVS_MENSUALITES_PAR_AN = 13;
+
 /**
  * Service AVS — rentes et âge légal.
- * Mensuel × 12 → annuel lorsque l'annuel n'est pas déjà saisi.
+ * Mensuel × 13 → annuel lorsque l'annuel n'est pas déjà saisi.
  * Un annuel déjà enregistré reste prioritaire (analyses existantes).
  * Intègre le % LPP disponible pour capital retiré / rente résiduelle.
  */
 export class AVSCalculationService {
   annualFromMonthly(mensuel: number): number {
-    return round2(mensuel * 12);
+    return round2(mensuel * AVS_MENSUALITES_PAR_AN);
   }
 
   resolveAnnual(person: PersonInput): number {

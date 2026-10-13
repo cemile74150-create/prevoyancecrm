@@ -61,11 +61,13 @@ describe("formulaire — AVS, âges, libre passage, année de retrait", () => {
     response: {},
   });
 
-  it("AVS annuelle = mensuelle × 12 si l'annuel n'est pas déjà enregistré", () => {
+  it("AVS annuelle = mensuelle × 13 si l'annuel n'est pas déjà enregistré", () => {
     const person = emptyPerson("Monsieur");
     person.avsMensuel = 1_890;
     person.avsAnnuel = null;
-    assert.equal(avsCalculationService.resolveAnnual(person), 1_890 * 12);
+    assert.equal(avsCalculationService.resolveAnnual(person), 24_570);
+    assert.equal(avsCalculationService.resolveAnnual(person), 1_890 * 13);
+    assert.notEqual(avsCalculationService.resolveAnnual(person), 1_890 * 12);
   });
 
   it("un annuel déjà enregistré reste prioritaire", () => {
@@ -75,7 +77,7 @@ describe("formulaire — AVS, âges, libre passage, année de retrait", () => {
     assert.equal(avsCalculationService.resolveAnnual(person), 24_570);
   });
 
-  it("personne seule : l'âge souhaité choisit la rente LPP et l'AVS × 12", async () => {
+  it("personne seule : l'âge souhaité choisit la rente LPP et l'AVS × 13", async () => {
     const input = emptyAnalyseInput();
     input.taxLocationId = 1;
     input.etatCivil = "Personne vivant seule";
@@ -88,7 +90,7 @@ describe("formulaire — AVS, âges, libre passage, année de retrait", () => {
     const built = await renteHypothesisService.build(input);
     const lppCol = built?.columns.find((col) => col.kind === "lpp");
     assert.equal(built?.ageRetraite, 63);
-    assert.equal(lppCol?.renteAvs, 2_400);
+    assert.equal(lppCol?.renteAvs, 2_600);
     assert.equal(lppCol?.renteGarantie, 10_000);
   });
 
@@ -113,7 +115,7 @@ describe("formulaire — AVS, âges, libre passage, année de retrait", () => {
     assert.equal(ageRetraitePersonne(input.conjoint, input.ageRetraiteSouhaite), 65);
     const built = await renteHypothesisService.build(input);
     const lppCol = built?.columns.find((col) => col.kind === "lpp");
-    assert.equal(lppCol?.renteAvs, 12_000 + 6_000);
+    assert.equal(lppCol?.renteAvs, 13_000 + 6_500);
     assert.equal(lppCol?.renteGarantie, 10_000 + 8_000);
   });
 
@@ -248,5 +250,13 @@ describe("libellés du formulaire conseiller", () => {
     assert.match(source, /Êtes-vous sûr de vouloir supprimer cet élément \? Cette action ne pourra pas être annulée\./);
     assert.match(source, /← Analyses/);
     assert.match(source, /LeoSoft · Effectuer une analyse/);
+  });
+
+  it("affiche mensuelle × 13, plus × 12", () => {
+    const source = files.map((file) => readFileSync(resolve(root, file), "utf8")).join("\n");
+    assert.match(source, /mensuelle × 13/);
+    assert.match(source, /Mensuelle × 13/);
+    assert.equal(source.includes("mensuelle × 12"), false);
+    assert.equal(source.includes("Mensuelle × 12"), false);
   });
 });
