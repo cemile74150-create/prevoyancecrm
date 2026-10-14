@@ -263,6 +263,17 @@ export function typeClientLabel(value) {
   return value || "—";
 }
 
+/** Recherche des clients déjà dans LeoSoft : uniquement pour un client existant. */
+export function showsExistingClientSearch(typeClient) {
+  return typeClient !== "nouveau";
+}
+
+/** Un nouveau client ne doit pas conserver l'identifiant d'une fiche précédemment liée. */
+export function clientIdAfterTypeChange(typeClient, clientId) {
+  if (typeClient === "nouveau") return null;
+  return clientId || null;
+}
+
 /** Champs comparés lors d'une modification d'offre. */
 export const MODIFICATION_COMPARE_FIELDS = [
   { key: "civilite", label: "Civilité" },
