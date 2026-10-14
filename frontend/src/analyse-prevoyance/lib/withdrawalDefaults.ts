@@ -1,12 +1,55 @@
 // @ts-nocheck
+import {
+  effectiveLppWithdrawalAge,
+  lppCapitalForWithdrawalAge,
+  resolveThirdPillarCapital,
+  yearOfIso,
+} from "./planificationSaisie";
 import type {
   AnalyseInput,
   CapitalKind,
   PersonComputed,
+  PersonInput,
   PersonKey,
   WithdrawalPlanItem,
   WithdrawalScenario,
 } from "./types";
+
+function dossierLppAge(input: AnalyseInput): number | null {
+  const age = input.ageRetraiteSouhaite ?? input.client1?.ageRetraiteSouhaite ?? null;
+  return age != null && Number.isFinite(Number(age)) ? Number(age) : null;
+}
+
+function lppItem(
+  id: string,
+  titulaire: PersonKey,
+  input: AnalyseInput,
+  person: PersonInput,
+  computed: PersonComputed,
+): WithdrawalPlanItem {
+  const age = effectiveLppWithdrawalAge(person, dossierLppAge(input));
+  const row = lppCapitalForWithdrawalAge(person.lpp, age);
+  const birth = yearOfIso(person.dateNaissance);
+  const year =
+    row.found && birth != null && age != null
+      ? birth + age
+      : yearOfIso(computed.dateDepart);
+  const custom =
+    person.ageRetraitLppSouhaite != null &&
+    Number.isFinite(Number(person.ageRetraitLppSouhaite));
+  return {
+    id,
+    kind: "lpp",
+    titulaire,
+    label: `LPP ${person.prenom || (titulaire === "client1" ? "assuré 1" : "Assuré 2")}`,
+    institution: "LPP",
+    montantDisponible: row.found ? row.capital : custom ? 0 : computed.capitalLpp65,
+    pctCapital: computed.lppPctDeblocable,
+    anneeRetraitPrevue: year,
+    anneePremierePossible: year,
+    anneeDernierePossible: null,
+  };
+}
 
 /**
  * Construit des items de planification par défaut à partir du dossier
@@ -22,33 +65,10 @@ export function buildDefaultWithdrawalItems(
   const yearOf = (iso: string | null | undefined) =>
     iso && /^\d{4}/.test(iso) ? Number(iso.slice(0, 4)) : null;
 
-  items.push({
-    id: "lpp-client1",
-    kind: "lpp",
-    titulaire: "client1",
-    label: `LPP ${input.client1.prenom || "assuré 1"}`,
-    institution: "LPP",
-    // Avoir total — le moteur applique le % une fois. Jamais le retirable.
-    montantDisponible: client1.capitalLpp65,
-    pctCapital: client1.lppPctDeblocable,
-    anneeRetraitPrevue: yearOf(client1.dateDepart),
-    anneePremierePossible: yearOf(client1.dateDepart),
-    anneeDernierePossible: null,
-  });
+  items.push(lppItem("lpp-client1", "client1", input, input.client1, client1));
 
   if (conjoint && input.conjoint) {
-    items.push({
-      id: "lpp-conjoint",
-      kind: "lpp",
-      titulaire: "conjoint",
-      label: `LPP ${input.conjoint.prenom || "Assuré 2"}`,
-      institution: "LPP",
-      montantDisponible: conjoint.capitalLpp65,
-      pctCapital: conjoint.lppPctDeblocable,
-      anneeRetraitPrevue: yearOf(conjoint.dateDepart),
-      anneePremierePossible: yearOf(conjoint.dateDepart),
-      anneeDernierePossible: null,
-    });
+    items.push(lppItem("lpp-conjoint", "conjoint", input, input.conjoint, conjoint));
   }
 
   for (const lp of input.libresPassages || []) {
@@ -90,18 +110,21 @@ export function buildDefaultWithdrawalItems(
     prenom: string,
     contracts: AnalyseInput["client1"]["troisiemePilier"],
   ) => {
-    for (const c of contracts) {
-      if (!c.montant) continue;
+    for (const c of contracts || []) {
+      const year = yearOf(c.echeance);
+      const resolved = resolveThirdPillarCapital(c, year);
+      if (!c.montant && !(c.valeursRachat || []).length) continue;
       items.push({
         id: `3p-${c.id}`,
         kind: "3p",
         titulaire,
         label: `${c.type === "3B" ? "3B" : "3A"} – ${prenom} – ${c.compagnie || ""} – ${c.police || ""}`.replace(/\s+–\s+$/g, "").trim(),
         institution: c.compagnie || "3e pilier",
-        montantDisponible: c.montant,
+        montantDisponible: resolved.montant,
+        capitalStatut: resolved.statut,
         pctCapital: 100,
-        anneeRetraitPrevue: yearOf(c.echeance),
-        anneePremierePossible: yearOf(c.echeance),
+        anneeRetraitPrevue: year,
+        anneePremierePossible: year,
         anneeDernierePossible: null,
         sourceId: c.id,
       });
@@ -159,4 +182,33 @@ export function kindLabel(kind: CapitalKind): string {
     default:
       return "Autre";
   }
+}
+
+export function selectedWithdrawalYear(item: {
+  anneePremierePossible?: number | null;
+  anneeRetraitPrevue?: number | null;
+}): number | null {
+  if (item.anneePremierePossible != null && Number.isFinite(Number(item.anneePremierePossible))) {
+    return Number(item.anneePremierePossible);
+  }
+  if (item.anneeRetraitPrevue != null && Number.isFinite(Number(item.anneeRetraitPrevue))) {
+    return Number(item.anneeRetraitPrevue);
+  }
+  return null;
+}
+
+export function withPillarCapital(
+  input: AnalyseInput,
+  item: WithdrawalPlanItem,
+): WithdrawalPlanItem {
+  if (item.kind !== "3p" || !item.sourceId) return item;
+  const person = item.titulaire === "conjoint" ? input.conjoint : input.client1;
+  const contract = person?.troisiemePilier?.find((row) => row.id === item.sourceId);
+  if (!contract) return item;
+  const resolved = resolveThirdPillarCapital(contract, selectedWithdrawalYear(item));
+  return {
+    ...item,
+    montantDisponible: resolved.montant,
+    capitalStatut: resolved.statut,
+  };
 }

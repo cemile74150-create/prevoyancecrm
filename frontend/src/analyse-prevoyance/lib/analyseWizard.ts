@@ -33,7 +33,7 @@ export interface AnalyseStepDef {
   label: string;
 }
 
-/** 9 étapes fixes — toutes accessibles, sans reload. */
+/** 8 étapes du parcours. La fortune reste dans le dossier, hors de ce flux. */
 export const ANALYSE_STEPS: AnalyseStepDef[] = [
   { id: "client", n: 1, label: "Client" },
   { id: "assure2", n: 2, label: "Assuré 2" },
@@ -42,8 +42,7 @@ export const ANALYSE_STEPS: AnalyseStepDef[] = [
   { id: "piliers3", n: 5, label: "3e piliers" },
   { id: "libresPassages", n: 6, label: "Libres passages" },
   { id: "retraits", n: 7, label: "Retraits/Fiscalité" },
-  { id: "fortune", n: 8, label: "Fortune" },
-  { id: "hypotheses", n: 9, label: "Hypothèses" },
+  { id: "hypotheses", n: 8, label: "Hypothèses" },
 ];
 
 export function autosaveLabel(phase: AutosavePhase): string {

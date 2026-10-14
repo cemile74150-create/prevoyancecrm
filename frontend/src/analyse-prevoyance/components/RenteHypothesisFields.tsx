@@ -106,7 +106,7 @@ export function RenteHypothesisFields({
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Capital placé (CHF)</Label>
+              <Label className="text-xs">Capital placé (timbre fédéral compris) (CHF)</Label>
               <Input
                 type="number"
                 min={0}
@@ -118,7 +118,7 @@ export function RenteHypothesisFields({
             </div>
             {row.type === "certaine" && (
               <div className="space-y-1">
-                <Label className="text-xs">Durée de la rente (années)</Label>
+                <Label className="text-xs">Durée du versement de la rente (années)</Label>
                 <Input
                   type="number"
                   min={1}

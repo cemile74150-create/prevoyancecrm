@@ -37,6 +37,19 @@ export function normalizeThirdPillarType(value: unknown): ThirdPillarType {
   return raw === "3B" ? "3B" : "3A";
 }
 
+export interface ValeurRachat {
+  id?: string;
+  date?: string | null;
+  montant?: number | null;
+}
+
+export interface RentePontInput {
+  id?: string;
+  ageDebut?: number | null;
+  ageFin?: number | null;
+  montantAnnuel?: number | null;
+}
+
 export interface ThirdPillarContract {
   id: string;
   echeance: string; // ISO date
@@ -46,6 +59,7 @@ export interface ThirdPillarContract {
   compagnie: string;
   /** Obligatoire à la saisie. Les dossiers anciens sans type restent des 3A. */
   type?: ThirdPillarType;
+  valeursRachat?: ValeurRachat[];
 }
 
 export interface ThirdPillarLineResult {
@@ -104,6 +118,7 @@ export interface WithdrawalPlanItem {
   anneeDernierePossible: number | null;
   /** Lien optionnel vers id source (contrat 3P, LP, …). */
   sourceId?: string;
+  capitalStatut?: "echeance" | "rachat" | "indicatif";
 }
 
 /** Scénario nommé de retraits (A regroupé, B réparti, C perso…). */
@@ -215,8 +230,11 @@ export interface PersonInput {
    */
   lppPctDeblocable?: number;
   troisiemePilier: ThirdPillarContract[];
-  /** Rente pont (conjoint, colonne J Excel) — optionnel. */
+  /** Rente pont historique. Les saisies nouvelles passent par rentePonts. */
   rentePont?: number;
+  rentePonts?: RentePontInput[];
+  /** Âge de retrait LPP personnalisé. Absent : âge de l'onglet Client. */
+  ageRetraitLppSouhaite?: number | null;
   /**
    * Âge de retraite souhaité de cet assuré (début des rentes).
    * Absent : on reprend l'âge du dossier, pour les analyses déjà enregistrées.
@@ -540,6 +558,8 @@ export function emptyPerson(civilite: Civilite = "Monsieur"): PersonInput {
     lppPctDeblocable: LPP_PCT_DEBLOCABLE_DEFAULT,
     troisiemePilier: [],
     rentePont: 0,
+    rentePonts: [],
+    ageRetraitLppSouhaite: null,
   };
 }
 

@@ -5,7 +5,6 @@ import { useState } from "react";
 import {
   Calculator,
   Copy,
-  Plus,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/analyse-prevoyance/ui/button";
@@ -19,16 +18,16 @@ import type {
   WithdrawalScenarioResult,
 } from "@/analyse-prevoyance/lib/types";
 import { ConfirmDeleteButton } from "@/analyse-prevoyance/components/ConfirmDeleteButton";
+import { PILIER_3B_NOTE, RACHAT_ABSENT_UI } from "@/analyse-prevoyance/lib/planificationSaisie";
 import {
   buildDefaultWithdrawalItems,
   duplicateWithdrawalScenario,
   kindLabel,
-  newEmptyScenario,
+  withPillarCapital,
 } from "@/analyse-prevoyance/lib/withdrawalDefaults";
 import {
   itemMontantRetire,
   mergeCalendarWithResult,
-  scenarioWithdrawalYear,
 } from "@/analyse-prevoyance/lib/withdrawalPlanUtils";
 import { formatChf } from "@/analyse-prevoyance/lib/mappers";
 
@@ -62,46 +61,6 @@ export function WithdrawalPlanningFields({
     scenarios.find((s) => s.id === activeId) || scenarios[0] || null;
   const activeResult =
     planningResults?.find((r) => r.scenarioId === active?.id) ?? null;
-
-  function addScenario(preset: "A" | "B" | "C" | "empty") {
-    const id = `sc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    let items: WithdrawalPlanItem[] = [];
-    let name = "Nouveau scénario";
-    if (previewBasics && preset !== "empty") {
-      items = buildDefaultWithdrawalItems(
-        input,
-        previewBasics.client1,
-        previewBasics.conjoint,
-      );
-      if (preset === "A") {
-        name = "A — Regroupé (même année si possible)";
-        const years = items
-          .map((i) => scenarioWithdrawalYear(i))
-          .filter((y): y is number => y != null);
-        const y = years.length ? Math.min(...years) : null;
-        items = items.map((i) => ({ ...i, anneePremierePossible: y }));
-      } else if (preset === "B") {
-        name = "B — Réparti (dates sources)";
-      } else {
-        name = "C — Personnalisé";
-      }
-    } else if (preset !== "empty") {
-      name =
-        preset === "A"
-          ? "A — Regroupé"
-          : preset === "B"
-            ? "B — Réparti"
-            : "C — Personnalisé";
-    }
-    const sc: WithdrawalScenario = {
-      id,
-      name,
-      items,
-      includeInReport: false,
-    };
-    onChange([...scenarios, sc]);
-    setActiveId(id);
-  }
 
   function updateScenario(id: string, partial: Partial<WithdrawalScenario>) {
     onChange(
@@ -152,99 +111,47 @@ export function WithdrawalPlanningFields({
     );
   }
 
-  function refillFromDossier(scenarioId: string) {
+  function refillFromDossier(scenarioId?: string) {
     if (!previewBasics) return;
     const items = buildDefaultWithdrawalItems(
       input,
       previewBasics.client1,
       previewBasics.conjoint,
     );
+    if (!scenarioId || !scenarios.some((s) => s.id === scenarioId)) {
+      const id = `sc-${Date.now()}`;
+      const sc: WithdrawalScenario = {
+        id,
+        name: "Capitaux disponibles",
+        items,
+        includeInReport: false,
+      };
+      onChange([...scenarios, sc]);
+      setActiveId(id);
+      return;
+    }
     updateScenario(scenarioId, { items });
   }
 
+  const shownItems = (active?.items || []).map((it) => withPillarCapital(input, it));
   const calendar = active
-    ? mergeCalendarWithResult(active.items, activeResult)
+    ? mergeCalendarWithResult(shownItems, activeResult)
     : [];
+  const indicative = shownItems.filter((it) => it.capitalStatut === "indicatif");
+  const has3b = shownItems.some((it) => /\b3B\b/.test(it.label || "") || it.kind === "3p" && /\b3B\b/.test(it.label || ""));
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-medium">Planification des retraits</h3>
-          <p className="text-xs text-muted-foreground">
-            Tableau interactif · calendrier · scénarios. Agrégation fiscale :
-            personne + année. Pas de qualification « meilleur ».
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => addScenario("A")}
-            disabled={!previewBasics}
-          >
-            <Plus className="size-4" />A regroupé
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => addScenario("B")}
-            disabled={!previewBasics}
-          >
-            <Plus className="size-4" />B réparti
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => addScenario("C")}
-            disabled={!previewBasics}
-          >
-            <Plus className="size-4" />C perso
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              const sc = newEmptyScenario();
-              onChange([...scenarios, sc]);
-              setActiveId(sc.id);
-            }}
-          >
-            Vide
-          </Button>
-          {onRecalculate && (
-            <Button
-              type="button"
-              size="sm"
-              onClick={onRecalculate}
-              disabled={recalculatePending || scenarios.length === 0}
-            >
-              <Calculator className="size-4" />
-              {recalculatePending
-                ? "Calcul…"
-                : "Recalculer la fiscalité"}
+      {scenarios.length === 0 ? (
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium">Capitaux disponibles</h3>
+          <p className="text-sm text-muted-foreground">Aucun capital chargé.</p>
+          {previewBasics && (
+            <Button type="button" variant="outline" size="sm" onClick={() => refillFromDossier()}>
+              Recharger les capitaux
             </Button>
           )}
         </div>
-      </div>
-
-      {!previewBasics && (
-        <p className="text-xs text-amber-800 dark:text-amber-200">
-          Astuce : lancez un calcul pour préremplir LPP / LP / 3P. Les années
-          1re/dernière possibles restent en saisie libre (aucune règle légale
-          inventée).
-        </p>
-      )}
-
-      {scenarios.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Aucun scénario. Cochez « Inclure dans le rapport » sur 1–2 scénarios
-          pour la page PDF (opt-in).
-        </p>
       ) : (
         <>
           {/* Liste scénarios */}
@@ -310,7 +217,7 @@ export function WithdrawalPlanningFields({
                     size="sm"
                     onClick={() => refillFromDossier(active.id)}
                   >
-                    Recharger capitaux
+                    Recharger les capitaux
                   </Button>
                 )}
                 <ConfirmDeleteButton
@@ -327,21 +234,19 @@ export function WithdrawalPlanningFields({
                 <h4 className="mb-2 text-sm font-medium">
                   Capitaux disponibles
                 </h4>
-                {active.items.length === 0 ? (
+                {shownItems.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    Aucune ligne — utilisez A/B/C après calcul, ou « Recharger
-                    capitaux ».
+                    Aucune ligne. Utilisez « Recharger les capitaux » après le calcul.
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[900px] text-sm">
+                    <table className="w-full min-w-[760px] text-sm">
                       <thead className="bg-muted/40 text-left">
                         <tr>
                           <th className="px-2 py-1">Titulaire</th>
                           <th className="px-2 py-1">Type</th>
                           <th className="px-2 py-1">Institution</th>
                           <th className="px-2 py-1">Dispo</th>
-                          <th className="px-2 py-1">% retiré</th>
                           <th className="px-2 py-1">Montant retiré</th>
                           <th className="px-2 py-1">Année prévue</th>
                           <th className="px-2 py-1">1re possible</th>
@@ -350,7 +255,7 @@ export function WithdrawalPlanningFields({
                         </tr>
                       </thead>
                       <tbody>
-                        {active.items.map((it) => (
+                        {shownItems.map((it) => (
                           <tr key={it.id} className="border-t">
                             <td className="px-2 py-1">
                               {it.titulaire === "client1"
@@ -375,23 +280,16 @@ export function WithdrawalPlanningFields({
                             </td>
                             <td className="px-2 py-1 tabular-nums">
                               {formatChf(it.montantDisponible)}
-                            </td>
-                            <td className="px-2 py-1">
-                              <Input
-                                type="number"
-                                min={0}
-                                max={100}
-                                className="h-8 w-20"
-                                value={it.pctCapital}
-                                onChange={(e) =>
-                                  updateItem(active.id, it.id, {
-                                    pctCapital: Math.min(
-                                      100,
-                                      Math.max(0, Number(e.target.value) || 0),
-                                    ),
-                                  })
-                                }
-                              />
+                              {it.capitalStatut === "indicatif" && (
+                                <span className="mt-1 block text-[11px] font-medium text-amber-800">
+                                  Estimation non confirmée
+                                </span>
+                              )}
+                              {it.capitalStatut === "rachat" && (
+                                <span className="mt-1 block text-[11px] text-muted-foreground">
+                                  Valeur de rachat confirmée
+                                </span>
+                              )}
                             </td>
                             <td className="px-2 py-1 font-medium tabular-nums">
                               {formatChf(itemMontantRetire(it))}
@@ -455,6 +353,28 @@ export function WithdrawalPlanningFields({
                   possible : année de retrait du scénario, utilisée pour le
                   calcul et le PDF.
                 </p>
+                {indicative.length > 0 && (
+                  <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                    {RACHAT_ABSENT_UI}
+                  </p>
+                )}
+                {has3b && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {PILIER_3B_NOTE}
+                  </p>
+                )}
+                {onRecalculate && (
+                  <Button
+                    type="button"
+                    className="mt-3"
+                    size="sm"
+                    onClick={onRecalculate}
+                    disabled={recalculatePending || scenarios.length === 0}
+                  >
+                    <Calculator className="size-4" />
+                    {recalculatePending ? "Calcul ESTV…" : "Recalculer la fiscalité"}
+                  </Button>
+                )}
               </div>
 
               {/* 2. Calendrier */}

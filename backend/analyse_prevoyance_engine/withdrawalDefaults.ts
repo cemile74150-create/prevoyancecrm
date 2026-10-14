@@ -7,6 +7,7 @@ import type {
   WithdrawalScenario,
 } from "./types";
 import { anneeRetraitLibrePassage } from "./rules/libre-passage-annee";
+import { resolveThirdPillarCapital } from "./rules/planification-saisie";
 
 /**
  * Construit des items de planification par défaut à partir du dossier
@@ -80,18 +81,21 @@ export function buildDefaultWithdrawalItems(
     prenom: string,
     contracts: AnalyseInput["client1"]["troisiemePilier"],
   ) => {
-    for (const c of contracts) {
-      if (!c.montant) continue;
+    for (const c of contracts || []) {
+      const year = yearOf(c.echeance);
+      const resolved = resolveThirdPillarCapital(c, year);
+      if (!resolved.montant && !(c.valeursRachat || []).length) continue;
       items.push({
         id: `3p-${c.id}`,
         kind: "3p",
         titulaire,
         label: `${c.type === "3B" ? "3B" : "3A"} – ${prenom} – ${c.compagnie || ""} – ${c.police || ""}`.replace(/\s+–\s+$/g, "").trim(),
         institution: c.compagnie || "3e pilier",
-        montantDisponible: c.montant,
+        montantDisponible: resolved.montant,
+        capitalStatut: resolved.statut,
         pctCapital: 100,
-        anneeRetraitPrevue: yearOf(c.echeance),
-        anneePremierePossible: yearOf(c.echeance),
+        anneeRetraitPrevue: year,
+        anneePremierePossible: year,
         anneeDernierePossible: null,
         sourceId: c.id,
       });

@@ -21,6 +21,11 @@ import {
   type ThirdPillarType,
 } from "../types";
 import { areScenariosComparable, scenarioWithdrawalYear } from "../withdrawalPlanUtils";
+import {
+  effectiveLppWithdrawalAge,
+  lppCapitalForWithdrawalAge,
+  resolveThirdPillarCapital,
+} from "../rules/planification-saisie";
 import { lppCalculationService } from "./LPPCalculationService";
 import { taxCalculationService } from "./TaxCalculationService";
 import { genderFromCivilite, relationshipFromEtat } from "../mappers";
@@ -447,20 +452,35 @@ export class WithdrawalPlanningService {
    * historique), ce qui réappliquerait le %. Autres capitaux : % de la ligne.
    */
   private withdrawnAmount(input: AnalyseInput, item: WithdrawalPlanItem): number {
+    if (item.kind === "3p" && item.sourceId) {
+      const holder = item.titulaire === "client1" ? input.client1 : input.conjoint;
+      const contract = holder?.troisiemePilier?.find((row) => row.id === item.sourceId);
+      if (contract) {
+        const resolved = resolveThirdPillarCapital(
+          contract,
+          scenarioWithdrawalYear(item),
+        );
+        const pct = Math.min(100, Math.max(0, item.pctCapital || 0));
+        return round2(resolved.montant * (pct / 100));
+      }
+    }
     if (item.kind === "lpp") {
       const holder =
         item.titulaire === "client1" ? input.client1 : input.conjoint;
       if (!holder) return 0;
-      const reference = lppCalculationService.referenceCapital(holder.lpp);
       const pct = lppCalculationService.resolvePctDeblocable(
         holder.lppPctDeblocable,
       );
-      const once = lppCalculationService.capitalRetire(reference, pct);
-      const line = item.montantDisponible || 0;
-      if (lppCalculationService.isAlreadyRetirable(line, reference, pct)) {
-        return once;
+      const dossierAge =
+        input.ageRetraiteSouhaite ?? input.client1?.ageRetraiteSouhaite ?? null;
+      const age = effectiveLppWithdrawalAge(holder, dossierAge);
+      if (age != null) {
+        const row = lppCapitalForWithdrawalAge(holder.lpp, age);
+        if (row.found) return lppCalculationService.capitalRetire(row.capital, pct);
+        if (holder.ageRetraitLppSouhaite != null) return 0;
       }
-      return once;
+      const reference = lppCalculationService.referenceCapital(holder.lpp);
+      return lppCalculationService.capitalRetire(reference, pct);
     }
     const pct = Math.min(100, Math.max(0, item.pctCapital || 0));
     return round2((item.montantDisponible || 0) * (pct / 100));

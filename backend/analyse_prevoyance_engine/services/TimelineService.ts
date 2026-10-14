@@ -1,6 +1,11 @@
 import { personFirstName } from "../mappers";
 import { anneeRetraitLibrePassage } from "../rules/libre-passage-annee";
-import type { AnalyseInput, PersonComputed, WithdrawalPlanItem } from "../types";
+import {
+  effectiveLppWithdrawalAge,
+  lppCapitalForWithdrawalAge,
+  resolveThirdPillarCapital,
+} from "../rules/planification-saisie";
+import type { AnalyseInput, PersonComputed, PersonInput, WithdrawalPlanItem } from "../types";
 import { librePassageRetire, normalizeThirdPillarType } from "../types";
 import { scenarioWithdrawalYear } from "../withdrawalPlanUtils";
 import { lppCalculationService } from "./LPPCalculationService";
@@ -54,9 +59,10 @@ export class TimelineService {
       });
     }
 
-    pushLpp(events, client1, who1, "client1", items);
+    const dossierAge = input.ageRetraiteSouhaite ?? c1.ageRetraiteSouhaite ?? null;
+    pushLpp(events, client1, c1, dossierAge, who1, "client1", items);
     if (conjoint && c2) {
-      pushLpp(events, conjoint, who2, "conjoint", items);
+      pushLpp(events, conjoint, c2, dossierAge, who2, "conjoint", items);
     }
 
     pushPillars(events, c1.troisiemePilier, "client1", who1, items);
@@ -115,13 +121,24 @@ export function lppTimelineFate(
 function pushLpp(
   events: TimelineEvent[],
   computed: PersonComputed,
+  personInput: PersonInput,
+  dossierAge: number | null,
   who: string,
   person: "client1" | "conjoint",
   items: WithdrawalPlanItem[],
 ) {
   const pct = lppCalculationService.resolvePctDeblocable(computed.lppPctDeblocable);
   const fate = lppTimelineFate(pct);
-  const capital = computed.capitalLppRetire65;
+  const age = effectiveLppWithdrawalAge(personInput, dossierAge);
+  const row = lppCapitalForWithdrawalAge(personInput.lpp, age);
+  const custom =
+    personInput.ageRetraitLppSouhaite != null &&
+    Number.isFinite(Number(personInput.ageRetraitLppSouhaite));
+  const capital = row.found
+    ? lppCalculationService.capitalRetire(row.capital, pct)
+    : custom
+      ? 0
+      : computed.capitalLppRetire65;
   const rente = computed.renteLppResiduelle65;
   if (fate === "Capital" && !(capital > 0)) return;
   if (fate === "Rente" && !(rente > 0)) return;
@@ -148,18 +165,21 @@ function pushPillars(
   items: WithdrawalPlanItem[],
 ) {
   for (const contract of contracts || []) {
-    if (!contract.montant && !contract.compagnie && !contract.police) continue;
+    const hasRachat = (contract.valeursRachat || []).length > 0;
+    if (!contract.montant && !hasRachat && !contract.compagnie && !contract.police) continue;
     const planned = items.find(
       (item) => item.kind === "3p" && item.sourceId === contract.id,
     );
     const type = normalizeThirdPillarType(contract.type);
     const year = (planned ? scenarioWithdrawalYear(planned) : null) ?? yearOf(contract.echeance);
+    const resolved = resolveThirdPillarCapital(contract, year);
+    const suffix = resolved.statut === "indicatif" ? " – montant indicatif" : "";
     events.push({
       year,
       label: [type, who, contract.compagnie, contract.police]
         .filter(Boolean)
-        .join(" – "),
-      amount: contract.montant || 0,
+        .join(" – ") + suffix,
+      amount: resolved.montant,
       kind: "3p",
       person,
     });

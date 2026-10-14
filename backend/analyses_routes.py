@@ -28,6 +28,7 @@ from fiscal_reference import (
     parse_as_of,
     public_status,
 )
+from analyse_conseiller import lock_conseiller_nom
 from analyses_prefill import (
     apply_crm_display_prenoms,
     prefill_from_clients,
@@ -372,7 +373,7 @@ def attach_analyses_routes(
             data = prefill_from_clients(client, spouse_arg, conseiller_nom=user.name or "")
         else:
             data = prefill_from_clients({}, conseiller_nom=user.name or "")
-        data = _with_crm_prenoms(data, client, spouse)
+        data = lock_conseiller_nom(_with_crm_prenoms(data, client, spouse), None, user)
         if isinstance(data, dict):
             fiscal = await _fiscal_config()
             data = dict(data)
@@ -487,6 +488,7 @@ def attach_analyses_routes(
         doc = await _get_owned(analyse_id, user)
         client, spouse = await _crm_cards(doc, user)
         saved_input = payload.input if payload.input is not None else doc.get("input")
+        saved_input = lock_conseiller_nom(saved_input, doc.get("input"), user)
         saved_input = _with_crm_prenoms(saved_input, client, spouse)
         now = _now()
         if payload.autosave:
@@ -527,7 +529,7 @@ def attach_analyses_routes(
             raise HTTPException(status_code=400, detail="input requis")
         client, spouse = await _crm_cards(doc, user)
         # Le moteur ne voit que ce JSON : les prénoms CRM remplacent la copie figée.
-        data = _with_crm_prenoms(data, client, spouse)
+        data = lock_conseiller_nom(_with_crm_prenoms(data, client, spouse), doc.get("input"), user)
         raw = run_engine("calculate", {"input": data}, timeout=180)
         try:
             parsed = json.loads(raw)

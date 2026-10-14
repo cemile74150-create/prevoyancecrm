@@ -2,10 +2,10 @@
  * Règles métier des hypothèses de rente (hors ESTV).
  *
  * Le revenu fiscal n'est pas le revenu encaissé :
- * - certaine : AVS + rente LPP résiduelle + 70 % des participations
+ * - certaine : AVS + rente LPP résiduelle + 100 % des participations
  *   (la rente garantie n'est pas imposable) ;
  * - viagère : AVS + rente LPP résiduelle + 4 % de la rente garantie
- *   + 70 % des participations.
+ *   + 100 % des participations.
  * La rente LPP résiduelle est imposable en totalité, comme une rente LPP.
  * L'impôt est ensuite calculé par ESTV sur ce revenu fiscal.
  */
@@ -51,7 +51,7 @@ export function revenuBrutEncaisse(input: {
 export function revenuFiscalImposable(input: RevenuRenteInput): number {
   const avs = n(input.renteAvs);
   const residuelle = n(input.renteLppResiduelle);
-  const participation = n(input.participationExcedents) * 0.7;
+  const participation = n(input.participationExcedents);
   if (input.type === "viagere") {
     return roundMoney(avs + residuelle + n(input.renteGarantie) * 0.04 + participation);
   }

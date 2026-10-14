@@ -2,7 +2,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Calculator, ChevronLeft, ChevronRight, FileText, Loader2, RotateCcw } from "lucide-react";
+import { Calculator, ChevronLeft, ChevronRight, FileText, Loader2 } from "lucide-react";
+import api from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { CommuneSearch } from "@/analyse-prevoyance/components/CommuneSearch";
 import { PersonIdentityFields } from "@/analyse-prevoyance/components/PersonIdentityFields";
 import { AvsFields } from "@/analyse-prevoyance/components/AvsFields";
@@ -49,69 +51,8 @@ import {
   type EtatCivil,
   type TaxLocation,
 } from "@/analyse-prevoyance/lib/types";
-import { FERREYRES } from "@/analyse-prevoyance/lib/fixtures/ferreyres";
-import { HELFER_EXCEL, helferAnalyseInput } from "@/analyse-prevoyance/lib/fixtures/helfer";
 import { cn } from "@/analyse-prevoyance/utils";
 import { analyseFetch, analyseUrl } from "@/analyse-prevoyance/api";
-
-function sampleFerreyres(): AnalyseInput {
-  const base = emptyAnalyseInput();
-  return {
-    ...base,
-    villeRecherche: FERREYRES.ville,
-    taxLocationId: FERREYRES.taxLocationId,
-    taxGroupId: FERREYRES.taxLocationId,
-    etatCivil: "Marié(e)",
-    salaireClient1: 120_000,
-    salaireConjoint: 40_000,
-    fortune: FERREYRES.fortuneCouple1,
-    autresRevenus: 0,
-    conseillerNom: "Conseiller démo",
-    client1: {
-      ...emptyPerson("Monsieur"),
-      nom: "Exemple",
-      prenom: "Jean",
-      dateNaissance: "1960-03-15",
-      avsAnnuel: FERREYRES.revenues.avsClient1,
-      avsMensuel: Math.round(FERREYRES.revenues.avsClient1 / 13),
-      lpp: [
-        { age: 65, capital: 1_081_456, rente: FERREYRES.revenues.lppClient1 },
-        { age: 64, capital: 1_021_035, rente: 53_000 },
-        { age: 63, capital: 955_233, rente: 48_700 },
-        { age: 62, capital: 891_807, rente: 44_500 },
-        { age: 61, capital: 830_667, rente: 40_700 },
-        { age: 60, capital: 771_897, rente: 37_000 },
-      ],
-      troisiemePilier: [
-        {
-          id: "demo-3p",
-          compagnie: "Generali",
-          police: "3A-001",
-          echeance: "2025-12-31",
-          montant: 170_000,
-          prime: 6_883,
-        },
-      ],
-    },
-    conjoint: {
-      ...emptyPerson("Madame"),
-      nom: "Exemple",
-      prenom: "Marie",
-      dateNaissance: "1962-07-20",
-      avsAnnuel: FERREYRES.revenues.avsConjoint,
-      avsMensuel: Math.round(FERREYRES.revenues.avsConjoint / 13),
-      lpp: [
-        { age: 65, capital: 0, rente: 0 },
-        { age: 64, capital: 0, rente: 0 },
-        { age: 63, capital: 0, rente: 0 },
-        { age: 62, capital: 0, rente: 0 },
-        { age: 61, capital: 0, rente: 0 },
-        { age: 60, capital: 0, rente: 0 },
-      ],
-      troisiemePilier: [],
-    },
-  };
-}
 
 function withMonthlyAvs(person) {
   if (!person) return person;
@@ -209,6 +150,32 @@ export function AnalysePrevoyanceApp({
   const [pdfHint, setPdfHint] = useState("");
   const [stepId, setStepId] = useState<AnalyseStepId>("client");
   const clientId = linkedClientId ?? record?.clientId ?? null;
+  const { user, isAdmin } = useAuth() || {};
+  const [conseillerOptions, setConseillerOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    const name = (user?.name || "").trim();
+    if (!name) return;
+    setInput((prev) => {
+      if ((prev.conseillerNom || "").trim()) return prev;
+      return { ...prev, conseillerNom: name };
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    api.get("/users/conseillers")
+      .then((res) => {
+        if (cancelled) return;
+        const names = (Array.isArray(res.data) ? res.data : [])
+          .map((row) => (row?.name || "").trim())
+          .filter(Boolean);
+        setConseillerOptions(names);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isAdmin]);
   const inputRef = useRef(input);
   const recordRef = useRef(record);
   const onSavedRef = useRef(onSaved);
@@ -265,21 +232,6 @@ export function AnalysePrevoyanceApp({
       taxLocationId: loc?.TaxLocationID ?? null,
       taxGroupId: loc?.TaxLocationID ?? null,
     });
-  }
-
-  function reset() {
-    setInput(emptyAnalyseInput());
-    setError(null);
-  }
-
-  function loadSample() {
-    setInput(sampleFerreyres());
-    setError(null);
-  }
-
-  function loadHelfer() {
-    setInput(helferAnalyseInput());
-    setError(null);
   }
 
   async function persist({ autosave }: { autosave: boolean }) {
@@ -544,10 +496,30 @@ export function AnalysePrevoyanceApp({
               </div>
               <div className="space-y-2">
                 <Label>Conseiller</Label>
-                <Input
-                  value={input.conseillerNom || ""}
-                  onChange={(e) => patchInput({ conseillerNom: e.target.value })}
-                />
+                {isAdmin ? (
+                  <select
+                    className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
+                    value={input.conseillerNom || ""}
+                    onChange={(e) => patchInput({ conseillerNom: e.target.value })}
+                  >
+                    <option value="">Sélectionner</option>
+                    {(input.conseillerNom &&
+                    !conseillerOptions.includes(input.conseillerNom)
+                      ? [input.conseillerNom, ...conseillerOptions]
+                      : conseillerOptions
+                    ).map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    value={input.conseillerNom || user?.name || ""}
+                    readOnly
+                    disabled
+                  />
+                )}
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -637,13 +609,14 @@ export function AnalysePrevoyanceApp({
             <LppFields
               title="Assuré 1"
               person={input.client1}
+              dossierAge={input.ageRetraiteSouhaite ?? input.client1.ageRetraiteSouhaite ?? null}
               onChange={(p) => patchInput({ client1: p })}
             />
             {isMarried && input.conjoint && (
               <LppFields
                 title="Assuré 2"
                 person={input.conjoint}
-                showRentePont
+                dossierAge={input.ageRetraiteSouhaite ?? input.client1.ageRetraiteSouhaite ?? null}
                 onChange={(p) => patchInput({ conjoint: p })}
               />
             )}
@@ -687,7 +660,7 @@ export function AnalysePrevoyanceApp({
         return (
           <Section
             title="7. Retraits / Fiscalité"
-            hint="LPP, libres passages, 3e piliers — scénarios A regroupé / B réparti / C perso. Année prévue en lecture seule, 1re possible saisie. Agrégation fiscale : personne + année."
+            hint="LPP, libres passages et 3e piliers, y compris les contrats 3B. Le 3B reste hors de l'assiette fiscale des prestations en capital."
           >
             <WithdrawalPlanningFields
               input={input}
@@ -708,42 +681,10 @@ export function AnalysePrevoyanceApp({
             />
           </Section>
         );
-      case "fortune":
-        return (
-          <Section title="8. Fortune / autres revenus">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="space-y-2">
-                <Label>Fortune fiscale (CHF)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={input.fortune || ""}
-                  onChange={(e) =>
-                    patchInput({ fortune: Number(e.target.value) || 0 })
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  Excel Couple1 : fortune vide → 0. Couple4 force 0.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Autres revenus annuels (CHF)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={input.autresRevenus || ""}
-                  onChange={(e) =>
-                    patchInput({ autresRevenus: Number(e.target.value) || 0 })
-                  }
-                />
-              </div>
-            </div>
-          </Section>
-        );
       case "hypotheses":
         return (
           <Section
-            title="9. Hypothèses de rente"
+            title="8. Hypothèses de rente"
             hint="Offres saisies à la main. Cochez « Inclure / Recommander » pour le cadre vert du PDF. L'âge de retraite souhaité de chaque assuré alimente l'AVS et la rente LPP de référence."
           >
             <RenteHypothesisFields input={input} onChange={patchInput} />
@@ -758,7 +699,7 @@ export function AnalysePrevoyanceApp({
     <div className="mx-auto max-w-[1680px] px-4 pt-3 pb-8 sm:px-6 lg:px-8 [&_.rounded-md.border]:rounded-xl">
       <header className="mb-6 space-y-2">
         <p className="text-sm font-medium tracking-[0.12em] text-[var(--ap-accent)] uppercase">
-          LeoSoft · Effectuer une analyse
+          LeoSoft · Effectuer une planification
         </p>
         <h1 className="font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
           Analyse de prévoyance
@@ -791,32 +732,6 @@ export function AnalysePrevoyanceApp({
           disabled={pending || !record?.results || !clientId}
         >
           Enregistrer dans le dossier client
-        </button>
-        <button
-          type="button"
-          className={cn(buttonVariants({ variant: "outline" }))}
-          onClick={loadSample}
-          disabled={pending}
-        >
-          Charger l&apos;exemple Ferreyres
-        </button>
-        <button
-          type="button"
-          className={cn(buttonVariants({ variant: "outline" }))}
-          onClick={loadHelfer}
-          disabled={pending}
-          title={`${HELFER_EXCEL.ville} · LP ${HELFER_EXCEL.conjoint.librePassage}`}
-        >
-          Charger HELFER
-        </button>
-        <button
-          type="button"
-          className={cn(buttonVariants({ variant: "ghost" }))}
-          onClick={reset}
-          disabled={pending}
-        >
-          <RotateCcw className="size-4" />
-          Réinitialiser
         </button>
       </div>
 

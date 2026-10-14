@@ -9,6 +9,7 @@ import { Label } from "@/analyse-prevoyance/ui/label";
 import type {
   PersonInput,
   ThirdPillarContract,
+  ValeurRachat,
 } from "@/analyse-prevoyance/lib/types";
 
 function pillarContracts(person: PersonInput): ThirdPillarContract[] {
@@ -160,6 +161,80 @@ export function ThirdPillarFields({
                 >
                   <Trash2 className="size-4" />
                 </ConfirmDeleteButton>
+              </div>
+              <div className="space-y-2 sm:col-span-2 lg:col-span-6">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    Échéance contractuelle et capital à l&apos;échéance restent inchangés.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      updateContract(c.id, {
+                        valeursRachat: [
+                          ...(c.valeursRachat || []),
+                          { id: crypto.randomUUID(), date: "", montant: 0 },
+                        ],
+                      })
+                    }
+                  >
+                    <Plus className="size-4" />
+                    Ajouter une valeur de rachat
+                  </Button>
+                </div>
+                {(c.valeursRachat || []).map((rachat: ValeurRachat) => (
+                  <div key={rachat.id} className="flex flex-wrap items-end gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Date de rachat souhaitée</Label>
+                      <Input
+                        type="date"
+                        value={rachat.date || ""}
+                        onChange={(e) =>
+                          updateContract(c.id, {
+                            valeursRachat: (c.valeursRachat || []).map((row) =>
+                              row.id === rachat.id ? { ...row, date: e.target.value } : row,
+                            ),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Montant disponible à cette date (CHF)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={rachat.montant || ""}
+                        onChange={(e) =>
+                          updateContract(c.id, {
+                            valeursRachat: (c.valeursRachat || []).map((row) =>
+                              row.id === rachat.id
+                                ? { ...row, montant: Number(e.target.value) || 0 }
+                                : row,
+                            ),
+                          })
+                        }
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Supprimer la valeur de rachat"
+                      onClick={() =>
+                        updateContract(c.id, {
+                          valeursRachat: (c.valeursRachat || []).filter(
+                            (row) => row.id !== rachat.id,
+                          ),
+                        })
+                      }
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                ))}
               </div>
             </div>
           ))}

@@ -18,19 +18,18 @@ const base = {
 };
 
 describe("rente certaine — revenu fiscal", () => {
-  it("Vaudoise : 70 % des excédents une seule fois, rente garantie hors assiette", () => {
+  it("Vaudoise : 100 % des excédents une seule fois, rente garantie hors assiette", () => {
     const avs = 24_570 + 25_545;
     const participation = 7_096;
-    const partImposable = 4_967.2;
     const fiscal = revenuFiscalImposable({
       type: "certaine",
       renteAvs: avs,
       renteGarantie: 23_136,
       participationExcedents: participation,
     });
-    assert.equal(fiscal, avs + partImposable);
-    assert.equal(fiscal, 55_082.2);
-    assert.notEqual(fiscal, avs + partImposable + partImposable);
+    assert.equal(fiscal, avs + participation);
+    assert.equal(fiscal, 57_211);
+    assert.notEqual(fiscal, avs + participation + participation);
     assert.equal(
       revenuBrutEncaisse({
         renteAvs: avs,
@@ -41,10 +40,10 @@ describe("rente certaine — revenu fiscal", () => {
     );
   });
 
-  it("AVS + 70 % des participations, sans la rente garantie", () => {
+  it("AVS + 100 % des participations, sans la rente garantie", () => {
     assert.equal(
       revenuFiscalImposable({ type: "certaine", ...base }),
-      30_000 + 700,
+      30_000 + 1_000,
     );
   });
 
@@ -60,10 +59,10 @@ describe("rente certaine — revenu fiscal", () => {
 });
 
 describe("rente viagère — revenu fiscal", () => {
-  it("AVS + 4 % de la rente garantie + 70 % des participations", () => {
+  it("AVS + 4 % de la rente garantie + 100 % des participations", () => {
     assert.equal(
       revenuFiscalImposable({ type: "viagere", ...base }),
-      30_000 + 800 + 700,
+      30_000 + 800 + 1_000,
     );
   });
 
@@ -104,7 +103,7 @@ describe("rente LPP résiduelle dans les offres", () => {
   const garantie = 23_136;
   const participation = 7_096;
 
-  it("certaine : résiduelle imposable à 100 %, excédents toujours à 70 % une fois", () => {
+  it("certaine : résiduelle imposable à 100 %, excédents à 100 % une fois", () => {
     const fiscal = revenuFiscalImposable({
       type: "certaine",
       renteAvs: avs,
@@ -112,10 +111,10 @@ describe("rente LPP résiduelle dans les offres", () => {
       participationExcedents: participation,
       renteLppResiduelle: residuelle,
     });
-    assert.equal(fiscal, 63_110.7);
-    assert.equal(fiscal, avs + residuelle + participation * 0.7);
-    assert.notEqual(fiscal, avs + residuelle * 0.7 + participation * 0.7);
-    assert.notEqual(fiscal, avs + residuelle + residuelle + participation * 0.7);
+    assert.equal(fiscal, 65_239.5);
+    assert.equal(fiscal, avs + residuelle + participation);
+    assert.notEqual(fiscal, avs + residuelle * 0.7 + participation);
+    assert.notEqual(fiscal, avs + residuelle + residuelle + participation);
     assert.equal(
       revenuBrutEncaisse({
         renteAvs: avs,
@@ -127,7 +126,7 @@ describe("rente LPP résiduelle dans les offres", () => {
     );
   });
 
-  it("viagère : résiduelle à 100 %, plus 4 % de la garantie et 70 % des excédents", () => {
+  it("viagère : résiduelle à 100 %, plus 4 % de la garantie et 100 % des excédents", () => {
     const fiscal = revenuFiscalImposable({
       type: "viagere",
       renteAvs: avs,
@@ -135,7 +134,7 @@ describe("rente LPP résiduelle dans les offres", () => {
       participationExcedents: participation,
       renteLppResiduelle: residuelle,
     });
-    assert.equal(fiscal, avs + residuelle + garantie * 0.04 + participation * 0.7);
+    assert.equal(fiscal, avs + residuelle + garantie * 0.04 + participation);
   });
 
   it("100 % déblocable : la résiduelle nulle ne change pas l'assiette", () => {
@@ -146,7 +145,7 @@ describe("rente LPP résiduelle dans les offres", () => {
       participationExcedents: participation,
       renteLppResiduelle: 0,
     });
-    assert.equal(fiscal, 55_082.2);
+    assert.equal(fiscal, 57_211);
   });
 });
 
@@ -211,7 +210,7 @@ describe("comparatif — rente LPP résiduelle du foyer", () => {
       assert.equal(col.renteLppResiduelle, 8_028.5);
     }
     const certaine = offres[0];
-    assert.equal(certaine.revenuFiscalImposable, 63_110.7);
+    assert.equal(certaine.revenuFiscalImposable, 65_239.5);
     assert.equal(certaine.revenuBrutEncaisse, 88_375.5);
     assert.equal(certaine.revenuNetApresImpot, 88_375.5 - 1_000);
     assert.equal(certaine.ecartNetAnnuelVsLpp, 87_375.5 - (lpp?.revenuNetApresImpot ?? 0));
@@ -236,7 +235,7 @@ describe("comparatif — rente LPP résiduelle du foyer", () => {
     const built = await renteHypothesisService.build(input);
     const offre = built?.columns.find((col) => col.kind === "hypothese");
     assert.equal(offre?.renteLppResiduelle, 0);
-    assert.equal(offre?.revenuFiscalImposable, 55_082.2);
+    assert.equal(offre?.revenuFiscalImposable, 57_211);
   });
 
   it("personne seule à 25 % déblocable : conserve 75 % de sa rente", async () => {

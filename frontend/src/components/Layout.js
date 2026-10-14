@@ -20,9 +20,9 @@ import {
 
 const nav = [
   { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard, testid: "nav-dashboard" },
-  { to: "/dossiers", label: "Dossiers", icon: KanbanSquare, testid: "nav-dossiers", perm: "dossiers.view" },
   { to: "/clients", label: "Clients", icon: Users, testid: "nav-clients", perm: "clients.view" },
-  { to: "/effectuer-une-analyse", label: "Effectuer une analyse", icon: Calculator, testid: "nav-analyse", perm: "analyses.view" },
+  { to: "/effectuer-une-analyse", label: "Effectuer une planification", icon: Calculator, testid: "nav-analyse", perm: "analyses.view" },
+  { to: "/dossiers", label: "Suivi des planifications", icon: KanbanSquare, testid: "nav-dossiers", perm: "dossiers.view" },
   { to: "/suivi-3p", label: "Fiscalité, 3e pilier & Fortune 2026", icon: Shield, testid: "nav-suivi-3p", perm: "suivi_3p.view" },
   { to: "/demandes-offres", label: "Demandes d'offres", icon: FileSpreadsheet, testid: "nav-demandes-offres", perm: "demandes_offres.view" },
   { to: "/modifier-offre", label: "Modifier une offre", icon: Pencil, testid: "nav-modifier-offre", perm: "demandes_offres.edit" },

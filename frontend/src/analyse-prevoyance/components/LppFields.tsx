@@ -1,25 +1,42 @@
 // @ts-nocheck
 "use client";
 
+import { Plus, Trash2 } from "lucide-react";
+import { Button } from "@/analyse-prevoyance/ui/button";
 import { Input } from "@/analyse-prevoyance/ui/input";
 import { Label } from "@/analyse-prevoyance/ui/label";
-import type { LppByAge, PersonInput } from "@/analyse-prevoyance/lib/types";
+import { RENTE_PONT_CAISSE_WARNING } from "@/analyse-prevoyance/lib/planificationSaisie";
+import type { LppByAge, PersonInput, RentePontInput } from "@/analyse-prevoyance/lib/types";
 import {
   LPP_PCT_DEBLOCABLE_DEFAULT,
   RETIREMENT_AGES,
 } from "@/analyse-prevoyance/lib/types";
 import { formatChf } from "@/analyse-prevoyance/lib/mappers";
 
+function pontRows(person: PersonInput): RentePontInput[] {
+  if (person.rentePonts?.length) return person.rentePonts;
+  if ((person.rentePont || 0) > 0) {
+    return [{
+      id: "legacy-rente-pont",
+      ageDebut: null,
+      ageFin: null,
+      montantAnnuel: person.rentePont || 0,
+    }];
+  }
+  return [];
+}
+
 export function LppFields({
   title,
   person,
   onChange,
-  showRentePont,
+  dossierAge = null,
 }: {
   title: string;
   person: PersonInput;
   onChange: (p: PersonInput) => void;
-  showRentePont?: boolean;
+  /** Âge de l'onglet Client, repris tant que l'âge LPP n'est pas personnalisé. */
+  dossierAge?: number | null;
 }) {
   const pct =
     person.lppPctDeblocable == null || Number.isNaN(person.lppPctDeblocable)
@@ -32,6 +49,15 @@ export function LppFields({
   };
   const capitalRetire = Math.round((lpp65.capital || 0) * (pct / 100));
   const renteResiduelle = Math.round((lpp65.rente || 0) * (1 - pct / 100));
+  const personalized =
+    person.ageRetraitLppSouhaite != null &&
+    Number.isFinite(Number(person.ageRetraitLppSouhaite));
+  const ageShown = personalized ? person.ageRetraitLppSouhaite : (dossierAge ?? "");
+  const ponts = pontRows(person);
+
+  function setPonts(next: RentePontInput[]) {
+    onChange({ ...person, rentePonts: next, rentePont: 0 });
+  }
 
   function updateLpp(age: number, field: "capital" | "rente", value: number) {
     const lpp: LppByAge[] = RETIREMENT_AGES.map((a) => {
@@ -139,19 +165,141 @@ export function LppFields({
         </div>
       </div>
 
-      {showRentePont && (
-        <div className="max-w-xs space-y-2">
-          <Label>Rente pont</Label>
-          <Input
-            type="number"
-            min={0}
-            value={person.rentePont || ""}
-            onChange={(e) =>
-              onChange({ ...person, rentePont: Number(e.target.value) || 0 })
+      <div className="max-w-xs space-y-2">
+        <Label>Âge souhaité de retrait LPP</Label>
+        <Input
+          type="number"
+          min={50}
+          max={70}
+          value={ageShown ?? ""}
+          onChange={(e) =>
+            onChange({
+              ...person,
+              ageRetraitLppSouhaite:
+                e.target.value === "" ? null : Number(e.target.value),
+            })
+          }
+        />
+        <p className="text-xs text-muted-foreground">
+          {personalized
+            ? "Valeur propre à cet assuré. Elle reste en place si l'âge du dossier change."
+            : "Reprend l'âge de retraite souhaité de l'onglet Client. Modifiez-le ici pour le personnaliser."}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-sm font-medium">Rente-pont</h4>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setPonts([
+                ...ponts,
+                {
+                  id: crypto.randomUUID(),
+                  ageDebut: null,
+                  ageFin: null,
+                  montantAnnuel: 0,
+                },
+              ])
             }
-          />
+          >
+            <Plus className="size-4" />
+            Ajouter une rente-pont
+          </Button>
         </div>
-      )}
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          {RENTE_PONT_CAISSE_WARNING}
+        </p>
+        {ponts.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Aucune rente-pont.</p>
+        ) : (
+          ponts.map((row) => (
+            <div key={row.id} className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Âge de début de la rente-pont</Label>
+                <Input
+                  type="number"
+                  min={50}
+                  max={70}
+                  className="w-28"
+                  value={row.ageDebut ?? ""}
+                  onChange={(e) =>
+                    setPonts(
+                      ponts.map((item) =>
+                        item.id === row.id
+                          ? {
+                              ...item,
+                              ageDebut:
+                                e.target.value === "" ? null : Number(e.target.value),
+                            }
+                          : item,
+                      ),
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Montant de la rente-pont (CHF/an)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="w-40"
+                  value={row.montantAnnuel || ""}
+                  onChange={(e) =>
+                    setPonts(
+                      ponts.map((item) =>
+                        item.id === row.id
+                          ? { ...item, montantAnnuel: Number(e.target.value) || 0 }
+                          : item,
+                      ),
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Âge de fin</Label>
+                <Input
+                  type="number"
+                  min={50}
+                  max={80}
+                  className="w-28"
+                  value={row.ageFin ?? ""}
+                  onChange={(e) =>
+                    setPonts(
+                      ponts.map((item) =>
+                        item.id === row.id
+                          ? {
+                              ...item,
+                              ageFin:
+                                e.target.value === "" ? null : Number(e.target.value),
+                            }
+                          : item,
+                      ),
+                    )
+                  }
+                />
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setPonts(ponts.filter((item) => item.id !== row.id))}
+                aria-label="Supprimer la rente-pont"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+              {(row.ageDebut == null || row.ageFin == null) && (
+                <p className="w-full text-xs text-amber-800">
+                  Période incomplète : la rente-pont n&apos;est pas projetée. Le calcul est à vérifier.
+                </p>
+              )}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

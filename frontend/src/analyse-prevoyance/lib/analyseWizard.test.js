@@ -51,8 +51,8 @@ function coupleInput() {
   return input;
 }
 
-describe("parcours 9 étapes", () => {
-  it("expose les 9 étapes dans l'ordre demandé", () => {
+describe("parcours 8 étapes", () => {
+  it("expose les 8 étapes dans l'ordre demandé", () => {
     expect(ANALYSE_STEPS.map((s) => `${s.n} ${s.label}`)).toEqual([
       "1 Client",
       "2 Assuré 2",
@@ -61,9 +61,9 @@ describe("parcours 9 étapes", () => {
       "5 3e piliers",
       "6 Libres passages",
       "7 Retraits/Fiscalité",
-      "8 Fortune",
-      "9 Hypothèses",
+      "8 Hypothèses",
     ]);
+    expect(ANALYSE_STEPS.some((s) => s.id === "fortune")).toBe(false);
   });
 
   it("changer d'étape ne mute pas la saisie", () => {
