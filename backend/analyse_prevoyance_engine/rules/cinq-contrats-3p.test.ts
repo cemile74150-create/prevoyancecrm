@@ -342,7 +342,7 @@ describe("5 contrats 3A/3B", () => {
     assert.equal(html.includes("contrat principal"), false);
     assert.equal(html.includes("Affichage"), false);
     assert.ok(html.includes("Exonéré d'impôt"));
-    assert.ok(html.includes("Capital 2e pilier retirable, y compris libre passage"));
+    assert.ok(html.includes("Capital 2e pilier disponible, y compris libre passage"));
     assert.ok(html.includes("Rente LPP – Assuré"));
     assert.ok(html.includes("Rente LPP – Deux"));
     assert.equal(html.includes("Assuré 1"), false);

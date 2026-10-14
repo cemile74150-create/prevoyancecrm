@@ -21,8 +21,8 @@ export interface EvolutionResult {
  * Évolution après retraite — formules Excel feuille homonyme.
  * Cible lacune : 90 % (C = revenu − salaires×90 % si pas en phase salaire pure).
  *
- * Ce graphique partage la rente des indicateurs de maintien du niveau de vie :
- * AVS + rente LPP complète (renteTotale65), sans retrait en capital.
+ * Le graphique du rapport additionne l'AVS et la rente LPP complète
+ * des deux assurés, avant tout retrait en capital.
  * Le pourcentage déblocable reste utilisé par la planification, les offres
  * et les comparaisons, pas par ces barres.
  */

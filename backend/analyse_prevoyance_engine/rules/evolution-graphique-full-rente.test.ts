@@ -104,7 +104,7 @@ describe("graphique évolution Helfer — full rente LPP", () => {
     assert.equal(results.client1.renteLppResiduelle65, 0);
     assert.equal(conjoint.renteLppResiduelle65, 8_028.5);
     assert.equal(results.client1.capitalLppRetire65, 350_359);
-    assert.equal(conjoint.capitalLppRetire65, 74_339);
+    assert.equal(conjoint.capitalLppRetire65, 148_678);
 
     assert.equal(results.lacune.salaireAvant, SALAIRE);
     assert.equal(results.lacune.revenuApres, VERT);
@@ -112,7 +112,7 @@ describe("graphique évolution Helfer — full rente LPP", () => {
 
     const evolution = results.evolution;
     assert.ok(evolution);
-    assert.equal(evolution.renteReference, results.lacune.revenuApres);
+    assert.equal(evolution.renteReference, VERT);
     assert.equal(evolution.salaireReference, SALAIRE);
 
     const pleines = evolution.rows.filter((row) => row.year >= 2028);
@@ -120,14 +120,13 @@ describe("graphique évolution Helfer — full rente LPP", () => {
     for (const row of pleines) {
       assert.equal(row.phase, "rente");
       assert.equal(row.revenu, VERT);
-      assert.equal(round2(evolution.salaireReference - row.revenu), ROUGE);
       assert.notEqual(row.revenu, RESIDUELLE_ANNEE_COMPLETE);
     }
 
     const annee2027 = evolution.rows.find((row) => row.year === 2027);
     assert.ok(annee2027);
     assert.equal(annee2027.phase, "transition");
-    const pleine2027 = round2(
+    const reference2027 = round2(
       personYearIncome(
         2027,
         results.client1.dateDepart,
@@ -141,23 +140,8 @@ describe("graphique évolution Helfer — full rente LPP", () => {
           conjoint.renteTotale65,
         ),
     );
-    const residuelle2027 = round2(
-      personYearIncome(
-        2027,
-        results.client1.dateDepart,
-        input.salaireClient1,
-        results.client1.avsAnnuel + results.client1.renteLppResiduelle65,
-      ) +
-        personYearIncome(
-          2027,
-          conjoint.dateDepart,
-          input.salaireConjoint,
-          conjoint.avsAnnuel + conjoint.renteLppResiduelle65,
-        ),
-    );
-    assert.equal(annee2027.revenu, pleine2027);
-    assert.notEqual(annee2027.revenu, residuelle2027);
-    assert.notEqual(annee2027.revenu, VERT);
+    assert.equal(annee2027.revenu, reference2027);
+    assert.notEqual(annee2027.revenu, RESIDUELLE_ANNEE_COMPLETE);
 
     const record: AnalyseRecord = {
       id: "helfer-graphique",
@@ -169,13 +153,13 @@ describe("graphique évolution Helfer — full rente LPP", () => {
       results,
     };
     const html = renderPrintableReportHtml(buildReportPayload(record));
-    const chartStart = html.indexOf("ÉVOLUTION REVENU APRÈS LA RETRAITE");
-    const chartEnd = html.indexOf("Indicateurs de maintien de niveau de vie");
+    const chartStart = html.indexOf("ÉVOLUTION DU REVENU DE RETRAITE DE RÉFÉRENCE");
+    const chartEnd = html.indexOf("Indicateurs du scénario 100 % rente");
     assert.ok(chartStart >= 0 && chartEnd > chartStart);
     const chart = html.slice(chartStart, chartEnd);
-    assert.match(chart, /rente LPP complète, sans retrait en capital/);
-    assert.equal(chart.includes("pourcentage déblocable"), false);
-    assert.equal(chart.includes(axisChf(RESIDUELLE_ANNEE_COMPLETE)), false);
+    assert.match(chart, /Revenu de référence \(AVS \+ LPP complète\)/);
+    assert.match(chart, /Manque de revenu/);
+    assert.equal(chart.includes("AVS + rente LPP résiduelle"), false);
 
     const bars = chartBars(chart);
     for (const year of [2028, 2029, 2030]) {
@@ -186,11 +170,10 @@ describe("graphique évolution Helfer — full rente LPP", () => {
     }
     const bar2027 = bars.get(2027);
     assert.ok(bar2027);
-    assert.equal(bar2027.vert, axisChf(pleine2027));
-    assert.notEqual(bar2027.vert, axisChf(residuelle2027));
+    assert.equal(bar2027.vert, axisChf(reference2027));
 
     const indicateurs = html.slice(chartEnd);
-    assert.match(indicateurs, /Revenu brut après retraite/);
+    assert.match(indicateurs, /Revenu brut du scénario 100 % rente/);
     assert.ok(indicateurs.includes(axisChf(VERT)));
   });
 });

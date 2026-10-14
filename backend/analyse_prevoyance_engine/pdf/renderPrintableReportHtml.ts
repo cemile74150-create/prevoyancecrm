@@ -56,17 +56,17 @@ export function buildReportPages(payload: ReportPayload): ReportPageSpec[] {
 
   pages.push({ kind: "landscape", html: pageFrise(payload, next(), total) });
 
-  pages.push({
-    kind: "landscape",
-    html: pageSolutionsComparatif(next(), total),
-  });
-
   if (payload.hypothesesRente || payload.vaudoise?.include) {
     pages.push({
       kind: "landscape",
       html: pageComparatifDesRentes(payload, next(), total),
     });
   }
+
+  pages.push({
+    kind: "landscape",
+    html: pageSolutionsComparatif(next(), total),
+  });
 
   return pages;
 }
@@ -85,7 +85,7 @@ export function renderPrintableReportHtml(payload: ReportPayload): string {
 <html lang="fr">
 <head>
 <meta charset="utf-8" />
-<title>Analyse de prévoyance — ${esc(payload.client1.displayName)}</title>
+<title>Analyse et planification de la retraite — ${esc(payload.client1.displayName)}</title>
 <style>${reportCss()}</style>
 </head>
 <body>
@@ -108,7 +108,7 @@ export function renderOrientedHtml(
 <html lang="fr">
 <head>
 <meta charset="utf-8" />
-<title>Analyse de prévoyance — ${esc(payload.client1.displayName)}</title>
+<title>Analyse et planification de la retraite — ${esc(payload.client1.displayName)}</title>
 <style>${reportCss(kind)}</style>
 </head>
 <body>
@@ -183,15 +183,19 @@ export function reportCss(forceOrient?: ReportPageKind) {
   .contacts { text-align: right; color: #3A3838; font-size: 9pt; line-height: 1.55; }
   .contacts .ico { color: ${BRAND}; margin-right: 4px; }
   h1.cover-title {
-    text-align: center; margin: 48mm 0 0;
+    text-align: center; margin: 36mm 8mm 0;
     font-family: "Georgia", "Palatino Linotype", "Book Antiqua", serif;
   }
   h1.cover-title .l1 {
-    display: block; color: #3A3838; font-size: 24pt; font-weight: 500; letter-spacing: 0.08em;
+    display: block; color: #3A3838; font-size: 18pt; font-weight: 500; letter-spacing: 0.08em;
   }
   h1.cover-title .l2 {
-    display: block; color: ${BRAND}; font-size: 32pt; font-weight: 700;
-    letter-spacing: 0.05em; margin-top: 6px;
+    display: block; color: ${BRAND}; font-size: 26pt; font-weight: 700;
+    letter-spacing: 0.045em; margin-top: 4px;
+  }
+  h1.cover-title .l3 {
+    display: block; color: ${BRAND}; font-size: 26pt; font-weight: 700;
+    letter-spacing: 0.06em; margin-top: 2px;
   }
   .rules { border: none; border-top: 2px solid ${BRAND}; margin: 12px 16%; }
   .subtitle {
@@ -526,7 +530,7 @@ function pageCover(p: ReportPayload, n: number, total: number): string {
     : esc(p.client1.displayName);
   return `
   <div class="brand-row">${logoBlock()}${contactsBlock()}</div>
-  <h1 class="cover-title"><span class="l1">ANALYSE DE</span><span class="l2">RETRAITE</span></h1>
+  <h1 class="cover-title"><span class="l1">ANALYSE ET</span><span class="l2">PLANIFICATION</span><span class="l3">DE LA RETRAITE</span></h1>
   <hr class="rules" /><hr class="rules" style="margin-top:8px" />
   <p class="subtitle">ETUDE DE RETRAITE ET OPTIMISATION PATRIMONIALE</p>
   <table class="meta-table">
@@ -552,9 +556,10 @@ function pageAgency(n: number, total: number): string {
   <h3 style="color:#161616">Plus qu’un courtier en assurances</h3>
   <p>Pour mieux répondre aux besoins de nos clients dans le cadre d’un conseil global, nous offrons les prestations suivantes :</p>
   <ul>
-    <li>analyse et conseil en prévoyance</li>
-    <li>analyse et conseil fiscal</li>
-    <li>recherche du meilleur financement hypothécaire (reprise ou nouveau)</li>
+    <li>Analyse et conseil en prévoyance, retraite</li>
+    <li>Analyse et conseil fiscal</li>
+    <li>Recherche du meilleur financement hypothécaire (reprise ou nouveau)</li>
+    <li>Gestion d'assurance toutes branches</li>
   </ul>
   </div>
   ${footer(n, total)}`;
@@ -567,7 +572,7 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
   const when = (label: string, age: string) =>
     `${esc(label)}<br/><span style="color:#666">(${esc(age)})</span>`;
   return `
-  <div class="page-title">Bilan de prévoyance retraite</div>
+  <div class="page-title">Bilan de votre prévoyance retraite</div>
   <div class="sec-title">1. Profil des assurés</div>
   <table class="data kv">
     ${cols}
@@ -611,7 +616,7 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
       ${spouse(c2 ? when(c2.dateDepartLabel, c2.ageLegalLabel) : "")}
     </tr>
   </table>
-  <div class="sec-title">3. Patrimoine de prévoyance actuel</div>
+  <div class="sec-title">3. Prévoyance actuelle</div>
   <table class="data kv">
     ${cols}
     <tr>
@@ -635,7 +640,7 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
       ${spouse(c2 ? `${c2.lppPctDeblocable} %` : "")}
     </tr>
     <tr>
-      <td class="lab">Capital LPP retirable</td>
+      <td class="lab">Capital LPP disponible</td>
       <td class="val">${formatChf(p.client1.capitalLppRetire65)}</td>
       ${spouse(c2 ? formatChf(c2.capitalLppRetire65) : "")}
     </tr>
@@ -660,7 +665,7 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
   <table class="synth">
     <tr>
       <th style="background:${GREEN}">AVS estimée</th>
-      <th style="background:${BRAND};white-space:normal;line-height:1.25">Capital 2e pilier retirable, y compris libre passage</th>
+      <th style="background:${BRAND};white-space:normal;line-height:1.25">Capital 2e pilier disponible, y compris libre passage</th>
       <th style="background:${GRAY}">Âge de la retraite</th>
     </tr>
     <tr>
@@ -682,16 +687,15 @@ function pageCompareRenteCapital(
   const notePct =
     p.client1.lppPctDeblocable < 100 ||
     (p.conjoint != null && p.conjoint.lppPctDeblocable < 100)
-      ? `<p class="note">Capital LPP retiré selon % déblocable saisi (${esc(insuredName(p.client1, "Assuré 1"))} : ${p.client1.lppPctDeblocable} %${p.conjoint ? ` · ${esc(insuredName(p.conjoint, "Assuré 2"))} : ${p.conjoint.lppPctDeblocable} %` : ""}). Rente LPP résiduelle maintenue sur le solde.</p>`
+      ? `<p class="note">Capital LPP disponible selon le pourcentage saisi (${esc(insuredName(p.client1, "Assuré 1"))} : ${p.client1.lppPctDeblocable} %${p.conjoint ? ` · ${esc(insuredName(p.conjoint, "Assuré 2"))} : ${p.conjoint.lppPctDeblocable} %` : ""}). Le libre passage s’ajoute à ce capital LPP disponible.</p>`
       : "";
 
   return `
   <div class="page-title">Comparaison des options de retraite : rente ou capital</div>
   <table class="data pair">
     <colgroup><col class="lab" /><col class="val" /><col class="val" /></colgroup>
-    <tr><th class="lab"></th><th class="val">Retraite avec rente</th><th class="val">Retraite avec capital</th></tr>
-    <tr><td class="lab">Capital LPP – ${esc(insuredName(p.client1, "Assuré 1"))}</td><td class="num">—</td><td class="num">${formatChf(p.client1.capitalLppRetire65)}</td></tr>
-    ${p.conjoint ? `<tr><td class="lab">Capital LPP – ${esc(insuredName(p.conjoint, "Assuré 2"))}</td><td class="num">—</td><td class="num">${formatChf(p.conjoint.capitalLppRetire65)}</td></tr>` : ""}
+    <tr><th class="lab"></th><th class="val">Scénario 100 % rente</th><th class="val">Scénario avec retrait en capital</th></tr>
+    <tr><td class="lab">Capital disponible, LPP et libre passage</td><td class="num">—</td><td class="num">${formatChf(a.capitalLppRetireTotal)}</td></tr>
     <tr><td class="lab">Impôt sur les capitaux</td><td class="num">—</td><td class="num tax">${formatChf(a.impotCapital65)}</td></tr>
     <tr><td class="lab">Capitaux après impôt</td><td class="num">—</td><td class="num">${formatChf(a.capitalNet65)}</td></tr>
     <tr><td class="lab">Rente LPP – ${esc(insuredName(p.client1, "Assuré 1"))}</td><td class="num">${formatChf(p.client1.renteLpp65)}</td><td class="num">${formatChf(p.client1.renteLppResiduelle65)}</td></tr>
@@ -699,20 +703,19 @@ function pageCompareRenteCapital(
     <tr><td class="lab">Rente AVS</td><td class="num">${formatChf(a.avsTotal)}</td><td class="num">${formatChf(a.avsTotal)}</td></tr>
     <tr><td class="lab">Impôts ICC &amp; IFD</td><td class="num tax">${formatChf(a.impotRevenuCouple1)}</td><td class="num tax">${formatChf(a.impotRevenuCouple2)}</td></tr>
     <tr><td class="lab">Rente après impôt</td><td class="num">${formatChf(a.renteApresImpot)}</td><td class="num">${formatChf(a.renteNetteCheminCapital)}</td></tr>
-    <tr><td class="lab">Capital disponible</td><td class="num">—</td><td class="num">${formatChf(a.capitalNet65)}</td></tr>
+    <tr><td class="lab">Capital net après impôt</td><td class="num">—</td><td class="num">${formatChf(a.capitalNet65)}</td></tr>
   </table>
-  ${avsSimulationNoteHtml(p)}
   ${notePct}
   ${chart}
-  <div class="sec-title">Indicateurs de maintien de niveau de vie</div>
+  <div class="sec-title">Indicateurs du scénario 100 % rente</div>
   <table class="data">
     <tr><th class="gray">Indicateur</th><th class="gray">Montant</th></tr>
     <tr><td>Salaire brut avant retraite</td><td class="num">${formatChf(a.salaireAvant)}</td></tr>
-    <tr><td>Revenu brut après retraite</td><td class="num">${formatChf(a.revenuApres)}</td></tr>
-    <tr><td>Lacune de prévoyance annuelle</td><td class="num">${formatChf(a.lacune)}</td></tr>
-    <tr><td>Manque à gagner annuel pour maintenir 80&nbsp;%</td><td class="num">${formatChf(a.manquePour80)}</td></tr>
+    <tr><td>Revenu brut du scénario 100 % rente (AVS + LPP complète)</td><td class="num">${formatChf(a.revenuApres)}</td></tr>
+    <tr><td>Lacune annuelle du scénario 100 % rente</td><td class="num">${formatChf(a.lacune)}</td></tr>
+    <tr><td>Manque pour 80&nbsp;% du salaire, scénario 100 % rente</td><td class="num">${formatChf(a.manquePour80)}</td></tr>
   </table>
-  <p class="note">Pour conserver un niveau de vie similaire, il est généralement recommandé de disposer d’un revenu de retraite représentant au moins 80&nbsp;% du revenu avant retraite.</p>
+  <p class="note">La lacune et le manque à 80&nbsp;% se calculent par rapport au revenu du scénario 100&nbsp;% rente (AVS + rente LPP complète).</p>
   ${footer(n, total)}`;
 }
 
@@ -729,7 +732,7 @@ function formatAxisChf(n: number): string {
 function renderEvolutionChart(p: ReportPayload): string {
   const points = p.evolution.points;
   if (!points.length) {
-    return `<div class="chart-title">ÉVOLUTION REVENU APRÈS LA RETRAITE</div>
+    return `<div class="chart-title">ÉVOLUTION DU REVENU DE RETRAITE DE RÉFÉRENCE</div>
       <p class="note">Pas de série d’évolution.</p>`;
   }
 
@@ -792,7 +795,7 @@ function renderEvolutionChart(p: ReportPayload): string {
 
   return `
   <div class="chart-wrap">
-    <div class="chart-title">ÉVOLUTION REVENU APRÈS LA RETRAITE</div>
+    <div class="chart-title">ÉVOLUTION DU REVENU DE RETRAITE DE RÉFÉRENCE</div>
     <div class="chart-legend">
       <span><i class="sw before"></i> Revenu de référence (AVS + LPP complète)</span>
       <span><i class="sw after"></i> Manque de revenu</span>
@@ -801,7 +804,6 @@ function renderEvolutionChart(p: ReportPayload): string {
       ${yTicks.join("\n")}
       ${bars}
     </svg>
-    <p class="note">La hauteur de chaque barre correspond au revenu avant retraite. Le bas est le revenu de retraite de référence (AVS + rente LPP complète, sans retrait en capital), le haut est le manque pour retrouver ce niveau.</p>
   </div>`;
 }
 
@@ -815,7 +817,6 @@ function thirdPillarPages(
   const rows = p.thirdPillarRows;
   if (!rows.length) return [];
   const has3b = rows.some((row) => row.type === "3B");
-  const contratsLabel = `${rows.length} contrat${rows.length > 1 ? "s" : ""} saisi${rows.length > 1 ? "s" : ""}.`;
   const note3b = has3b
     ? " Les 3B restent dans le capital et ne sont pas soumis à l'impôt sur les prestations en capital."
     : "";
@@ -871,7 +872,7 @@ function thirdPillarPages(
     </tr>
     ${body}
   </table>
-  <p class="note">${contratsLabel}${note3b}</p>
+  ${note3b ? `<p class="note">${note3b}</p>` : ""}
   ${footer(next(), total)}`);
   }
   return pages;
@@ -885,10 +886,27 @@ function yearIsFullyExempt(year: WithdrawalScenario["byYear"][number]): boolean 
   return lines.length > 0 && lines.every((line) => line.exonere);
 }
 
-function yearPrestationShort(year: WithdrawalScenario["byYear"][number]): string {
+/** Prénom saisi du titulaire. Signale l'absence, sans inventer un prénom. */
+function holderPrenom(titulaire: string, p: ReportPayload): string {
+  if (titulaire === "client1") return (p.client1.prenom || "").trim() || "prénom manquant";
+  if (titulaire === "conjoint") return (p.conjoint?.prenom || "").trim() || "prénom manquant";
+  return "titulaire non identifié";
+}
+
+function yearPrestationShort(
+  year: WithdrawalScenario["byYear"][number],
+  p: ReportPayload,
+): string {
   const lines = year.lines || [];
   const parts: string[] = [];
-  if (lines.some((line) => line.kind === "lpp")) parts.push("LPP");
+  const seenLpp = new Set<string>();
+  for (const line of lines) {
+    if (line.kind !== "lpp") continue;
+    const label = `LPP ${holderPrenom(line.titulaire, p)}`;
+    if (seenLpp.has(label)) continue;
+    seenLpp.add(label);
+    parts.push(label);
+  }
   if (lines.some((line) => line.kind === "libre_passage")) parts.push("Libre passage");
   if (lines.some((line) => line.kind === "3p" && line.contratType === "3A")) {
     parts.push("3A");
@@ -930,7 +948,7 @@ function sameYearBlock(wp: WithdrawalPlanning): string {
       <col style="width:33%" />
     </colgroup>
     <tr>
-      <th>Capital retiré</th>
+      <th>Capital prélevé</th>
       <th>Impôt total</th>
       <th>Capital net</th>
     </tr>
@@ -942,14 +960,14 @@ function sameYearBlock(wp: WithdrawalPlanning): string {
   </table>`;
 }
 
-function strategyBlock(sc: WithdrawalScenario): string {
+function strategyBlock(sc: WithdrawalScenario, p: ReportPayload): string {
   const rows = sc.byYear
     .map((year) => {
       const exempt = yearIsFullyExempt(year);
       const tax = exempt ? "Exonéré d'impôt" : formatChf(year.impot);
       return `<tr>
         <td class="lab">${year.year}</td>
-        <td>${yearPrestationShort(year)}</td>
+        <td>${esc(yearPrestationShort(year, p))}</td>
         <td class="num">${formatChf(year.capitalRetire)}</td>
         <td class="num${exempt ? "" : " tax"}">${tax}</td>
       </tr>`;
@@ -957,7 +975,7 @@ function strategyBlock(sc: WithdrawalScenario): string {
     .join("");
   return `
   <div class="sec-title">STRATÉGIE DE RETRAITS PRÉPARÉE</div>
-  <p class="note">${esc(sc.name)}</p>
+  <p class="note">Scénario avec des retraits échelonnés</p>
   <table class="data">
     <colgroup>
       <col style="width:14%" />
@@ -968,7 +986,7 @@ function strategyBlock(sc: WithdrawalScenario): string {
     <tr>
       <th>Année</th>
       <th>Prestations retirées</th>
-      <th>Capital retiré</th>
+      <th>Capital prélevé</th>
       <th>Impôt</th>
     </tr>
     ${rows || `<tr><td colspan="4">—</td></tr>`}
@@ -1000,12 +1018,13 @@ function economieBanner(gain: number | null): string {
   return `<div class="eco eco-none"><span>ÉCONOMIE FISCALE ESTIMÉE : 0 CHF — l'échelonnement n'est pas plus favorable</span></div>${formula}`;
 }
 
-function planningReportHtml(wp: WithdrawalPlanning): string {
+function planningReportHtml(p: ReportPayload): string {
+  const wp = p.withdrawalPlanning;
   const strategy = strategyScenario(wp);
   return `
   <div class="page-title">Planification des retraits de capitaux</div>
   ${sameYearBlock(wp)}
-  ${strategy ? strategyBlock(strategy) : ""}
+  ${strategy ? strategyBlock(strategy, p) : ""}
   ${economieBanner(wp.economieFiscale)}`;
 }
 
@@ -1017,7 +1036,7 @@ function withdrawalPlanningPages(
   const demo = p.meta.conseillerNom.includes("DOSSIER DÉMO")
     ? `<p class="note"><strong>Dossier de démonstration.</strong> Les impôts de ce fichier sont simulés pour la validation locale. Ce ne sont pas des résultats ESTV.</p>`
     : "";
-  return [`${demo}${planningReportHtml(p.withdrawalPlanning)}${footer(next(), total)}`];
+  return [`${demo}${planningReportHtml(p)}${footer(next(), total)}`];
 }
 
 function pageFrise(p: ReportPayload, n: number, total: number): string {
@@ -1107,8 +1126,8 @@ function typeLine(col: RenteHypothesisColumn): string {
 }
 
 function dureeLine(col: RenteHypothesisColumn): string {
-  if (col.kind === "lpp") return "—";
-  if (/viag/i.test(col.typeLabel || "")) return "—";
+  if (col.kind === "lpp") return "À vie";
+  if (/viag/i.test(col.typeLabel || "")) return "À vie";
   return col.dureeAnnees != null ? `${col.dureeAnnees} ans` : "—";
 }
 
@@ -1163,14 +1182,6 @@ function pageComparatifDesRentes(
   const withLpp =
     Boolean(block?.comparerAvecRenteLpp) || cols.some((c) => c.kind === "lpp");
   const recoId = cols.find((c) => c.kind === "hypothese" && c.recommander)?.id;
-  const capitalDispo = p.aggregates.capitalLppAvecLibrePassage;
-  const offerCapitals = cols
-    .filter((c) => c.kind === "hypothese")
-    .map((c) => c.capitalPlace)
-    .filter((v): v is number => v != null);
-  const sameCapital =
-    offerCapitals.length > 0 &&
-    offerCapitals.every((v) => v === offerCapitals[0]);
   const colRole = (index: number) => {
     const col = cols[index];
     const reco = recoId && col.id === recoId ? " col-reco" : "";
@@ -1201,37 +1212,15 @@ function pageComparatifDesRentes(
     ? esc(insuredName(p.conjoint, "Assuré 2"))
     : null;
 
-  const capitalOnce = sameCapital
-    ? `<div class="capital-once">Capital disponible à la retraite : <strong>${formatChf(offerCapitals[0])}</strong></div>`
-    : "";
-
   const capitalRows = [
     sec("Répartition du capital à la retraite"),
-    sameCapital
-      ? ""
-      : row(
-          "Capital disponible",
-          cols.map((c) =>
-            c.kind === "lpp" ? "—" : moneyOrDash(c.capitalPlace ?? capitalDispo),
-          ),
-        ),
     row(
       "Capital affecté à la rente",
       cols.map((c) =>
         c.kind === "lpp" ? "—" : moneyOrDash(c.capitalPlace),
       ),
     ),
-    row(
-      "Capital conservé",
-      cols.map((c) => {
-        if (c.kind === "lpp") return "—";
-        if (c.capitalPlace == null) return "—";
-        const base = sameCapital ? offerCapitals[0] : capitalDispo;
-        if (base == null) return "—";
-        return moneyOrDash(Math.max(0, base - c.capitalPlace));
-      }),
-    ),
-  ].filter(Boolean);
+  ];
 
   const lines = [
     ...capitalRows,
@@ -1302,67 +1291,12 @@ function pageComparatifDesRentes(
     );
   }
 
-  const hasViagere = cols.some(
-    (c) => c.kind === "hypothese" && /viag/i.test(c.typeLabel || ""),
-  );
+  const hasViagere = cols.some((c) => offerRenteType(c) === "viagere");
   const viagereNote = hasViagere
     ? `<p class="note">Rente viagère : versement à vie. Aucun cumul n’est extrapolé sur une durée forfaitaire.</p>`
     : "";
-  const certaineNote = cols.some(
-    (c) => c.kind === "hypothese" && !/viag/i.test(c.typeLabel || "") && c.dureeAnnees != null,
-  )
-    ? `<p class="note">Rente certaine : l’écart cumulé reprend la durée indiquée de l’offre, sans la prolonger.</p>`
-    : "";
 
-  const lppCol = cols.find((c) => c.kind === "lpp");
-  const focus =
-    (recoId ? cols.find((c) => c.id === recoId) : null) ||
-    cols.find((c) => c.kind === "hypothese") ||
-    null;
-  const indicRows: string[] = [];
-  if (focus && focus.kind === "hypothese") {
-    if (withLpp && focus.ecartNetAnnuelVsLpp != null) {
-      indicRows.push(
-        `<tr><td>Écart revenu net annuel</td><td class="num">${signedHtml(focus.ecartNetAnnuelVsLpp)}</td></tr>`,
-      );
-      if (!/viag/i.test(focus.typeLabel || "") && focus.dureeAnnees != null) {
-        indicRows.push(
-          `<tr><td>Écart cumulé (${focus.dureeAnnees} ans)</td><td class="num">${signedHtml(focus.ecartNetAnnuelVsLpp * focus.dureeAnnees)}</td></tr>`,
-        );
-      }
-    }
-    if (lppCol?.impotEstv != null && focus.impotEstv != null) {
-      const eco = Math.round((lppCol.impotEstv - focus.impotEstv) * 100) / 100;
-      if (eco > 0) {
-        indicRows.push(
-          `<tr><td>Économie fiscale annuelle estimée</td><td class="num">${signedHtml(eco)}</td></tr>`,
-        );
-      } else if (eco < 0) {
-        indicRows.push(
-          `<tr><td>Écart fiscal annuel</td><td class="num">${signedHtml(eco)}</td></tr>`,
-        );
-      } else {
-        indicRows.push(
-          `<tr><td>Économie fiscale annuelle estimée</td><td class="num">${formatChf(0)}</td></tr>`,
-        );
-      }
-    }
-    if (focus.capitalPlace != null) {
-      const base = sameCapital ? offerCapitals[0] : capitalDispo;
-      if (base != null) {
-        indicRows.push(
-          `<tr><td>Capital conservé</td><td class="num">${moneyOrDash(Math.max(0, base - focus.capitalPlace))}</td></tr>`,
-        );
-      }
-    }
-  }
-  const indicateurs = indicRows.length
-    ? `<div class="sec-title">Indicateurs clés${recoId ? " de recommandation" : ""}</div>
-  <table class="data">
-    <tr><th class="gray">Indicateur</th><th class="gray">Valeur</th></tr>
-    ${indicRows.join("")}
-  </table>`
-    : "";
+  const indicateurs = "";
   const rendements =
     withLpp
       ? ""
@@ -1383,18 +1317,17 @@ function pageComparatifDesRentes(
     <div class="contacts" style="font-size:8pt">info@agencemendes.ch &nbsp; +41 22 339 30 10</div>
   </div>
   <div class="page-title">COMPARATIF DES RENTES</div>
-  ${capitalOnce}
   <div class="keep-with-note">
   <table class="data compare">
     ${compareColgroup(cols.length)}
     <tr><th class="lab"></th>${head}</tr>
     ${lines.filter(Boolean).join("")}
   </table>
-  ${revenuFiscalNoteHtml()}
+  ${revenuFiscalNoteHtml(cols)}
   ${avsSimulationNoteHtml(p)}
   ${fiscalNoteHtml()}
   </div>
-  ${viagereNote}${certaineNote}
+  ${viagereNote}
   ${indicateurs}
   ${rendementNote}
   ${footer(n, total)}`;
@@ -1404,9 +1337,36 @@ function pageComparatifDesRentes(
 const FISCAL_NOTE =
   "Le montant de l'impôt présenté est une estimation calculée uniquement sur la base des rentes AVS et LPP prises en compte dans cette analyse. Il ne tient pas compte des autres revenus éventuels du client, ni de sa fortune. L'imposition effective pourra donc différer selon sa situation fiscale globale.";
 
-/** Formule du revenu fiscal affichée sous le tableau COMPARATIF DES RENTES. */
-export const REVENU_FISCAL_NOTE =
-  "Revenu fiscal = rente AVS + 70 % de la participation. La rente garantie est encaissée, elle n'entre pas dans l'impôt.";
+const FISCAL_NOTE_CERTAINE =
+  "Revenu fiscal = rente AVS + rente LPP résiduelle + 100 % de la participation aux excédents. La rente garantie d'une rente certaine n'entre pas dans le revenu imposable selon l'hypothèse fiscale utilisée dans cette analyse.";
+const FISCAL_NOTE_VIAGERE =
+  "Revenu fiscal = rente AVS + rente LPP résiduelle + 4 % de la rente garantie + 100 % de la participation aux excédents.";
+
+/** Type d'offre saisi. Ni la compagnie ni la durée ne servent à le déduire. */
+function offerRenteType(col: RenteHypothesisColumn): "certaine" | "viagere" | null {
+  if (col.kind !== "hypothese") return null;
+  const label = (col.typeLabel || "").trim();
+  if (label === "Viagère" || label === "Rente viagère") return "viagere";
+  if (label === "Certaine" || label === "Rente certaine") return "certaine";
+  return null;
+}
+
+/** Note sous le comparatif, limitée aux types d'offres réellement présents. */
+export function revenuFiscalNoteText(cols: RenteHypothesisColumn[]): string {
+  const types = new Set(
+    cols.map(offerRenteType).filter((type): type is "certaine" | "viagere" => type != null),
+  );
+  const parts: string[] = [];
+  if (types.has("certaine") && types.has("viagere")) {
+    parts.push(`Rente certaine. ${FISCAL_NOTE_CERTAINE}`);
+    parts.push(`Rente viagère. ${FISCAL_NOTE_VIAGERE}`);
+  } else if (types.has("certaine")) {
+    parts.push(FISCAL_NOTE_CERTAINE);
+  } else if (types.has("viagere")) {
+    parts.push(FISCAL_NOTE_VIAGERE);
+  }
+  return parts.join(" ");
+}
 
 export const AVS_SIMULATION_DISCLAIMER =
   "Le montant de la rente AVS présenté dans cette analyse est une estimation établie à l'aide du calculateur officiel AVS. Il repose sur les hypothèses et les informations disponibles au moment de la simulation. Le montant définitif pourra différer et devra être confirmé par la caisse de compensation compétente.";
@@ -1415,8 +1375,10 @@ function fiscalNoteHtml(): string {
   return `<p class="fiscal-note">* ${esc(FISCAL_NOTE)}</p>`;
 }
 
-function revenuFiscalNoteHtml(): string {
-  return `<p class="revenu-fiscal-note">* ${esc(REVENU_FISCAL_NOTE)}</p>`;
+function revenuFiscalNoteHtml(cols: RenteHypothesisColumn[]): string {
+  const text = revenuFiscalNoteText(cols);
+  if (!text) return "";
+  return `<p class="revenu-fiscal-note">${esc(text)}</p>`;
 }
 
 function hasAvsSimulationDisclaimer(p: ReportPayload): boolean {
@@ -1463,7 +1425,7 @@ function solutionsComparatifBlock(): string {
     ],
     [
       "Part du revenu imposable",
-      "4 % de la rente garantie + 70 % de la participation aux excédents (contrats conclus en 2025, selon la diapositive)",
+      "4 % de la rente garantie + 100 % de la participation aux excédents",
       "Part des intérêts comprise dans la rente (rendement) et excédents ; diapositive : impôt anticipé 35 %",
       "100 % de la rente versée",
     ],

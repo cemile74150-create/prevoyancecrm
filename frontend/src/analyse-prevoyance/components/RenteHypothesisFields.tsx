@@ -159,8 +159,8 @@ export function RenteHypothesisFields({
           </div>
           <p className="text-xs text-muted-foreground">
             {row.type === "certaine"
-              ? "Revenu fiscal = rente AVS + 70 % de la participation. La rente garantie est encaissée, elle n'entre pas dans l'impôt."
-              : "Revenu fiscal = rente AVS + 4 % de la rente garantie + 70 % de la participation."}
+              ? "Revenu fiscal = rente AVS + rente LPP résiduelle + 100 % de la participation. La rente garantie est encaissée, elle n'entre pas dans l'impôt."
+              : "Revenu fiscal = rente AVS + rente LPP résiduelle + 4 % de la rente garantie + 100 % de la participation."}
           </p>
         </div>
       ))}
