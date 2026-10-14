@@ -16,6 +16,7 @@ import {
   STATUT_STYLE, STEPS, TYPES_CLIENT, TYPES_PAIEMENT, TYPES_PILIER, emptyForm,
   formatChf, formatDateFr, demandeOrigineLabel, demandeOrigineKey, toIsoDate, toSwissDate,
   DEMANDE_ORIGINE_STYLE, typeClientLabel, buildDemandeResume, documentsForGeneralList,
+  showsExistingClientSearch, clientIdAfterTypeChange,
   PRIORITE_STYLE, prioriteLabel, erreurLabel, erreurChampLabel, formatDateTimeFr,
   prefillSchemaPayloadFromClient, soumisCompagnieLabel, isSoumisCompagnie,
   isDemandeAnnuleeStatut, isOffreNonSigneeStatut, isHorsCours, statutLabel, isDemandeAnnuleeFlag,
@@ -1079,6 +1080,7 @@ export default function DemandeOffreFiche() {
               <Card className="p-5 sm:p-7">
                 <TypeClientField value={form.type_client || formPayload.type_client || ""} onChange={(v) => {
                   setValue("type_client", v);
+                  setValue("client_id", clientIdAfterTypeChange(v, form.client_id));
                   updateFormPayload((prev) => ({ ...prev, type_client: v }));
                 }} />
                 <div className="mt-6">
@@ -1853,7 +1855,9 @@ function applyHubClientToOffreForm(client, setValue, form) {
 
 /** Liaison client hub + préremplissage adresse/identité dans le payload schéma. */
 function SchemaClientLinker({ form, setValue, schema, formPayload, onPrefillPayload }) {
-  const linked = Boolean(form.client_id);
+  const typeClient = form.type_client || formPayload?.type_client || "";
+  const showSearch = showsExistingClientSearch(typeClient);
+  const linked = Boolean(form.client_id) && showSearch;
   const searchTerm = [form.prenom, form.nom].map((s) => (s || "").trim()).filter(Boolean).join(" ");
 
   const pick = (client) => {
@@ -1875,6 +1879,35 @@ function SchemaClientLinker({ form, setValue, schema, formPayload, onPrefillPayl
     }, { overwrite: false });
     onPrefillPayload(next);
   };
+
+  if (!showSearch) {
+    return (
+      <div className="space-y-3" data-testid="offre-nouveau-client-identite">
+        <SectionTitle
+          title="Nouveau client"
+          subtitle="Saisissez le prénom et le nom. La recherche d'un client existant n'est pas affichée."
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Prénom">
+            <Input
+              value={form.prenom || ""}
+              onChange={(e) => setValue("prenom", e.target.value)}
+              placeholder="Ex. Jean"
+              data-testid="offre-nouveau-prenom"
+            />
+          </Field>
+          <Field label="Nom">
+            <Input
+              value={form.nom || ""}
+              onChange={(e) => setValue("nom", e.target.value)}
+              placeholder="Ex. Dupont"
+              data-testid="offre-nouveau-nom"
+            />
+          </Field>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -1904,8 +1937,8 @@ function SchemaClientLinker({ form, setValue, schema, formPayload, onPrefillPayl
               onChange={(e) => setValue("prenom", e.target.value)}
               searchTerm={searchTerm}
               onSelectClient={pick}
-              enabled={form.type_client !== "nouveau"}
               placeholder="Ex. Jean"
+              data-testid="offre-recherche-client"
             />
           </Field>
           <Field label="Nom">
@@ -1914,7 +1947,6 @@ function SchemaClientLinker({ form, setValue, schema, formPayload, onPrefillPayl
               onChange={(e) => setValue("nom", e.target.value)}
               searchTerm={searchTerm}
               onSelectClient={pick}
-              enabled={form.type_client !== "nouveau"}
               placeholder="Ex. Dupont"
             />
           </Field>
@@ -2058,7 +2090,8 @@ function AgentDemandeurSelect({ selectedId, currentLabel, onPick, disabled }) {
 }
 
 function ClientStep({ form, setValue, onPickClient, finmaWarning, canManageUsers }) {
-  const linked = Boolean(form.client_id);
+  const showSearch = showsExistingClientSearch(form.type_client);
+  const linked = Boolean(form.client_id) && showSearch;
   const searchTerm = [form.prenom, form.nom].map((s) => (s || "").trim()).filter(Boolean).join(" ");
   const suppressSuggest = linked; // une fois lié, pas de liste tant qu'on ne dissocie pas
 
@@ -2080,9 +2113,7 @@ function ClientStep({ form, setValue, onPickClient, finmaWarning, canManageUsers
 
   const onTypeClient = (v) => {
     setValue("type_client", v);
-    if (v === "nouveau" && form.client_id) {
-      setValue("client_id", null);
-    }
+    setValue("client_id", clientIdAfterTypeChange(v, form.client_id));
   };
 
   return (
@@ -2091,7 +2122,9 @@ function ClientStep({ form, setValue, onPickClient, finmaWarning, canManageUsers
 
       <SectionTitle
         title="Preneur d'assurance"
-        subtitle="Tapez un nom ou un prénom : suggestions en direct depuis la base Clients."
+        subtitle={showSearch
+          ? "Tapez un nom ou un prénom : suggestions en direct depuis la base Clients."
+          : "Saisissez les informations du nouveau client."}
       />
 
       {linked && (
@@ -2124,26 +2157,44 @@ function ClientStep({ form, setValue, onPickClient, finmaWarning, canManageUsers
           <Choice value={form.civilite} onChange={(v) => setValue("civilite", v)} options={CIVILITES} />
         </Field>
         <Field label="Prénom" required>
-          <ClientSuggestInput
-            value={form.prenom}
-            onChange={(e) => onIdentityChange("prenom", e.target.value)}
-            searchTerm={searchTerm}
-            onSelectClient={selectClient}
-            enabled={!suppressSuggest && form.type_client !== "nouveau"}
-            data-testid="offre-prenom"
-            placeholder="Ex. Jean"
-          />
+          {showSearch ? (
+            <ClientSuggestInput
+              value={form.prenom}
+              onChange={(e) => onIdentityChange("prenom", e.target.value)}
+              searchTerm={searchTerm}
+              onSelectClient={selectClient}
+              enabled={!suppressSuggest}
+              data-testid="offre-prenom"
+              placeholder="Ex. Jean"
+            />
+          ) : (
+            <Input
+              value={form.prenom}
+              onChange={(e) => setValue("prenom", e.target.value)}
+              data-testid="offre-prenom"
+              placeholder="Ex. Jean"
+            />
+          )}
         </Field>
         <Field label="Nom" required>
-          <ClientSuggestInput
-            value={form.nom}
-            onChange={(e) => onIdentityChange("nom", e.target.value)}
-            searchTerm={searchTerm}
-            onSelectClient={selectClient}
-            enabled={!suppressSuggest && form.type_client !== "nouveau"}
-            data-testid="offre-nom"
-            placeholder="Ex. Dupont"
-          />
+          {showSearch ? (
+            <ClientSuggestInput
+              value={form.nom}
+              onChange={(e) => onIdentityChange("nom", e.target.value)}
+              searchTerm={searchTerm}
+              onSelectClient={selectClient}
+              enabled={!suppressSuggest}
+              data-testid="offre-nom"
+              placeholder="Ex. Dupont"
+            />
+          ) : (
+            <Input
+              value={form.nom}
+              onChange={(e) => setValue("nom", e.target.value)}
+              data-testid="offre-nom"
+              placeholder="Ex. Dupont"
+            />
+          )}
         </Field>
         <Field label="Sexe">
           <Choice value={form.sexe} onChange={(v) => setValue("sexe", v)} options={SEXES} />
