@@ -44,6 +44,9 @@ deploy/infomaniak/.env*
 # Migration backups (données clients — ne jamais committer)
 backend/backups/
 
+# Documents générés localement (PDF d'essai, exports) — ne jamais committer
+backend/generated/
+
 # Logs and debug files
 npm-debug.log*
 yarn-debug.log*
