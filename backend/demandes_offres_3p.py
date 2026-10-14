@@ -1607,6 +1607,7 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         ),
     }
     enrich_gestion_fields(doc, out)
+    out["nb_variantes_sollicitees"] = len(out.get("compagnies_sollicitees") or [])
     # Notes internes + erreurs : gestionnaires process + admin (users.manage)
     from access_control import can_process_offres, ROLE_ADMIN
     is_admin_viewer = bool(
@@ -1769,7 +1770,72 @@ def normalize_offres_list(doc: dict) -> list:
 
 
 def company_key(name: Any) -> str:
-    return str(name or "").strip().casefold()
+    return " ".join(str(name or "").strip().casefold().split())
+
+
+def effective_compagnies(doc: dict) -> list[str]:
+    """
+    Compagnies réellement sollicitées.
+    Le formulaire (schéma) prime, puis les compagnies déjà enregistrées.
+    Lecture seule : ne réécrit ni la demande ni les offres.
+    """
+    from offre_form_types import compagnies_selectionnees, is_mode_traitement
+
+    selected = compagnies_selectionnees(
+        (doc or {}).get("form_type"),
+        (doc or {}).get("form_payload") or {},
+    )
+    stored: list[str] = []
+    for raw in (doc or {}).get("compagnies") or []:
+        text = str(raw or "").strip()
+        if text and not is_mode_traitement(text):
+            stored.append(text)
+    return _dedupe_company_names(selected + stored)
+
+
+def compagnies_enregistrement(doc: dict) -> list[str]:
+    """Menu « Offre reçue » : compagnies de la demande, puis les autres du même formulaire."""
+    from offre_form_types import options_compagnies_formulaire
+
+    solicited = effective_compagnies(doc)
+    catalog = options_compagnies_formulaire((doc or {}).get("form_type"))
+    if not catalog:
+        catalog = list(COMPAGNIES_DEFAUT)
+    return _dedupe_company_names(solicited + catalog)
+
+
+def resolve_compagnie_saisie(doc: dict, raw: Any, existing_offres: Optional[list] = None) -> str:
+    """
+    Nom à enregistrer sur la réponse.
+    Conserve l'orthographe déjà attribuée à une offre existante.
+    """
+    from offre_form_types import is_mode_traitement
+
+    name = str(raw or "").strip()
+    if not name or is_mode_traitement(name):
+        raise ValueError("Cette valeur n'est pas une compagnie d'assurance.")
+    key = company_key(name)
+    for offer in existing_offres or []:
+        current = str((offer or {}).get("compagnie") or "").strip()
+        if current and company_key(current) == key:
+            return current
+    for candidate in compagnies_enregistrement(doc):
+        if company_key(candidate) == key:
+            return candidate
+    return name
+
+
+def _dedupe_company_names(names: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in names:
+        text = str(raw or "").strip()
+        key = company_key(text)
+        if not text or not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
 
 
 def find_offre_for_compagnie(offres: list, compagnie: str) -> Optional[dict]:
@@ -1848,7 +1914,7 @@ def upsert_company_offre(offres: list, offer: dict) -> list:
 
 def all_solicited_companies_have_offer(doc: dict, offres: Optional[list] = None) -> bool:
     """True si chaque compagnie sollicitée a une réponse offre."""
-    compagnies = [str(c).strip() for c in (doc.get("compagnies") or []) if str(c).strip()]
+    compagnies = effective_compagnies(doc)
     items = offres if offres is not None else normalize_offres_list(doc)
     if not compagnies:
         # Pas de liste : au moins une offre reçue suffit
@@ -1885,7 +1951,7 @@ def build_reponses_compagnies(doc: dict) -> list:
     Cartes « RÉPONSES DES COMPAGNIES » : une entrée par compagnie sollicitée,
     plus les offres orphelines (compagnie hors liste).
     """
-    compagnies = [str(c).strip() for c in (doc.get("compagnies") or []) if str(c).strip()]
+    compagnies = effective_compagnies(doc)
     offres = normalize_offres_list(doc)
     by_comp = {}
     for o in offres:
@@ -1976,7 +2042,7 @@ def build_reponses_compagnies(doc: dict) -> list:
 
 def count_variantes_sollicitees(doc: dict) -> int:
     """Variantes = compagnies sollicitées dans une même demande."""
-    return len(list(doc.get("compagnies") or []))
+    return len(effective_compagnies(doc))
 
 
 def count_offres_recues(doc: dict) -> int:
@@ -2114,6 +2180,8 @@ def enrich_gestion_fields(doc: dict, out: dict) -> None:
     out["gestion_categories"] = gestion_categorie_ids(doc)
     out["variantes"] = build_variantes(doc)
     out["reponses_compagnies"] = build_reponses_compagnies(doc)
+    out["compagnies_sollicitees"] = effective_compagnies(doc)
+    out["compagnies_enregistrement"] = compagnies_enregistrement(doc)
     out["delai_surveiller_jours"] = OFFRES_DELAI_SURVEILLER_JOURS
     out["delai_urgent_jours"] = OFFRES_DELAI_URGENT_JOURS
 
@@ -2431,8 +2499,8 @@ def compute_agent_stats(rows: list) -> dict:
             b["nb_offres_recues"] += count_offres_recues(r)
             _inc_bucket(b["by_form_type"], offer_type_label(r))
             _inc_bucket(b["by_category"], offer_category_label(r))
-            for comp in r.get("compagnies") or []:
-                _inc_bucket(b["by_compagnie"], str(comp).strip())
+            for comp in effective_compagnies(r):
+                _inc_bucket(b["by_compagnie"], comp)
         if st in {STATUT_ENVOYEE, STATUT_VALIDEE, STATUT_ATTENTE_INFOS}:
             b["en_attente"] += 1
         if st == STATUT_INCOMPLETE:
@@ -2608,8 +2676,8 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
         nb_offres_recues_detail += count_offres_recues(r)
         _inc_bucket(by_form_type, offer_type_label(r))
         _inc_bucket(by_category, offer_category_label(r))
-        for comp in r.get("compagnies") or []:
-            _inc_bucket(by_compagnie, str(comp).strip())
+        for comp in effective_compagnies(r):
+            _inc_bucket(by_compagnie, comp)
 
     agent_block = compute_agent_stats(rows)
     gestion = compute_gestion_kpis(rows)
@@ -2734,6 +2802,9 @@ def apply_form_fields(target: dict, data: dict) -> None:
                 from offre_form_types import sync_crm_fields_from_payload
 
                 sync_crm_fields_from_payload(target, form_type_id, target.get("form_payload") or {})
+                from offre_form_types import sync_compagnies_from_payload
+
+                sync_compagnies_from_payload(target, form_type_id, target.get("form_payload") or {})
             except Exception:
                 pass
 

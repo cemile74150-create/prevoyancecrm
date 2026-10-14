@@ -1197,7 +1197,7 @@ def attach_demandes_offres_routes(
 
     @api_router.get("/demandes-offres/meta")
     async def demandes_offres_meta(user: User = Depends(current_user_dependency)):
-        from offre_form_types import list_form_types, load_form_menu
+        from offre_form_types import list_form_types, load_form_menu, referentiel_compagnies
 
         try:
             from email_service import mail_status_public, smtp_configured
@@ -1211,6 +1211,7 @@ def attach_demandes_offres_routes(
             "statuts": STATUTS,
             "kanban_columns": KANBAN_COLUMNS,
             "compagnies": COMPAGNIES_DEFAUT,
+            "compagnies_referentiel": referentiel_compagnies(COMPAGNIES_DEFAUT),
             "activites": ACTIVITES_RISQUE,
             "activites_risque": ACTIVITES_RISQUE,
             "civilites": CIVILITES,
@@ -1415,12 +1416,14 @@ def attach_demandes_offres_routes(
         if form_type and form_type != "all":
             clauses.append({"form_type": form_type})
         if compagnie and compagnie != "all":
+            cie = re.escape(compagnie.strip())
+            cie_match = {"$regex": f"^{cie}$", "$options": "i"}
             clauses.append(
                 {
                     "$or": [
-                        {"compagnies": compagnie},
-                        {"offre.compagnie": compagnie},
-                        {"offres.compagnie": compagnie},
+                        {"compagnies": cie_match},
+                        {"offre.compagnie": cie_match},
+                        {"offres.compagnie": cie_match},
                     ]
                 }
             )
@@ -2162,10 +2165,14 @@ def attach_demandes_offres_routes(
             )
 
         existing = normalize_offres_list(doc)
-        prev = find_offre_for_compagnie(existing, compagnie.strip())
+        try:
+            compagnie_name = resolve_compagnie_saisie(doc, compagnie, existing)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        prev = find_offre_for_compagnie(existing, compagnie_name)
         base = {
             "id": (prev or {}).get("id") or str(uuid.uuid4()),
-            "compagnie": compagnie.strip(),
+            "compagnie": compagnie_name,
             "date_reception": date_reception.strip(),
             "reference": (reference or "").strip() or ((prev or {}).get("reference")),
             "montant_prime": parse_float(montant_prime)
@@ -2187,11 +2194,11 @@ def attach_demandes_offres_routes(
         offer = append_documents_to_offre(base, stored_docs)
         existing = upsert_company_offre(existing, offer)
         # Récupérer la version fusionnée (documents cumulés)
-        offer = find_offre_for_compagnie(existing, compagnie.strip()) or offer
+        offer = find_offre_for_compagnie(existing, compagnie_name) or offer
         new_statut = resolve_statut_apres_reception_offre(doc, existing)
-        hist_detail = compagnie.strip()
+        hist_detail = compagnie_name
         if stored_docs:
-            hist_detail = f"{compagnie.strip()} · {len(stored_docs)} document(s)"
+            hist_detail = f"{compagnie_name} · {len(stored_docs)} document(s)"
         result = await save_status(
             demande_id,
             user,
@@ -2202,7 +2209,7 @@ def attach_demandes_offres_routes(
                 "offres": existing,
                 "offre": offer,  # dernière offre (compat UI)
             },
-            meta={"compagnie": compagnie.strip(), "offre_id": offer.get("id")},
+            meta={"compagnie": compagnie_name, "offre_id": offer.get("id")},
             document_id=(offer.get("documents") or [{}])[-1].get("id") if offer.get("documents") else None,
         )
         mail_doc = {
@@ -2220,7 +2227,7 @@ def attach_demandes_offres_routes(
             doc=doc,
             event="recue",
             title=f"Offre reçue — {doc.get('numero') or ''}".strip(),
-            message=f"Offre {compagnie.strip()} disponible pour consultation.",
+            message=f"Offre {compagnie_name} disponible pour consultation.",
             audience="conseiller",
             account_ids=[doc.get("created_by_account_id")] if doc.get("created_by_account_id") else [],
         )
@@ -3148,12 +3155,14 @@ def attach_demandes_offres_routes(
                 from offre_form_types import (
                     filter_form_payload_to_schema,
                     get_form_type,
+                    sync_compagnies_from_payload,
                     sync_crm_fields_from_payload,
                 )
 
                 form_payload = filter_form_payload_to_schema(form_type_id, form_payload)
                 synced: dict = {}
                 sync_crm_fields_from_payload(synced, form_type_id, form_payload)
+                sync_compagnies_from_payload(synced, form_type_id, form_payload)
                 for key, value in synced.items():
                     if value not in (None, ""):
                         updates[key] = value

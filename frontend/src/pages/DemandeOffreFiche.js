@@ -19,6 +19,7 @@ import {
   PRIORITE_STYLE, prioriteLabel, erreurLabel, erreurChampLabel, formatDateTimeFr,
   prefillSchemaPayloadFromClient, soumisCompagnieLabel, isSoumisCompagnie,
   isDemandeAnnuleeStatut, isOffreNonSigneeStatut, isHorsCours, statutLabel, isDemandeAnnuleeFlag,
+  AUTRE_COMPAGNIE_VALUE, compagniesAffichees, compagniesEnregistrementOffre, resolveCompagnieSaisie,
 } from "@/lib/demandesOffres";
 import OffreSchemaForm, { SchemaReadOnlySummary, isFieldVisible } from "@/components/OffreSchemaForm";
 import ClientSuggestInput from "@/components/ClientSuggestInput";
@@ -67,12 +68,15 @@ function Field({ label, required, children, className = "" }) {
 
 function Choice({ value, onChange, options, placeholder = "Sélectionner" }) {
   const normalized = value || "__none";
+  const items = (options || []).map((option) => (
+    typeof option === "string" ? { value: option, label: option } : option
+  ));
   return (
     <Select value={normalized} onValueChange={(v) => onChange(v === "__none" ? "" : v)}>
       <SelectTrigger><SelectValue placeholder={placeholder} /></SelectTrigger>
       <SelectContent>
         <SelectItem value="__none">Non renseigné</SelectItem>
-        {options.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+        {items.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
       </SelectContent>
     </Select>
   );
@@ -505,11 +509,16 @@ export default function DemandeOffreFiche() {
   };
 
   const addOffer = async () => {
-    if (!offer.compagnie || !offer.date_reception) return toast.error("Compagnie et date requises");
+    const companyOptions = compagniesEnregistrementOffre(demande, meta.compagnies || COMPAGNIES_DEFAUT);
+    const compagnie = resolveCompagnieSaisie(offer.compagnie, offer.autre_compagnie, companyOptions);
+    if (!compagnie || !offer.date_reception) {
+      return toast.error(offer.compagnie === AUTRE_COMPAGNIE_VALUE
+        ? "Indiquez le nom de la compagnie et la date de réception"
+        : "Compagnie et date requises");
+    }
     const fd = new FormData();
-    Object.entries(offer).forEach(([key, value]) => {
-      if (key.startsWith("_")) return;
-      if (key === "files") return;
+    Object.entries({ ...offer, compagnie }).forEach(([key, value]) => {
+      if (key.startsWith("_") || key === "files" || key === "autre_compagnie") return;
       if (value !== null && value !== "") fd.append(key, value);
     });
     // Toujours envoyer une liste multipart (1 ou N) sous files[] / documents[]
@@ -547,7 +556,7 @@ export default function DemandeOffreFiche() {
       setOffer({
         compagnie: "", date_reception: new Date().toISOString().slice(0, 10),
         reference: "", montant_prime: "", type_contrat: "", garanties: "", duree: "",
-        commentaires: "", message_conseiller: "", files: [],
+        commentaires: "", message_conseiller: "", files: [], autre_compagnie: "",
         _mode: "offre", _offreId: null,
       });
     } catch (e) {
@@ -573,7 +582,7 @@ export default function DemandeOffreFiche() {
       compagnie: compagnie || "",
       date_reception: new Date().toISOString().slice(0, 10),
       reference: "", montant_prime: "", type_contrat: "", garanties: "", duree: "",
-      commentaires: "", message_conseiller: "", files: [],
+      commentaires: "", message_conseiller: "", files: [], autre_compagnie: "",
       _mode: "offre", _offreId: null,
     });
     setOfferOpen(true);
@@ -903,9 +912,9 @@ export default function DemandeOffreFiche() {
                 <span className="text-xs rounded-full bg-secondary px-2.5 py-1 text-muted-foreground">
                   {demande.form_type_label || "Formulaire"}
                 </span>
-                {(demande.compagnies?.length > 0) && (
+                {(compagniesAffichees(demande).length > 0) && (
                   <span className="text-xs rounded-full bg-indigo-50 text-indigo-800 px-2.5 py-1 ring-1 ring-inset ring-indigo-200">
-                    {demande.compagnies.length} variante{demande.compagnies.length > 1 ? "s" : ""} sollicitée{demande.compagnies.length > 1 ? "s" : ""}
+                    {compagniesAffichees(demande).length} variante{compagniesAffichees(demande).length > 1 ? "s" : ""} sollicitée{compagniesAffichees(demande).length > 1 ? "s" : ""}
                   </span>
                 )}
                 {offresList.length > 0 && (
@@ -1551,7 +1560,26 @@ export default function DemandeOffreFiche() {
             {offer._mode !== "add-docs" && (
               <>
                 <Field label="Compagnie" required>
-                  <Choice value={offer.compagnie} onChange={(v) => setOffer({ ...offer, compagnie: v })} options={meta.compagnies || COMPAGNIES_DEFAUT} />
+                  <Choice
+                    value={offer.compagnie}
+                    onChange={(v) => setOffer({ ...offer, compagnie: v })}
+                    options={[
+                      ...compagniesEnregistrementOffre(demande, meta.compagnies || COMPAGNIES_DEFAUT),
+                      { value: AUTRE_COMPAGNIE_VALUE, label: "Autre compagnie…" },
+                    ]}
+                  />
+                  {offer.compagnie === AUTRE_COMPAGNIE_VALUE && (
+                    <Input
+                      className="mt-2"
+                      value={offer.autre_compagnie || ""}
+                      placeholder="Nom de la compagnie"
+                      onChange={(e) => setOffer({ ...offer, autre_compagnie: e.target.value })}
+                    />
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Les compagnies choisies dans la demande sont proposées en premier.
+                    « Autre compagnie… » permet un cas exceptionnel, sans créer de doublon.
+                  </p>
                 </Field>
                 <Field label="Date de réception" required>
                   <Input type="date" value={offer.date_reception} onChange={(e) => setOffer({ ...offer, date_reception: e.target.value })} />

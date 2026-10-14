@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   formatDateFr,
   STATUT_STYLE,
+  compagniesAffichees,
 } from "@/lib/demandesOffres";
 import {
   AlertTriangle, CheckCircle2, ChevronRight, Clock, FilePlus2, FileSearch,
@@ -59,7 +60,7 @@ function matchesKpi(row, key) {
     case "brouillons":
       return st === BROUILLON;
     case "variantes":
-      return st !== BROUILLON && st !== ANNULEE && (row.compagnies || []).length > 0;
+      return st !== BROUILLON && st !== ANNULEE && compagniesAffichees(row).length > 0;
     case "attente":
       return ["Demande envoyée", "Demande validée", "En attente d'informations"].includes(st);
     case "incompletes":
@@ -308,8 +309,8 @@ export default function OffresDashboardPanel({
       const st = r.statut || BROUILLON;
       if (st === BROUILLON) c.brouillons += 1;
       else c.demandes += 1;
-      if (st !== BROUILLON && (r.compagnies || []).length) {
-        c.variantes += (r.compagnies || []).length;
+      if (st !== BROUILLON && compagniesAffichees(r).length) {
+        c.variantes += compagniesAffichees(r).length;
       }
       if (matchesKpi(r, "attente")) c.attente += 1;
       if (matchesKpi(r, "incompletes")) c.incompletes += 1;

@@ -14,7 +14,7 @@ import {
   COMPAGNIES_DEFAUT, DEMANDE_ORIGINE_FILTERS, DEMANDE_ORIGINE_STYLE,
   KANBAN_COLUMNS, PERIODE_FILTERS, STATUTS,
   TYPES_CLIENT, demandeOrigineKey, demandeOrigineLabel, demandeOrigineShort,
-  formatChf, formatDateFr, formatVariantesSummary, periodeLabel,
+  formatChf, formatDateFr, formatVariantesSummary, periodeLabel, compagniesAffichees,
   isDemandeAnnuleeStatut, isHorsCours, statutLabel,
 } from "@/lib/demandesOffres";
 import { uniqueConseillerNames } from "@/lib/conseillers";
@@ -318,6 +318,7 @@ export default function DemandesOffres({ mode = "conseiller" }) {
   const [stats, setStats] = useState(null);
   const [formTypes, setFormTypes] = useState([]);
   const [formMenu, setFormMenu] = useState(null);
+  const [compagniesFiltre, setCompagniesFiltre] = useState(COMPAGNIES_DEFAUT);
   const [loading, setLoading] = useState(true);
   const [creatingKey, setCreatingKey] = useState(null);
   const [q, setQ] = useState("");
@@ -368,6 +369,11 @@ export default function DemandesOffres({ mode = "conseiller" }) {
         const res = await api.get("/demandes-offres/meta");
         setFormTypes(res.data?.form_types || []);
         setFormMenu(res.data?.form_menu || null);
+        setCompagniesFiltre(
+          res.data?.compagnies_referentiel?.length
+            ? res.data.compagnies_referentiel
+            : COMPAGNIES_DEFAUT,
+        );
       } catch {
         setFormTypes([]);
         setFormMenu(null);
@@ -919,7 +925,7 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                   ))}
                 </SelectContent>
               </Select>
-              <FilterSelect value={compagnie} onChange={setCompagnie} placeholder="Compagnie" options={COMPAGNIES_DEFAUT} />
+              <FilterSelect value={compagnie} onChange={setCompagnie} placeholder="Compagnie" options={compagniesFiltre} />
             </div>
             {(filterActive || activeKpiLabel) && (
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -972,8 +978,8 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                                   </span>
                                   <span className="block text-sm text-slate-500 mt-1">
                                     {typeLabel(r)}
-                                    {(r.compagnies || []).length
-                                      ? ` · ${(r.compagnies || []).slice(0, 3).join(", ")}${(r.compagnies || []).length > 3 ? "…" : ""}`
+                                    {compagniesAffichees(r).length
+                                      ? ` · ${compagniesAffichees(r).slice(0, 3).join(", ")}${compagniesAffichees(r).length > 3 ? "…" : ""}`
                                       : ""}
                                     {r.montant_prime != null && r.montant_prime !== "" ? ` · ${formatChf(r.montant_prime)}` : ""}
                                     {r.agent_label ? ` · ${r.agent_label}` : ""}
