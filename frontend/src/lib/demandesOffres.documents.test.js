@@ -1,6 +1,9 @@
 import {
   COMPAGNIES_DEFAUT,
+  AUTRE_COMPAGNIE_VALUE,
+  compagniesEnregistrementOffre,
   documentsForGeneralList,
+  resolveCompagnieSaisie,
 } from "./demandesOffres";
 
 describe("documentsForGeneralList", () => {
@@ -49,5 +52,23 @@ describe("COMPAGNIES_DEFAUT", () => {
     expect(COMPAGNIES_DEFAUT).toEqual(expect.arrayContaining([
       "PAX", "Helvetia", "Swiss Life", "AXA", "Vaudoise", "Smile Direct",
     ]));
+    expect(COMPAGNIES_DEFAUT).not.toContain("GVB");
+  });
+});
+
+describe("compagnies d'enregistrement", () => {
+  test("place les compagnies de la demande en premier et ignore Envoi du formulaire", () => {
+    const options = compagniesEnregistrementOffre({
+      compagnies_enregistrement: ["GVB", "Helvetia", "Axa", "Envoi du formulaire", "GVB"],
+    });
+    expect(options).toEqual(["GVB", "Helvetia", "Axa"]);
+  });
+
+  test("rattache une saisie libre au libellé déjà proposé", () => {
+    const options = ["GVB", "Helvetia", "Axa"];
+    expect(resolveCompagnieSaisie("gvb", "", options)).toBe("GVB");
+    expect(resolveCompagnieSaisie(AUTRE_COMPAGNIE_VALUE, "  Helvetia ", options)).toBe("Helvetia");
+    expect(resolveCompagnieSaisie(AUTRE_COMPAGNIE_VALUE, "Envoi du formulaire", options)).toBe("");
+    expect(resolveCompagnieSaisie(AUTRE_COMPAGNIE_VALUE, "Rouky", options)).toBe("Rouky");
   });
 });

@@ -667,6 +667,139 @@ def iter_schema_filled_fields(
     return rows
 
 
+_NON_COMPAGNIE = "envoi du formulaire"
+
+
+def compagnie_key(name: Any) -> str:
+    """Clé de comparaison : casse et espaces, sans fusionner des noms différents."""
+    return " ".join(str(name or "").strip().casefold().split())
+
+
+def is_mode_traitement(value: Any) -> bool:
+    """« Envoi du formulaire » est un mode d'envoi, pas une compagnie."""
+    return _fold_label(str(value or "")) == _NON_COMPAGNIE
+
+
+def is_champ_compagnies_sollicitees(field: dict) -> bool:
+    """Champ du formulaire où le conseiller choisit les compagnies à consulter."""
+    if not isinstance(field, dict):
+        return False
+    ftype = field.get("type") or ""
+    options = [str(opt).strip() for opt in (field.get("options") or []) if str(opt).strip()]
+    if ftype not in {"checkbox", "radio", "select"} or not options:
+        return False
+    label = _fold_label(field.get("label") or "")
+    if "compagnies suivantes" in label or "compagnie suivante" in label:
+        return True
+    if label.startswith("quelles compagnies"):
+        return True
+    if "compagnie" in label and "obtenir une offre" in label:
+        return True
+    if label.rstrip(" :") == "compagnies":
+        return True
+    return False
+
+
+def champs_compagnies_sollicitees(form_type_id: Optional[str]) -> list[dict[str, Any]]:
+    schema = load_form_schema(form_type_id or "") or {}
+    return [
+        field
+        for field in (schema.get("fields") or [])
+        if is_champ_compagnies_sollicitees(field)
+    ]
+
+
+def _dedupe_compagnies(names: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in names:
+        text = str(raw or "").strip()
+        if not text or is_mode_traitement(text):
+            continue
+        key = compagnie_key(text)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
+
+
+def _valeurs_payload(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple)):
+        return [str(item).strip() for item in raw if str(item).strip()]
+    text = str(raw).strip()
+    return [text] if text else []
+
+
+def options_compagnies_formulaire(form_type_id: Optional[str]) -> list[str]:
+    """Compagnies proposées par ce formulaire, lues dans son schéma."""
+    names: list[str] = []
+    for field in champs_compagnies_sollicitees(form_type_id):
+        for opt in field.get("options") or []:
+            text = str(opt).strip()
+            if text:
+                names.append(text)
+    return _dedupe_compagnies(names)
+
+
+def compagnies_selectionnees(
+    form_type_id: Optional[str],
+    payload: Optional[dict],
+    *,
+    visible_only: bool = True,
+) -> list[str]:
+    """Compagnies cochées dans la demande, avec le libellé exact du formulaire."""
+    data = payload if isinstance(payload, dict) else {}
+    selected: list[str] = []
+    for field in champs_compagnies_sollicitees(form_type_id):
+        if visible_only and not _field_visible(field, data):
+            continue
+        name = field.get("name") or field.get("id")
+        if not name:
+            continue
+        by_key = {
+            compagnie_key(opt): str(opt).strip()
+            for opt in (field.get("options") or [])
+            if str(opt).strip() and not is_mode_traitement(opt)
+        }
+        for raw in _valeurs_payload(data.get(name)):
+            if is_mode_traitement(raw):
+                continue
+            canonical = by_key.get(compagnie_key(raw))
+            if canonical:
+                selected.append(canonical)
+    return _dedupe_compagnies(selected)
+
+
+def sync_compagnies_from_payload(target: dict, form_type_id: str, payload: dict[str, Any]) -> None:
+    """Recopie les compagnies cochées vers la colonne CRM, sans toucher aux offres."""
+    fields = champs_compagnies_sollicitees(form_type_id)
+    if not fields or not isinstance(payload, dict):
+        return
+    present = False
+    for field in fields:
+        name = field.get("name") or field.get("id")
+        if name and name in payload:
+            present = True
+            break
+    if not present:
+        return
+    target["compagnies"] = compagnies_selectionnees(form_type_id, payload)
+
+
+def referentiel_compagnies(legacy: Optional[list[str]] = None) -> list[str]:
+    """
+    Union du wizard historique et de tous les formulaires actifs.
+    Sert au filtre ; le wizard 3e pilier conserve sa propre liste.
+    """
+    names = [str(item).strip() for item in (legacy or []) if str(item).strip()]
+    for form in list_form_types(active_only=True):
+        names.extend(options_compagnies_formulaire(form.get("id")))
+    return _dedupe_compagnies(names)
+
+
 def sync_crm_fields_from_payload(target: dict, form_type_id: str, payload: dict[str, Any]) -> None:
     """Mappe quelques champs schéma → colonnes CRM (client / agent / prime) pour la liste."""
     schema = load_form_schema(form_type_id) or {}

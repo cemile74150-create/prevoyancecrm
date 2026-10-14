@@ -16,6 +16,7 @@ import {
   formatDateFr,
   formatVariantesSummary,
   COMPAGNIES_DEFAUT,
+  compagniesAffichees,
   PERIODE_FILTERS,
   STATUT_STYLE,
   statutLabel,
@@ -98,6 +99,7 @@ export default function GestionReponsesOffres() {
   const [rows, setRows] = useState([]);
   const [stats, setStats] = useState(null);
   const [formTypes, setFormTypes] = useState([]);
+  const [compagniesFiltre, setCompagniesFiltre] = useState(COMPAGNIES_DEFAUT);
   const [notifs, setNotifs] = useState([]);
   const [notifCount, setNotifCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -127,6 +129,11 @@ export default function GestionReponsesOffres() {
       try {
         const res = await api.get("/demandes-offres/meta");
         setFormTypes(res.data?.form_types || []);
+        setCompagniesFiltre(
+          res.data?.compagnies_referentiel?.length
+            ? res.data.compagnies_referentiel
+            : COMPAGNIES_DEFAUT,
+        );
       } catch {
         setFormTypes([]);
       }
@@ -287,7 +294,7 @@ export default function GestionReponsesOffres() {
 
   const typeLabel = (r) => r.form_type_label || r.type_pilier || "—";
   const compsShort = (r) => {
-    const c = r.compagnies || [];
+    const c = compagniesAffichees(r);
     if (!c.length) return "—";
     return c.length <= 2 ? c.join(", ") : `${c.slice(0, 2).join(", ")} +${c.length - 2}`;
   };
@@ -453,7 +460,7 @@ export default function GestionReponsesOffres() {
               <SelectTrigger className="h-9 w-[140px]"><SelectValue placeholder="Compagnie" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Toutes compagnies</SelectItem>
-                {COMPAGNIES_DEFAUT.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                {compagniesFiltre.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={formType} onValueChange={setFormType}>

@@ -107,6 +107,65 @@ export const COMPAGNIES_DEFAUT = [
   "Swica", "CSS", "Smile Direct", "Rentes Genevoises",
 ];
 
+/** Valeur interne du menu : saisie libre, jamais enregistrée telle quelle. */
+export const AUTRE_COMPAGNIE_VALUE = "__autre_compagnie__";
+
+export function foldCompagnie(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+export function isModeTraitementCompagnie(value) {
+  return foldCompagnie(value) === "envoi du formulaire";
+}
+
+/** Compagnies affichées pour une demande : sélection du formulaire, sinon colonne CRM. */
+export function compagniesAffichees(row) {
+  if (Array.isArray(row?.compagnies_sollicitees) && row.compagnies_sollicitees.length) {
+    return row.compagnies_sollicitees.filter((name) => name && !isModeTraitementCompagnie(name));
+  }
+  return (row?.compagnies || []).filter((name) => name && !isModeTraitementCompagnie(name));
+}
+
+/**
+ * Menu « Enregistrer une offre compagnie ».
+ * Les compagnies de la demande arrivent en premier ; « Envoi du formulaire » est exclu.
+ */
+export function compagniesEnregistrementOffre(demande, fallback = []) {
+  const fromApi = Array.isArray(demande?.compagnies_enregistrement)
+    ? demande.compagnies_enregistrement
+    : [];
+  const source = fromApi.length
+    ? fromApi
+    : compagniesAffichees(demande).concat(fallback || []);
+  const out = [];
+  const seen = new Set();
+  for (const raw of source) {
+    const name = String(raw || "").trim();
+    if (!name || isModeTraitementCompagnie(name)) continue;
+    const key = foldCompagnie(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+/** Nom réellement envoyé : libellé du menu si la saisie n'en est qu'une variante de casse. */
+export function resolveCompagnieSaisie(choice, autreNom, options = []) {
+  const picked = choice === AUTRE_COMPAGNIE_VALUE
+    ? String(autreNom || "").trim()
+    : String(choice || "").trim();
+  if (!picked || isModeTraitementCompagnie(picked)) return "";
+  const key = foldCompagnie(picked);
+  const known = (options || []).find((opt) => foldCompagnie(opt) === key);
+  return known || picked;
+}
+
 /** Catégorie des fichiers enregistrés depuis « Enregistrer une offre compagnie ». */
 export const OFFRE_COMPAGNIE_DOC_CATEGORY = "Offre compagnie";
 
@@ -382,11 +441,12 @@ export function periodeLabel(id) {
 }
 
 export function formatVariantesSummary(row) {
-  const n = row?.nb_variantes_sollicitees ?? (row?.compagnies?.length || 0);
+  const comps = compagniesAffichees(row);
+  const n = row?.nb_variantes_sollicitees ?? comps.length;
   if (!n) return null;
-  const comps = (row?.compagnies || []).slice(0, 3).join(", ");
+  const shown = comps.slice(0, 3).join(", ");
   const extra = n > 3 ? ` +${n - 3}` : "";
-  return `${n} variante${n > 1 ? "s" : ""}${comps ? ` · ${comps}${extra}` : ""}`;
+  return `${n} variante${n > 1 ? "s" : ""}${shown ? ` · ${shown}${extra}` : ""}`;
 }
 
 export function formatChf(value) {
