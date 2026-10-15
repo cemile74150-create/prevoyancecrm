@@ -604,7 +604,7 @@ export function AnalysePrevoyanceApp({
         return (
           <Section
             title="4. LPP"
-            hint="Capital, rente annuelle par âge, et % LPP disponible."
+            hint="Capital, rente annuelle par âge, et % LPP disponible. Plusieurs caisses possibles."
           >
             <LppFields
               title="Assuré 1"

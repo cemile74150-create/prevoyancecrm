@@ -2,7 +2,11 @@ import {
   LPP_CONVERSION_RATES,
   LPP_PCT_DEBLOCABLE_DEFAULT,
   RETIREMENT_AGES,
+  type LppAvoirLigne,
   type LppByAge,
+  type LppCaisseType,
+  type LppRenteUnite,
+  type LppRetraitEtatique,
   type PersonInput,
   type RetirementAge,
 } from "../types";
@@ -33,11 +37,21 @@ export class LPPCalculationService {
     const byAge = new Map(rows.map((r) => [r.age, r]));
     return RETIREMENT_AGES.map((age) => {
       const existing = byAge.get(age);
-      return {
+      const row: LppByAge = {
         age,
         capital: round2(existing?.capital || 0),
         rente: round2(existing?.rente || 0),
       };
+      if (existing?.renteReduite != null) {
+        row.renteReduite = round2(existing.renteReduite);
+      }
+      if (existing?.capitalSaisi != null) {
+        row.capitalSaisi = round2(existing.capitalSaisi);
+      }
+      if (existing?.renteConserveeSaisie != null) {
+        row.renteConserveeSaisie = round2(existing.renteConserveeSaisie);
+      }
+      return row;
     });
   }
 
@@ -141,6 +155,146 @@ export class LPPCalculationService {
         conversionRate > 0.08,
     };
   }
+
+  /**
+   * Caisse principale, puis caisses ajoutées.
+   * Une planification sans lppAvoirs ne contient que la caisse principale.
+   */
+  listAvoirs(person: PersonInput): AvoirRef[] {
+    const extras = person.lppAvoirs || [];
+    return [
+      {
+        id: "primary",
+        institution: (person.lppInstitution || "").trim(),
+        rows: person.lpp || [],
+        pct: person.lppPctDeblocable,
+        type: person.lppType === "etatique" ? "etatique" : "classique",
+        renteUnite: person.lppRenteUnite === "mensuel" ? "mensuel" : "annuel",
+        ageRetrait: null,
+        retraitEtatique: person.lppRetraitEtatique || "capital_max",
+      },
+      ...extras.map((avoir) => ({
+        id: avoir.id,
+        institution: (avoir.institution || "").trim(),
+        rows: avoir.rows || [],
+        pct: avoir.pctDeblocable,
+        type: avoir.type === "etatique" ? ("etatique" as const) : ("classique" as const),
+        renteUnite: avoir.renteUnite === "mensuel" ? ("mensuel" as const) : ("annuel" as const),
+        ageRetrait: avoir.ageRetrait,
+        retraitEtatique: avoir.retraitEtatique || "capital_max",
+      })),
+    ];
+  }
+
+  /**
+   * Somme des caisses à un âge du tableau.
+   * Une LPP classique applique son pourcentage une fois.
+   * Une caisse étatique prend le capital maximal et la rente réduite saisis.
+   */
+  aggregateAtAge(
+    person: PersonInput,
+    age: RetirementAge,
+  ): {
+    lines: LppAvoirLigne[];
+    capital: number;
+    rente: number;
+    capitalRetire: number;
+    renteResiduelle: number;
+  } {
+    const lines = this.listAvoirs(person).map((avoir) => this.lineAtAge(avoir, age));
+    const sum = (key: "capital" | "rente" | "capitalRetire" | "renteResiduelle") =>
+      round2(lines.reduce((total, line) => total + line[key], 0));
+    return {
+      lines,
+      capital: sum("capital"),
+      rente: sum("rente"),
+      capitalRetire: sum("capitalRetire"),
+      renteResiduelle: sum("renteResiduelle"),
+    };
+  }
+
+  /**
+   * Capital retiré d'une caisse pour un scénario.
+   * Sans sourceId : caisse principale, pour que les planifications déjà
+   * enregistrées restent sur leur unique LPP.
+   */
+  capitalRetireForItem(
+    person: PersonInput,
+    sourceId: string | null | undefined,
+    age: RetirementAge,
+  ): number {
+    const id = sourceId && sourceId !== "primary" ? sourceId : "primary";
+    const line = this.aggregateAtAge(person, age).lines.find((row) => row.id === id);
+    return line?.capitalRetire ?? 0;
+  }
+
+  private lineAtAge(avoir: AvoirRef, personAge: RetirementAge): LppAvoirLigne {
+    const age = fundTableAge(avoir.ageRetrait, personAge);
+    const row = this.getAtAge(this.normalizeRows(avoir.rows), age);
+    if (avoir.type === "etatique") return this.etatiqueLine(avoir, row, age);
+    const pct = this.resolvePctDeblocable(avoir.pct);
+    return {
+      id: avoir.id,
+      institution: avoir.institution,
+      pct,
+      type: "classique",
+      age,
+      capital: round2(row.capital || 0),
+      rente: round2(row.rente || 0),
+      capitalRetire: this.capitalRetire(row.capital, pct),
+      renteResiduelle: this.renteResiduelle(row.rente, pct),
+    };
+  }
+
+  /**
+   * Capital maximal et rente réduite.
+   * La rente entière ne remplace la rente réduite que si ce scénario est choisi.
+   * Un retrait saisi n'est retenu que lorsque le capital et la rente sont tous les deux écrits.
+   */
+  private etatiqueLine(
+    avoir: AvoirRef,
+    row: LppByAge,
+    age: RetirementAge,
+  ): LppAvoirLigne {
+    const renteEntiere = lppRenteAnnuelle(row.rente, avoir.renteUnite);
+    const renteReduite = lppRenteAnnuelle(row.renteReduite || 0, avoir.renteUnite);
+    const capitalMax = round2(row.capital || 0);
+    let capitalRetire = capitalMax;
+    let renteResiduelle = renteReduite;
+    if (avoir.retraitEtatique === "rente_entiere") {
+      capitalRetire = 0;
+      renteResiduelle = renteEntiere;
+    } else if (
+      avoir.retraitEtatique === "saisi" &&
+      row.capitalSaisi != null &&
+      row.renteConserveeSaisie != null
+    ) {
+      capitalRetire = round2(row.capitalSaisi);
+      renteResiduelle = lppRenteAnnuelle(row.renteConserveeSaisie, avoir.renteUnite);
+    }
+    return {
+      id: avoir.id,
+      institution: avoir.institution,
+      pct: 100,
+      type: "etatique",
+      age,
+      capital: capitalMax,
+      rente: renteEntiere,
+      capitalRetire,
+      renteResiduelle,
+    };
+  }
+}
+
+interface AvoirRef {
+  id: string;
+  institution: string;
+  rows: LppByAge[];
+  pct: number | null | undefined;
+  type: LppCaisseType;
+  renteUnite: LppRenteUnite;
+  ageRetrait?: number | null;
+  retraitEtatique: LppRetraitEtatique;
 }
 
 export interface LppPctDiagnostic {
@@ -160,6 +314,36 @@ function nearlyEqual(a: number, b: number): boolean {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/** Rente de caisse étatique ramenée à l'année. Un mois compte 12, pas 13. */
+export function lppRenteAnnuelle(
+  montant: number | null | undefined,
+  unite: LppRenteUnite | null | undefined,
+): number {
+  const value = montant || 0;
+  if (unite === "mensuel") return round2(value * 12);
+  return round2(value);
+}
+
+function fundTableAge(
+  fundAge: number | null | undefined,
+  personAge: RetirementAge,
+): RetirementAge {
+  if (fundAge != null && (RETIREMENT_AGES as readonly number[]).includes(fundAge)) {
+    return fundAge as RetirementAge;
+  }
+  return personAge;
+}
+
+/** Âge du tableau LPP (60–65). Absent ou hors tableau → 65. */
+export function lppTableAge(
+  personAge: number | null | undefined,
+): RetirementAge {
+  if (personAge != null && (RETIREMENT_AGES as readonly number[]).includes(personAge)) {
+    return personAge as RetirementAge;
+  }
+  return 65;
 }
 
 export const lppCalculationService = new LPPCalculationService();

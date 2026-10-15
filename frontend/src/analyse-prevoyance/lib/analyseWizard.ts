@@ -75,9 +75,11 @@ function lppCapital65(person: PersonInput | null | undefined): number {
 }
 
 function lppHasSaisie(person: PersonInput | null | undefined): boolean {
-  return Boolean(
-    person?.lpp?.some((row) => positiveMoney(row.capital) || positiveMoney(row.rente)),
-  );
+  const rows = [
+    ...(person?.lpp || []),
+    ...(person?.lppAvoirs || []).flatMap((avoir) => avoir.rows || []),
+  ];
+  return rows.some((row) => positiveMoney(row.capital) || positiveMoney(row.rente));
 }
 
 function pillarTotal(person: PersonInput | null | undefined): number {

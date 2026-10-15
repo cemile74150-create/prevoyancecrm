@@ -410,6 +410,22 @@ function buildPersonBlock(
     librePassage,
     hasRentePont: (person.rentePont ?? 0) > 0,
     rentePont: person.rentePont ?? 0,
+    dateFinActiviteLabel: formatDateFr(
+      computed.dateFinActivite || computed.dateDepart,
+    ),
+    ageFinActiviteLabel: computed.ageFinActiviteLabel || computed.ageLegalLabel,
+    datePerceptionAvsLabel: formatDateFr(
+      computed.datePerceptionAvs || computed.dateDepart,
+    ),
+    agePerceptionAvsLabel:
+      computed.agePerceptionAvsLabel || computed.ageLegalLabel,
+    lppLignes: (computed.lppLignes || []).map((line) => ({
+      institution: line.institution,
+      type: line.type,
+      pct: line.pct,
+      capitalRetire: line.capitalRetire,
+      renteResiduelle: line.renteResiduelle,
+    })),
   };
 }
 

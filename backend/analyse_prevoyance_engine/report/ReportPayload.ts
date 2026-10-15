@@ -37,6 +37,19 @@ export interface ReportPersonBlock {
   librePassage: number;
   hasRentePont: boolean;
   rentePont: number;
+  /** Présents lorsque l'âge LPP ou l'âge AVS diffère de l'âge légal. */
+  dateFinActiviteLabel?: string;
+  ageFinActiviteLabel?: string;
+  datePerceptionAvsLabel?: string;
+  agePerceptionAvsLabel?: string;
+  /** Détail seulement s'il y a plusieurs caisses ou une caisse étatique. */
+  lppLignes?: Array<{
+    institution: string;
+    type?: string;
+    pct: number;
+    capitalRetire: number;
+    renteResiduelle: number;
+  }>;
 }
 
 export interface ReportThirdPillarRow {

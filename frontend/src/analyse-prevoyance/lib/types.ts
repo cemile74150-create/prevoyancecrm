@@ -21,10 +21,44 @@ export const TAX_YEAR_DEFAULT = 2025;
 /** Confession hardcodée comme dans le Power Query Excel. */
 export const CONFESSION_DEFAULT = 5;
 
+export type LppCaisseType = "classique" | "etatique";
+export type LppRenteUnite = "mensuel" | "annuel";
+export type LppRetraitEtatique = "capital_max" | "rente_entiere" | "saisi";
+
 export interface LppByAge {
   age: RetirementAge;
+  /** Classique : avoir. Étatique : capital maximum retirable. */
+  capital: number;
+  /** Classique : rente annuelle. Étatique : rente entière. */
+  rente: number;
+  /** Caisse étatique : rente réduite si le capital maximum est retiré. */
+  renteReduite?: number;
+  capitalSaisi?: number | null;
+  renteConserveeSaisie?: number | null;
+}
+
+export interface LppAvoir {
+  id: string;
+  institution: string;
+  rows: LppByAge[];
+  type?: LppCaisseType;
+  renteUnite?: LppRenteUnite;
+  ageRetrait?: number | null;
+  retraitEtatique?: LppRetraitEtatique;
+  pctDeblocable?: number;
+}
+
+export interface LppAvoirLigne {
+  id: string;
+  institution: string;
+  pct: number;
+  type?: LppCaisseType;
+  age?: number;
+  anneeRetrait?: number | null;
   capital: number;
   rente: number;
+  capitalRetire: number;
+  renteResiduelle: number;
 }
 
 export type ThirdPillarType = "3A" | "3B";
@@ -213,6 +247,11 @@ export interface PersonInput {
    * retirable = avoir × pct/100. Ne pas stocker le retirable dans capital.
    */
   lppPctDeblocable?: number;
+  lppInstitution?: string;
+  lppType?: LppCaisseType;
+  lppRenteUnite?: LppRenteUnite;
+  lppRetraitEtatique?: LppRetraitEtatique;
+  lppAvoirs?: LppAvoir[];
   troisiemePilier: ThirdPillarContract[];
   /** Rente pont historique (un seul montant). Les saisies nouvelles passent par rentePonts. */
   rentePont?: number;
@@ -330,6 +369,12 @@ export interface PersonComputed {
   /** Chemin rente : AVS + rente LPP totale. */
   renteTotale65: number;
   total3ePilier: number;
+  dateFinActivite?: string;
+  ageFinActiviteLabel?: string;
+  datePerceptionAvs?: string;
+  agePerceptionAvsLabel?: string;
+  ageLppRetenu?: RetirementAge;
+  lppLignes?: LppAvoirLigne[];
 }
 
 export interface LacuneResult {
@@ -532,6 +577,11 @@ export function emptyPerson(civilite: Civilite = "Monsieur"): PersonInput {
     avsRentesAnticipees: [],
     lpp: emptyLppRows(),
     lppPctDeblocable: LPP_PCT_DEBLOCABLE_DEFAULT,
+    lppInstitution: "",
+    lppType: "classique",
+    lppRenteUnite: "annuel",
+    lppRetraitEtatique: "capital_max",
+    lppAvoirs: [],
     troisiemePilier: [],
     rentePont: 0,
     rentePonts: [],

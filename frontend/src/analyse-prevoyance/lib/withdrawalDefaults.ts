@@ -51,6 +51,37 @@ function lppItem(
   };
 }
 
+function extraLppItems(
+  titulaire: PersonKey,
+  person: PersonInput,
+  dossierAge: number | null,
+): WithdrawalPlanItem[] {
+  const personAge = effectiveLppWithdrawalAge(person, dossierAge);
+  return (person.lppAvoirs || []).map((avoir) => {
+    const age =
+      avoir.ageRetrait != null && Number.isFinite(Number(avoir.ageRetrait))
+        ? Number(avoir.ageRetrait)
+        : personAge;
+    const row = lppCapitalForWithdrawalAge(avoir.rows, age);
+    const etatique = avoir.type === "etatique";
+    const birth = yearOfIso(person.dateNaissance);
+    const year = row.found && birth != null && age != null ? birth + age : null;
+    return {
+      id: `lpp-${avoir.id}`,
+      kind: "lpp" as const,
+      titulaire,
+      label: `LPP ${avoir.institution || person.prenom || ""}`.trim(),
+      institution: avoir.institution || "LPP",
+      montantDisponible: row.found ? row.capital : 0,
+      pctCapital: etatique ? 100 : avoir.pctDeblocable ?? 100,
+      anneeRetraitPrevue: year,
+      anneePremierePossible: year,
+      anneeDernierePossible: null,
+      sourceId: avoir.id,
+    };
+  });
+}
+
 /**
  * Construit des items de planification par défaut à partir du dossier
  * (LPP, LP, 3P) — sans inventer de règles légales de dates.
@@ -66,9 +97,11 @@ export function buildDefaultWithdrawalItems(
     iso && /^\d{4}/.test(iso) ? Number(iso.slice(0, 4)) : null;
 
   items.push(lppItem("lpp-client1", "client1", input, input.client1, client1));
+  items.push(...extraLppItems("client1", input.client1, dossierLppAge(input)));
 
   if (conjoint && input.conjoint) {
     items.push(lppItem("lpp-conjoint", "conjoint", input, input.conjoint, conjoint));
+    items.push(...extraLppItems("conjoint", input.conjoint, dossierLppAge(input)));
   }
 
   for (const lp of input.libresPassages || []) {

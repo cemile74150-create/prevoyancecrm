@@ -25,10 +25,22 @@ import { genderFromCivilite, relationshipFromEtat } from "../mappers";
 export class RetirementAnalysisService {
   async run(input: AnalyseInput): Promise<AnalyseResults> {
     const errors: string[] = [];
-    const client1 = avsCalculationService.computePersonBasics(input.client1);
+    const dossierAge =
+      input.ageRetraiteSouhaite ?? input.client1.ageRetraiteSouhaite ?? null;
+    const client1 = avsCalculationService.computePersonBasics(input.client1, {
+      dossierAgeRetraite: dossierAge,
+      agePerceptionAvs:
+        input.client1.ageRetraiteSouhaite ?? input.ageRetraiteSouhaite ?? null,
+    });
     const conjoint =
       input.etatCivil === "Marié(e)" && input.conjoint
-        ? avsCalculationService.computePersonBasics(input.conjoint)
+        ? avsCalculationService.computePersonBasics(input.conjoint, {
+            dossierAgeRetraite: dossierAge,
+            agePerceptionAvs:
+              input.conjoint.ageRetraiteSouhaite ??
+              input.ageRetraiteSouhaite ??
+              null,
+          })
         : null;
 
     const lacune = this.computeLacune(

@@ -565,6 +565,32 @@ function pageAgency(n: number, total: number): string {
   ${footer(n, total)}`;
 }
 
+function lppCaisseText(person: ReportPayload["client1"] | null): string {
+  const lines = person?.lppLignes || [];
+  const detailed =
+    lines.length > 1 || lines.some((line) => line.type === "etatique");
+  if (!person || !detailed) return "";
+  return lines
+    .map((line) => {
+      const name = line.institution || "LPP";
+      if (line.type === "etatique") {
+        return `${esc(name)} : capital maximal ${formatChf(line.capitalRetire)}, rente réduite ${formatChf(line.renteResiduelle)}`;
+      }
+      return `${esc(name)} : ${line.pct} %, capital ${formatChf(line.capitalRetire)}, rente résiduelle ${formatChf(line.renteResiduelle)}`;
+    })
+    .join("<br/>");
+}
+
+function lppCaisseDetailRow(
+  client1: ReportPayload["client1"],
+  conjoint: ReportPayload["client1"] | null,
+): string {
+  const left = lppCaisseText(client1);
+  const right = lppCaisseText(conjoint);
+  if (!left && !right) return "";
+  return `<tr><td class="lab">Caisses LPP</td><td class="val">${left || "—"}</td><td class="val">${conjoint ? right || "—" : ""}</td></tr>`;
+}
+
 function pageBilan(p: ReportPayload, n: number, total: number): string {
   const c2 = p.flags.showConjoint ? p.conjoint : null;
   const cols = `<colgroup><col class="lab" /><col class="val" /><col class="val" /></colgroup>`;
@@ -607,13 +633,13 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
     </tr>
     <tr>
       <td class="lab">Fin de l'activité lucrative</td>
-      <td class="val">${when(p.client1.dateDepartLabel, p.client1.ageLegalLabel)}</td>
-      ${spouse(c2 ? when(c2.dateDepartLabel, c2.ageLegalLabel) : "")}
+      <td class="val">${when(p.client1.dateFinActiviteLabel || p.client1.dateDepartLabel, p.client1.ageFinActiviteLabel || p.client1.ageLegalLabel)}</td>
+      ${spouse(c2 ? when(c2.dateFinActiviteLabel || c2.dateDepartLabel, c2.ageFinActiviteLabel || c2.ageLegalLabel) : "")}
     </tr>
     <tr>
       <td class="lab">Retrait AVS</td>
-      <td class="val">${when(p.client1.dateDepartLabel, p.client1.ageLegalLabel)}</td>
-      ${spouse(c2 ? when(c2.dateDepartLabel, c2.ageLegalLabel) : "")}
+      <td class="val">${when(p.client1.datePerceptionAvsLabel || p.client1.dateDepartLabel, p.client1.agePerceptionAvsLabel || p.client1.ageLegalLabel)}</td>
+      ${spouse(c2 ? when(c2.datePerceptionAvsLabel || c2.dateDepartLabel, c2.agePerceptionAvsLabel || c2.ageLegalLabel) : "")}
     </tr>
   </table>
   <div class="sec-title">3. Prévoyance actuelle</div>
@@ -644,6 +670,7 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
       <td class="val">${formatChf(p.client1.capitalLppRetire65)}</td>
       ${spouse(c2 ? formatChf(c2.capitalLppRetire65) : "")}
     </tr>
+    ${lppCaisseDetailRow(p.client1, c2)}
     <tr>
       <td class="lab">3e pilier</td>
       <td class="val">${formatChf(p.client1.total3ePilier)}</td>
@@ -671,7 +698,7 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
     <tr>
       <td>${formatChf(p.aggregates.avsTotal)}</td>
       <td>${formatChf(p.aggregates.capitalLppAvecLibrePassage)}</td>
-      <td style="font-size:9pt">${esc(insuredName(p.client1, "Assuré 1"))} : ${esc(p.client1.ageLegalLabel)}${c2 ? `<br/>${esc(insuredName(c2, "Assuré 2"))} : ${esc(c2.ageLegalLabel)}` : ""}</td>
+      <td style="font-size:9pt">${esc(insuredName(p.client1, "Assuré 1"))} : ${esc(p.client1.ageFinActiviteLabel || p.client1.ageLegalLabel)}${c2 ? `<br/>${esc(insuredName(c2, "Assuré 2"))} : ${esc(c2.ageFinActiviteLabel || c2.ageLegalLabel)}` : ""}</td>
     </tr>
   </table>
   ${footer(n, total)}`;

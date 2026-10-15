@@ -20,10 +20,67 @@ export const TAX_YEAR_DEFAULT = 2025;
 /** Confession hardcodée comme dans le Power Query Excel. */
 export const CONFESSION_DEFAULT = 5;
 
+export type LppCaisseType = "classique" | "etatique";
+export type LppRenteUnite = "mensuel" | "annuel";
+/**
+ * Scénario capital d'une caisse étatique.
+ * capital_max : capital maximum et rente réduite saisis.
+ * rente_entiere : aucun capital, rente entière conservée.
+ * saisi : capital et rente écrits pour cet âge, sans formule.
+ */
+export type LppRetraitEtatique = "capital_max" | "rente_entiere" | "saisi";
+
 export interface LppByAge {
   age: RetirementAge;
+  /** Classique : avoir. Étatique : capital maximum retirable. */
   capital: number;
+  /** Classique : rente annuelle. Étatique : rente entière. */
   rente: number;
+  /** Caisse étatique : rente réduite si le capital maximum est retiré. */
+  renteReduite?: number;
+  /** Retrait inférieur au maximum, saisi pour cet âge. */
+  capitalSaisi?: number | null;
+  /** Rente conservée saisie pour cet âge. */
+  renteConserveeSaisie?: number | null;
+}
+
+/**
+ * Caisse LPP supplémentaire. La caisse principale reste dans PersonInput.lpp
+ * pour que les dossiers déjà enregistrés se relisent sans transformation.
+ */
+export interface LppAvoir {
+  id: string;
+  institution: string;
+  rows: LppByAge[];
+  /** Absent = LPP classique, y compris les dossiers déjà enregistrés. */
+  type?: LppCaisseType;
+  /** Unité de saisie des rentes étatique. Le moteur convertit le mois en année. */
+  renteUnite?: LppRenteUnite;
+  /**
+   * Âge de retrait de cette caisse. Vide = âge de retrait LPP de l'assuré.
+   */
+  ageRetrait?: number | null;
+  /** Scénario capital. Ignoré pour une LPP classique. Défaut capital_max. */
+  retraitEtatique?: LppRetraitEtatique;
+  /** % disponible propre à cette caisse (0–100). Défaut 100. Classique seulement. */
+  pctDeblocable?: number;
+}
+
+/** Une caisse après application de sa règle, à l'âge retenu. */
+export interface LppAvoirLigne {
+  id: string;
+  institution: string;
+  /** Classique : % disponible. Étatique : 100, le montant est déjà le capital retenu. */
+  pct: number;
+  type?: LppCaisseType;
+  age?: number;
+  anneeRetrait?: number | null;
+  capital: number;
+  /** Rente entière annuelle (scénario 100 % rente). */
+  rente: number;
+  capitalRetire: number;
+  /** Classique : rente × (1 − %). Étatique : rente réduite annuelle. */
+  renteResiduelle: number;
 }
 
 /** 3A imposable au retrait ; 3B exonéré dans cette analyse. Absent = 3A. */
@@ -229,6 +286,14 @@ export interface PersonInput {
    * retirable = avoir × pct/100. Ne pas stocker le retirable dans capital.
    */
   lppPctDeblocable?: number;
+  /** Nom de la caisse principale. Vide sur les dossiers déjà enregistrés. */
+  lppInstitution?: string;
+  /** Absent = LPP classique. */
+  lppType?: LppCaisseType;
+  lppRenteUnite?: LppRenteUnite;
+  lppRetraitEtatique?: LppRetraitEtatique;
+  /** Caisses ajoutées. Absent ou vide = la seule caisse historique. */
+  lppAvoirs?: LppAvoir[];
   troisiemePilier: ThirdPillarContract[];
   /** Rente pont historique. Les saisies nouvelles passent par rentePonts. */
   rentePont?: number;
@@ -343,6 +408,16 @@ export interface PersonComputed {
   /** Chemin rente : AVS + rente LPP totale. */
   renteTotale65: number;
   total3ePilier: number;
+  /** Date de fin d'activité. Égale à dateDepart tant qu'aucun âge LPP n'est saisi. */
+  dateFinActivite?: string;
+  ageFinActiviteLabel?: string;
+  /** Date de retrait AVS. Égale à dateDepart tant que l'onglet Client n'a pas d'âge. */
+  datePerceptionAvs?: string;
+  agePerceptionAvsLabel?: string;
+  /** Âge du tableau LPP utilisé pour les totaux (60–65). */
+  ageLppRetenu?: RetirementAge;
+  /** Détail par caisse. Une seule ligne classique = la caisse historique. */
+  lppLignes?: LppAvoirLigne[];
 }
 
 export interface LacuneResult {
@@ -556,6 +631,11 @@ export function emptyPerson(civilite: Civilite = "Monsieur"): PersonInput {
     avsRentesAnticipees: [],
     lpp: emptyLppRows(),
     lppPctDeblocable: LPP_PCT_DEBLOCABLE_DEFAULT,
+    lppInstitution: "",
+    lppType: "classique",
+    lppRenteUnite: "annuel",
+    lppRetraitEtatique: "capital_max",
+    lppAvoirs: [],
     troisiemePilier: [],
     rentePont: 0,
     rentePonts: [],

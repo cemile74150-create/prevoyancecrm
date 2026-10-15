@@ -26,7 +26,7 @@ import {
   lppCapitalForWithdrawalAge,
   resolveThirdPillarCapital,
 } from "../rules/planification-saisie";
-import { lppCalculationService } from "./LPPCalculationService";
+import { lppCalculationService, lppTableAge } from "./LPPCalculationService";
 import { taxCalculationService } from "./TaxCalculationService";
 import { genderFromCivilite, relationshipFromEtat } from "../mappers";
 
@@ -50,10 +50,11 @@ export class RetirementScenarioService {
 
     for (const age of RETIREMENT_AGES) {
       const row = lppCalculationService.getAtAge(rows, age);
-      const capitalBrut = row.capital;
-      const capital = lppCalculationService.capitalRetire(capitalBrut, pct);
-      const renteTotale = row.rente;
-      const rente = lppCalculationService.renteResiduelle(renteTotale, pct);
+      const aggregated = lppCalculationService.aggregateAtAge(input.client1, age);
+      const capitalBrut = aggregated.capital;
+      const capital = aggregated.capitalRetire;
+      const renteTotale = aggregated.rente;
+      const rente = aggregated.renteResiduelle;
       const taux = lppCalculationService.conversionRate(row);
       const base: CapitalScenario = {
         age,
@@ -147,7 +148,7 @@ export class RetirementScenarioService {
     if (c1.capitalRetire > 0) {
       try {
         const tax = await taxCalculationService.calculateCapitalTax({
-          ageAtPayment: 65,
+          ageAtPayment: client1.ageLppRetenu ?? 65,
           capital: c1.capitalRetire,
           gender: genderFromCivilite(input.client1.civilite),
           relationship,
@@ -174,7 +175,7 @@ export class RetirementScenarioService {
       if (c2.capitalRetire > 0) {
         try {
           const tax = await taxCalculationService.calculateCapitalTax({
-            ageAtPayment: 65,
+            ageAtPayment: conjoint.ageLppRetenu ?? 65,
             capital: c2.capitalRetire,
             gender: genderFromCivilite(input.conjoint.civilite),
             relationship,
@@ -261,12 +262,12 @@ export class RetirementScenarioService {
 
     const agesLpp: RetirementAge[] = [64, 63, 62, 61, 60];
     agesLpp.forEach((age, idx) => {
-      const row = lppCalculationService.getAtAge(input.client1.lpp, age);
+      const aggregated = lppCalculationService.aggregateAtAge(input.client1, age);
       defs.push({
         foyer: `Couple${idx + 3}`,
         label: `AVS + LPP âge ${age}${age === 63 ? " (fortune=0)" : ""}`,
         age,
-        revenu1: round2(client1.avsAnnuel + (row.rente || 0)),
+        revenu1: round2(client1.avsAnnuel + aggregated.rente),
         revenu2: isMarried ? conjoint!.avsAnnuel : 0,
         fortune: age === 63 ? 0 : fortuneBase,
       });
@@ -468,6 +469,17 @@ export class WithdrawalPlanningService {
       const holder =
         item.titulaire === "client1" ? input.client1 : input.conjoint;
       if (!holder) return 0;
+      const sourced = Boolean(item.sourceId && item.sourceId !== "primary");
+      if (sourced || holder.lppType === "etatique") {
+        const dossierAge =
+          input.ageRetraiteSouhaite ?? input.client1?.ageRetraiteSouhaite ?? null;
+        const age = lppTableAge(effectiveLppWithdrawalAge(holder, dossierAge));
+        return lppCalculationService.capitalRetireForItem(
+          holder,
+          item.sourceId,
+          age,
+        );
+      }
       const pct = lppCalculationService.resolvePctDeblocable(
         holder.lppPctDeblocable,
       );

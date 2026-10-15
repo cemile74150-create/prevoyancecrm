@@ -4,8 +4,19 @@ import {
   getLegalRetirementAge,
   getRetirementStartDate,
 } from "../rules/avs-age";
-import { lppCalculationService } from "./LPPCalculationService";
+import { effectiveLppWithdrawalAge } from "../rules/planification-saisie";
+import { lppCalculationService, lppTableAge } from "./LPPCalculationService";
 import type { PersonComputed, PersonInput } from "../types";
+
+export interface PersonBasicsContext {
+  /**
+   * Âge de l'onglet Client, repris par le retrait LPP
+   * tant que l'assuré n'a pas le sien.
+   */
+  dossierAgeRetraite?: number | null;
+  /** Âge de perception AVS saisi dans l'onglet Client. */
+  agePerceptionAvs?: number | null;
+}
 
 /** Rente AVS annuelle = mensuelle × 13 (13e rente), pas × 12. */
 export const AVS_MENSUALITES_PAR_AN = 13;
@@ -28,27 +39,39 @@ export class AVSCalculationService {
     return this.annualFromMonthly(person.avsMensuel || 0);
   }
 
-  computePersonBasics(person: PersonInput): PersonComputed {
+  computePersonBasics(
+    person: PersonInput,
+    ctx?: PersonBasicsContext,
+  ): PersonComputed {
     const ageLegal = getLegalRetirementAge(person.civilite, person.dateNaissance);
-    const dateDepart = getRetirementStartDate(person.dateNaissance, ageLegal);
-    const avsAnnuel = this.resolveAnnual(person);
-    const lpp65 = lppCalculationService.getAtAge(
-      lppCalculationService.normalizeRows(person.lpp || []),
-      65,
+    const dateDepart = formatDateIso(
+      getRetirementStartDate(person.dateNaissance, ageLegal),
     );
-    const capitalLpp65 = lppCalculationService.referenceCapital(person.lpp);
-    const renteLpp65 = round2(lpp65.rente || 0);
+    const avsAnnuel = this.resolveAnnual(person);
+    const lppAgeRequested = effectiveLppWithdrawalAge(
+      person,
+      ctx?.dossierAgeRetraite,
+    );
+    const ageLppRetenu = lppTableAge(lppAgeRequested);
+    const aggregated = lppCalculationService.aggregateAtAge(person, ageLppRetenu);
     const lppPctDeblocable = lppCalculationService.resolvePctDeblocable(
       person.lppPctDeblocable,
     );
-    const capitalLppRetire65 = lppCalculationService.capitalEffectivementRetirable(
-      capitalLpp65,
-      lppPctDeblocable,
-    );
-    const renteLppResiduelle65 = lppCalculationService.renteResiduelle(
-      renteLpp65,
-      lppPctDeblocable,
-    );
+    const ageFin = lppAgeRequested ?? ageLegal;
+    const ageAvs = explicitAge(ctx?.agePerceptionAvs) ?? ageLegal;
+    const dateFinActivite =
+      lppAgeRequested == null
+        ? dateDepart
+        : formatDateIso(
+            getRetirementStartDate(person.dateNaissance, lppAgeRequested),
+          );
+    const ageAvsExplicit = explicitAge(ctx?.agePerceptionAvs);
+    const datePerceptionAvs =
+      ageAvsExplicit == null
+        ? dateDepart
+        : formatDateIso(
+            getRetirementStartDate(person.dateNaissance, ageAvsExplicit),
+          );
     const total3ePilier = person.troisiemePilier.reduce(
       (s, c) => s + (c.montant || 0),
       0,
@@ -57,17 +80,40 @@ export class AVSCalculationService {
     return {
       ageLegal,
       ageLegalLabel: formatLegalAgeLabel(ageLegal),
-      dateDepart: formatDateIso(dateDepart),
+      dateDepart,
+      dateFinActivite,
+      ageFinActiviteLabel: formatLegalAgeLabel(ageFin),
+      datePerceptionAvs,
+      agePerceptionAvsLabel: formatLegalAgeLabel(ageAvs),
+      ageLppRetenu,
       avsAnnuel,
-      capitalLpp65,
-      renteLpp65,
+      capitalLpp65: aggregated.capital,
+      renteLpp65: aggregated.rente,
       lppPctDeblocable,
-      capitalLppRetire65,
-      renteLppResiduelle65,
-      renteTotale65: round2(avsAnnuel + renteLpp65),
+      capitalLppRetire65: aggregated.capitalRetire,
+      renteLppResiduelle65: aggregated.renteResiduelle,
+      renteTotale65: round2(avsAnnuel + aggregated.rente),
       total3ePilier: round2(total3ePilier),
+      lppLignes: aggregated.lines.map((line) => ({
+        ...line,
+        anneeRetrait: anneeRetraitLigne(
+          person.dateNaissance,
+          line.age ?? ageLppRetenu,
+        ),
+      })),
     };
   }
+}
+
+function anneeRetraitLigne(birth: string, age: number): number | null {
+  if (!birth || !/^\d{4}-\d{2}-\d{2}/.test(birth)) return null;
+  const year = getRetirementStartDate(birth, age).getFullYear();
+  return Number.isFinite(year) ? year : null;
+}
+
+function explicitAge(value: number | null | undefined): number | null {
+  if (value == null || Number.isNaN(value) || value <= 0) return null;
+  return value;
 }
 
 function round2(n: number): number {
