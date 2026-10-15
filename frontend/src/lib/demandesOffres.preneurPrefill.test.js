@@ -71,6 +71,25 @@ describe("préremplissage du preneur pour un nouveau client", () => {
     })).toBe(payload);
   });
 
+  test("un changement de type efface le preneur saisi, pas l'agent ni la deuxième personne", () => {
+    const next = applyNouveauPreneurNames(schema, {
+      input_agent_prenom: "Léa",
+      input_agent_nom: "Fictive",
+      input_45: "Demirtas",
+      input_46: "Cemile",
+      input_6: "Rue Fictive 12",
+      input_62: "Martin",
+      input_63: "Alice",
+    }, { prenom: "", nom: "" }, [], { prenom: true, nom: true });
+    expect(next.input_46).toBe("");
+    expect(next.input_45).toBe("");
+    expect(next.input_agent_prenom).toBe("Léa");
+    expect(next.input_agent_nom).toBe("Fictive");
+    expect(next.input_62).toBe("Martin");
+    expect(next.input_63).toBe("Alice");
+    expect(next.input_6).toBe("Rue Fictive 12");
+  });
+
   test("reconnaît aussi la section Situation du preneur", () => {
     const situation = {
       fields: [

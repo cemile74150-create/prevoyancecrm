@@ -150,8 +150,6 @@ export default function DemandeOffreFiche() {
   });
   const formDirtyRef = useRef(false);
   const autosaveTimerRef = useRef(null);
-  const preneurManualRef = useRef(new Set());
-  const nouveauNameTouchedRef = useRef({ prenom: false, nom: false });
   const agentIdentity = useMemo(() => {
     if (!demande) return null;
     if (isAdmin) {
@@ -204,8 +202,6 @@ export default function DemandeOffreFiche() {
     setLoading(true);
     setShowFullForm(false);
     formDirtyRef.current = false;
-    preneurManualRef.current = new Set();
-    nouveauNameTouchedRef.current = { prenom: false, nom: false };
     try {
       const [ficheRes, metaRes] = await Promise.all([
         api.get(`/demandes-offres/${demandeId}`),
@@ -274,32 +270,11 @@ export default function DemandeOffreFiche() {
     setFormPayload((prev) => (typeof next === "function" ? next(prev) : next));
   }, []);
 
-  const syncNouveauPreneurNames = (key, value) => {
-    if (key !== "prenom" && key !== "nom") return;
-    nouveauNameTouchedRef.current[key] = true;
-    setValue(key, value);
-    const type = form.type_client || formPayload.type_client || "";
-    if (isLegacy || !schema || type !== "nouveau") return;
-    setFormPayload((prev) => {
-      const next = applyNouveauPreneurNames(schema, prev, {
-        prenom: key === "prenom" ? value : (form.prenom || ""),
-        nom: key === "nom" ? value : (form.nom || ""),
-      }, preneurManualRef.current, {
-        prenom: key === "prenom" || nouveauNameTouchedRef.current.prenom,
-        nom: key === "nom" || nouveauNameTouchedRef.current.nom,
-      });
-      if (next === prev) return prev;
-      formDirtyRef.current = true;
-      return next;
-    });
-  };
-
   const onSchemaTypeClient = (nextType) => {
     const previous = form.type_client || formPayload.type_client || "";
     setValue("type_client", nextType);
     setValue("client_id", clientIdAfterTypeChange(nextType, form.client_id));
-    nouveauNameTouchedRef.current = { prenom: false, nom: false };
-    if (nextType === "nouveau" && previous !== "nouveau") {
+    if (previous && previous !== nextType) {
       setValue("prenom", "");
       setValue("nom", "");
     }
@@ -310,7 +285,7 @@ export default function DemandeOffreFiche() {
         schema,
         withType,
         { prenom: "", nom: "" },
-        preneurManualRef.current,
+        [],
         { prenom: true, nom: true },
       );
     });
@@ -357,15 +332,38 @@ export default function DemandeOffreFiche() {
             commentaires: form.commentaires || "",
             ...adminAgent,
           };
+      if (!isLegacy && schema) {
+        const ids = preneurIdentityFieldNames(schema);
+        const fromPayload = {
+          prenom: ids.prenom ? String(formPayload?.[ids.prenom] || "").trim() : "",
+          nom: ids.nom ? String(formPayload?.[ids.nom] || "").trim() : "",
+        };
+        if (fromPayload.prenom || fromPayload.nom) {
+          body.prenom = fromPayload.prenom;
+          body.nom = fromPayload.nom;
+        } else if (!String(form.prenom || "").trim() && !String(form.nom || "").trim()) {
+          body.prenom = "";
+          body.nom = "";
+        }
+      }
       const res = await api.put(`/demandes-offres/${demandeId}`, body);
       formDirtyRef.current = false;
       setDemande(res.data);
-      setForm((prev) => ({
-        ...prev,
-        ...res.data,
-        montant_prime: res.data.montant_prime ?? "",
-        date_naissance: toSwissDate(res.data.date_naissance) || "",
-      }));
+      setForm((prev) => {
+        const next = {
+          ...prev,
+          ...res.data,
+          montant_prime: res.data.montant_prime ?? "",
+          date_naissance: toSwissDate(res.data.date_naissance) || "",
+        };
+        if (!isLegacy && schema) {
+          const ids = preneurIdentityFieldNames(schema);
+          const payload = res.data.form_payload || {};
+          if (ids.prenom && !String(payload[ids.prenom] || "").trim()) next.prenom = prev.prenom || "";
+          if (ids.nom && !String(payload[ids.nom] || "").trim()) next.nom = prev.nom || "";
+        }
+        return next;
+      });
       setFormPayload(res.data.form_payload || {});
       if (!quiet) toast.success(agentOverride ? `Agent demandeur : ${agentOverride.agent_label}` : "Brouillon enregistré");
       return res.data;
@@ -1126,16 +1124,17 @@ export default function DemandeOffreFiche() {
             <>
               <Card className="p-5 sm:p-7">
                 <TypeClientField value={form.type_client || formPayload.type_client || ""} onChange={onSchemaTypeClient} />
-                <div className="mt-6">
-                  <SchemaClientLinker
-                    form={form}
-                    setValue={setValue}
-                    schema={schema}
-                    formPayload={formPayload}
-                    onPrefillPayload={(next) => updateFormPayload(next)}
-                    onNouveauIdentity={syncNouveauPreneurNames}
-                  />
-                </div>
+                {showsExistingClientSearch(form.type_client || formPayload.type_client || "") ? (
+                  <div className="mt-6">
+                    <SchemaClientLinker
+                      form={form}
+                      setValue={setValue}
+                      schema={schema}
+                      formPayload={formPayload}
+                      onPrefillPayload={(next) => updateFormPayload(next)}
+                    />
+                  </div>
+                ) : null}
                 <div className="mt-6">
                   <SectionTitle title={demande.form_type_label || "Formulaire"} subtitle="Saisissez toutes les informations du formulaire intranet. Enregistrement automatique." />
                 </div>
@@ -1144,12 +1143,6 @@ export default function DemandeOffreFiche() {
                     schema={schema}
                     values={formPayload}
                     onChange={updateFormPayload}
-                    onManualEdit={(name) => {
-                      const ids = preneurIdentityFieldNames(schema);
-                      if (name && (name === ids.nom || name === ids.prenom)) {
-                        preneurManualRef.current.add(name);
-                      }
-                    }}
                     agentIdentity={agentIdentity}
                     lockAgent={!isAdmin}
                     persistKey={`${demandeId}:${schema?.id || demande.form_type || ""}`}
@@ -1904,7 +1897,7 @@ function applyHubClientToOffreForm(client, setValue, form) {
 }
 
 /** Liaison client hub + préremplissage adresse/identité dans le payload schéma. */
-function SchemaClientLinker({ form, setValue, schema, formPayload, onPrefillPayload, onNouveauIdentity }) {
+function SchemaClientLinker({ form, setValue, schema, formPayload, onPrefillPayload }) {
   const typeClient = form.type_client || formPayload?.type_client || "";
   const showSearch = showsExistingClientSearch(typeClient);
   const linked = Boolean(form.client_id) && showSearch;
@@ -1930,34 +1923,7 @@ function SchemaClientLinker({ form, setValue, schema, formPayload, onPrefillPayl
     onPrefillPayload(next);
   };
 
-  if (!showSearch) {
-    return (
-      <div className="space-y-3" data-testid="offre-nouveau-client-identite">
-        <SectionTitle
-          title="Nouveau client"
-          subtitle="Saisissez le prénom et le nom. La recherche d'un client existant n'est pas affichée."
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Prénom">
-            <Input
-              value={form.prenom || ""}
-              onChange={(e) => (onNouveauIdentity ? onNouveauIdentity("prenom", e.target.value) : setValue("prenom", e.target.value))}
-              placeholder="Ex. Jean"
-              data-testid="offre-nouveau-prenom"
-            />
-          </Field>
-          <Field label="Nom">
-            <Input
-              value={form.nom || ""}
-              onChange={(e) => (onNouveauIdentity ? onNouveauIdentity("nom", e.target.value) : setValue("nom", e.target.value))}
-              placeholder="Ex. Dupont"
-              data-testid="offre-nouveau-nom"
-            />
-          </Field>
-        </div>
-      </div>
-    );
-  }
+  if (!showSearch) return null;
 
   return (
     <div className="space-y-3">

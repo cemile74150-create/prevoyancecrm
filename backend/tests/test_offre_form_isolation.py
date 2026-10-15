@@ -186,3 +186,80 @@ def test_vehicule_transport_personnes_not_required():
     }
     # missing_required peut encore lister d'autres champs / FINMA — pas « Merci de préciser »
     assert "Merci de préciser" not in missing_required(doc)
+
+
+def test_nouveau_client_identity_comes_from_preneur_payload():
+    """Le prénom et le nom d'un nouveau client sont lus dans le formulaire.
+
+    Le PUT n'a pas besoin des anciens champs hors formulaire. L'agent et la
+    deuxième personne assurée restent dans le payload.
+    """
+    target = {
+        "form_type": "pilier3_risque_pur",
+        "prenom": "",
+        "nom": "",
+        "agent_prenom": "Léa",
+        "agent_nom": "Fictive",
+    }
+    body = {
+        "form_type": "pilier3_risque_pur",
+        "type_client": "nouveau",
+        "client_id": None,
+        "commentaires": "",
+        "form_payload": {
+            "input_46": "Cemile",
+            "input_45": "Demirtas",
+        },
+    }
+    assert "prenom" not in body
+    assert "nom" not in body
+    apply_form_fields(target, body)
+    assert target["prenom"] == "Cemile"
+    assert target["nom"] == "Demirtas"
+    assert target["agent_prenom"] == "Léa"
+    assert target["agent_nom"] == "Fictive"
+
+    apply_form_fields(
+        target,
+        {
+            **body,
+            "form_payload": {
+                **body["form_payload"],
+                "input_62": "Martin",
+                "input_63": "Alice",
+            },
+        },
+    )
+    payload = target["form_payload"]
+    assert payload["input_46"] == "Cemile"
+    assert payload["input_45"] == "Demirtas"
+    assert payload["input_63"] == "Alice"
+    assert payload["input_62"] == "Martin"
+    assert target["agent_prenom"] == "Léa"
+    assert target["agent_nom"] == "Fictive"
+
+
+def test_clearing_preneur_names_clears_crm_without_touching_agent():
+    target = {
+        "form_type": "pilier3",
+        "prenom": "Cemile",
+        "nom": "Demirtas",
+        "agent_prenom": "Léa",
+        "agent_nom": "Fictive",
+    }
+    apply_form_fields(
+        target,
+        {
+            "form_type": "pilier3",
+            "type_client": "existant",
+            "prenom": "",
+            "nom": "",
+            "form_payload": {"input_46": "", "input_45": ""},
+        },
+    )
+    assert target.get("prenom") in ("", None)
+    assert target.get("nom") in ("", None)
+    assert target["agent_prenom"] == "Léa"
+    assert target["agent_nom"] == "Fictive"
+    assert target["form_payload"]["input_46"] == ""
+    assert target["form_payload"]["input_45"] == ""
