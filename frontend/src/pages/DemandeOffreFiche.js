@@ -17,6 +17,7 @@ import {
   formatChf, formatDateFr, demandeOrigineLabel, demandeOrigineKey, toIsoDate, toSwissDate,
   DEMANDE_ORIGINE_STYLE, typeClientLabel, buildDemandeResume, documentsForGeneralList,
   showsExistingClientSearch, clientIdAfterTypeChange,
+  preneurIdentityFieldNames, applyNouveauPreneurNames,
   PRIORITE_STYLE, prioriteLabel, erreurLabel, erreurChampLabel, formatDateTimeFr,
   prefillSchemaPayloadFromClient, soumisCompagnieLabel, isSoumisCompagnie,
   isDemandeAnnuleeStatut, isOffreNonSigneeStatut, isHorsCours, statutLabel, isDemandeAnnuleeFlag,
@@ -149,6 +150,8 @@ export default function DemandeOffreFiche() {
   });
   const formDirtyRef = useRef(false);
   const autosaveTimerRef = useRef(null);
+  const preneurManualRef = useRef(new Set());
+  const nouveauNameTouchedRef = useRef({ prenom: false, nom: false });
   const agentIdentity = useMemo(() => {
     if (!demande) return null;
     if (isAdmin) {
@@ -201,6 +204,8 @@ export default function DemandeOffreFiche() {
     setLoading(true);
     setShowFullForm(false);
     formDirtyRef.current = false;
+    preneurManualRef.current = new Set();
+    nouveauNameTouchedRef.current = { prenom: false, nom: false };
     try {
       const [ficheRes, metaRes] = await Promise.all([
         api.get(`/demandes-offres/${demandeId}`),
@@ -268,6 +273,48 @@ export default function DemandeOffreFiche() {
     formDirtyRef.current = true;
     setFormPayload((prev) => (typeof next === "function" ? next(prev) : next));
   }, []);
+
+  const syncNouveauPreneurNames = (key, value) => {
+    if (key !== "prenom" && key !== "nom") return;
+    nouveauNameTouchedRef.current[key] = true;
+    setValue(key, value);
+    const type = form.type_client || formPayload.type_client || "";
+    if (isLegacy || !schema || type !== "nouveau") return;
+    setFormPayload((prev) => {
+      const next = applyNouveauPreneurNames(schema, prev, {
+        prenom: key === "prenom" ? value : (form.prenom || ""),
+        nom: key === "nom" ? value : (form.nom || ""),
+      }, preneurManualRef.current, {
+        prenom: key === "prenom" || nouveauNameTouchedRef.current.prenom,
+        nom: key === "nom" || nouveauNameTouchedRef.current.nom,
+      });
+      if (next === prev) return prev;
+      formDirtyRef.current = true;
+      return next;
+    });
+  };
+
+  const onSchemaTypeClient = (nextType) => {
+    const previous = form.type_client || formPayload.type_client || "";
+    setValue("type_client", nextType);
+    setValue("client_id", clientIdAfterTypeChange(nextType, form.client_id));
+    nouveauNameTouchedRef.current = { prenom: false, nom: false };
+    if (nextType === "nouveau" && previous !== "nouveau") {
+      setValue("prenom", "");
+      setValue("nom", "");
+    }
+    updateFormPayload((prev) => {
+      const withType = { ...(prev || {}), type_client: nextType };
+      if (!previous || previous === nextType) return withType;
+      return applyNouveauPreneurNames(
+        schema,
+        withType,
+        { prenom: "", nom: "" },
+        preneurManualRef.current,
+        { prenom: true, nom: true },
+      );
+    });
+  };
 
   const legacyPayload = useMemo(() => {
     const clean = { ...form };
@@ -1078,11 +1125,7 @@ export default function DemandeOffreFiche() {
           ) : (
             <>
               <Card className="p-5 sm:p-7">
-                <TypeClientField value={form.type_client || formPayload.type_client || ""} onChange={(v) => {
-                  setValue("type_client", v);
-                  setValue("client_id", clientIdAfterTypeChange(v, form.client_id));
-                  updateFormPayload((prev) => ({ ...prev, type_client: v }));
-                }} />
+                <TypeClientField value={form.type_client || formPayload.type_client || ""} onChange={onSchemaTypeClient} />
                 <div className="mt-6">
                   <SchemaClientLinker
                     form={form}
@@ -1090,6 +1133,7 @@ export default function DemandeOffreFiche() {
                     schema={schema}
                     formPayload={formPayload}
                     onPrefillPayload={(next) => updateFormPayload(next)}
+                    onNouveauIdentity={syncNouveauPreneurNames}
                   />
                 </div>
                 <div className="mt-6">
@@ -1100,6 +1144,12 @@ export default function DemandeOffreFiche() {
                     schema={schema}
                     values={formPayload}
                     onChange={updateFormPayload}
+                    onManualEdit={(name) => {
+                      const ids = preneurIdentityFieldNames(schema);
+                      if (name && (name === ids.nom || name === ids.prenom)) {
+                        preneurManualRef.current.add(name);
+                      }
+                    }}
                     agentIdentity={agentIdentity}
                     lockAgent={!isAdmin}
                     persistKey={`${demandeId}:${schema?.id || demande.form_type || ""}`}
@@ -1854,7 +1904,7 @@ function applyHubClientToOffreForm(client, setValue, form) {
 }
 
 /** Liaison client hub + préremplissage adresse/identité dans le payload schéma. */
-function SchemaClientLinker({ form, setValue, schema, formPayload, onPrefillPayload }) {
+function SchemaClientLinker({ form, setValue, schema, formPayload, onPrefillPayload, onNouveauIdentity }) {
   const typeClient = form.type_client || formPayload?.type_client || "";
   const showSearch = showsExistingClientSearch(typeClient);
   const linked = Boolean(form.client_id) && showSearch;
@@ -1891,7 +1941,7 @@ function SchemaClientLinker({ form, setValue, schema, formPayload, onPrefillPayl
           <Field label="Prénom">
             <Input
               value={form.prenom || ""}
-              onChange={(e) => setValue("prenom", e.target.value)}
+              onChange={(e) => (onNouveauIdentity ? onNouveauIdentity("prenom", e.target.value) : setValue("prenom", e.target.value))}
               placeholder="Ex. Jean"
               data-testid="offre-nouveau-prenom"
             />
@@ -1899,7 +1949,7 @@ function SchemaClientLinker({ form, setValue, schema, formPayload, onPrefillPayl
           <Field label="Nom">
             <Input
               value={form.nom || ""}
-              onChange={(e) => setValue("nom", e.target.value)}
+              onChange={(e) => (onNouveauIdentity ? onNouveauIdentity("nom", e.target.value) : setValue("nom", e.target.value))}
               placeholder="Ex. Dupont"
               data-testid="offre-nouveau-nom"
             />

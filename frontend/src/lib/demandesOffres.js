@@ -609,6 +609,68 @@ export function prefillSchemaPayloadFromClient(schema, payload, client, { overwr
   return next;
 }
 
+function foldPreneurLabel(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Premier Nom et premier Prénom de la section preneur.
+ * Une deuxième personne assurée, plus loin dans la même section, n'est pas reprise.
+ */
+export function preneurIdentityFieldNames(schema) {
+  const fields = schema?.fields || [];
+  let inPreneur = false;
+  let nom = null;
+  let prenom = null;
+  for (const field of fields) {
+    const label = foldPreneurLabel(field?.label);
+    if (field?.type === "section") {
+      inPreneur = label.includes("preneur");
+      continue;
+    }
+    if (!inPreneur || (nom && prenom)) continue;
+    if (["html", "file", "honeypot", "captcha", "hidden"].includes(field?.type)) continue;
+    const name = field?.name || field?.id;
+    if (!name) continue;
+    if (!prenom && (label === "prenom" || label === "prenom :")) prenom = name;
+    else if (!nom && (label === "nom" || label === "nom :" || label === "nom de famille")) nom = name;
+  }
+  return { nom, prenom };
+}
+
+/**
+ * Recopie le nom et le prénom saisis pour un nouveau client vers le preneur.
+ * Les champs modifiés à la main, et tous les autres champs, restent intacts.
+ * `keys` limite la recopie au champ que l'utilisateur est en train de saisir.
+ */
+export function applyNouveauPreneurNames(schema, payload, source, manualNames, keys) {
+  const ids = preneurIdentityFieldNames(schema);
+  const manual = manualNames instanceof Set ? manualNames : new Set(manualNames || []);
+  const enabled = {
+    prenom: keys ? keys.prenom === true : true,
+    nom: keys ? keys.nom === true : true,
+  };
+  const prev = payload || {};
+  let next = null;
+  const assign = (active, fieldName, value) => {
+    if (!active || !fieldName || manual.has(fieldName)) return;
+    const text = String(value ?? "");
+    const current = prev[fieldName];
+    const currentText = current == null ? "" : String(current);
+    if (currentText === text) return;
+    if (!next) next = { ...prev };
+    next[fieldName] = text;
+  };
+  assign(enabled.prenom, ids.prenom, source?.prenom);
+  assign(enabled.nom, ids.nom, source?.nom);
+  return next || prev;
+}
+
 /**
  * Construit un résumé des champs renseignés pertinents pour une demande d'offre.
  * Formulaires schéma : uniquement les champs du schéma (+ méta client/agent).
