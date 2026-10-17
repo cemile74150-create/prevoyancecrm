@@ -17,6 +17,7 @@ import { parseClientDuplicateError } from "@/lib/clientDuplicate";
 import { STATUTS, normalizeStatut, DOCUMENT_TYPES_3P, NO_EXPIRY_DOC_TYPES_3P } from "@/lib/constants";
 import { finmaByConseillerName, lookupConseillerFinma } from "@/lib/conseillers";
 import { useAuth } from "@/context/AuthContext";
+import LamalClientHistory from "@/lamal/ClientHistory";
 import { getInitialDocumentChecklistState, getNextDocumentStatus, getDemandesChecklistItems, getChecklistDisplayLabel, isStandardChecklistItem, omitChecklistItem } from "@/lib/documentChecklist";
 import {
   LPP_DECOMPTE_PIECES_JOINTES_INTRO,
@@ -2154,7 +2155,15 @@ export default function ClientDetail() {
               <TabsTrigger value="echeance3p" data-testid="tab-echeance3p"><Shield className="h-4 w-4 mr-1.5" />Échéance 3P</TabsTrigger>
               <TabsTrigger value="analyse-prevoyance" data-testid="tab-analyse-prevoyance"><BarChart3 className="h-4 w-4 mr-1.5" />Analyse de prévoyance</TabsTrigger>
               <TabsTrigger value="offres" data-testid="tab-offres"><FileSpreadsheet className="h-4 w-4 mr-1.5" />Offres</TabsTrigger>
+              {hasPerm("lamal_module_access") && (
+                <TabsTrigger value="lamal" data-testid="tab-lamal"><Shield className="h-4 w-4 mr-1.5" />LAMal</TabsTrigger>
+              )}
             </TabsList>
+            {hasPerm("lamal_module_access") && (
+              <TabsContent value="lamal">
+                <LamalClientHistory clientId={client?.id} />
+              </TabsContent>
+            )}
 
             <TabsContent value="infos">
               <Card className="p-6 space-y-6">

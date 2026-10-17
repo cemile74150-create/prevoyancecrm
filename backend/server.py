@@ -7570,6 +7570,15 @@ attach_analyses_routes(
     store_document=_store_uploaded_client_document,
 )
 
+from lamal.routes import attach_lamal_routes
+
+attach_lamal_routes(
+    api_router,
+    db=db,
+    get_current_user=get_current_user,
+    decrypt_client=_decrypt_client_doc,
+)
+
 app.include_router(api_router)
 
 cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
@@ -7812,6 +7821,11 @@ async def _ensure_mongo_indexes():
             )
         except Exception as e2:
             logger.warning("Index identity_key fallback: %s", e2)
+    try:
+        from lamal.store import ensure_indexes as ensure_lamal_indexes
+        await ensure_lamal_indexes(db)
+    except Exception as e:
+        logger.warning("Index LAMal: %s", e)
 
 
 @app.on_event("startup")

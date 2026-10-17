@@ -24,6 +24,12 @@ import HistoriqueEmails from "@/pages/HistoriqueEmails";
 import SuiviTechnique from "@/pages/SuiviTechnique";
 import EffectuerAnalyse from "@/pages/EffectuerAnalyse";
 import EffectuerAnalyseEditor from "@/pages/EffectuerAnalyseEditor";
+import LamalDashboard from "@/lamal/DashboardPage";
+import LamalCompare from "@/lamal/ComparePage";
+import LamalClients from "@/lamal/ClientsPage";
+import LamalCampaigns from "@/lamal/CampaignsPage";
+import LamalHistory from "@/lamal/HistoryPage";
+import LamalSettings from "@/lamal/SettingsPage";
 
 function Protected({ children, perm, anyOf }) {
   const { user, loading, hasPerm } = useAuth();
@@ -79,6 +85,12 @@ function AppRoutes() {
       <Route path="/formulaires" element={<Protected perm="formulaires.view"><Formulaires /></Protected>} />
       <Route path="/utilisateurs" element={<Protected perm="users.manage"><Utilisateurs /></Protected>} />
       <Route path="/suivi-technique" element={<Protected perm="users.manage"><SuiviTechnique /></Protected>} />
+      <Route path="/lamal" element={<Protected perm="lamal_module_access"><LamalDashboard /></Protected>} />
+      <Route path="/lamal/comparaison" element={<Protected perm="lamal_module_access"><LamalCompare /></Protected>} />
+      <Route path="/lamal/clients" element={<Protected perm="lamal_module_access"><LamalClients /></Protected>} />
+      <Route path="/lamal/campagnes" element={<Protected perm="lamal_module_access"><LamalCampaigns /></Protected>} />
+      <Route path="/lamal/historique" element={<Protected perm="lamal_module_access"><LamalHistory /></Protected>} />
+      <Route path="/lamal/parametres" element={<Protected perm="lamal_module_access"><LamalSettings /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

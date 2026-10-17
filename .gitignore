@@ -75,11 +75,18 @@ agenthub/agents/youtube/db
 
 # Copies accidentelles et barèmes officiels volumineux
 *conflicted*
-backend/data/ofsp/
+# Scripts et fichiers intermédiaires OFSP, hors Git
+backend/data/ofsp/*
 backend/data/lamal/
+# Jeu officiel 2027 embarqué pour l'import en production
+!backend/data/ofsp/Praemien_CH.csv
+!backend/data/ofsp/Praemienregionen_2027.xlsx
+!backend/data/ofsp/Tarife.csv
+!backend/data/ofsp/Einzugsgebiete.csv
 
 # Archive files and large assets
 **/*.zip
+!backend/data/ofsp/ortschaften.zip
 **/*.tar.gz
 **/*.tar
 **/*.tgz
