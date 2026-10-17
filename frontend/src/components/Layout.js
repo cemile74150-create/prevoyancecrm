@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
-import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, Menu, Bell, Settings2, KeyRound, Shield, FileSpreadsheet, Activity, Pencil, Mail, UserCircle, Calculator } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, Menu, Bell, Settings2, KeyRound, Shield, FileSpreadsheet, Activity, Pencil, Mail, UserCircle, Calculator, HeartPulse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import PasswordInput from "@/components/PasswordInput";
@@ -31,6 +31,7 @@ const nav = [
   { to: "/rappels", label: "Rappels", icon: Bell, testid: "nav-rappels", perm: "rappels.view" },
   { to: "/agenda", label: "Ordre du jour", icon: CalendarDays, testid: "nav-agenda", perm: "agenda.view" },
   { to: "/formulaires", label: "Formulaires", icon: Files, testid: "nav-formulaires", perm: "formulaires.view" },
+  { to: "/lamal", label: "Comparateur LAMal", icon: HeartPulse, testid: "nav-lamal", perm: "lamal_module_access" },
   { to: "/suivi-technique", label: "Suivi technique", icon: Activity, testid: "nav-suivi-technique", perm: "users.manage" },
   { to: "/utilisateurs", label: "Utilisateurs", icon: Settings2, testid: "nav-users", perm: "users.manage" },
 ];

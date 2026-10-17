@@ -59,6 +59,9 @@ PERM_FORMULAIRES_VIEW = "formulaires.view"
 PERM_ANALYSES_VIEW = "analyses.view"
 PERM_ANALYSES_EDIT = "analyses.edit"
 PERM_USERS_MANAGE = "users.manage"
+PERM_LAMAL_MODULE_ACCESS = "lamal_module_access"
+# Compte administrateur existant (Cemile Demirtas). Le rôle admin ne suffit pas.
+LAMAL_OWNER_EMAIL = "cdemirtas@agencemendes.ch"
 
 PERMISSION_KEYS = [
     PERM_CLIENTS_VIEW,
@@ -84,6 +87,7 @@ PERMISSION_KEYS = [
     PERM_ANALYSES_VIEW,
     PERM_ANALYSES_EDIT,
     PERM_USERS_MANAGE,
+    PERM_LAMAL_MODULE_ACCESS,
 ]
 
 PERMISSION_CATALOG = [
@@ -171,6 +175,16 @@ PERMISSION_CATALOG = [
         "label": "Administration",
         "items": [
             {"key": PERM_USERS_MANAGE, "label": "Gérer les utilisateurs"},
+        ],
+    },
+    {
+        "id": "lamal",
+        "label": "Comparateur LAMal",
+        "items": [
+            {
+                "key": PERM_LAMAL_MODULE_ACCESS,
+                "label": "Accès au comparateur LAMal (réservé au compte Cemile Demirtas, non transférable)",
+            },
         ],
     },
 ]
@@ -267,6 +281,7 @@ def default_permissions(role: str) -> Dict[str, bool]:
         perms[PERM_DEMANDES_OFFRES_PROCESS] = False
     else:
         perms[PERM_DEMANDES_OFFRES_PROCESS] = True
+    perms[PERM_LAMAL_MODULE_ACCESS] = False
     return perms
 
 
@@ -281,6 +296,7 @@ def sanitize_permissions(raw: Optional[dict], role: str) -> Dict[str, bool]:
     for key in PERMISSION_KEYS:
         if key in raw:
             base[key] = bool(raw[key])
+    base[PERM_LAMAL_MODULE_ACCESS] = False
     return base
 
 
@@ -293,6 +309,8 @@ def resolve_permissions(doc: dict) -> Dict[str, bool]:
         perms = default_permissions(role)
         if doc.get("can_manage_users"):
             perms[PERM_USERS_MANAGE] = True
+    email = (doc.get("email") or "").strip().lower()
+    perms[PERM_LAMAL_MODULE_ACCESS] = email == LAMAL_OWNER_EMAIL
     return perms
 
 
@@ -559,7 +577,18 @@ def conseiller_scope_mongo_filter(user: User) -> dict:
     return {"$or": ors}
 
 
+def is_lamal_owner(user) -> bool:
+    email = ""
+    if isinstance(user, dict):
+        email = user.get("email") or ""
+    else:
+        email = getattr(user, "email", "") or ""
+    return email.strip().lower() == LAMAL_OWNER_EMAIL
+
+
 def has_perm(user: User, key: str) -> bool:
+    if key == PERM_LAMAL_MODULE_ACCESS:
+        return is_lamal_owner(user)
     perms = getattr(user, "permissions", None) or {}
     if key in perms:
         return bool(perms[key])
@@ -676,6 +705,7 @@ def _normalize_api_path(path: str) -> str:
 # (HTTP methods or None=all, regex on /api-stripped path, required perm or tuple of OR perms or None)
 _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[str, Tuple[str, ...]]]]] = [
     (None, r"^/auth(/|$)", None),
+    (None, r"^/lamal(/|$)", PERM_LAMAL_MODULE_ACCESS),
     (("GET",), r"^/$", None),
     (("GET",), r"^/dashboard(/|$)", None),
     (("GET",), r"^/analyses-prevoyance(/|$)", PERM_ANALYSES_VIEW),

@@ -1,0 +1,76 @@
+[
+  {
+    "locality": "Genève",
+    "plz": "1201",
+    "commune": "Genève",
+    "bfs": 6621,
+    "canton": "GE",
+    "language": "fr"
+  },
+  {
+    "locality": "Lausanne",
+    "plz": "1003",
+    "commune": "Lausanne",
+    "bfs": 5586,
+    "canton": "VD",
+    "language": "fr"
+  },
+  {
+    "locality": "Bern",
+    "plz": "3004",
+    "commune": "Bern",
+    "bfs": 351,
+    "canton": "BE",
+    "language": "de"
+  },
+  {
+    "locality": "Nyon",
+    "plz": "1260",
+    "commune": "Nyon",
+    "bfs": 5724,
+    "canton": "VD",
+    "language": "fr"
+  },
+  {
+    "locality": "Nyon",
+    "plz": "1260",
+    "commune": "Prangins",
+    "bfs": 5725,
+    "canton": "VD",
+    "language": "fr"
+  },
+  {
+    "locality": "Aigle",
+    "plz": "1860",
+    "commune": "Aigle",
+    "bfs": 5401,
+    "canton": "VD",
+    "language": "fr"
+  },
+  {
+    "locality": "Aigle",
+    "plz": "1860",
+    "commune": "Ollon",
+    "bfs": 5409,
+    "canton": "VD",
+    "language": "fr"
+  },
+  {
+    "locality": "Aarwangen",
+    "plz": "4912",
+    "commune": "Aarwangen",
+    "bfs": 321,
+    "canton": "BE",
+    "language": "de",
+    "region_number": 3
+  },
+  {
+    "locality": "Aigle",
+    "plz": "1860",
+    "commune": "Aigle",
+    "bfs": 5401,
+    "canton": "VD",
+    "language": "fr",
+    "region_number": 2
+  }
+]

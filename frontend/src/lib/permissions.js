@@ -82,6 +82,13 @@ export const PERMISSION_CATALOG = [
       { key: "users.manage", label: "Gérer les utilisateurs" },
     ],
   },
+  {
+    id: "lamal",
+    label: "Comparateur LAMal",
+    items: [
+      { key: "lamal_module_access", label: "Accès au comparateur LAMal (réservé au compte Cemile Demirtas)" },
+    ],
+  },
 ];
 
 export const PERMISSION_KEYS = PERMISSION_CATALOG.flatMap((g) => g.items.map((i) => i.key));
@@ -97,6 +104,7 @@ export function defaultPermissions(role) {
   } else {
     perms["demandes_offres.process"] = true;
   }
+  perms["lamal_module_access"] = false;
   return perms;
 }
 
@@ -106,6 +114,9 @@ export function defaultSeeAllDossiers(role) {
 
 export function hasPerm(user, key) {
   if (!user || !key) return false;
+  if (key === "lamal_module_access") {
+    return (user.email || "").trim().toLowerCase() === "cdemirtas@agencemendes.ch";
+  }
   if (user.permissions && typeof user.permissions === "object" && key in user.permissions) {
     return Boolean(user.permissions[key]);
   }

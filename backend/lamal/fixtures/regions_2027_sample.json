@@ -1,0 +1,32 @@
+[
+  {
+    "canton": "VD",
+    "bfs": 5586,
+    "commune": "Lausanne",
+    "region": 1
+  },
+  {
+    "canton": "VD",
+    "bfs": 5724,
+    "commune": "Nyon",
+    "region": 1
+  },
+  {
+    "canton": "BE",
+    "bfs": 351,
+    "commune": "Bern",
+    "region": 1
+  },
+  {
+    "canton": "BE",
+    "bfs": 321,
+    "commune": "Aarwangen",
+    "region": 3
+  },
+  {
+    "canton": "VD",
+    "bfs": 5401,
+    "commune": "Aigle",
+    "region": 2
+  }
+]
