@@ -22,7 +22,14 @@ import {
   TableRow,
 } from "@/analyse-prevoyance/ui/table";
 import { formatChf, formatPct } from "@/analyse-prevoyance/lib/mappers";
-import type { AnalyseRecord } from "@/analyse-prevoyance/lib/types";
+import type { AnalyseInput, AnalyseRecord } from "@/analyse-prevoyance/lib/types";
+
+function prenomTitulaire(input: AnalyseInput, titulaire: string): string {
+  const person = titulaire === "conjoint" ? input.conjoint : input.client1;
+  const prenom = String(person?.prenom || "").trim();
+  if (prenom) return prenom;
+  return titulaire === "conjoint" ? "Assuré 2" : "Assuré 1";
+}
 
 interface Props {
   record: AnalyseRecord | null;
@@ -329,9 +336,7 @@ export function ResultsPanel({ record }: Props) {
                           <ul className="my-1 space-y-0.5">
                             {(y.lines || []).map((l, i) => (
                               <li key={i}>
-                                {l.titulaire === "client1"
-                                  ? "Assuré 1"
-                                  : "Assuré 2"}{" "}
+                                {prenomTitulaire(input, l.titulaire)}{" "}
                                 — {l.kind}
                                 {l.institution ? ` / ${l.institution}` : ""} :{" "}
                                 {formatChf(l.montantRetire)}
@@ -361,7 +366,7 @@ export function ResultsPanel({ record }: Props) {
                         className="rounded border p-2"
                       >
                         <strong>{s.scenarioName}</strong> · {a.year} ·{" "}
-                        {a.titulaire === "client1" ? "Assuré 1" : "Assuré 2"} ·
+                        {prenomTitulaire(input, a.titulaire)} ·
                         âge {a.ageAtPayment} · TaxLocationID {a.taxLocationId} ·
                         soumis {formatChf(a.montantSoumis)} · impôt{" "}
                         {formatChf(a.impotTotal)}

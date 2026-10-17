@@ -1,8 +1,11 @@
 import {
+  ageAvecAnticipationAvs,
+  anticipationAvsAnnees,
   formatDateIso,
   formatLegalAgeLabel,
   getLegalRetirementAge,
   getRetirementStartDate,
+  reduireAvsPourAnticipation,
 } from "../rules/avs-age";
 import { effectiveLppWithdrawalAge } from "../rules/planification-saisie";
 import { lppCalculationService, lppTableAge } from "./LPPCalculationService";
@@ -47,7 +50,6 @@ export class AVSCalculationService {
     const dateDepart = formatDateIso(
       getRetirementStartDate(person.dateNaissance, ageLegal),
     );
-    const avsAnnuel = this.resolveAnnual(person);
     const lppAgeRequested = effectiveLppWithdrawalAge(
       person,
       ctx?.dossierAgeRetraite,
@@ -58,20 +60,30 @@ export class AVSCalculationService {
       person.lppPctDeblocable,
     );
     const ageFin = lppAgeRequested ?? ageLegal;
-    const ageAvs = explicitAge(ctx?.agePerceptionAvs) ?? ageLegal;
+    const anticipation = anticipationAvsAnnees(person.anticipationAvsAnnees);
+    const ageAvs =
+      anticipation > 0
+        ? ageAvecAnticipationAvs(ageLegal, anticipation)
+        : explicitAge(ctx?.agePerceptionAvs) ?? ageLegal;
     const dateFinActivite =
       lppAgeRequested == null
         ? dateDepart
         : formatDateIso(
             getRetirementStartDate(person.dateNaissance, lppAgeRequested),
           );
-    const ageAvsExplicit = explicitAge(ctx?.agePerceptionAvs);
-    const datePerceptionAvs =
-      ageAvsExplicit == null
-        ? dateDepart
-        : formatDateIso(
-            getRetirementStartDate(person.dateNaissance, ageAvsExplicit),
-          );
+    const datePerceptionAvs = formatDateIso(
+      getRetirementStartDate(person.dateNaissance, ageAvs),
+    );
+    const pleine = this.resolveAnnual(person);
+    const saisieAnticipee =
+      anticipation > 0
+        ? (person.avsRentesAnticipees || []).find(
+            (row) => row.age === ageAvs && row.montantAnnuel > 0,
+          )
+        : undefined;
+    const avsRetenue = saisieAnticipee
+      ? round2(saisieAnticipee.montantAnnuel)
+      : reduireAvsPourAnticipation(pleine, anticipation);
     const total3ePilier = person.troisiemePilier.reduce(
       (s, c) => s + (c.montant || 0),
       0,
@@ -84,15 +96,18 @@ export class AVSCalculationService {
       dateFinActivite,
       ageFinActiviteLabel: formatLegalAgeLabel(ageFin),
       datePerceptionAvs,
-      agePerceptionAvsLabel: formatLegalAgeLabel(ageAvs),
+      agePerceptionAvsLabel:
+        anticipation > 0
+          ? `${formatLegalAgeLabel(ageAvs)} (anticipation ${anticipation} an${anticipation > 1 ? "s" : ""})`
+          : formatLegalAgeLabel(ageAvs),
       ageLppRetenu,
-      avsAnnuel,
+      avsAnnuel: avsRetenue,
       capitalLpp65: aggregated.capital,
       renteLpp65: aggregated.rente,
       lppPctDeblocable,
       capitalLppRetire65: aggregated.capitalRetire,
       renteLppResiduelle65: aggregated.renteResiduelle,
-      renteTotale65: round2(avsAnnuel + aggregated.rente),
+      renteTotale65: round2(avsRetenue + aggregated.rente),
       total3ePilier: round2(total3ePilier),
       lppLignes: aggregated.lines.map((line) => ({
         ...line,

@@ -28,6 +28,19 @@ export const FEMALE_LEGAL_AGE_TABLE: FemaleLegalAgeRow[] = [
 
 export const MALE_LEGAL_AGE = 65;
 
+export const AVS_ANTICIPATION_MAX_ANNEES = 2;
+export const AVS_REDUCTION_PAR_ANNEE = 0.068;
+
+export function anticipationAvsAnnees(value: unknown): 0 | 1 | 2 {
+  const years = Number(value);
+  if (years === 1 || years === 2) return years;
+  return 0;
+}
+
+export function ageAvecAnticipationAvs(legalAge: number, years: 0 | 1 | 2): number {
+  return Math.round((legalAge - years) * 100) / 100;
+}
+
 export function getLegalRetirementAge(
   civilite: string,
   birthDate: string,
@@ -75,4 +88,39 @@ export function desiredRetirementAgeOptions(
     { value: legalAge, label: formatLegalAgeLabel(legalAge) },
     ...integers,
   ];
+}
+
+/** 1er jour du mois suivant l'atteinte de l'âge. Même règle que le moteur. */
+export function getRetirementStartDate(birthDate: string, age: number): Date {
+  const [y, m, d] = String(birthDate).split("-").map(Number);
+  const birth = new Date(y, (m || 1) - 1, d || 1);
+  const wholeYears = Math.trunc(age);
+  const fracMonths = Math.round((age - wholeYears) * 12);
+  const reach = new Date(
+    birth.getFullYear() + wholeYears,
+    birth.getMonth() + fracMonths,
+    birth.getDate(),
+  );
+  const endOfMonth = new Date(reach.getFullYear(), reach.getMonth() + 1, 0);
+  return new Date(
+    endOfMonth.getFullYear(),
+    endOfMonth.getMonth(),
+    endOfMonth.getDate() + 1,
+  );
+}
+
+export function formatDateCh(date: Date): string {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${day}.${month}.${date.getFullYear()}`;
+}
+
+export function lppWithdrawalDate(
+  birth: string | null | undefined,
+  age: number | null | undefined,
+): Date | null {
+  if (!birth || !/^\d{4}-\d{2}-\d{2}/.test(birth)) return null;
+  if (age == null || !Number.isFinite(Number(age))) return null;
+  const date = getRetirementStartDate(birth, Number(age));
+  return Number.isFinite(date.getTime()) ? date : null;
 }

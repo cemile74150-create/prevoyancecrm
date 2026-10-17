@@ -114,6 +114,30 @@ describe("plusieurs LPP et caisse étatique", () => {
     assert.equal(computed.agePerceptionAvsLabel, "65 ans");
   });
 
+  it("prend l'AVS deux ans plus tôt et réduit la rente de 13,6 %", () => {
+    const person = emptyPerson("Monsieur");
+    person.dateNaissance = "1962-06-15";
+    person.avsAnnuel = 30_000;
+    person.anticipationAvsAnnees = 2;
+    const computed = avsCalculationService.computePersonBasics(person, {
+      agePerceptionAvs: 65,
+    });
+    assert.equal(computed.datePerceptionAvs, "2025-07-01");
+    assert.equal(computed.agePerceptionAvsLabel, "63 ans (anticipation 2 ans)");
+    assert.equal(computed.avsAnnuel, 25_920);
+  });
+
+  it("garde une rente anticipée saisie à la place de la réduction de 6,8 %", () => {
+    const person = emptyPerson("Monsieur");
+    person.dateNaissance = "1962-06-15";
+    person.avsAnnuel = 30_000;
+    person.anticipationAvsAnnees = 1;
+    person.avsRentesAnticipees = [{ id: "a", age: 64, montantAnnuel: 28_000 }];
+    const computed = avsCalculationService.computePersonBasics(person);
+    assert.equal(computed.agePerceptionAvsLabel, "64 ans (anticipation 1 an)");
+    assert.equal(computed.avsAnnuel, 28_000);
+  });
+
   it("conserve le parcours à étapes et le comparatif des rentes", () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
     const wizard = readFileSync(

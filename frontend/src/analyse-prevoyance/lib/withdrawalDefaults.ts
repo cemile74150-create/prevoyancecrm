@@ -5,6 +5,7 @@ import {
   resolveThirdPillarCapital,
   yearOfIso,
 } from "./planificationSaisie";
+import { lppWithdrawalDate } from "./avsAge";
 import type {
   AnalyseInput,
   CapitalKind,
@@ -14,6 +15,23 @@ import type {
   WithdrawalPlanItem,
   WithdrawalScenario,
 } from "./types";
+
+export function lppPlanYear(
+  input: AnalyseInput,
+  item: { kind: string; titulaire?: string; sourceId?: string },
+): number | null {
+  if (item.kind !== "lpp") return null;
+  const person = item.titulaire === "conjoint" ? input.conjoint : input.client1;
+  if (!person) return null;
+  let age = effectiveLppWithdrawalAge(person, dossierLppAge(input));
+  if (item.sourceId) {
+    const avoir = (person.lppAvoirs || []).find((row) => row.id === item.sourceId);
+    if (avoir?.ageRetrait != null && Number.isFinite(Number(avoir.ageRetrait))) {
+      age = Number(avoir.ageRetrait);
+    }
+  }
+  return lppWithdrawalDate(person.dateNaissance, age)?.getFullYear() ?? null;
+}
 
 function dossierLppAge(input: AnalyseInput): number | null {
   const age = input.ageRetraiteSouhaite ?? input.client1?.ageRetraiteSouhaite ?? null;
@@ -29,11 +47,9 @@ function lppItem(
 ): WithdrawalPlanItem {
   const age = effectiveLppWithdrawalAge(person, dossierLppAge(input));
   const row = lppCapitalForWithdrawalAge(person.lpp, age);
-  const birth = yearOfIso(person.dateNaissance);
   const year =
-    row.found && birth != null && age != null
-      ? birth + age
-      : yearOfIso(computed.dateDepart);
+    lppWithdrawalDate(person.dateNaissance, age)?.getFullYear() ??
+    yearOfIso(computed.dateFinActivite || computed.dateDepart);
   const custom =
     person.ageRetraitLppSouhaite != null &&
     Number.isFinite(Number(person.ageRetraitLppSouhaite));
@@ -64,8 +80,7 @@ function extraLppItems(
         : personAge;
     const row = lppCapitalForWithdrawalAge(avoir.rows, age);
     const etatique = avoir.type === "etatique";
-    const birth = yearOfIso(person.dateNaissance);
-    const year = row.found && birth != null && age != null ? birth + age : null;
+    const year = lppWithdrawalDate(person.dateNaissance, age)?.getFullYear() ?? null;
     return {
       id: `lpp-${avoir.id}`,
       kind: "lpp" as const,
@@ -215,6 +230,40 @@ export function kindLabel(kind: CapitalKind): string {
     default:
       return "Autre";
   }
+}
+
+/** 3A imposable au retrait, 3B exonéré. Un contrat sans type reste un 3A. */
+export function thirdPillarTaxMark(
+  input: AnalyseInput,
+  item: { kind: string; sourceId?: string; label?: string },
+): { type: "3A" | "3B"; exonere: boolean } | null {
+  if (item.kind !== "3p") return null;
+  const contracts = [
+    ...(input.client1?.troisiemePilier || []),
+    ...(input.conjoint?.troisiemePilier || []),
+  ];
+  const found = item.sourceId
+    ? contracts.find((contract) => contract.id === item.sourceId)
+    : undefined;
+  const fromContract = String(found?.type ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  const fromLabel = String(item.label || "").trim().toUpperCase();
+  const type =
+    fromContract === "3B" || (!found && fromLabel.startsWith("3B"))
+      ? "3B"
+      : "3A";
+  return { type, exonere: type === "3B" };
+}
+
+export function capitalTypeText(
+  input: AnalyseInput,
+  item: { kind: string; sourceId?: string; label?: string },
+): string {
+  const pillar = thirdPillarTaxMark(input, item);
+  if (!pillar) return kindLabel(item.kind as CapitalKind);
+  return pillar.exonere ? "3B · exonéré" : "3A · imposable";
 }
 
 export function selectedWithdrawalYear(item: {

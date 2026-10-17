@@ -6,6 +6,12 @@ import { Label } from "@/analyse-prevoyance/ui/label";
 import { Button, buttonVariants } from "@/analyse-prevoyance/ui/button";
 import type { AvsRenteAnticipee, PersonInput } from "@/analyse-prevoyance/lib/types";
 import { avsAnnuelFromMensuel } from "@/analyse-prevoyance/lib/avsAnnuel";
+import {
+  ageAvecAnticipationAvs,
+  anticipationAvsAnnees,
+  formatLegalAgeLabel,
+  getLegalRetirementAge,
+} from "@/analyse-prevoyance/lib/avsAge";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { ConfirmDeleteButton } from "@/analyse-prevoyance/components/ConfirmDeleteButton";
 
@@ -22,6 +28,12 @@ export function AvsFields({
 }) {
   const annuelle = avsAnnuelFromMensuel(person.avsMensuel);
   const anticipees = person.avsRentesAnticipees || [];
+  const anticipation = anticipationAvsAnnees(person.anticipationAvsAnnees);
+  const ageLegal = person.dateNaissance
+    ? getLegalRetirementAge(person.civilite, person.dateNaissance)
+    : null;
+  const ageRetenu =
+    ageLegal == null ? null : ageAvecAnticipationAvs(ageLegal, anticipation);
 
   function setAnticipees(next: AvsRenteAnticipee[]) {
     onChange({ ...person, avsRentesAnticipees: next });
@@ -57,6 +69,32 @@ export function AvsFields({
             aria-label="AVS annuelle"
           />
           <p className="text-xs text-muted-foreground">Mensuelle × 13</p>
+        </div>
+        <div className="space-y-2">
+          <Label>Anticipation AVS pour l'étude</Label>
+          <select
+            className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
+            value={String(anticipation)}
+            data-testid={`avs-anticipation-${title}`}
+            onChange={(e) =>
+              onChange({
+                ...person,
+                anticipationAvsAnnees: anticipationAvsAnnees(e.target.value),
+              })
+            }
+          >
+            <option value="0">À l'âge de référence</option>
+            <option value="1">Anticipation de 1 an</option>
+            <option value="2">Anticipation de 2 ans</option>
+          </select>
+          <p className="text-xs text-muted-foreground">
+            {ageRetenu == null
+              ? "Maximum 2 ans. L'âge et la date du retrait AVS suivent ce choix."
+              : `Retrait AVS retenu : ${formatLegalAgeLabel(ageRetenu)}. Maximum 2 ans.`}
+            {anticipation > 0
+              ? ` Sans rente saisie à cet âge, la rente de référence est réduite de ${anticipation === 1 ? "6,8" : "13,6"} %.`
+              : ""}
+          </p>
         </div>
         <div className="flex items-end">
           <a

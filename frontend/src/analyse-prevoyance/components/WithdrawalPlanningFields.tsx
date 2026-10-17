@@ -22,7 +22,9 @@ import { PILIER_3B_NOTE, RACHAT_ABSENT_UI } from "@/analyse-prevoyance/lib/plani
 import {
   buildDefaultWithdrawalItems,
   duplicateWithdrawalScenario,
-  kindLabel,
+  lppPlanYear,
+  capitalTypeText,
+  thirdPillarTaxMark,
   withPillarCapital,
 } from "@/analyse-prevoyance/lib/withdrawalDefaults";
 import {
@@ -30,6 +32,13 @@ import {
   mergeCalendarWithResult,
 } from "@/analyse-prevoyance/lib/withdrawalPlanUtils";
 import { formatChf } from "@/analyse-prevoyance/lib/mappers";
+
+function prenomTitulaire(input: AnalyseInput, titulaire: string): string {
+  const person = titulaire === "conjoint" ? input.conjoint : input.client1;
+  const prenom = String(person?.prenom || "").trim();
+  if (prenom) return prenom;
+  return titulaire === "conjoint" ? "Assuré 2" : "Assuré 1";
+}
 
 /**
  * Section planification des retraits — tableau, calendrier, scénarios.
@@ -133,12 +142,18 @@ export function WithdrawalPlanningFields({
     updateScenario(scenarioId, { items });
   }
 
-  const shownItems = (active?.items || []).map((it) => withPillarCapital(input, it));
+  const shownItems = (active?.items || []).map((it) => {
+    const next = withPillarCapital(input, it);
+    const year = lppPlanYear(input, it);
+    return year == null
+      ? next
+      : { ...next, anneeRetraitPrevue: year, anneePremierePossible: year };
+  });
   const calendar = active
     ? mergeCalendarWithResult(shownItems, activeResult)
     : [];
   const indicative = shownItems.filter((it) => it.capitalStatut === "indicatif");
-  const has3b = shownItems.some((it) => /\b3B\b/.test(it.label || "") || it.kind === "3p" && /\b3B\b/.test(it.label || ""));
+  const has3b = shownItems.some((it) => thirdPillarTaxMark(input, it)?.exonere);
 
   return (
     <div className="space-y-4">
@@ -258,13 +273,11 @@ export function WithdrawalPlanningFields({
                         {shownItems.map((it) => (
                           <tr key={it.id} className="border-t">
                             <td className="px-2 py-1">
-                              {it.titulaire === "client1"
-                                ? "Assuré 1"
-                                : "Assuré 2"}
+                              {prenomTitulaire(input, it.titulaire)}
                             </td>
                             <td className="px-2 py-1">
-                              <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium">
-                                {kindLabel(it.kind)}
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium whitespace-nowrap">
+                                {capitalTypeText(input, it)}
                               </span>
                             </td>
                             <td className="px-2 py-1">
@@ -399,16 +412,8 @@ export function WithdrawalPlanningFields({
                         <ul className="mb-3 space-y-1 text-xs">
                           {y.lines.map((l, i) => (
                             <li key={`${y.year}-${i}`}>
-                              {(l.titulaire === "client1"
-                                ? "Assuré 1"
-                                : "Assuré 2")}{" "}
-                              — {kindLabel(
-                                l.kind as
-                                  | "lpp"
-                                  | "libre_passage"
-                                  | "3p"
-                                  | "autre",
-                              )}
+                              {prenomTitulaire(input, l.titulaire)}{" "}
+                              — {capitalTypeText(input, l)}
                               {l.institution ? ` / ${l.institution}` : ""} :{" "}
                               <strong>{formatChf(l.montantRetire)}</strong>
                             </li>

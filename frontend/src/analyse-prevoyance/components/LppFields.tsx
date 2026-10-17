@@ -20,6 +20,7 @@ import {
   RETIREMENT_AGES,
 } from "@/analyse-prevoyance/lib/types";
 import { formatChf } from "@/analyse-prevoyance/lib/mappers";
+import { formatDateCh, lppWithdrawalDate } from "@/analyse-prevoyance/lib/avsAge";
 
 function pontRows(person: PersonInput): RentePontInput[] {
   if (person.rentePonts?.length) return person.rentePonts;
@@ -339,6 +340,11 @@ export function LppFields({
             ? "Valeur propre à cet assuré. Elle reste en place si l'âge du dossier change."
             : "Reprend l'âge de retraite souhaité de l'onglet Client. Modifiez-le ici pour le personnaliser."}
         </p>
+        {lppDateLabel(person.dateNaissance, ageShown) && (
+          <p className="text-sm font-medium tabular-nums">
+            {lppDateLabel(person.dateNaissance, ageShown)}
+          </p>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -365,6 +371,7 @@ export function LppFields({
             <ExtraLppCard
               key={avoir.id}
               avoir={avoir}
+              dateNaissance={person.dateNaissance}
               onChange={(next) =>
                 onChange({
                   ...person,
@@ -542,12 +549,25 @@ function CaisseEtatiqueOptions({
   );
 }
 
+function lppDateLabel(
+  birth: string | null | undefined,
+  age: number | string | null | undefined,
+): string {
+  const date = lppWithdrawalDate(
+    birth,
+    age === "" || age == null ? null : Number(age),
+  );
+  return date ? formatDateCh(date) : "";
+}
+
 function ExtraLppCard({
   avoir,
+  dateNaissance,
   onChange,
   onRemove,
 }: {
   avoir: LppAvoir;
+  dateNaissance?: string | null;
   onChange: (avoir: LppAvoir) => void;
   onRemove: () => void;
 }) {
@@ -612,6 +632,11 @@ function ExtraLppCard({
               })
             }
           />
+          {lppDateLabel(dateNaissance, avoir.ageRetrait) && (
+            <p className="text-xs font-medium tabular-nums">
+              {lppDateLabel(dateNaissance, avoir.ageRetrait)}
+            </p>
+          )}
         </div>
         <Button type="button" variant="ghost" size="icon" onClick={onRemove} aria-label="Supprimer la caisse">
           <Trash2 className="size-4" />

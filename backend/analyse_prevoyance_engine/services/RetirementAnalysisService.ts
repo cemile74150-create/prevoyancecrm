@@ -29,17 +29,11 @@ export class RetirementAnalysisService {
       input.ageRetraiteSouhaite ?? input.client1.ageRetraiteSouhaite ?? null;
     const client1 = avsCalculationService.computePersonBasics(input.client1, {
       dossierAgeRetraite: dossierAge,
-      agePerceptionAvs:
-        input.client1.ageRetraiteSouhaite ?? input.ageRetraiteSouhaite ?? null,
     });
     const conjoint =
       input.etatCivil === "Marié(e)" && input.conjoint
         ? avsCalculationService.computePersonBasics(input.conjoint, {
             dossierAgeRetraite: dossierAge,
-            agePerceptionAvs:
-              input.conjoint.ageRetraiteSouhaite ??
-              input.ageRetraiteSouhaite ??
-              null,
           })
         : null;
 
@@ -165,6 +159,7 @@ export class RetirementAnalysisService {
           : "Hypothèses de rente échouées",
       );
     }
+    reuseHouseholdPensionTax(incomeScenarios, renteHypotheses);
 
     return {
       computedAt: new Date().toISOString(),
@@ -304,6 +299,31 @@ export class RetirementAnalysisService {
       tauxRemplacementCible: 0.8,
       tauxRemplacementReel,
     };
+  }
+}
+
+/**
+ * La colonne « 100 % rente » et la carte de référence montrent les mêmes
+ * rentes. Elles doivent afficher l'impôt Couple1, déjà calculé sur cette
+ * somme pour le foyer marié — pas un second appel (revenu groupé sur un
+ * seul assuré, autre âge, rente résiduelle).
+ */
+function reuseHouseholdPensionTax(
+  incomeScenarios: AnalyseResults["incomeScenarios"],
+  hypotheses: AnalyseResults["renteHypotheses"],
+): void {
+  const couple1 = incomeScenarios.find((scenario) => scenario.foyer === "Couple1");
+  const tax = couple1?.impot?.impotRevenuTotal;
+  const column = hypotheses?.columns.find((col) => col.kind === "lpp");
+  if (!couple1 || tax == null || !column) return;
+  const household = round2((couple1.revenu1 || 0) + (couple1.revenu2 || 0));
+  if (Math.abs(column.revenuFiscalImposable - household) > 0.05) return;
+  column.impotEstv = tax;
+  column.revenuNetApresImpot = round2(column.revenuFiscalImposable - tax);
+  const net = column.revenuNetApresImpot;
+  for (const other of hypotheses?.columns || []) {
+    if (other.kind === "lpp" || other.revenuNetApresImpot == null) continue;
+    other.ecartNetAnnuelVsLpp = round2(other.revenuNetApresImpot - net);
   }
 }
 

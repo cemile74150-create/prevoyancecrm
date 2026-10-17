@@ -20,6 +20,28 @@ export const FEMALE_LEGAL_AGE_TABLE: FemaleLegalAgeRow[] = [
 
 export const MALE_LEGAL_AGE = 65;
 
+/** L'AVS peut être prise au plus deux ans avant l'âge de référence. */
+export const AVS_ANTICIPATION_MAX_ANNEES = 2;
+
+/** Réduction légale par année d'anticipation entière. */
+export const AVS_REDUCTION_PAR_ANNEE = 0.068;
+
+export function anticipationAvsAnnees(value: unknown): 0 | 1 | 2 {
+  const years = Number(value);
+  if (years === 1 || years === 2) return years;
+  return 0;
+}
+
+export function ageAvecAnticipationAvs(legalAge: number, years: 0 | 1 | 2): number {
+  return Math.round((legalAge - years) * 100) / 100;
+}
+
+/** Rente à l'âge de référence, réduite de 6,8 % par année d'anticipation. */
+export function reduireAvsPourAnticipation(montantReference: number, years: 0 | 1 | 2): number {
+  if (years === 0) return montantReference;
+  return Math.round(montantReference * (1 - AVS_REDUCTION_PAR_ANNEE * years) * 100) / 100;
+}
+
 export type GenderCivility = "Monsieur" | "Madame";
 
 /**

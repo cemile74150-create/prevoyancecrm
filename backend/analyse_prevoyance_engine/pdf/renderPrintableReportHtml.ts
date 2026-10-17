@@ -704,13 +704,32 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
   ${footer(n, total)}`;
 }
 
+/** Rente résiduelle nulle : pas de pension à afficher ni à ajouter au revenu. */
+function pensionOrDash(amount: number | null | undefined): string {
+  if (amount == null || Number.isNaN(amount) || amount === 0) return "—";
+  return formatChf(amount);
+}
+
 function pageCompareRenteCapital(
   p: ReportPayload,
   n: number,
   total: number,
 ): string {
   const a = p.aggregates;
-  const chart = renderEvolutionChart(p);
+  const showLacune = !(a.lacune < 0);
+  const chart = showLacune ? renderEvolutionChart(p) : "";
+  const indicateurs = showLacune
+    ? `
+  <div class="sec-title">Indicateurs du scénario 100 % rente</div>
+  <table class="data">
+    <tr><th class="gray">Indicateur</th><th class="gray">Montant</th></tr>
+    <tr><td>Salaire brut avant retraite</td><td class="num">${formatChf(a.salaireAvant)}</td></tr>
+    <tr><td>Revenu brut du scénario 100 % rente (AVS + LPP complète)</td><td class="num">${formatChf(a.revenuApres)}</td></tr>
+    <tr><td>Lacune annuelle du scénario 100 % rente</td><td class="num">${formatChf(a.lacune)}</td></tr>
+    <tr><td>Manque pour 80&nbsp;% du salaire, scénario 100 % rente</td><td class="num">${formatChf(a.manquePour80)}</td></tr>
+  </table>
+  <p class="note">La lacune et le manque à 80&nbsp;% se calculent par rapport au revenu du scénario 100&nbsp;% rente (AVS + rente LPP complète).</p>`
+    : "";
   const notePct =
     p.client1.lppPctDeblocable < 100 ||
     (p.conjoint != null && p.conjoint.lppPctDeblocable < 100)
@@ -725,8 +744,8 @@ function pageCompareRenteCapital(
     <tr><td class="lab">Capital disponible, LPP et libre passage</td><td class="num">—</td><td class="num">${formatChf(a.capitalLppRetireTotal)}</td></tr>
     <tr><td class="lab">Impôt sur les capitaux</td><td class="num">—</td><td class="num tax">${formatChf(a.impotCapital65)}</td></tr>
     <tr><td class="lab">Capitaux après impôt</td><td class="num">—</td><td class="num">${formatChf(a.capitalNet65)}</td></tr>
-    <tr><td class="lab">Rente LPP – ${esc(insuredName(p.client1, "Assuré 1"))}</td><td class="num">${formatChf(p.client1.renteLpp65)}</td><td class="num">${formatChf(p.client1.renteLppResiduelle65)}</td></tr>
-    ${p.conjoint ? `<tr><td class="lab">Rente LPP – ${esc(insuredName(p.conjoint, "Assuré 2"))}</td><td class="num">${formatChf(p.conjoint.renteLpp65)}</td><td class="num">${formatChf(p.conjoint.renteLppResiduelle65)}</td></tr>` : ""}
+    <tr><td class="lab">Rente LPP – ${esc(insuredName(p.client1, "Assuré 1"))}</td><td class="num">${formatChf(p.client1.renteLpp65)}</td><td class="num">${pensionOrDash(p.client1.renteLppResiduelle65)}</td></tr>
+    ${p.conjoint ? `<tr><td class="lab">Rente LPP – ${esc(insuredName(p.conjoint, "Assuré 2"))}</td><td class="num">${formatChf(p.conjoint.renteLpp65)}</td><td class="num">${pensionOrDash(p.conjoint.renteLppResiduelle65)}</td></tr>` : ""}
     <tr><td class="lab">Rente AVS</td><td class="num">${formatChf(a.avsTotal)}</td><td class="num">${formatChf(a.avsTotal)}</td></tr>
     <tr><td class="lab">Impôts ICC &amp; IFD</td><td class="num tax">${formatChf(a.impotRevenuCouple1)}</td><td class="num tax">${formatChf(a.impotRevenuCouple2)}</td></tr>
     <tr><td class="lab">Rente après impôt</td><td class="num">${formatChf(a.renteApresImpot)}</td><td class="num">${formatChf(a.renteNetteCheminCapital)}</td></tr>
@@ -734,15 +753,7 @@ function pageCompareRenteCapital(
   </table>
   ${notePct}
   ${chart}
-  <div class="sec-title">Indicateurs du scénario 100 % rente</div>
-  <table class="data">
-    <tr><th class="gray">Indicateur</th><th class="gray">Montant</th></tr>
-    <tr><td>Salaire brut avant retraite</td><td class="num">${formatChf(a.salaireAvant)}</td></tr>
-    <tr><td>Revenu brut du scénario 100 % rente (AVS + LPP complète)</td><td class="num">${formatChf(a.revenuApres)}</td></tr>
-    <tr><td>Lacune annuelle du scénario 100 % rente</td><td class="num">${formatChf(a.lacune)}</td></tr>
-    <tr><td>Manque pour 80&nbsp;% du salaire, scénario 100 % rente</td><td class="num">${formatChf(a.manquePour80)}</td></tr>
-  </table>
-  <p class="note">La lacune et le manque à 80&nbsp;% se calculent par rapport au revenu du scénario 100&nbsp;% rente (AVS + rente LPP complète).</p>
+  ${indicateurs}
   ${footer(n, total)}`;
 }
 
@@ -1066,22 +1077,121 @@ function withdrawalPlanningPages(
   return [`${demo}${planningReportHtml(p)}${footer(next(), total)}`];
 }
 
+const LPP_COMPONENT = /^(Capital \+ rente|Rente réduite|Capital|Rente)$/;
+
+function splitLppLabel(label: string): {
+  who: string;
+  institution: string;
+  component: string;
+} | null {
+  const parts = label.split(" – ");
+  if (parts[0] !== "LPP" || parts.length < 3) return null;
+  const component = parts[parts.length - 1];
+  if (!LPP_COMPONENT.test(component)) return null;
+  return {
+    who: parts[1],
+    institution: parts.slice(2, -1).join(" – ").trim(),
+    component,
+  };
+}
+
+function lppFatePhrase(components: string[]): string {
+  const set = new Set(components);
+  if (set.has("Rente réduite") && (set.has("Capital") || set.has("Capital + rente"))) {
+    return "Capital + rente réduite";
+  }
+  if (set.has("Capital + rente")) return "Capital + rente";
+  if (set.has("Rente réduite")) return "Rente réduite";
+  if (set.has("Rente")) return "Rente";
+  if (set.has("Capital")) return "Capital";
+  return "Prestation";
+}
+
+function knownInstitution(payload: ReportPayload, who: string): string {
+  const people: Array<{ person: ReportPayload["client1"]; fallback: "Assuré 1" | "Assuré 2" }> = [
+    { person: payload.client1, fallback: "Assuré 1" },
+  ];
+  if (payload.conjoint) people.push({ person: payload.conjoint, fallback: "Assuré 2" });
+  const found = people.find((entry) => insuredName(entry.person, entry.fallback) === who);
+  if (!found) return "";
+  const named = (found.person.lppLignes || [])
+    .map((line) => (line.institution || "").trim())
+    .filter(Boolean);
+  return named.length === 1 ? named[0] : "";
+}
+
+function friseLines(
+  events: ReportPayload["timeline"]["events"],
+  payload: ReportPayload,
+): Array<{ label: string; detail: string }> {
+  interface LppAcc {
+    who: string;
+    institution: string;
+    components: string[];
+    capital: number;
+    rente: number;
+    hasCapital: boolean;
+    hasRente: boolean;
+  }
+  const order: Array<{ kind: "plain"; line: { label: string; detail: string } } | { kind: "lpp"; acc: LppAcc }> = [];
+  const grouped = new Map<string, LppAcc>();
+  for (const event of events) {
+    const parsed = event.kind === "lpp" ? splitLppLabel(event.label) : null;
+    if (!parsed) {
+      order.push({
+        kind: "plain",
+        line: { label: event.label, detail: `${formatChf(event.amount)}${timelineAmountSuffix(event)}` },
+      });
+      continue;
+    }
+    const key = `${parsed.who}|${parsed.institution}`;
+    let acc = grouped.get(key);
+    if (!acc) {
+      acc = { who: parsed.who, institution: parsed.institution, components: [], capital: 0, rente: 0, hasCapital: false, hasRente: false };
+      grouped.set(key, acc);
+      order.push({ kind: "lpp", acc });
+    }
+    acc.components.push(parsed.component);
+    if (parsed.component === "Rente" || parsed.component === "Rente réduite") {
+      acc.hasRente = true;
+      acc.rente += event.amount;
+    } else {
+      acc.hasCapital = true;
+      acc.capital += event.amount;
+    }
+  }
+  return order.map((item) => {
+    if (item.kind === "plain") return item.line;
+    const acc = item.acc;
+    const institution = (acc.institution || knownInstitution(payload, acc.who)).trim();
+    const fate = lppFatePhrase(acc.components);
+    const core = `LPP – ${acc.who} – ${fate}`;
+    let detail = formatChf(acc.capital);
+    if (acc.hasCapital && acc.hasRente) detail = `${formatChf(acc.capital)}<br/>${formatChf(acc.rente)} /an`;
+    else if (acc.hasRente) detail = `${formatChf(acc.rente)} /an`;
+    return {
+      label: institution ? `${core} – ${institution}` : core,
+      detail,
+    };
+  });
+}
+
 function pageFrise(p: ReportPayload, n: number, total: number): string {
   const years = p.timeline.years;
   const cols = years
     .map((y) => {
-      const evs = p.timeline.byYear[y] || [];
-      return `<div class="tl-col"><div class="tl-year">${y}</div>${evs
-        .map((e) => `<div class="tl-ev">${esc(e.label)}</div>`)
+      const lines = friseLines(p.timeline.byYear[y] || [], p);
+      return `<div class="tl-col"><div class="tl-year">${y}</div>${lines
+        .map((line) => `<div class="tl-ev">${esc(line.label)}</div>`)
         .join("")}</div>`;
     })
     .join("");
 
-  const detail = p.timeline.events
-    .map(
-      (e) =>
-        `<tr><td>${esc(e.label)}</td><td class="num">${formatChf(e.amount)}${timelineAmountSuffix(e)}</td></tr>`,
-    )
+  const detail = [
+    ...years.flatMap((year) => friseLines(p.timeline.byYear[year] || [], p)),
+    ...friseLines(p.timeline.events.filter((event) => event.year == null), p),
+  ]
+    .map((line) => `<tr><td>${esc(line.label)}</td><td class="num">${line.detail}</td></tr>`)
     .join("");
 
   return `
@@ -1196,6 +1306,17 @@ function columnsFromVaudoise(p: ReportPayload): RenteHypothesisColumn[] {
   });
 }
 
+/** AVS imprimée sur la colonne + rentes LPP imprimées. Pas d'autre pension. */
+function lppReferenceTaxable(
+  p: ReportPayload,
+  col: RenteHypothesisColumn,
+): number {
+  const lpp =
+    (p.client1.renteLpp65 || 0) +
+    (p.flags.showConjoint ? p.conjoint?.renteLpp65 || 0 : 0);
+  return Math.round(((col.renteAvs || 0) + lpp) * 100) / 100;
+}
+
 function pageComparatifDesRentes(
   p: ReportPayload,
   n: number,
@@ -1287,9 +1408,11 @@ function pageComparatifDesRentes(
     sec("Fiscalité"),
     row(
       "Part imposable",
-      cols.map((c) =>
-        block ? moneyOrDash(c.revenuFiscalImposable) : "—",
-      ),
+      cols.map((c) => {
+        if (!block) return "—";
+        if (c.kind === "lpp") return moneyOrDash(lppReferenceTaxable(p, c));
+        return moneyOrDash(c.revenuFiscalImposable);
+      }),
     ),
     row(
       "ICC / IFD",
@@ -1302,7 +1425,12 @@ function pageComparatifDesRentes(
     sec("Revenus nets"),
     row(
       "Revenu net",
-      cols.map((c) => moneyOrDash(c.revenuNetApresImpot)),
+      cols.map((c) => {
+        if (c.kind === "lpp" && c.impotEstv != null) {
+          return moneyOrDash(lppReferenceTaxable(p, c) - c.impotEstv);
+        }
+        return moneyOrDash(c.revenuNetApresImpot);
+      }),
       "row-net",
     ),
   ];

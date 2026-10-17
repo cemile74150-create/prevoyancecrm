@@ -1,5 +1,6 @@
 import type {
   AnalyseInput,
+  PersonComputed,
   PersonInput,
   RenteHypothesisColumn,
   RenteHypothesisComparison,
@@ -7,7 +8,6 @@ import type {
 } from "../types";
 import { avsCalculationService } from "./AVSCalculationService";
 import { taxCalculationService } from "./TaxCalculationService";
-import { lppCalculationService } from "./LPPCalculationService";
 import { ageRetraitePersonne } from "../rules/age-retraite";
 import {
   revenuBrutEncaisse,
@@ -32,12 +32,31 @@ export function avsPourAge(person: PersonInput, age: number | null): number {
   return avsPrincipale65(person);
 }
 
-function lppRentePourAge(person: PersonInput, age: number | null): number {
-  const target = age ?? 65;
-  const row = (person.lpp || []).find((item) => item.age === target);
-  if (row) return row.rente || 0;
-  const at65 = (person.lpp || []).find((item) => item.age === 65);
-  return at65?.rente || 0;
+/**
+ * Mêmes pensions que les lignes imprimées et que le scénario Couple1 :
+ * AVS retenue, rente LPP entière à l'âge de retrait LPP, résiduelle selon le %.
+ * Une rente d'un autre âge du tableau n'est pas ajoutée.
+ */
+function pensionsImprimees(input: AnalyseInput): {
+  client1: PersonComputed;
+  conjoint: PersonComputed | null;
+} {
+  const client1 = avsCalculationService.computePersonBasics(input.client1, {
+    dossierAgeRetraite: ageRetraitePersonne(
+      input.client1,
+      input.ageRetraiteSouhaite,
+    ),
+  });
+  const conjoint =
+    input.etatCivil === "Marié(e)" && input.conjoint
+      ? avsCalculationService.computePersonBasics(input.conjoint, {
+          dossierAgeRetraite: ageRetraitePersonne(
+            input.conjoint,
+            input.ageRetraiteSouhaite,
+          ),
+        })
+      : null;
+  return { client1, conjoint };
 }
 
 function hypothesisUsable(row: RenteHypothesisInput): boolean {
@@ -51,24 +70,6 @@ function hypothesisUsable(row: RenteHypothesisInput): boolean {
 
 function typeLabel(type: RenteHypothesisInput["type"]): string {
   return type === "viagere" ? "Viagère" : "Certaine";
-}
-
-/** Rente LPP non retirée en capital. 100 % déblocable → 0. Couple : somme des deux assurés. */
-function renteLppResiduelleFoyer(
-  input: AnalyseInput,
-  age1: number | null,
-  age2: number | null,
-  married: boolean,
-): number {
-  const part = (person: PersonInput, age: number | null) =>
-    lppCalculationService.renteResiduelle(
-      lppRentePourAge(person, age),
-      person.lppPctDeblocable,
-    );
-  const total =
-    part(input.client1, age1) +
-    (married && input.conjoint ? part(input.conjoint, age2) : 0);
-  return roundMoney(total);
 }
 
 /**
@@ -87,18 +88,24 @@ export class RenteHypothesisService {
     const age2 = input.conjoint
       ? ageRetraitePersonne(input.conjoint, input.ageRetraiteSouhaite)
       : null;
-    const married = input.etatCivil === "Marié(e)" && !!input.conjoint;
-    const avs =
-      avsPourAge(input.client1, age1) +
-      (married && input.conjoint ? avsPourAge(input.conjoint, age2) : 0);
-    const lpp =
-      lppRentePourAge(input.client1, age1) +
-      (married && input.conjoint ? lppRentePourAge(input.conjoint, age2) : 0);
-    const residuelle = renteLppResiduelleFoyer(input, age1, age2, married);
+    const { client1, conjoint } = pensionsImprimees(input);
+    const avs = roundMoney(client1.avsAnnuel + (conjoint?.avsAnnuel ?? 0));
+    const lpp = roundMoney(client1.renteLpp65 + (conjoint?.renteLpp65 ?? 0));
+    const residuelle = roundMoney(
+      client1.renteLppResiduelle65 + (conjoint?.renteLppResiduelle65 ?? 0),
+    );
 
     const columns: RenteHypothesisColumn[] = [];
     if (withLpp) {
-      columns.push(await this.columnLpp(input, avs, lpp, age1, age2));
+      columns.push(
+        await this.columnLpp(
+          input,
+          avs,
+          lpp,
+          client1.renteTotale65,
+          conjoint?.renteTotale65 ?? 0,
+        ),
+      );
     }
     for (const [index, row] of hypotheses.entries()) {
       columns.push(await this.columnOffre(input, row, index, avs, residuelle, age1, age2));
@@ -148,16 +155,46 @@ export class RenteHypothesisService {
     }
   }
 
+  /**
+   * Même assiette et même appel ESTV que Couple1 (revenu partagé, âge 65).
+   * Le total imposable reste AVS + rente LPP entière imprimée.
+   */
+  private async taxLikeCouple1(
+    input: AnalyseInput,
+    revenue1: number,
+    revenue2: number,
+  ): Promise<number | null> {
+    const total = roundMoney(revenue1 + revenue2);
+    if (!input.taxLocationId || total <= 0) return null;
+    const married = input.etatCivil === "Marié(e)";
+    try {
+      const tax = await taxCalculationService.calculateDetailedTaxes({
+        foyer: "hypothese-rente",
+        taxLocationId: input.taxLocationId,
+        relationship: married ? 2 : 1,
+        age1: 65,
+        age2: married ? 65 : 0,
+        revenue1,
+        revenue2: married ? revenue2 : 0,
+        fortune: input.fortune || 0,
+        taxYear: input.taxYear,
+      });
+      return tax.impotRevenuTotal;
+    } catch {
+      return null;
+    }
+  }
+
   private async columnLpp(
     input: AnalyseInput,
     avs: number,
     lpp: number,
-    age1: number | null,
-    age2: number | null,
+    revenue1: number,
+    revenue2: number,
   ): Promise<RenteHypothesisColumn> {
     const fiscal = revenuFiscalRenteLpp(avs, lpp);
     const brut = fiscal;
-    const impot = await this.taxOn(input, fiscal, age1, age2);
+    const impot = await this.taxLikeCouple1(input, revenue1, revenue2);
     return {
       id: "lpp",
       kind: "lpp",

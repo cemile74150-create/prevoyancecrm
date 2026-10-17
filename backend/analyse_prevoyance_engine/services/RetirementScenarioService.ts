@@ -26,6 +26,7 @@ import {
   lppCapitalForWithdrawalAge,
   resolveThirdPillarCapital,
 } from "../rules/planification-saisie";
+import { getRetirementStartDate } from "../rules/avs-age";
 import { lppCalculationService, lppTableAge } from "./LPPCalculationService";
 import { taxCalculationService } from "./TaxCalculationService";
 import { genderFromCivilite, relationshipFromEtat } from "../mappers";
@@ -106,8 +107,9 @@ export class RetirementScenarioService {
   }
 
   /**
-   * Chemin capital foyer : LPP retirée + LP retiré, ESTV **agrégée par personne**
-   * (pas somme d’impôts contrat par contrat). Ne reproduit pas Excel J7 (100 % LPP Mme).
+   * Chemin capital foyer : LPP retirée + LP retiré.
+   * Même année de retrait : un seul appel ESTV sur la somme des deux assurés.
+   * Années différentes : un appel par assuré, puis addition des impôts.
    */
   async buildCapitalPathFoyer(
     input: AnalyseInput,
@@ -144,23 +146,6 @@ export class RetirementScenarioService {
     };
 
     let c2: CapitalPathFoyer["conjoint"] = null;
-
-    if (c1.capitalRetire > 0) {
-      try {
-        const tax = await taxCalculationService.calculateCapitalTax({
-          ageAtPayment: client1.ageLppRetenu ?? 65,
-          capital: c1.capitalRetire,
-          gender: genderFromCivilite(input.client1.civilite),
-          relationship,
-          taxGroupId,
-          taxYear: input.taxYear,
-        });
-        c1.impot = tax.impotTotal;
-      } catch {
-        c1.impot = null;
-      }
-    }
-
     if (isMarried && conjoint && input.conjoint) {
       const c2Lp = lpRetireFor("conjoint");
       const c2LpBrut = lpBrutFor("conjoint");
@@ -172,10 +157,53 @@ export class RetirementScenarioService {
         renteResiduelle: conjoint.renteLppResiduelle65,
         impot: null,
       };
-      if (c2.capitalRetire > 0) {
+    }
+
+    const year1 = paymentYear(client1.dateFinActivite);
+    const year2 = conjoint ? paymentYear(conjoint.dateFinActivite) : null;
+    const sameYear =
+      c2 != null &&
+      c1.capitalRetire > 0 &&
+      c2.capitalRetire > 0 &&
+      year1 != null &&
+      year1 === year2;
+
+    if (sameYear && c2) {
+      try {
+        const tax = await taxCalculationService.calculateCapitalTax({
+          ageAtPayment: client1.ageLppRetenu ?? 65,
+          capital: round2(c1.capitalRetire + c2.capitalRetire),
+          gender: genderFromCivilite(input.client1.civilite),
+          relationship,
+          taxGroupId,
+          taxYear: input.taxYear,
+        });
+        c1.impot = tax.impotTotal;
+        c2.impot = 0;
+      } catch {
+        c1.impot = null;
+        c2.impot = null;
+      }
+    } else {
+      if (c1.capitalRetire > 0) {
         try {
           const tax = await taxCalculationService.calculateCapitalTax({
-            ageAtPayment: conjoint.ageLppRetenu ?? 65,
+            ageAtPayment: client1.ageLppRetenu ?? 65,
+            capital: c1.capitalRetire,
+            gender: genderFromCivilite(input.client1.civilite),
+            relationship,
+            taxGroupId,
+            taxYear: input.taxYear,
+          });
+          c1.impot = tax.impotTotal;
+        } catch {
+          c1.impot = null;
+        }
+      }
+      if (c2 && c2.capitalRetire > 0 && input.conjoint) {
+        try {
+          const tax = await taxCalculationService.calculateCapitalTax({
+            ageAtPayment: conjoint?.ageLppRetenu ?? 65,
             capital: c2.capitalRetire,
             gender: genderFromCivilite(input.conjoint.civilite),
             relationship,
@@ -437,7 +465,7 @@ export class WithdrawalPlanningService {
     let taxable: number | null = null;
     let any: number | null = null;
     for (const item of sc.items) {
-      const year = scenarioWithdrawalYear(item);
+      const year = this.itemYear(input, item);
       if (year == null) continue;
       if (this.withdrawnAmount(input, item) <= 0) continue;
       if (any == null || year < any) any = year;
@@ -498,6 +526,15 @@ export class WithdrawalPlanningService {
     return round2((item.montantDisponible || 0) * (pct / 100));
   }
 
+  /** LPP : année de la date d'onglet LPP. Le reste garde l'année prévue du scénario. */
+  private itemYear(input: AnalyseInput, item: WithdrawalPlanItem): number | null {
+    if (item.kind === "lpp") {
+      const fromLpp = lppTabYear(input, item);
+      if (fromLpp != null) return fromLpp;
+    }
+    return scenarioWithdrawalYear(item);
+  }
+
   /** Pilier 3B : capital affiché, jamais soumis à calculateCapitalTax. */
   private isExemptCapital(input: AnalyseInput, item: WithdrawalPlanItem): boolean {
     return item.kind === "3p" && thirdPillarTypeForItem(input, item) === "3B";
@@ -529,7 +566,7 @@ export class WithdrawalPlanningService {
     const buckets = new Map<string, Bucket>();
 
     for (const item of sc.items) {
-      const withdrawalYear = scenarioWithdrawalYear(item);
+      const withdrawalYear = this.itemYear(input, item);
       if (withdrawalYear == null) continue;
       const montantRetire = this.withdrawnAmount(input, item);
       if (montantRetire <= 0) continue;
@@ -799,6 +836,27 @@ function ageInYear(
   const by = Number(birthIso.slice(0, 4));
   const age = year - by;
   return Math.min(70, Math.max(55, age));
+}
+
+function lppTabYear(input: AnalyseInput, item: WithdrawalPlanItem): number | null {
+  const holder = item.titulaire === "conjoint" ? input.conjoint : input.client1;
+  if (!holder?.dateNaissance) return null;
+  const dossierAge = input.ageRetraiteSouhaite ?? input.client1?.ageRetraiteSouhaite ?? null;
+  let age = effectiveLppWithdrawalAge(holder, dossierAge);
+  if (item.sourceId && item.sourceId !== "primary") {
+    const avoir = (holder.lppAvoirs || []).find((row) => row.id === item.sourceId);
+    if (avoir?.ageRetrait != null && Number.isFinite(Number(avoir.ageRetrait))) {
+      age = Number(avoir.ageRetrait);
+    }
+  }
+  if (age == null) return null;
+  const year = getRetirementStartDate(holder.dateNaissance, age).getFullYear();
+  return Number.isFinite(year) ? year : null;
+}
+
+function paymentYear(iso: string | null | undefined): number | null {
+  const match = /^(\d{4})/.exec(iso || "");
+  return match ? Number(match[1]) : null;
 }
 
 function round2(n: number): number {

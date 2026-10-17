@@ -278,6 +278,11 @@ export interface PersonInput {
   avsMontantIssuSimulation?: boolean;
   /** Rentes AVS anticipées saisies explicitement (63, 64, …). */
   avsRentesAnticipees?: AvsRenteAnticipee[];
+  /**
+   * Anticipation choisie pour l'étude : 0 = âge de référence, 1 ou 2 ans.
+   * Au-delà de 2 ans n'est pas accepté.
+   */
+  anticipationAvsAnnees?: 0 | 1 | 2;
   lpp: LppByAge[];
   /**
    * % du capital LPP disponible / déblocable en capital (0–100).
@@ -629,6 +634,7 @@ export function emptyPerson(civilite: Civilite = "Monsieur"): PersonInput {
     avsAnnuel: null,
     avsMontantIssuSimulation: false,
     avsRentesAnticipees: [],
+    anticipationAvsAnnees: 0,
     lpp: emptyLppRows(),
     lppPctDeblocable: LPP_PCT_DEBLOCABLE_DEFAULT,
     lppInstitution: "",

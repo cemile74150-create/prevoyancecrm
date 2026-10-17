@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 import { helferAnalyseInput } from "../fixtures/helfer.ts";
+import { formatChf } from "../mappers.ts";
+import { renderPrintableReportHtml } from "../pdf/renderPrintableReportHtml.ts";
+import { buildReportPayload } from "../report/buildReportPayload.ts";
 import { renteHypothesisService } from "../services/RenteHypothesisService.ts";
+import { retirementAnalysisService } from "../services/RetirementAnalysisService.ts";
 import { taxCalculationService } from "../services/TaxCalculationService.ts";
-import type { RenteHypothesisInput } from "../types.ts";
+import {
+  emptyAnalyseInput,
+  emptyPerson,
+  type AnalyseRecord,
+  type LppByAge,
+  type RenteHypothesisInput,
+} from "../types.ts";
 import {
   revenuBrutEncaisse,
   revenuFiscalImposable,
@@ -248,6 +258,297 @@ describe("comparatif — rente LPP résiduelle du foyer", () => {
     const offre = built?.columns.find((col) => col.kind === "hypothese");
     assert.equal(offre?.renteLppResiduelle, 21_024 * 0.75);
     assert.equal(offre?.renteAvs, 24_570);
+  });
+
+  after(() => {
+    taxCalculationService.calculateDetailedTaxes = original;
+  });
+});
+
+function lppAt(ageRente: Array<[number, number]>): LppByAge[] {
+  return emptyPerson().lpp.map((row) => {
+    const hit = ageRente.find(([age]) => age === row.age);
+    return hit ? { ...row, capital: 100_000, rente: hit[1] } : row;
+  });
+}
+
+describe("colonne 100 % rente — part imposable = rentes affichées", () => {
+  const original = taxCalculationService.calculateDetailedTaxes.bind(
+    taxCalculationService,
+  );
+
+  it("deux assurés : AVS + LPP José + LPP Ana Paula, sans la rente d'un autre âge", async () => {
+    const jose = 21_144;
+    const ana = 8_892;
+    const avsJose = 20_000;
+    const avsAna = 24_057;
+    const extraAge65 = 2_220;
+    const input = emptyAnalyseInput();
+    input.etatCivil = "Marié(e)";
+    input.ageRetraiteSouhaite = 65;
+    input.taxLocationId = 170_000_000;
+    input.taxGroupId = 170_000_000;
+    input.comparerAvecRenteLpp = true;
+    input.renteHypotheses = [
+      {
+        id: "certaine-0",
+        type: "certaine",
+        compagnie: "Offre",
+        capitalPlace: 100_000,
+        dureeAnnees: 10,
+        renteGarantieAnnuelle: 12_000,
+        participationExcedentsAnnuelle: 0,
+      },
+    ];
+    input.client1 = {
+      ...emptyPerson("Monsieur"),
+      prenom: "José",
+      nom: "Test",
+      dateNaissance: "1961-06-01",
+      avsAnnuel: avsJose,
+      ageRetraitLppSouhaite: 64,
+      lppPctDeblocable: 50,
+      lpp: lppAt([
+        [64, jose],
+        [65, jose + extraAge65],
+      ]),
+    };
+    input.conjoint = {
+      ...emptyPerson("Madame"),
+      prenom: "Ana Paula",
+      nom: "Test",
+      dateNaissance: "1964-03-01",
+      avsAnnuel: avsAna,
+      ageRetraitLppSouhaite: 64,
+      lppPctDeblocable: 100,
+      lpp: lppAt([
+        [64, ana],
+        [65, ana],
+      ]),
+    };
+
+    const household = avsJose + avsAna + jose + ana;
+    const originalCapital = taxCalculationService.calculateCapitalTax.bind(
+      taxCalculationService,
+    );
+    taxCalculationService.calculateCapitalTax = async (params) => ({
+      age: params.ageAtPayment,
+      capital: params.capital,
+      gender: params.gender,
+      relationship: params.relationship,
+      taxGroupId: params.taxGroupId,
+      taxYear: params.taxYear ?? 2025,
+      taxCity: 0,
+      taxCanton: 0,
+      taxFed: 0,
+      taxChurch: 0,
+      impotTotal: 0,
+      request: {},
+      response: {},
+    });
+    taxCalculationService.calculateDetailedTaxes = async (params) => {
+      const sum = Math.round(params.revenue1 + params.revenue2);
+      const jointHousehold = params.foyer === "Couple1" && sum === household;
+      return {
+        foyer: params.foyer ?? "default",
+        age: params.age1,
+        taxLocationId: params.taxLocationId,
+        taxYear: params.taxYear ?? 2025,
+        revenu1: params.revenue1,
+        revenu2: params.revenue2,
+        fortune: params.fortune,
+        impotRevenuTotal: jointHousehold ? 3_633 : sum === household ? 3_809 : 2_570,
+        impotFederal: jointHousehold ? 3_633 : 3_809,
+        impotCanton: 0,
+        impotCommune: 0,
+        impotEglise: 0,
+        request: {},
+        response: {},
+      };
+    };
+
+    const results = await retirementAnalysisService.run(input);
+    const record: AnalyseRecord = {
+      id: "deux-lpp",
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:00:00.000Z",
+      clientId: null,
+      status: "calculee",
+      input,
+      results,
+    };
+    const lpp = results.renteHypotheses?.columns.find((col) => col.kind === "lpp");
+    assert.ok(lpp);
+    assert.equal(results.client1.renteLpp65, jose);
+    assert.equal(results.conjoint?.renteLpp65, ana);
+    const part = lpp.renteAvs + results.client1.renteLpp65 + (results.conjoint?.renteLpp65 ?? 0);
+    assert.equal(part, avsJose + avsAna + jose + ana);
+    assert.equal(lpp.revenuFiscalImposable, part);
+    assert.equal(lpp.revenuFiscalImposable, 74_093);
+    assert.equal(part + extraAge65, 76_313);
+    assert.notEqual(lpp.revenuFiscalImposable, 76_313);
+    assert.notEqual(lpp.revenuFiscalImposable, part + extraAge65);
+    assert.notEqual(
+      lpp.revenuFiscalImposable,
+      part + results.client1.renteLppResiduelle65,
+    );
+    assert.equal(lpp.participationExcedents, 0);
+    assert.equal(lpp.impotEstv, 3_633);
+    assert.notEqual(lpp.impotEstv, 3_809);
+    assert.equal(lpp.revenuNetApresImpot, part - 3_633);
+
+    const html = renderPrintableReportHtml(buildReportPayload(record));
+    const start = html.indexOf("COMPARATIF DES RENTES");
+    const card = html.slice(start);
+    assert.ok(card.includes("LPP – José"));
+    assert.ok(card.includes("LPP – Ana Paula"));
+    const partRow = (card.split("Part imposable")[1] || "").split("</tr>")[0];
+    assert.ok(partRow.includes(formatChf(part)));
+    const taxRow = (card.split("ICC / IFD")[1] || "").split("</tr>")[0];
+    const netRow = (card.split("Revenu net")[1] || "").split("</tr>")[0];
+    assert.ok(taxRow.includes(formatChf(3_633)));
+    assert.equal(taxRow.includes(formatChf(3_809)), false);
+    assert.ok(netRow.includes(formatChf(part - 3_633)));
+    assert.equal(partRow.includes(formatChf(part + extraAge65)), false);
+    const options = html.slice(html.indexOf("Comparaison des options de retraite"));
+    const optionsTax = (options.split("Impôts ICC")[1] || "").split("</tr>")[0];
+    assert.ok(optionsTax.includes(formatChf(3_633)));
+    assert.equal(optionsTax.includes(formatChf(3_809)), false);
+    const optionsNet = (options.split("Rente après impôt")[1] || "").split("</tr>")[0];
+    assert.ok(optionsNet.includes(formatChf(part - 3_633)));
+
+    const couple1 = results.incomeScenarios.find((s) => s.foyer === "Couple1");
+    assert.equal((couple1?.revenu1 ?? 0) + (couple1?.revenu2 ?? 0), 74_093);
+    assert.equal(couple1?.impot?.impotRevenuTotal, lpp.impotEstv);
+    taxCalculationService.calculateCapitalTax = originalCapital;
+  });
+
+  it("100 % retiré : rente résiduelle nulle, revenu capital = AVS seule", async () => {
+    const jose = 21_144;
+    const ana = 8_892;
+    const avsJose = 20_000;
+    const avsAna = 24_057;
+    const input = emptyAnalyseInput();
+    input.etatCivil = "Marié(e)";
+    input.ageRetraiteSouhaite = 65;
+    input.taxLocationId = 170_000_000;
+    input.taxGroupId = 170_000_000;
+    input.comparerAvecRenteLpp = true;
+    input.renteHypotheses = [
+      {
+        id: "certaine-0",
+        type: "certaine",
+        compagnie: "Offre",
+        capitalPlace: 582_004,
+        dureeAnnees: 10,
+        renteGarantieAnnuelle: 0,
+        participationExcedentsAnnuelle: 0,
+      },
+    ];
+    input.client1 = {
+      ...emptyPerson("Monsieur"),
+      prenom: "José",
+      nom: "Test",
+      dateNaissance: "1961-06-01",
+      avsAnnuel: avsJose,
+      ageRetraitLppSouhaite: 64,
+      lppPctDeblocable: 100,
+      lpp: lppAt([
+        [64, jose],
+        [65, jose + 2_220],
+      ]),
+    };
+    input.conjoint = {
+      ...emptyPerson("Madame"),
+      prenom: "Ana Paula",
+      nom: "Test",
+      dateNaissance: "1964-03-01",
+      avsAnnuel: avsAna,
+      lppPctDeblocable: 100,
+      lpp: lppAt([[65, ana]]),
+    };
+    const household = avsJose + avsAna + jose + ana;
+    const avsOnly = avsJose + avsAna;
+    const originalCapital = taxCalculationService.calculateCapitalTax.bind(
+      taxCalculationService,
+    );
+    taxCalculationService.calculateCapitalTax = async (params) => ({
+      age: params.ageAtPayment,
+      capital: params.capital,
+      gender: params.gender,
+      relationship: params.relationship,
+      taxGroupId: params.taxGroupId,
+      taxYear: params.taxYear ?? 2025,
+      taxCity: 0,
+      taxCanton: 0,
+      taxFed: 0,
+      taxChurch: 0,
+      impotTotal: 0,
+      request: {},
+      response: {},
+    });
+    taxCalculationService.calculateDetailedTaxes = async (params) => {
+      const sum = Math.round(params.revenue1 + params.revenue2);
+      return {
+        foyer: params.foyer ?? "default",
+        age: params.age1,
+        taxLocationId: params.taxLocationId,
+        taxYear: params.taxYear ?? 2025,
+        revenu1: params.revenue1,
+        revenu2: params.revenue2,
+        fortune: params.fortune,
+        impotRevenuTotal:
+          params.foyer === "Couple1" && sum === household
+            ? 3_633
+            : sum === household
+              ? 3_809
+              : 2_570,
+        impotFederal: 0,
+        impotCanton: 0,
+        impotCommune: 0,
+        impotEglise: 0,
+        request: {},
+        response: {},
+      };
+    };
+
+    const results = await retirementAnalysisService.run(input);
+    taxCalculationService.calculateCapitalTax = originalCapital;
+    assert.equal(results.client1.renteLppResiduelle65, 0);
+    assert.equal(results.conjoint?.renteLppResiduelle65, 0);
+    assert.equal(results.capitalPathFoyer?.renteResiduelleTotal, 0);
+    const couple2 = results.incomeScenarios.find((s) => s.foyer === "Couple2");
+    assert.equal((couple2?.revenu1 ?? 0) + (couple2?.revenu2 ?? 0), avsOnly);
+    assert.equal(couple2?.impot?.impotRevenuTotal, 2_570);
+    const couple1 = results.incomeScenarios.find((s) => s.foyer === "Couple1");
+    assert.equal((couple1?.revenu1 ?? 0) + (couple1?.revenu2 ?? 0), household);
+    assert.equal(results.lacune.revenuApres, household);
+
+    const record: AnalyseRecord = {
+      id: "capital-100",
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:00:00.000Z",
+      clientId: null,
+      status: "calculee",
+      input,
+      results,
+    };
+    const payload = buildReportPayload(record);
+    const lpp = results.renteHypotheses?.columns.find((col) => col.kind === "lpp");
+    assert.equal(lpp?.impotEstv, couple1?.impot?.impotRevenuTotal);
+    assert.equal(lpp?.impotEstv, 3_633);
+    assert.equal(lpp?.revenuNetApresImpot, household - 3_633);
+    assert.equal(payload.aggregates.renteApresImpot, household - 3_633);
+    assert.equal(payload.aggregates.renteNetteCheminCapital, avsOnly - 2_570);
+    const html = renderPrintableReportHtml(payload);
+    const page = html.slice(html.indexOf("Comparaison des options de retraite"));
+    const joseRow = (page.split("Rente LPP – José")[1] || "").split("</tr>")[0];
+    assert.ok(joseRow.includes(formatChf(jose)));
+    assert.ok(joseRow.includes("—"));
+    assert.equal(joseRow.includes(formatChf(jose + 2_220)), false);
+    const anaRow = (page.split("Rente LPP – Ana Paula")[1] || "").split("</tr>")[0];
+    assert.ok(anaRow.includes(formatChf(ana)));
+    assert.ok(anaRow.includes("—"));
   });
 
   after(() => {

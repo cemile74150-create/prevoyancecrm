@@ -26,8 +26,8 @@ export interface TimelineResult {
 
 /**
  * Frise du scénario coché « Inclure dans le rapport ».
- * Les retraits de capitaux suivent l'année prévue de ce scénario.
- * L'AVS reste à son année de début de perception.
+ * Le retrait LPP suit la date de l'onglet LPP.
+ * L'AVS suit l'anticipation choisie dans l'onglet AVS.
  */
 export class TimelineService {
   build(input: AnalyseInput, client1: PersonComputed, conjoint: PersonComputed | null): TimelineResult {
@@ -42,7 +42,7 @@ export class TimelineService {
     const who2 = personFirstName(c2, "Assuré 2");
 
     events.push({
-      year: yearOf(client1.dateDepart),
+      year: yearOf(client1.datePerceptionAvs || client1.dateDepart),
       label: `AVS – ${who1}`,
       amount: client1.avsAnnuel,
       kind: "avs",
@@ -51,7 +51,7 @@ export class TimelineService {
 
     if (conjoint && c2) {
       events.push({
-        year: yearOf(conjoint.dateDepart),
+        year: yearOf(conjoint.datePerceptionAvs || conjoint.dateDepart),
         label: `AVS – ${who2}`,
         amount: conjoint.avsAnnuel,
         kind: "avs",
@@ -143,11 +143,18 @@ function pushLpp(
   if (fate === "Capital" && !(capital > 0)) return;
   if (fate === "Rente" && !(rente > 0)) return;
   if (fate === "Capital + rente" && !(capital > 0) && !(rente > 0)) return;
-  const planned = findItem(items, "lpp", person);
-  const year =
-    fate === "Rente"
-      ? yearOf(computed.dateDepart)
-      : ((planned ? scenarioWithdrawalYear(planned) : null) ?? yearOf(computed.dateDepart));
+  const explicitLppAge =
+    personInput.ageRetraitLppSouhaite != null &&
+    Number.isFinite(Number(personInput.ageRetraitLppSouhaite));
+  const tabYear = yearOf(computed.dateFinActivite);
+  const legalYear = yearOf(computed.dateDepart);
+  const planned = items.find((item) => item.kind === "lpp" && item.titulaire === person);
+  const plannedYear = planned ? scenarioWithdrawalYear(planned) : null;
+  const year = explicitLppAge
+    ? (tabYear ?? legalYear)
+    : fate === "Rente"
+      ? (legalYear ?? tabYear)
+      : (plannedYear ?? tabYear ?? legalYear);
   events.push({
     year,
     label: `LPP – ${who} – ${fate}`,
@@ -184,14 +191,6 @@ function pushPillars(
       person,
     });
   }
-}
-
-function findItem(
-  items: WithdrawalPlanItem[],
-  kind: WithdrawalPlanItem["kind"],
-  titulaire: WithdrawalPlanItem["titulaire"],
-): WithdrawalPlanItem | undefined {
-  return items.find((item) => item.kind === kind && item.titulaire === titulaire);
 }
 
 function yearOf(iso: string | null | undefined): number | null {

@@ -32,8 +32,8 @@ export function buildDefaultWithdrawalItems(
     // Avoir total — le moteur applique le % une fois. Jamais le retirable.
     montantDisponible: client1.capitalLpp65,
     pctCapital: client1.lppPctDeblocable,
-    anneeRetraitPrevue: yearOf(client1.dateDepart),
-    anneePremierePossible: yearOf(client1.dateDepart),
+    anneeRetraitPrevue: yearOf(client1.dateFinActivite || client1.dateDepart),
+    anneePremierePossible: yearOf(client1.dateFinActivite || client1.dateDepart),
     anneeDernierePossible: null,
   });
 
@@ -46,8 +46,8 @@ export function buildDefaultWithdrawalItems(
       institution: "LPP",
       montantDisponible: conjoint.capitalLpp65,
       pctCapital: conjoint.lppPctDeblocable,
-      anneeRetraitPrevue: yearOf(conjoint.dateDepart),
-      anneePremierePossible: yearOf(conjoint.dateDepart),
+      anneeRetraitPrevue: yearOf(conjoint.dateFinActivite || conjoint.dateDepart),
+      anneePremierePossible: yearOf(conjoint.dateFinActivite || conjoint.dateDepart),
       anneeDernierePossible: null,
     });
   }

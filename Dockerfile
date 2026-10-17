@@ -1,5 +1,7 @@
 # Build React frontend
 FROM node:20-bookworm AS frontend-build
+# Sans ce fichier, le build s'arrête. Les autres dossiers du bureau ne l'ont pas.
+COPY .leosoft-release-source /tmp/.leosoft-release-source
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/yarn.lock ./
 RUN yarn install --frozen-lockfile || yarn install

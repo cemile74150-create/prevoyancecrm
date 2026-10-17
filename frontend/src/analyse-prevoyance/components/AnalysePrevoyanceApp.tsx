@@ -584,7 +584,7 @@ export function AnalysePrevoyanceApp({
         return (
           <Section
             title="3. AVS"
-            hint="Saisissez la rente mensuelle. L’annuelle s’affiche tout de suite : mensuelle × 13."
+            hint="Saisissez la rente mensuelle. L’annuelle s’affiche tout de suite : mensuelle × 13. L'anticipation choisie, 1 an ou 2 ans au maximum, fixe l'âge et la date du retrait AVS."
           >
             <AvsFields
               title="Assuré 1"

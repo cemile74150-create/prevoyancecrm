@@ -93,6 +93,7 @@ export function buildCalendarPreview(items: WithdrawalPlanItem[]): Array<{
       kind: it.kind,
       label: it.label,
       institution: it.institution || "",
+      sourceId: it.sourceId,
       montantRetire: montant,
     });
     byYear.set(year, list);
