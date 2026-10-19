@@ -1,0 +1,18 @@
+---
+description: Sauvegarder chaque fonctionnalité testée sur sa branche GitHub
+alwaysApply: true
+---
+
+# Sauvegarde GitHub de LeoSoft
+
+À la fin d'une fonctionnalité terminée et testée, dans `leosoft-saisie-preneur` ou dans le worktree de la branche concernée :
+
+1. Vérifier la branche avec `git rev-parse --abbrev-ref HEAD`.
+2. Lire GitHub `main` avec `git ls-remote origin refs/heads/main`.
+3. Lancer les tests de la fonctionnalité.
+4. Enregistrer avec `deploy\sauvegarder-branche.ps1 -Message "..."`, ou un commit puis `git push -u origin HEAD:refs/heads/<branche>`.
+5. Vérifier que `git rev-parse HEAD` est égal à `git ls-remote origin refs/heads/<branche>`.
+
+Interdit : push de `main`, `push --force`, fusion dans `main`, `railway up`, commit de `.env`, de clés ou de fichiers `conflicted`, et toute écriture dans le dossier `prevoyancecrm`.
+
+Le contrôle `deploy\verifier-avant-deploiement.ps1` ne déploie pas. Un déploiement attend un accord explicite.

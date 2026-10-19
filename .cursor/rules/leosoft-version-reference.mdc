@@ -8,9 +8,9 @@ alwaysApply: true
 Avant toute modification, vérifier dans l'ordre. Si une vérification échoue, arrêter et l'expliquer. Ne pas corriger en changeant de dossier.
 
 1. Le dossier de travail est celui de la branche issue de GitHub `main`. Le dossier `prevoyancecrm` en HEAD détaché et les anciennes copies (`leosoft-planification-ui`, `leosoft-planification-latest`, `C:\LeoSoftDeploy`) ne sont pas une source de déploiement.
-2. `git rev-parse HEAD` descend de GitHub `main` (`git merge-base --is-ancestor origin/main HEAD` après `git fetch`).
-3. `git status` est compris. Les fichiers d'analyse modifiés appartiennent à la branche de travail, pas à un autre historique.
-4. Ne pas lancer `railway up` à la main, ni depuis `prevoyancecrm` ou `prevoyancecrm-prod`. Après accord, le seul déploiement est `deploy\leosoft-up.ps1` dans ce dossier. Le script refuse si les 8 étapes ou `COMPARATIF DES RENTES` manquent.
+2. `git rev-parse HEAD` descend du commit actuel de GitHub `main`, lu avec `git ls-remote origin refs/heads/main`. La référence locale `origin/main` peut être périmée : ne pas s'y fier sans cette lecture distante.
+3. `git status` est compris. Les fichiers d'analyse modifiés appartiennent à la branche de travail, pas à un autre historique. Le dossier `prevoyancecrm` et ses fichiers non commités ne sont ni commités, ni poussés, ni réinitialisés.
+4. Ne pas lancer `railway up`. Le contrôle est `deploy\verifier-avant-deploiement.ps1` : il ne déploie pas. `deploy\leosoft-up.ps1` reste local, exige `-AutoriserDeploiement`, et n'est lancé qu'après accord explicite.
 5. Ne pas remplacer un composant entier (`AnalysePrevoyanceApp.tsx`, `LppFields.tsx`, `renderPrintableReportHtml.ts`, `AnalyseWizardNav.tsx`) par une copie d'une sauvegarde ou d'un ancien commit. Intégrer le comportement dans le fichier courant.
 6. Après la modification, ces éléments sont toujours là : `AnalyseWizardNav.tsx`, `analyseWizard.ts`, `planificationSaisie.ts`, les 8 étapes, le titre PDF `COMPARATIF DES RENTES`.
 7. Lancer les tests du moteur d'analyse concernés avant de proposer un commit.
