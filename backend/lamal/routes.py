@@ -28,7 +28,7 @@ from lamal.engine import (
     scan_premium_csv,
     valid_email,
     Catalog,
-    Offer,
+    offer_from_stored,
 )
 from lamal.people import (
     client_view,
@@ -111,24 +111,7 @@ def attach_lamal_routes(api_router: APIRouter, *, db, get_current_user, decrypt_
         async for row in cursor:
             if row.get("catchment_bfs") and bfs not in set(row["catchment_bfs"]):
                 continue
-            offer = Offer(
-                insurer_id=row["insurer_id"],
-                canton=row["canton"],
-                region=row["region"],
-                age_class=row["age_class"],
-                age_subgroup=row["age_subgroup"],
-                accident=row["accident"],
-                franchise_code=row["franchise_code"],
-                franchise_chf=int(row["franchise_chf"]),
-                ordinary_franchise=bool(row.get("ordinary_franchise")),
-                tarif_id=row["tarif_id"],
-                tariftyp=row["tariftyp"],
-                premium_month=__import__("decimal").Decimal(row["premium_month"]),
-                base_tariff=bool(row.get("base_tariff")),
-                tarif_name_de=row.get("tarif_name_de") or "",
-                tarif_name_fr=row.get("product_name") or "",
-                insurer_name=row.get("insurer_name") or "",
-            )
+            offer = offer_from_stored(row)
             offers[offer.key] = offer
         return offers
 

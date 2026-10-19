@@ -230,8 +230,35 @@ class Offer:
             "region": self.region,
             "canton": self.canton,
             "base_tariff": self.base_tariff,
+            "tariftyp": self.tariftyp,
+            "franchise_code": self.franchise_code,
             "participation_ceiling_chf": money_str(participation_ceiling(self.franchise_chf, self.age_class)),
         }
+
+
+def offer_from_stored(row: dict) -> Offer:
+    """Relit une prime enregistrée. L'import conserve model_type, pas seulement tariftyp."""
+    tariftyp = str(row.get("tariftyp") or row.get("model_type") or "").strip()
+    if not tariftyp:
+        raise KeyError("tariftyp")
+    return Offer(
+        insurer_id=str(row["insurer_id"]),
+        canton=row["canton"],
+        region=row["region"],
+        age_class=row["age_class"],
+        age_subgroup=row["age_subgroup"],
+        accident=row["accident"],
+        franchise_code=str(row.get("franchise_code") or ""),
+        franchise_chf=int(row["franchise_chf"]),
+        ordinary_franchise=bool(row.get("ordinary_franchise")),
+        tarif_id=str(row["tarif_id"]),
+        tariftyp=tariftyp,
+        premium_month=Decimal(str(row["premium_month"])),
+        base_tariff=bool(row.get("base_tariff")),
+        tarif_name_de=row.get("tarif_name_de") or "",
+        tarif_name_fr=row.get("product_name") or "",
+        insurer_name=row.get("insurer_name") or "",
+    )
 
 
 def _header_map(fieldnames: list[str]) -> dict[str, str]:

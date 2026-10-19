@@ -24,6 +24,7 @@ from lamal.engine import (  # noqa: E402
     Catalog,
     age_class_for_birth_year,
     commit_delivery,
+    offer_from_stored,
     quote,
     render_email,
     resolve_residence,
@@ -80,6 +81,17 @@ def test_lamal_permission_is_not_granted_to_other_admins():
     assert has_perm(owner, PERM_LAMAL_MODULE_ACCESS) is True
     assert permission_for_request("GET", "/api/lamal/dashboard") == PERM_LAMAL_MODULE_ACCESS
     assert permission_for_request("POST", "/api/lamal/emails/abc/send") == PERM_LAMAL_MODULE_ACCESS
+
+
+def test_stored_premium_is_read_from_model_type():
+    catalog = _catalog()
+    original = next(iter(catalog.offers.values()))
+    stored = original.public()
+    stored.pop("tariftyp")
+    restored = offer_from_stored(stored)
+    assert restored.tariftyp == original.tariftyp
+    assert restored.premium_month == original.premium_month
+    assert restored.franchise_chf == original.franchise_chf
 
 
 def test_age_classes_follow_tariff_year():
