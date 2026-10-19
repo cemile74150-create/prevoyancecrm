@@ -184,7 +184,7 @@ describe("HELFER — chaîne formulaire → payload → PDF (sans ESTV réel)", 
 
     const html = renderPrintableReportHtml(payload);
     assert.ok(html.includes("Avoir LPP total"));
-    assert.ok(html.includes("Capital LPP retirable"));
+    assert.ok(html.includes("Capital LPP disponible"));
     assert.ok(html.includes(formatChf(arianeAvoir)));
     assert.ok(html.includes(formatChf(arianeRetirable)));
     assert.equal(html.includes(formatChf(75_356)), false);

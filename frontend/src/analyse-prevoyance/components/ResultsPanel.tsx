@@ -78,7 +78,7 @@ export function ResultsPanel({ record }: Props) {
         </a>
       </div>
 
-      {/* Volet technique : alertes ESTV, TaxLocationID, KPIs, chemin capital, tableaux. Fermé par défaut. */}
+      {/* Volet technique : alertes fiscales, identifiant communal, indicateurs, chemin capital, tableaux. Fermé par défaut. */}
       <details className="group rounded-xl border bg-card text-card-foreground shadow-sm">
         <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium select-none [&::-webkit-details-marker]:hidden">
           <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />

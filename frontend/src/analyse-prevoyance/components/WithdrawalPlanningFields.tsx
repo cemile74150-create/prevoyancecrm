@@ -385,7 +385,7 @@ export function WithdrawalPlanningFields({
                     disabled={recalculatePending || scenarios.length === 0}
                   >
                     <Calculator className="size-4" />
-                    {recalculatePending ? "Calcul ESTV…" : "Recalculer la fiscalité"}
+                    {recalculatePending ? "Calcul de la fiscalité…" : "Recalculer la fiscalité"}
                   </Button>
                 )}
               </div>

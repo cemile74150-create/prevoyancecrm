@@ -249,7 +249,7 @@ describe("libellés du formulaire conseiller", () => {
     assert.match(source, /Âge de retraite souhaité \(début des rentes de retraite\)/);
     assert.match(source, /Êtes-vous sûr de vouloir supprimer cet élément \? Cette action ne pourra pas être annulée\./);
     assert.match(source, /← Analyses/);
-    assert.match(source, /LeoSoft · Effectuer une analyse/);
+    assert.match(source, /LeoSoft · Effectuer une planification/);
   });
 
   it("affiche mensuelle × 13, plus × 12", () => {

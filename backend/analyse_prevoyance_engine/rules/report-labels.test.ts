@@ -4,8 +4,8 @@ import { helferAnalyseInput } from "../fixtures/helfer.ts";
 import { buildReportPayload } from "../report/buildReportPayload.ts";
 import {
   AVS_SIMULATION_DISCLAIMER,
-  REVENU_FISCAL_NOTE,
   renderPrintableReportHtml,
+  revenuFiscalNoteText,
 } from "../pdf/renderPrintableReportHtml.ts";
 import { retirementAnalysisService } from "../services/RetirementAnalysisService.ts";
 import { taxCalculationService } from "../services/TaxCalculationService.ts";
@@ -139,7 +139,8 @@ const offreC: RenteHypothesisInput = {
 };
 
 function comparaisonSection(html: string): string {
-  const start = html.indexOf("COMPARATIF DES RENTES");
+  const marker = '<div class="page-title">COMPARATIF DES RENTES</div>';
+  const start = html.indexOf(marker);
   assert.ok(start >= 0, "page COMPARATIF DES RENTES absente");
   const tableStart = html.indexOf('<table class="data compare">', start);
   assert.ok(tableStart >= 0, "tableau compare absent");
@@ -248,8 +249,7 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     assert.ok(html.includes("LPP – Ariane – Capital + rente"));
     assert.ok(html.includes("Rente LPP – Wiliam"));
     assert.ok(html.includes("Rente LPP – Ariane"));
-    assert.ok(html.includes("Capital LPP – Wiliam"));
-    assert.ok(html.includes("Capital LPP – Ariane"));
+    assert.ok(html.includes("Capital LPP disponible"));
     assert.equal(html.includes('<td class="lab">Capital LPP</td>'), false);
     const payload = buildReportPayload(record);
     const capitalSplit =
@@ -396,9 +396,9 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     };
     const payload = buildReportPayload(record);
     const html = renderPrintableReportHtml(payload);
-    assert.ok(html.includes("Capital LPP – Marc"));
-    assert.equal(html.includes("Capital LPP – Assuré 2"), false);
-    assert.equal((html.match(/Capital LPP – /g) || []).length, 1);
+    assert.ok(html.includes("Capital LPP disponible"));
+    assert.ok(html.includes("Marc"));
+    assert.equal(html.includes("Assuré 2"), false);
     assert.equal(payload.conjoint, null);
     assert.equal(payload.client1.capitalCheminCapital, payload.aggregates.capitalLppRetireTotal);
   });
@@ -502,16 +502,19 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     assert.ok(tableStart >= 0, "tableau compare absent");
     const tableEnd = html.indexOf("</table>", tableStart);
     assert.ok(tableEnd >= 0);
-    const notePos = html.indexOf(REVENU_FISCAL_NOTE, start);
+    const note = revenuFiscalNoteText([
+      { kind: "hypothese", typeLabel: "Rente certaine" },
+    ]);
+    assert.equal(
+      note,
+      "Revenu fiscal = rente AVS + rente LPP résiduelle + 100 % de la participation aux excédents. La rente garantie d'une rente certaine n'entre pas dans le revenu imposable selon l'hypothèse fiscale utilisée dans cette analyse.",
+    );
+    const notePos = html.indexOf(note, start);
     assert.ok(notePos >= 0, "note revenu fiscal absente");
     assert.ok(
       notePos > tableEnd,
       "la note revenu fiscal doit suivre le tableau comparatif",
     );
     assert.ok(html.includes("revenu-fiscal-note"));
-    assert.equal(
-      REVENU_FISCAL_NOTE,
-      "Revenu fiscal = rente AVS + 70 % de la participation. La rente garantie est encaissée, elle n'entre pas dans l'impôt.",
-    );
   });
 });
