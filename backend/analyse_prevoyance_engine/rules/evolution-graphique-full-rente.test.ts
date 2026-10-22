@@ -16,17 +16,24 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-/** Même prorata que PostRetirementEvolutionService.personYearIncome. */
+/** Même prorata que PostRetirementEvolutionService : le mois de la date est encore du salaire. */
 function personYearIncome(
   year: number,
   departIso: string,
   salaire: number,
   rente: number,
 ): number {
-  const [y, m] = departIso.split("-").map(Number);
+  const [y, m, d] = departIso.split("-").map(Number);
   if (year < y) return salaire;
   if (year > y) return rente;
-  return round2((salaire * ((m || 1) - 1)) / 12 + (rente * (13 - (m || 1))) / 12);
+  const month = m || 1;
+  const day = d || 1;
+  const daysInMonth = new Date(y, month, 0).getDate();
+  const salaryMonths = Math.min(
+    12,
+    month + (day <= 1 ? 0 : (day - 1) / daysInMonth),
+  );
+  return round2((salaire * salaryMonths + rente * (12 - salaryMonths)) / 12);
 }
 
 function axisChf(n: number): string {
@@ -129,13 +136,13 @@ describe("graphique évolution Helfer — full rente LPP", () => {
     const reference2027 = round2(
       personYearIncome(
         2027,
-        results.client1.dateDepart,
+        results.client1.dateFinActivite || results.client1.dateDepart,
         input.salaireClient1,
         results.client1.renteTotale65,
       ) +
         personYearIncome(
           2027,
-          conjoint.dateDepart,
+          conjoint.dateFinActivite || conjoint.dateDepart,
           input.salaireConjoint,
           conjoint.renteTotale65,
         ),
@@ -175,5 +182,73 @@ describe("graphique évolution Helfer — full rente LPP", () => {
     const indicateurs = html.slice(chartEnd);
     assert.match(indicateurs, /Revenu brut du scénario 100 % rente/);
     assert.ok(indicateurs.includes(axisChf(VERT)));
+  });
+
+  it("proratise chaque fin d'activité : février 2028 n'est pas l'année de rente pleine", async () => {
+    const input = helferAnalyseInput();
+    input.ageRetraiteSouhaite = 65;
+    const results = await retirementAnalysisService.run(input);
+    const conjoint = results.conjoint;
+    assert.ok(conjoint);
+    assert.equal(results.client1.dateFinActivite, "2027-01-01");
+    assert.equal(conjoint.dateFinActivite, "2028-02-01");
+    assert.equal(conjoint.dateDepart, "2027-11-01");
+    assert.notEqual(conjoint.dateFinActivite, conjoint.dateDepart);
+
+    const evolution = results.evolution;
+    assert.ok(evolution);
+    const row = (year: number) => evolution.rows.find((item) => item.year === year);
+    const y2026 = row(2026);
+    const y2027 = row(2027);
+    const y2028 = row(2028);
+    const y2029 = row(2029);
+    assert.ok(y2026 && y2027 && y2028 && y2029);
+
+    assert.equal(y2026.revenu, SALAIRE);
+    assert.equal(y2026.phase, "salaire");
+
+    const williamRente = results.client1.renteTotale65;
+    const arianeRente = conjoint.renteTotale65;
+    const williamSalaire = input.salaireClient1;
+    const arianeSalaire = input.salaireConjoint;
+    const william2027 = round2((williamSalaire * 1) / 12 + (williamRente * 11) / 12);
+    assert.equal(y2027.revenu, round2(william2027 + arianeSalaire));
+    assert.equal(y2027.phase, "transition");
+    assert.notEqual(y2027.revenu, round2(williamRente + arianeRente));
+    const gap2027 = round2(SALAIRE - y2027.revenu);
+    assert.notEqual(gap2027, ROUGE);
+
+    const ariane2028 = round2((arianeSalaire * 2) / 12 + (arianeRente * 10) / 12);
+    const expected2028 = round2(williamRente + ariane2028);
+    assert.equal(y2028.revenu, expected2028);
+    assert.equal(y2028.phase, "transition");
+    assert.equal(y2029.revenu, VERT);
+    assert.equal(y2029.phase, "rente");
+    assert.notEqual(y2028.revenu, y2029.revenu);
+    assert.notEqual(round2(SALAIRE - y2028.revenu), round2(SALAIRE - y2029.revenu));
+    assert.ok(y2028.revenu > y2029.revenu);
+    assert.ok(y2028.revenu < y2027.revenu);
+
+    const record: AnalyseRecord = {
+      id: "helfer-fin-activite",
+      createdAt: "2026-10-19T00:00:00.000Z",
+      updatedAt: "2026-10-19T00:00:00.000Z",
+      clientId: null,
+      status: "calculee",
+      input,
+      results,
+    };
+    const html = renderPrintableReportHtml(buildReportPayload(record));
+    const chartStart = html.indexOf("ÉVOLUTION DU REVENU DE RETRAITE DE RÉFÉRENCE");
+    const chartEnd = html.indexOf("Indicateurs du scénario 100 % rente");
+    assert.ok(chartStart >= 0 && chartEnd > chartStart);
+    const bars = chartBars(html.slice(chartStart, chartEnd));
+    assert.equal(bars.get(2027)?.vert, axisChf(y2027.revenu));
+    assert.equal(bars.get(2027)?.rouge, axisChf(SALAIRE - y2027.revenu));
+    assert.equal(bars.get(2028)?.vert, axisChf(y2028.revenu));
+    assert.equal(bars.get(2028)?.rouge, axisChf(SALAIRE - y2028.revenu));
+    assert.equal(bars.get(2029)?.vert, axisChf(VERT));
+    assert.notEqual(bars.get(2028)?.vert, bars.get(2029)?.vert);
+    assert.ok(html.includes("Indicateurs du scénario 100 % rente"));
   });
 });

@@ -16,6 +16,14 @@ interface Props {
   disabled?: boolean;
 }
 
+/** Identifiant de localité déjà enregistré. 0, vide ou non numérique = non résolu. */
+function resolvedTaxLocationId(id: unknown): number | null {
+  if (id == null || id === "") return null;
+  const n = Number(id);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 export function CommuneSearch({
   value,
   taxLocationId,
@@ -71,6 +79,9 @@ export function CommuneSearch({
     timer.current = setTimeout(() => search(v), 350);
   }
 
+  const locationId = resolvedTaxLocationId(taxLocationId);
+  const communeSaisie = query.trim().length > 0;
+
   function select(loc: TaxLocation) {
     const label = [loc.ZipCode, loc.City || loc.BfsName]
       .filter(Boolean)
@@ -102,10 +113,22 @@ export function CommuneSearch({
           <Loader2 className="absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
         )}
       </div>
-      {taxLocationId != null && (
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      {locationId != null && (
+        <p
+          className="flex items-center gap-1.5 text-sm font-medium text-emerald-800"
+          data-testid="commune-tax-location-id"
+        >
           <MapPin className="size-3.5" />
-          TaxLocationID / TaxGroupID : {taxLocationId}
+          Localité identifiée · TaxLocationID {locationId}
+        </p>
+      )}
+      {locationId == null && communeSaisie && (
+        <p
+          className="text-sm font-medium text-destructive"
+          role="alert"
+          data-testid="commune-localite-non-identifiee"
+        >
+          Localité non identifiée. Choisissez la commune dans la liste pour que le calcul fiscal parte.
         </p>
       )}
       {error && <p className="text-xs text-destructive">{error}</p>}

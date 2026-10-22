@@ -1,4 +1,4 @@
-"""Rappels auto : checklist Envoyé→Reçu après 1,5 mois ; LPP vérif. à +1 mois."""
+"""Rappels auto : LPP à +1 mois, AVS à +2 mois, le reste de la checklist à 45 jours."""
 from __future__ import annotations
 
 import calendar
@@ -9,8 +9,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-FOLLOWUP_DAYS = 45  # 1 mois et demi (checklist / documents)
-LPP_VERIFY_MONTHS = 1  # rappel LPP à J+1 mois calendaire
+FOLLOWUP_DAYS = 45  # 1 mois et demi (autres documents de la checklist)
+LPP_VERIFY_MONTHS = 1  # recherche LPP et décompte : rappel à +1 mois
+AVS_FOLLOWUP_MONTHS = 2  # recherche / calcul AVS : rappel à +2 mois
+CHECKLIST_FOLLOWUP_MONTHS = {
+    "Demande LPP": LPP_VERIFY_MONTHS,
+    "Procuration": LPP_VERIFY_MONTHS,
+    "Formulaire Recherche LPP": LPP_VERIFY_MONTHS,
+    "Formulaire AVS": AVS_FOLLOWUP_MONTHS,
+}
 RAPPEL_TYPE = "demande_envoi_relance"
 RAPPEL_TYPE_LPP_VERIFY = "lpp_caisse_verify"
 SOURCE_CHECKLIST = "checklist"
@@ -53,10 +60,14 @@ def due_date_from_sent(sent_at: Any) -> Optional[date]:
 
 
 def due_date_lpp_verify(sent_at: Any) -> Optional[date]:
+    return due_date_after_months(sent_at, LPP_VERIFY_MONTHS)
+
+
+def due_date_after_months(sent_at: Any, months: int) -> Optional[date]:
     d = _parse_date(sent_at)
     if not d:
         return None
-    return add_calendar_months(d, LPP_VERIFY_MONTHS)
+    return add_calendar_months(d, months)
 
 
 def is_followup_due(sent_at: Any, *, today: Optional[date] = None) -> bool:
@@ -202,18 +213,27 @@ def build_rappel_payload(
     caisse_label: Optional[str],
     sent_at: Any,
     dossier_id: Optional[str] = None,
+    followup_months: Optional[int] = None,
 ) -> dict:
-    due = due_date_from_sent(sent_at)
+    if followup_months:
+        due = due_date_after_months(sent_at, followup_months)
+        delay_line = f"Aucune réponse (« Reçu ») après {followup_months} mois."
+    else:
+        due = due_date_from_sent(sent_at)
+        delay_line = f"Aucune réponse (« Reçu ») après {FOLLOWUP_DAYS} jours (1 mois et demi)."
     due_s = due.isoformat() if due else datetime.now(timezone.utc).date().isoformat()
     sent_s = (_parse_date(sent_at) or datetime.now(timezone.utc).date()).isoformat()
     caisse = (caisse_label or demande_label or "—").strip()
-    titre = f"Réponse toujours pas reçue — relancer ({caisse})"
+    if followup_months:
+        titre = f"Réponse non reçue — contacter la caisse ({caisse})"
+    else:
+        titre = f"Réponse toujours pas reçue — relancer ({caisse})"
     desc_lines = [
         f"Demande : {demande_label}",
         f"Caisse / organisme : {caisse}",
         f"Envoyé le : {sent_s}",
-        f"Aucune réponse (« Reçu ») après {FOLLOWUP_DAYS} jours (1 mois et demi).",
-        "Relancer la caisse / l'organisme.",
+        delay_line,
+        "Réponse non reçue. Contacter la caisse.",
     ]
     return {
         "id": str(uuid.uuid4()),
@@ -263,7 +283,7 @@ def build_lpp_verify_rappel_payload(
     due_s = due.isoformat() if due else datetime.now(timezone.utc).date().isoformat()
     caisse = (caisse_label or "—").strip()
     who = (person or "le client").strip() or "le client"
-    titre = f"Vérifier si nous avons reçu le courrier LPP de {caisse} pour {who}."
+    titre = f"Réponse non reçue — contacter la caisse ({caisse}, {who})"
     return {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -333,12 +353,17 @@ async def ensure_relance_rappel(
     sent_at: Any,
     received: bool,
     dossier_id: Optional[str] = None,
+    followup_months: Optional[int] = None,
 ) -> Optional[dict]:
-    """Crée un rappel checklist si dû, ou résout s'il est reçu. Idempotent."""
+    """Crée un rappel checklist si dû, ou résout s'il est reçu. Idempotent.
+
+    followup_months : crée tout de suite le rappel, daté à +N mois (LPP 1, AVS 2).
+    Sans ce paramètre, le rappel n'est créé qu'une fois les 45 jours écoulés.
+    """
     if received or not sent_at:
         await resolve_open_relance(db, user_id=user_id, source_key=source_key)
         return None
-    if not is_followup_due(sent_at):
+    if not followup_months and not is_followup_due(sent_at):
         return None
 
     existing = await db.demandes.find_one(
@@ -361,6 +386,7 @@ async def ensure_relance_rappel(
         caisse_label=caisse_label,
         sent_at=sent_at,
         dossier_id=dossier_id,
+        followup_months=followup_months,
     )
     await db.demandes.insert_one(doc)
     doc.pop("_id", None)
@@ -423,7 +449,7 @@ async def ensure_lpp_verify_rappel(
 
 
 async def sync_client_relances(db, *, user_id: str, client: dict, dossier_id: Optional[str] = None) -> dict:
-    """Synchronise rappels checklist (45 j) + LPP (immédiat, date +1 mois)."""
+    """Synchronise rappels : LPP +1 mois, AVS +2 mois, autres documents à 45 jours."""
     created = 0
     resolved = 0
     cid = client.get("id")
@@ -449,10 +475,11 @@ async def sync_client_relances(db, *, user_id: str, client: dict, dossier_id: Op
                 },
                 {"_id": 0, "id": 1},
             )
+            months = CHECKLIST_FOLLOWUP_MONTHS.get(str(name))
             if received or not sent_at:
                 resolved += await resolve_open_relance(db, user_id=user_id, source_key=sk)
                 continue
-            if not is_followup_due(sent_at) or existing:
+            if existing or (not months and not is_followup_due(sent_at)):
                 continue
             doc = await ensure_relance_rappel(
                 db,
@@ -464,6 +491,7 @@ async def sync_client_relances(db, *, user_id: str, client: dict, dossier_id: Op
                 sent_at=sent_at,
                 received=False,
                 dossier_id=dossier_id,
+                followup_months=months,
             )
             if doc:
                 created += 1

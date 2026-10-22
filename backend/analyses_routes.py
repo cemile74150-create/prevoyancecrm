@@ -649,3 +649,266 @@ def attach_analyses_routes(
         doc = await _get_owned(analyse_id, user)
         await db.analyses.delete_one({"id": analyse_id, "user_id": user.user_id})
         return {"ok": True, "id": doc.get("id"), "clientId": doc.get("client_id")}
+
+    async def _get_comparatif(comparatif_id: str, user: User) -> dict:
+        doc = await db.comparatifs_rentes.find_one(
+            {"id": comparatif_id, "user_id": user.user_id},
+            {"_id": 0},
+        )
+        if not doc:
+            raise HTTPException(status_code=404, detail="Comparatif introuvable")
+        if doc.get("client_id"):
+            await _client_or_403(doc["client_id"], user)
+        return doc
+
+    @api_router.get("/comparatifs-rentes")
+    async def list_comparatifs(user: User = Depends(get_current_user)):
+        rows = await db.comparatifs_rentes.find(
+            {"user_id": user.user_id},
+            {"_id": 0},
+        ).sort("updated_at", -1).to_list(200)
+        visible = []
+        for row in rows:
+            if row.get("client_id"):
+                try:
+                    await _client_or_403(row["client_id"], user)
+                except HTTPException:
+                    continue
+            item = _summary(row)
+            item["documentId"] = row.get("document_id")
+            visible.append(item)
+        return {"items": visible}
+
+    @api_router.post("/comparatifs-rentes")
+    async def create_comparatif(payload: AnalyseCreate, user: User = Depends(get_current_user)):
+        client = None
+        spouse = None
+        if payload.clientId:
+            client = await _client_or_403(payload.clientId, user)
+            spouse_id = client.get("linked_spouse_id")
+            if spouse_id:
+                try:
+                    spouse = await _client_or_403(spouse_id, user)
+                except HTTPException:
+                    spouse = None
+            existing = await db.comparatifs_rentes.find_one(
+                {
+                    "user_id": user.user_id,
+                    "client_id": payload.clientId,
+                    "status": {"$ne": "annulee"},
+                },
+                {"_id": 0, "id": 1},
+            )
+            if existing:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "COMPARATIF_EXISTS",
+                        "message": "Un comparatif de rentes existe déjà pour ce client.",
+                        "comparatifId": existing.get("id"),
+                    },
+                )
+        if payload.input:
+            data = payload.input
+        elif client:
+            from analyses_prefill import is_married
+            spouse_arg = spouse if spouse and is_married(client) else None
+            data = prefill_from_clients(client, spouse_arg, conseiller_nom=user.name or "")
+        else:
+            data = prefill_from_clients({}, conseiller_nom=user.name or "")
+        data = lock_conseiller_nom(_with_crm_prenoms(data, client, spouse), None, user)
+        if isinstance(data, dict):
+            fiscal = await _fiscal_config()
+            data = dict(data)
+            data["taxYear"] = int(fiscal["referenceYear"])
+            data["comparerAvecRenteLpp"] = False
+        now = _now()
+        doc = {
+            "id": str(uuid.uuid4()),
+            "user_id": user.user_id,
+            "created_by": user.account_id,
+            "client_id": payload.clientId,
+            "status": "brouillon",
+            "input": data,
+            "results": None,
+            "version": 1,
+            "versions": [],
+            "created_at": now,
+            "updated_at": now,
+        }
+        await db.comparatifs_rentes.insert_one(doc)
+        doc.pop("_id", None)
+        return _public(doc)
+
+    @api_router.get("/comparatifs-rentes/{comparatif_id}")
+    async def get_comparatif(comparatif_id: str, user: User = Depends(get_current_user)):
+        doc = await _get_comparatif(comparatif_id, user)
+        client, spouse = await _crm_cards(doc, user)
+        return refresh_report_display_prenoms(_public(doc), client, spouse)
+
+    @api_router.put("/comparatifs-rentes/{comparatif_id}")
+    async def save_comparatif(
+        comparatif_id: str,
+        payload: AnalyseUpdate,
+        user: User = Depends(get_current_user),
+    ):
+        doc = await _get_comparatif(comparatif_id, user)
+        client, spouse = await _crm_cards(doc, user)
+        saved_input = payload.input if payload.input is not None else doc.get("input")
+        saved_input = lock_conseiller_nom(saved_input, doc.get("input"), user)
+        saved_input = _with_crm_prenoms(saved_input, client, spouse)
+        if isinstance(saved_input, dict):
+            saved_input = dict(saved_input)
+            saved_input["comparerAvecRenteLpp"] = False
+        updated = {
+            "input": saved_input,
+            "results": None,
+            "status": "brouillon",
+            "updated_at": _now(),
+        }
+        await db.comparatifs_rentes.update_one({"id": comparatif_id}, {"$set": updated})
+        doc.update(updated)
+        return refresh_report_display_prenoms(_public(doc), client, spouse)
+
+    @api_router.post("/comparatifs-rentes/{comparatif_id}/calculer")
+    async def calculate_comparatif(
+        comparatif_id: str,
+        payload: AnalyseUpdate,
+        user: User = Depends(get_current_user),
+    ):
+        doc = await _get_comparatif(comparatif_id, user)
+        data = payload.input if payload.input is not None else doc.get("input")
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=400, detail="input requis")
+        if not data.get("taxLocationId"):
+            raise HTTPException(status_code=400, detail="Sélectionnez une commune fiscale.")
+        offres = data.get("renteHypotheses") or []
+        if not isinstance(offres, list) or not offres:
+            raise HTTPException(status_code=400, detail="Ajoutez au moins une offre de rente.")
+        client, spouse = await _crm_cards(doc, user)
+        data = lock_conseiller_nom(
+            _with_crm_prenoms(data, client, spouse),
+            doc.get("input"),
+            user,
+        )
+        data = dict(data)
+        data["comparerAvecRenteLpp"] = False
+        raw = run_engine("comparatif-rente", {"input": data}, timeout=180)
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=502, detail="Résultat de calcul illisible") from exc
+        results = parsed.get("results")
+        updated = {
+            "input": data,
+            "results": results,
+            "status": "calculee",
+            "updated_at": _now(),
+        }
+        await db.comparatifs_rentes.update_one({"id": comparatif_id}, {"$set": updated})
+        doc.update(updated)
+        return refresh_report_display_prenoms(_public(doc), client, spouse)
+
+    @api_router.get("/comparatifs-rentes/{comparatif_id}/pdf")
+    async def pdf_comparatif(comparatif_id: str, user: User = Depends(get_current_user)):
+        doc = await _get_comparatif(comparatif_id, user)
+        results = doc.get("results") or {}
+        if not results.get("columns"):
+            raise HTTPException(status_code=400, detail="Calculez le comparatif avant le PDF.")
+        person = ((doc.get("input") or {}).get("client1") or {})
+        label = f"{person.get('prenom') or ''} {person.get('nom') or ''}".strip()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "comparatif-offres.pdf")
+            run_engine(
+                "comparatif-rente-pdf",
+                {"results": results, "clientLabel": label},
+                pdf_path=path,
+                timeout=120,
+            )
+            data = Path(path).read_bytes()
+        name = f"Comparatif_rentes_{person.get('nom') or 'client'}.pdf"
+        return Response(
+            content=data,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        )
+
+    async def _pdf_comparatif_bytes(doc: dict) -> tuple[bytes, str]:
+        results = doc.get("results") or {}
+        if not results.get("columns"):
+            raise HTTPException(status_code=400, detail="Calculez le comparatif avant le PDF.")
+        person = ((doc.get("input") or {}).get("client1") or {})
+        label = f"{person.get('prenom') or ''} {person.get('nom') or ''}".strip()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "comparatif-offres.pdf")
+            run_engine(
+                "comparatif-rente-pdf",
+                {"results": results, "clientLabel": label},
+                pdf_path=path,
+                timeout=120,
+            )
+            data = Path(path).read_bytes()
+        filename = (
+            f"Comparatif_rentes_{person.get('nom') or 'client'}_{person.get('prenom') or ''}.pdf"
+        ).replace(" ", "_")
+        return data, filename
+
+    @api_router.post("/comparatifs-rentes/{comparatif_id}/enregistrer-dossier")
+    async def save_comparatif_into_client_folder(
+        comparatif_id: str,
+        user: User = Depends(get_current_user),
+    ):
+        doc = await _get_comparatif(comparatif_id, user)
+        client_id = doc.get("client_id")
+        if not client_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Ce comparatif n'est pas lié à un client.",
+            )
+        client = await _client_or_403(client_id, user)
+        data, filename = await _pdf_comparatif_bytes(doc)
+        stored = await store_document(
+            client=client,
+            client_id=client_id,
+            user=user,
+            filename=filename,
+            data=data,
+            content_type="application/pdf",
+            category="Analyse de prévoyance",
+            checklist_item="Analyse de prévoyance",
+            title="Comparatif des rentes",
+        )
+        document_id = stored.get("id")
+        if document_id:
+            await db.documents.update_one(
+                {"id": document_id, "user_id": user.user_id},
+                {"$set": {"source_comparatif_id": comparatif_id}},
+            )
+        await db.comparatifs_rentes.update_one(
+            {"id": comparatif_id, "user_id": user.user_id},
+            {
+                "$set": {"document_id": document_id, "updated_at": _now()},
+                "$addToSet": {"document_ids": document_id},
+            },
+        )
+        return {"ok": True, "documentId": document_id, "clientId": client_id}
+
+    async def _retire_documents_comparatif(comparatif_id: str, doc: dict, user: User) -> None:
+        ids = [str(item) for item in (doc.get("document_ids") or []) if item]
+        latest = doc.get("document_id")
+        if latest and str(latest) not in ids:
+            ids.append(str(latest))
+        clauses = [{"source_comparatif_id": comparatif_id}]
+        if ids:
+            clauses.append({"id": {"$in": ids}})
+        await db.documents.update_many(
+            {"user_id": user.user_id, "is_deleted": False, "$or": clauses},
+            {"$set": {"is_deleted": True}},
+        )
+
+    @api_router.delete("/comparatifs-rentes/{comparatif_id}")
+    async def delete_comparatif(comparatif_id: str, user: User = Depends(get_current_user)):
+        doc = await _get_comparatif(comparatif_id, user)
+        await _retire_documents_comparatif(comparatif_id, doc, user)
+        await db.comparatifs_rentes.delete_one({"id": comparatif_id, "user_id": user.user_id})
+        return {"ok": True, "id": doc.get("id"), "clientId": doc.get("client_id")}

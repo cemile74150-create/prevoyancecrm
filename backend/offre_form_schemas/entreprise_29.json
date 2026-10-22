@@ -562,7 +562,7 @@
       "name": "input_79",
       "label": "Diplôme",
       "type": "text",
-      "required": true,
+      "required": false,
       "options": [],
       "page": 2
     },

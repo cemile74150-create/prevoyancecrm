@@ -23,6 +23,8 @@ export interface EvolutionResult {
  *
  * Le graphique du rapport additionne l'AVS et la rente LPP complète
  * des deux assurés, avant tout retrait en capital.
+ * Chaque assuré passe du salaire à cette rente à sa propre date de fin
+ * d'activité, pas au 1er janvier de l'année ni à la date AVS de l'autre.
  * Le pourcentage déblocable reste utilisé par la planification, les offres
  * et les comparaisons, pas par ces barres.
  */
@@ -41,10 +43,10 @@ export class PostRetirementEvolutionService {
     const salaireReference = round2(salaire1 + salaire2);
     const renteReference = round2(rente1 + rente2);
 
-    const dep1 = parseIso(client1.dateDepart);
+    const dep1 = activityEnd(client1);
     const dep2 =
       conjoint && input.etatCivil === "Marié(e)"
-        ? parseIso(conjoint.dateDepart)
+        ? activityEnd(conjoint)
         : null;
 
     const startYear =
@@ -65,12 +67,7 @@ export class PostRetirementEvolutionService {
       const lacune90 = pureSalaire
         ? 0
         : round2(revenu - salaireReference * 0.9);
-      const phase =
-        part1.phase === "transition" || part2.phase === "transition"
-          ? "transition"
-          : part1.phase === "salaire" || part2.phase === "salaire"
-            ? "salaire"
-            : "rente";
+      const phase = dep2 ? combinePhase(part1.phase, part2.phase) : part1.phase;
       rows.push({ year, revenu, lacune90, phase });
     }
 
@@ -78,27 +75,55 @@ export class PostRetirementEvolutionService {
       cibleRemplacement: 0.9,
       salaireReference,
       renteReference,
-      dateDepart1: client1.dateDepart,
-      dateDepart2: conjoint?.dateDepart ?? null,
+      dateDepart1: client1.dateFinActivite || client1.dateDepart,
+      dateDepart2: conjoint
+        ? conjoint.dateFinActivite || conjoint.dateDepart
+        : null,
       rows,
     };
   }
 }
 
+type YearPhase = "salaire" | "transition" | "rente";
+
+/**
+ * Fin d'activité réelle (jour, mois, année). Le départ AVS légal
+ * ne remplace cette date que lorsqu'elle n'a pas été calculée.
+ */
+function activityEnd(person: PersonComputed): Date {
+  return parseIso(person.dateFinActivite || person.dateDepart);
+}
+
+function combinePhase(a: YearPhase, b: YearPhase): YearPhase {
+  return a === b ? a : "transition";
+}
+
+/**
+ * Salaire pendant les mois jusqu'à la fin d'activité comprise.
+ * La rente (AVS + LPP) commence le mois suivant, pas le 1er janvier.
+ * 1er février : janvier et février au salaire, mars à décembre en rente.
+ * 1er janvier : janvier au salaire, février à décembre en rente.
+ * Après le 1er du mois, les jours restants du mois suivant sont encore
+ * du salaire, au prorata du jour.
+ */
 function personYearIncome(
   year: number,
   depart: Date,
   salaire: number,
   rente: number,
-): { revenu: number; phase: "salaire" | "transition" | "rente" } {
+): { revenu: number; phase: YearPhase } {
   const yDep = depart.getFullYear();
   const mDep = depart.getMonth() + 1; // 1-12
+  const dDep = depart.getDate() || 1;
   if (year < yDep) return { revenu: salaire, phase: "salaire" };
   if (year > yDep) return { revenu: rente, phase: "rente" };
-  // Année de transition : prorata Excel
-  // salaire*(MONTH-1)/12 + rente*(13-MONTH)/12
-  const revenu =
-    (salaire * (mDep - 1)) / 12 + (rente * (13 - mDep)) / 12;
+  const daysInMonth = new Date(yDep, mDep, 0).getDate();
+  const day = Math.min(Math.max(dDep, 1), daysInMonth);
+  const salaryMonths = Math.min(12, mDep + (day <= 1 ? 0 : (day - 1) / daysInMonth));
+  const pensionMonths = 12 - salaryMonths;
+  if (salaryMonths <= 0) return { revenu: round2(rente), phase: "rente" };
+  if (pensionMonths <= 0) return { revenu: round2(salaire), phase: "salaire" };
+  const revenu = (salaire * salaryMonths + rente * pensionMonths) / 12;
   return { revenu: round2(revenu), phase: "transition" };
 }
 

@@ -12,17 +12,31 @@ import { WITHDRAWAL_COMPARE_WARNING } from "./types";
  * « 1re possible » si elle est saisie, sinon l'année prévue
  * pour relire un scénario déjà enregistré.
  */
+function finiteYear(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(Number(value))) return null;
+  return Number(value);
+}
+
 export function scenarioWithdrawalYear(item: {
   anneePremierePossible?: number | null;
   anneeRetraitPrevue?: number | null;
 }): number | null {
-  if (item.anneePremierePossible != null && Number.isFinite(Number(item.anneePremierePossible))) {
-    return Number(item.anneePremierePossible);
-  }
-  if (item.anneeRetraitPrevue != null && Number.isFinite(Number(item.anneeRetraitPrevue))) {
-    return Number(item.anneeRetraitPrevue);
-  }
-  return null;
+  return finiteYear(item.anneePremierePossible) ?? finiteYear(item.anneeRetraitPrevue);
+}
+
+/**
+ * Choix explicite de « 1re possible » pour une LPP.
+ * Les deux années égales (souvent l'ancienne année AVS 2034 recopiée
+ * dans les deux champs) ne sont pas un choix : l'onglet LPP reste la source.
+ */
+export function explicitLppScenarioYear(item: {
+  anneePremierePossible?: number | null;
+  anneeRetraitPrevue?: number | null;
+}): number | null {
+  const scenario = finiteYear(item.anneePremierePossible);
+  const maturity = finiteYear(item.anneeRetraitPrevue);
+  if (scenario == null || maturity == null || scenario === maturity) return null;
+  return scenario;
 }
 
 /** Montant effectivement retiré d’une ligne. */

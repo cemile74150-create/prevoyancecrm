@@ -3,6 +3,7 @@
  * Les montants confirmés et indicatifs restent distincts.
  * Aucune durée de rente-pont n'est inventée.
  */
+import { getRetirementStartDate } from "./avs-age";
 
 export const RACHAT_ABSENT_UI =
   "Attention : aucune valeur de rachat n'a été renseignée pour la date de retrait sélectionnée. Le capital à l'échéance est utilisé à titre indicatif et peut différer du montant réellement disponible.";
@@ -109,6 +110,78 @@ export function effectiveLppWithdrawalAge(
     return Number(dossierAge);
   }
   return null;
+}
+
+/**
+ * Âge du tableau LPP dont le retrait tombe dans l'année civile demandée.
+ * Par défaut 65→60. Si des âges sont fournis, seuls ceux du tableau comptent.
+ * Aucun âge hors tableau : on n'invente pas une ligne.
+ */
+export function lppAgeForCalendarYear(
+  birth: string | null | undefined,
+  year: number | null | undefined,
+  ages?: number[],
+): number | null {
+  if (!birth || !/^\d{4}-\d{2}-\d{2}/.test(String(birth))) return null;
+  if (year == null || !Number.isFinite(Number(year))) return null;
+  const target = Number(year);
+  const list = (ages && ages.length ? ages : [65, 64, 63, 62, 61, 60])
+    .map((age) => Number(age))
+    .filter((age) => Number.isFinite(age));
+  const unique = [...new Set(list)].sort((a, b) => b - a);
+  for (const age of unique) {
+    if (getRetirementStartDate(birth, age).getFullYear() === target) return age;
+  }
+  return null;
+}
+
+export function lppTableCapitalForYear(
+  person:
+    | {
+        dateNaissance?: string | null;
+        lpp?: Array<{ age: number; capital: number }> | null;
+        lppAvoirs?: Array<{
+          id: string;
+          rows?: Array<{ age: number; capital: number }> | null;
+        }> | null;
+      }
+    | null
+    | undefined,
+  sourceId: string | null | undefined,
+  year: number,
+): { age: number | null; capital: number; found: boolean } {
+  if (!person) return { age: null, capital: 0, found: false };
+  const rows =
+    sourceId && sourceId !== "primary"
+      ? person.lppAvoirs?.find((row) => row.id === sourceId)?.rows
+      : person.lpp;
+  const ages = (rows || [])
+    .map((row) => Number(row.age))
+    .filter((age) => Number.isFinite(age));
+  const age = lppAgeForCalendarYear(
+    person.dateNaissance,
+    year,
+    ages.length ? ages : undefined,
+  );
+  if (age == null) return { age: null, capital: 0, found: false };
+  const row = lppCapitalForWithdrawalAge(rows, age);
+  if (!row.found || !(row.capital > 0)) return { age, capital: 0, found: false };
+  return { age, capital: row.capital, found: true };
+}
+
+/**
+ * « 1re possible » retenue seulement si le tableau LPP a un capital
+ * pour l'âge de cette année. Une année AVS recopiée (2034) sans ligne
+ * n'est pas un choix : l'appelant revient à l'onglet LPP.
+ */
+export function acceptedLppScenarioYear(
+  person: Parameters<typeof lppTableCapitalForYear>[0],
+  item: { anneePremierePossible?: number | null; sourceId?: string | null },
+): number | null {
+  const year = Number(item.anneePremierePossible);
+  if (!Number.isFinite(year)) return null;
+  const looked = lppTableCapitalForYear(person, item.sourceId ?? null, year);
+  return looked.found ? year : null;
 }
 
 export function lppCapitalForWithdrawalAge(

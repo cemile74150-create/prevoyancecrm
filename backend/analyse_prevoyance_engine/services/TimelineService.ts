@@ -1,6 +1,7 @@
 import { personFirstName } from "../mappers";
 import { anneeRetraitLibrePassage } from "../rules/libre-passage-annee";
 import {
+  acceptedLppScenarioYear,
   effectiveLppWithdrawalAge,
   lppCapitalForWithdrawalAge,
   resolveThirdPillarCapital,
@@ -149,12 +150,16 @@ function pushLpp(
   const tabYear = yearOf(computed.dateFinActivite);
   const legalYear = yearOf(computed.dateDepart);
   const planned = items.find((item) => item.kind === "lpp" && item.titulaire === person);
+  const chosen = planned ? acceptedLppScenarioYear(personInput, planned) : null;
+  const override = chosen != null && chosen !== tabYear ? chosen : null;
   const plannedYear = planned ? scenarioWithdrawalYear(planned) : null;
-  const year = explicitLppAge
-    ? (tabYear ?? legalYear)
-    : fate === "Rente"
-      ? (legalYear ?? tabYear)
-      : (plannedYear ?? tabYear ?? legalYear);
+  const year =
+    override ??
+    (explicitLppAge
+      ? (tabYear ?? legalYear)
+      : fate === "Rente"
+        ? (legalYear ?? tabYear)
+        : (plannedYear ?? tabYear ?? legalYear));
   events.push({
     year,
     label: `LPP – ${who} – ${fate}`,

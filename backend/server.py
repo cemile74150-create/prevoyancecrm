@@ -152,7 +152,7 @@ import object_storage
 APP_NAME = "prevoyance-crm"
 # Catégories historiquement partagées avant le partage global couple (conservé pour rétrocompatibilité).
 SHARED_DOSSIER_DOC_CATEGORIES = frozenset({"Analyse de prévoyance", "Offre"})
-# Réponses / lettres LPP : une personne = un suivi (pas le conjoint).
+# Demandes AVS / LPP générées : une personne = son onglet (pas le conjoint, pas l'onglet Documents).
 LPP_PERSON_DOC_CATEGORIES = frozenset({
     "Réponse recherche LPP",
     "Formulaire Recherche LPP",
@@ -168,6 +168,8 @@ LPP_PERSON_TEMPLATES = frozenset({
     "procuration_avs_lpp",
     "lettre_lpp",
     "lettre_decompte_lpp",
+    "calcul_rente_future",
+    "lettre_avs",
 })
 
 MIME_TYPES = {
@@ -499,6 +501,16 @@ class NoteCreate(BaseModel):
 
 class NoteUpdate(BaseModel):
     content: str
+
+class JournalActionCreate(BaseModel):
+    libelle: str
+    date: str
+    note: Optional[str] = None
+
+class JournalActionUpdate(BaseModel):
+    libelle: str
+    date: str
+    note: Optional[str] = None
 
 class DemandeCreate(BaseModel):
     """Rappel (ex-demande). date=YYYY-MM-DD, heure=HH:MM."""
@@ -1240,7 +1252,8 @@ def _is_couple_scope(scope: dict) -> bool:
 def _documents_list_query(user_id: str, client_id: str, scope: dict) -> dict:
     """Requête Mongo pour lister les documents d'un client (partagés si couple).
 
-    Les réponses / lettres LPP restent attachées à LA personne (Monsieur ≠ Madame).
+    Les demandes AVS et LPP générées restent sur la fiche de la personne
+    (Monsieur ≠ Madame). Le reste du dossier couple reste partagé.
     """
     member_ids = scope.get("member_ids") or [client_id]
     dossier_ids = scope.get("dossier_ids") or [scope.get("dossier_id") or client_id]
@@ -2483,6 +2496,85 @@ async def update_note(client_id: str, note_id: str, payload: NoteUpdate, user: U
     await log_action(user.user_id, client_id, "Note interne modifiée")
     updated = {**note, "content": payload.content, "updated_at": now}
     return updated
+
+# ---------------- Journal d'action ----------------
+def _journal_payload(payload: JournalActionCreate | JournalActionUpdate) -> dict:
+    from journal_actions import normalize_journal_fields
+    try:
+        return normalize_journal_fields(payload.libelle, payload.date, payload.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@api_router.get("/clients/{client_id}/journal")
+async def list_journal_actions(client_id: str, user: User = Depends(get_current_user)):
+    from journal_actions import sort_journal_actions
+    c = await require_client(client_id, user)
+    scope = await _dossier_scope(user.user_id, c)
+    query = {
+        "user_id": user.user_id,
+        "$or": [
+            {"client_id": {"$in": scope["member_ids"]}},
+            {"dossier_id": scope["dossier_id"]},
+        ],
+    }
+    rows = await db.journal_actions.find(query, {"_id": 0}).to_list(1000)
+    return sort_journal_actions(rows)
+
+
+@api_router.post("/clients/{client_id}/journal")
+async def add_journal_action(client_id: str, payload: JournalActionCreate, user: User = Depends(get_current_user)):
+    c = await require_client(client_id, user)
+    scope = await _dossier_scope(user.user_id, c)
+    fields = _journal_payload(payload)
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "client_id": client_id,
+        "dossier_id": scope["dossier_id"],
+        "user_id": user.user_id,
+        "author": user.name,
+        "created_at": now,
+        "updated_at": now,
+        **fields,
+    }
+    await db.journal_actions.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.patch("/clients/{client_id}/journal/{action_id}")
+async def update_journal_action(
+    client_id: str,
+    action_id: str,
+    payload: JournalActionUpdate,
+    user: User = Depends(get_current_user),
+):
+    from journal_actions import journal_belongs_to_scope
+    c = await require_client(client_id, user)
+    scope = await _dossier_scope(user.user_id, c)
+    row = await db.journal_actions.find_one({"id": action_id, "user_id": user.user_id}, {"_id": 0})
+    if not row or not journal_belongs_to_scope(row, scope):
+        raise HTTPException(status_code=404, detail="Action introuvable")
+    fields = _journal_payload(payload)
+    now = datetime.now(timezone.utc).isoformat()
+    await db.journal_actions.update_one(
+        {"id": action_id, "user_id": user.user_id},
+        {"$set": {**fields, "updated_at": now}},
+    )
+    return {**row, **fields, "updated_at": now}
+
+
+@api_router.delete("/clients/{client_id}/journal/{action_id}")
+async def delete_journal_action(client_id: str, action_id: str, user: User = Depends(get_current_user)):
+    from journal_actions import journal_belongs_to_scope
+    c = await require_client(client_id, user)
+    scope = await _dossier_scope(user.user_id, c)
+    row = await db.journal_actions.find_one({"id": action_id, "user_id": user.user_id}, {"_id": 0})
+    if not row or not journal_belongs_to_scope(row, scope):
+        raise HTTPException(status_code=404, detail="Action introuvable")
+    await db.journal_actions.delete_one({"id": action_id, "user_id": user.user_id})
+    return {"ok": True, "id": action_id}
 
 # ---------------- Rappels (ex-Demandes à faire) ----------------
 RAPPEL_STATUTS = ("a_faire", "en_attente", "termine")
@@ -7778,6 +7870,7 @@ async def _ensure_mongo_indexes():
         (db.documents, [("user_id", 1), ("dossier_id", 1), ("is_deleted", 1)]),
         (db.documents, [("storage_path", 1)]),
         (db.notes, [("user_id", 1), ("client_id", 1), ("created_at", -1)]),
+        (db.journal_actions, [("user_id", 1), ("client_id", 1), ("date", -1), ("created_at", -1)]),
         (db.demandes, [("user_id", 1), ("done", 1), ("created_at", -1)]),
         (db.actions, [("user_id", 1), ("client_id", 1), ("created_at", -1)]),
         (db.appointments, [("user_id", 1), ("date", 1)]),

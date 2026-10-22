@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
-import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, Menu, Bell, Settings2, KeyRound, Shield, FileSpreadsheet, Activity, Pencil, Mail, UserCircle, Calculator, HeartPulse } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, Menu, Bell, Settings2, KeyRound, Shield, FileSpreadsheet, Activity, Pencil, Mail, UserCircle, Calculator, HeartPulse, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import PasswordInput from "@/components/PasswordInput";
@@ -22,6 +22,7 @@ const nav = [
   { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard, testid: "nav-dashboard" },
   { to: "/clients", label: "Clients", icon: Users, testid: "nav-clients", perm: "clients.view" },
   { to: "/effectuer-une-analyse", label: "Effectuer une planification", icon: Calculator, testid: "nav-analyse", perm: "analyses.view" },
+  { to: "/comparatif-rentes", label: "Comparatif des rentes", icon: Scale, testid: "nav-comparatif-rentes", perm: "analyses.view" },
   { to: "/dossiers", label: "Suivi des planifications", icon: KanbanSquare, testid: "nav-dossiers", perm: "dossiers.view" },
   { to: "/suivi-3p", label: "Fiscalité, 3e pilier & Fortune 2026", icon: Shield, testid: "nav-suivi-3p", perm: "suivi_3p.view" },
   { to: "/demandes-offres", label: "Demandes d'offres", icon: FileSpreadsheet, testid: "nav-demandes-offres", perm: "demandes_offres.view" },

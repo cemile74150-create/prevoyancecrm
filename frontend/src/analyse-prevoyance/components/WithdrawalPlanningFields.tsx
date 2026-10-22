@@ -22,7 +22,10 @@ import { PILIER_3B_NOTE, RACHAT_ABSENT_UI } from "@/analyse-prevoyance/lib/plani
 import {
   buildDefaultWithdrawalItems,
   duplicateWithdrawalScenario,
+  lppAmountsForScenarioYear,
   lppPlanYear,
+  lppScenarioYear,
+  lppTableCapitalForYear,
   capitalTypeText,
   thirdPillarTaxMark,
   withPillarCapital,
@@ -66,6 +69,8 @@ export function WithdrawalPlanningFields({
   const [activeId, setActiveId] = useState<string | null>(
     scenarios[0]?.id ?? null,
   );
+  const [yearDrafts, setYearDrafts] = useState<Record<string, string>>({});
+  const [lppYearNotice, setLppYearNotice] = useState<string | null>(null);
   const active =
     scenarios.find((s) => s.id === activeId) || scenarios[0] || null;
   const activeResult =
@@ -142,12 +147,59 @@ export function WithdrawalPlanningFields({
     updateScenario(scenarioId, { items });
   }
 
+  function commitScenarioYear(shownId: string, raw: string) {
+    const stored = (active?.items || []).find((row) => row.id === shownId);
+    if (!stored || !active) return;
+    const text = raw.trim();
+    if (stored.kind !== "lpp") {
+      updateItem(active.id, stored.id, {
+        anneePremierePossible: text ? Number(text) : null,
+      });
+      return;
+    }
+    const tabYear = lppPlanYear(input, stored);
+    if (!text) {
+      updateItem(active.id, stored.id, { anneePremierePossible: tabYear });
+      setLppYearNotice(null);
+      return;
+    }
+    const year = Number(text);
+    if (!Number.isFinite(year)) return;
+    const current = lppScenarioYear(input, stored);
+    const storedYear = Number(stored.anneePremierePossible);
+    if (year === current && storedYear === year) {
+      setLppYearNotice(null);
+      return;
+    }
+    const person = stored.titulaire === "conjoint" ? input.conjoint : input.client1;
+    const looked = lppTableCapitalForYear(person, stored.sourceId, year);
+    if (!looked.found) {
+      setLppYearNotice(
+        looked.age == null
+          ? `Le tableau LPP doit être rempli pour ${year} : cette année ne correspond à aucun âge du tableau. L'année n'a pas été appliquée.`
+          : `Le tableau LPP doit être rempli pour ${year} (${looked.age} ans). L'année n'a pas été appliquée.`,
+      );
+      return;
+    }
+    const amounts = lppAmountsForScenarioYear(stored, looked.capital);
+    updateItem(active.id, stored.id, {
+      anneePremierePossible: year,
+      montantDisponible: amounts.montantDisponible,
+      pctCapital: amounts.pctCapital,
+    });
+    setLppYearNotice(null);
+  }
+
   const shownItems = (active?.items || []).map((it) => {
     const next = withPillarCapital(input, it);
-    const year = lppPlanYear(input, it);
-    return year == null
-      ? next
-      : { ...next, anneeRetraitPrevue: year, anneePremierePossible: year };
+    if (it.kind !== "lpp") return next;
+    const maturity = lppPlanYear(input, it);
+    const scenario = lppScenarioYear(input, it);
+    return {
+      ...next,
+      anneeRetraitPrevue: maturity ?? next.anneeRetraitPrevue,
+      anneePremierePossible: scenario ?? next.anneePremierePossible,
+    };
   });
   const calendar = active
     ? mergeCalendarWithResult(shownItems, activeResult)
@@ -322,14 +374,27 @@ export function WithdrawalPlanningFields({
                                 type="number"
                                 className="h-8 w-24"
                                 placeholder="—"
-                                value={it.anneePremierePossible ?? ""}
-                                onChange={(e) =>
-                                  updateItem(active.id, it.id, {
-                                    anneePremierePossible: e.target.value
-                                      ? Number(e.target.value)
-                                      : null,
-                                  })
+                                aria-label="1re possible"
+                                value={
+                                  yearDrafts[it.id] ??
+                                  (it.anneePremierePossible ?? "")
                                 }
+                                onChange={(e) =>
+                                  setYearDrafts((prev) => ({
+                                    ...prev,
+                                    [it.id]: e.target.value,
+                                  }))
+                                }
+                                onBlur={() => {
+                                  if (!(it.id in yearDrafts)) return;
+                                  const raw = yearDrafts[it.id];
+                                  setYearDrafts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[it.id];
+                                    return next;
+                                  });
+                                  commitScenarioYear(it.id, raw);
+                                }}
                               />
                             </td>
                             <td className="px-2 py-1">
@@ -364,8 +429,15 @@ export function WithdrawalPlanningFields({
                 <p className="mt-1 text-xs text-muted-foreground">
                   Année prévue : échéance du contrat, non modifiable. 1re
                   possible : année de retrait du scénario, utilisée pour le
-                  calcul et le PDF.
+                  calcul et le PDF. Pour une LPP, cette année doit exister
+                  dans le tableau LPP : le disponible est alors celui de
+                  l'âge correspondant.
                 </p>
+                {lppYearNotice && (
+                  <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950" role="status">
+                    {lppYearNotice}
+                  </p>
+                )}
                 {indicative.length > 0 && (
                   <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
                     {RACHAT_ABSENT_UI}

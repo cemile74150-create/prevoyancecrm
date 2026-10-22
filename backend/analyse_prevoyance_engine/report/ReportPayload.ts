@@ -2,6 +2,7 @@
  * Objet rapport unique — seule source pour preview HTML, contrôle UI et PDF.
  * Aucun calcul métier dans le rendu PDF : tout vient du moteur via ce payload.
  */
+import type { ResumePrestationsLpp } from "../rules/resume-prestations-lpp";
 
 export interface ReportMoney {
   value: number | null;
@@ -260,7 +261,14 @@ export interface ReportPayload {
      * ≤ 0 : l'échelonnement n'est pas plus favorable.
      */
     economieFiscale: number | null;
+    /**
+     * Phrase du PDF qui nomme les 3e piliers sans valeur de rachat
+     * à l'année choisie. Pas de montant de rachat inventé.
+     */
+    avertissementRachat?: string | null;
   };
+  /** Absent quand la case du dossier est décochée. */
+  resumePrestationsLpp: ResumePrestationsLpp | null;
   flags: {
     hasThirdPillar: boolean;
     hasRentePont: boolean;

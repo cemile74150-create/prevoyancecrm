@@ -1,5 +1,9 @@
 import { formatDateFr } from "../rules/avs-age";
+import { buildResumePrestationsLpp } from "../rules/resume-prestations-lpp";
 import { personDisplayName } from "../mappers";
+import { resolveThirdPillarCapital } from "../rules/planification-saisie";
+import { postRetirementEvolutionService } from "../services/PostRetirementEvolutionService";
+import { scenarioWithdrawalYear } from "../withdrawalPlanUtils";
 import {
   revenuBrutEncaisse,
   revenuFiscalImposable,
@@ -11,13 +15,65 @@ import type {
   RenteHypothesisComparison,
   RenteHypothesisInput,
 } from "../types";
-import { librePassageRetire, normalizeThirdPillarType } from "../types";
+import {
+  librePassageRetire,
+  normalizeThirdPillarType,
+  type PersonInput,
+  type ThirdPillarContract,
+} from "../types";
 import type {
   ReportPayload,
   ReportPersonBlock,
   ReportThirdPillarRow,
   ReportVaudoiseColumn,
 } from "./ReportPayload";
+
+function pillarRachatCaption(
+  person: PersonInput | null | undefined,
+  contract: ThirdPillarContract,
+): string {
+  const prenom = (person?.prenom || "").trim() || "prénom manquant";
+  const type = normalizeThirdPillarType(contract.type);
+  const institution = (contract.compagnie || "").trim();
+  return institution ? `${prenom} ${type} ${institution}` : `${prenom} ${type}`;
+}
+
+function frenchList(items: string[]): string {
+  if (items.length <= 1) return items[0] || "";
+  if (items.length === 2) return `${items[0]} et ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} et ${items[items.length - 1]}`;
+}
+
+/**
+ * Une phrase, sans montant de rachat inventé : elle nomme chaque 3e pilier
+ * de la stratégie qui n'a pas de valeur de rachat à l'année choisie.
+ */
+export function indicativeRachatWarning(
+  input: AnalyseInput,
+  strategyId: string | null,
+): string | null {
+  if (!strategyId) return null;
+  const scenario = (input.withdrawalScenarios || []).find(
+    (item) => item.id === strategyId,
+  );
+  if (!scenario) return null;
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const item of scenario.items) {
+    if (item.kind !== "3p" || !item.sourceId) continue;
+    const key = `${item.titulaire}:${item.sourceId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const holder = item.titulaire === "conjoint" ? input.conjoint : input.client1;
+    const contract = holder?.troisiemePilier?.find((row) => row.id === item.sourceId);
+    if (!contract) continue;
+    const resolved = resolveThirdPillarCapital(contract, scenarioWithdrawalYear(item));
+    if (resolved.statut !== "indicatif") continue;
+    names.push(pillarRachatCaption(holder, contract));
+  }
+  if (!names.length) return null;
+  return `Aucune valeur de rachat n'a été renseignée pour ${frenchList(names)} à la date de retrait sélectionnée : le capital à l'échéance est utilisé à titre indicatif et peut différer du montant réellement disponible.`;
+}
 
 const FISCAL_OPT_HIDDEN_REASON =
   "Page 6 « Optimisation fiscale des retraits » absente du classeur Excel V6 " +
@@ -204,10 +260,21 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
       wp?.strategyScenarioId && reportScenarioIds.has(wp.strategyScenarioId)
         ? (wp.economieFiscale ?? null)
         : null,
+    avertissementRachat: indicativeRachatWarning(
+      input,
+      wp?.strategyScenarioId && reportScenarioIds.has(wp.strategyScenarioId)
+        ? wp.strategyScenarioId
+        : null,
+    ),
   };
+
+  const resumePrestationsLpp = buildResumePrestationsLpp(input);
 
   // Pages : 1 cover, 2 agency, 3 bilan, 4 compare — puis conditionnels
   let pageCount = 4;
+  if (resumePrestationsLpp && resumePrestationsLpp.tables.length > 0) {
+    pageCount += 1;
+  }
   if (hasThirdPillar) {
     pageCount += Math.max(1, Math.ceil(thirdPillarRows.length / 8));
   }
@@ -233,7 +300,13 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
     pageCount += 1; // dernière page COMPARATIF DES RENTES
   }
 
-  const evo = results.evolution;
+  const evo = results.client1
+    ? postRetirementEvolutionService.build(
+        input,
+        results.client1,
+        isCouple ? results.conjoint : null,
+      )
+    : results.evolution;
   const timeline = results.timeline;
 
   const generatedAt = new Date().toISOString();
@@ -328,6 +401,10 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
     hypothesesRente,
     fiscalOptimization,
     withdrawalPlanning,
+    resumePrestationsLpp:
+      resumePrestationsLpp && resumePrestationsLpp.tables.length > 0
+        ? resumePrestationsLpp
+        : null,
     flags: {
       hasThirdPillar,
       hasRentePont,

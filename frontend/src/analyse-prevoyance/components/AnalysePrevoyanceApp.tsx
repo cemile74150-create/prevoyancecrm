@@ -9,6 +9,7 @@ import { CommuneSearch } from "@/analyse-prevoyance/components/CommuneSearch";
 import { PersonIdentityFields } from "@/analyse-prevoyance/components/PersonIdentityFields";
 import { AvsFields } from "@/analyse-prevoyance/components/AvsFields";
 import { LppFields } from "@/analyse-prevoyance/components/LppFields";
+import { ResumePrestationsLppPreview } from "@/analyse-prevoyance/components/ResumePrestationsLppPreview";
 import { ThirdPillarFields } from "@/analyse-prevoyance/components/ThirdPillarFields";
 import { LibrePassageFields } from "@/analyse-prevoyance/components/LibrePassageFields";
 import { RenteHypothesisFields } from "@/analyse-prevoyance/components/RenteHypothesisFields";
@@ -620,6 +621,19 @@ export function AnalysePrevoyanceApp({
                 onChange={(p) => patchInput({ conjoint: p })}
               />
             )}
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0"
+                checked={Boolean(input.afficherResumePrestationsLpp)}
+                onChange={(e) => patchInput({ afficherResumePrestationsLpp: e.target.checked })}
+                data-testid="afficher-resume-prestations-lpp"
+              />
+              <span>Afficher résumé des prestations LPP</span>
+            </label>
+            {input.afficherResumePrestationsLpp ? (
+              <ResumePrestationsLppPreview input={input} />
+            ) : null}
           </Section>
         );
       case "piliers3":
@@ -654,6 +668,9 @@ export function AnalysePrevoyanceApp({
               input={input}
               onChange={(libresPassages) => patchInput({ libresPassages })}
             />
+            {input.afficherResumePrestationsLpp ? (
+              <ResumePrestationsLppPreview input={input} />
+            ) : null}
           </Section>
         );
       case "retraits":

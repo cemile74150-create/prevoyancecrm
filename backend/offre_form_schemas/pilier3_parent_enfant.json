@@ -680,7 +680,7 @@
       "name": "input_57",
       "label": "Diplôme",
       "type": "select",
-      "required": true,
+      "required": false,
       "options": [
         "Ecole supérieure spécialisée (ESS)",
         "Diplômes spécialisés ou professionnels supérieurs",

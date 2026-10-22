@@ -73,6 +73,24 @@ export class PdfGenerationService {
     return Buffer.from(out);
   }
 
+  /** Document HTML déjà complet. N'emprunte pas le rapport d'analyse. */
+  async pdfFromDocument(html: string): Promise<Buffer> {
+    const browser = await getBrowser();
+    const page = await browser.newPage();
+    try {
+      await page.setContent(html, { waitUntil: "load", timeout: 30_000 });
+      const pdf = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        preferCSSPageSize: true,
+        margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "12mm" },
+      });
+      return Buffer.from(pdf);
+    } finally {
+      await page.close();
+    }
+  }
+
   private async htmlToPdf(
     browser: Browser,
     html: string,

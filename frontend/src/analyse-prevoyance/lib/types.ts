@@ -294,6 +294,8 @@ export interface AnalyseInput {
   ageRetraitLpp?: number | null;
   /** Colonne de référence « Rente LPP » dans le comparatif d'hypothèses. */
   comparerAvecRenteLpp?: boolean;
+  /** Résumé des prestations LPP à 65 ans. Décoché : aucun tableau. */
+  afficherResumePrestationsLpp?: boolean;
   renteHypotheses?: RenteHypothesisInput[];
   /**
    * Rente certaine Vaudoise annuelle (Excel Comparatif C5/D5 vides dans le fichier).
@@ -613,6 +615,7 @@ export function emptyAnalyseInput(): AnalyseInput {
     agePerceptionAvs: null,
     ageRetraitLpp: null,
     comparerAvecRenteLpp: false,
+    afficherResumePrestationsLpp: false,
     renteHypotheses: [],
     libresPassages: [],
     withdrawalScenarios: [],

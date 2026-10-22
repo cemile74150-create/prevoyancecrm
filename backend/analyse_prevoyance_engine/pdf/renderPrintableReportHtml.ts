@@ -4,6 +4,7 @@
  */
 
 import { formatChf, personFirstName } from "../mappers";
+import { renderResumePrestationsLppHtml } from "../rules/resume-prestations-lpp";
 import type { ReportPayload } from "../report/ReportPayload";
 import type { RenteHypothesisColumn } from "../types";
 
@@ -36,6 +37,12 @@ export function buildReportPages(payload: ReportPayload): ReportPageSpec[] {
   pages.push({ kind: "portrait", html: pageCover(payload, next(), total) });
   pages.push({ kind: "portrait", html: pageAgency(next(), total) });
   pages.push({ kind: "portrait", html: pageBilan(payload, next(), total) });
+  if (payload.resumePrestationsLpp) {
+    pages.push({
+      kind: "portrait",
+      html: pageResumePrestationsLpp(payload, next(), total),
+    });
+  }
   pages.push({
     kind: "portrait",
     html: pageCompareRenteCapital(payload, next(), total),
@@ -221,6 +228,38 @@ export function reportCss(forceOrient?: ReportPageKind) {
     margin: 0 0 12px; text-transform: uppercase; color: #1a1a1a;
     line-height: 1.25; padding-right: 4mm;
   }
+  .lpp-resume-title {
+    color: ${BRAND}; font-size: 13pt; font-weight: 700;
+    margin: 0 0 8px; padding-bottom: 4px; border-bottom: 2px solid ${BRAND};
+  }
+  .lpp-resume-name {
+    color: ${BRAND}; font-size: 11pt; font-weight: 700; margin: 12px 0 4px;
+  }
+  table.data.lpp-resume th {
+    background: #ececec; color: #222;
+  }
+  table.data.lpp-resume td.cell-bar {
+    background-color: #f7f7f7;
+    background-image: linear-gradient(
+      to bottom right,
+      transparent calc(50% - 0.6px),
+      #4a4a4a calc(50% - 0.6px),
+      #4a4a4a calc(50% + 0.6px),
+      transparent calc(50% + 0.6px)
+    );
+  }
+  table.data.lpp-resume tr.total td { font-weight: 700; background: #f0f0f0; }
+  table.data.lpp-resume tr.total td.cell-bar {
+    background-color: #f7f7f7;
+    background-image: linear-gradient(
+      to bottom right,
+      transparent calc(50% - 0.6px),
+      #4a4a4a calc(50% - 0.6px),
+      #4a4a4a calc(50% + 0.6px),
+      transparent calc(50% + 0.6px)
+    );
+  }
+  .lpp-resume-note { font-size: 8pt; margin: 2px 0 6px; color: #333; line-height: 1.35; }
   table.data {
     width: 100%;
     border-collapse: collapse;
@@ -276,6 +315,10 @@ export function reportCss(forceOrient?: ReportPageKind) {
   .synth th { color: #fff; padding: 8px; font-size: 9pt; }
   .synth td { text-align: center; padding: 8px 10px; border: 1px solid #ddd; font-weight: 600; vertical-align: middle; line-height: 1.15; height: 32px; }
   .note { font-size: 8.5pt; font-style: italic; color: ${GRAY}; margin-top: 6px; line-height: 1.35; }
+  .warn {
+    font-style: normal; color: #6b4a00; background: #fff6e5;
+    border: 1px solid #e6c98a; padding: 6px 8px; margin: 8px 0;
+  }
   .eco {
     display: flex; justify-content: space-between; align-items: center;
     margin-top: 16px; background: ${BRAND}; color: #fff;
@@ -589,6 +632,11 @@ function lppCaisseDetailRow(
   const right = lppCaisseText(conjoint);
   if (!left && !right) return "";
   return `<tr><td class="lab">Caisses LPP</td><td class="val">${left || "—"}</td><td class="val">${conjoint ? right || "—" : ""}</td></tr>`;
+}
+
+function pageResumePrestationsLpp(p: ReportPayload, n: number, total: number): string {
+  if (!p.resumePrestationsLpp) return "";
+  return `${renderResumePrestationsLppHtml(p.resumePrestationsLpp)}${footer(n, total)}`;
 }
 
 function pageBilan(p: ReportPayload, n: number, total: number): string {
@@ -925,40 +973,41 @@ function yearIsFullyExempt(year: WithdrawalScenario["byYear"][number]): boolean 
 }
 
 /** Prénom saisi du titulaire. Signale l'absence, sans inventer un prénom. */
-function holderPrenom(titulaire: string, p: ReportPayload): string {
-  if (titulaire === "client1") return (p.client1.prenom || "").trim() || "prénom manquant";
-  if (titulaire === "conjoint") return (p.conjoint?.prenom || "").trim() || "prénom manquant";
+function holderPrenom(
+  titulaire: string,
+  prenoms: { client1: string; conjoint: string | null },
+): string {
+  if (titulaire === "client1") return (prenoms.client1 || "").trim() || "prénom manquant";
+  if (titulaire === "conjoint") return (prenoms.conjoint || "").trim() || "prénom manquant";
   return "titulaire non identifié";
+}
+
+function planningLineName(
+  line: WithdrawalScenario["byYear"][number]["lines"][number],
+  prenoms: { client1: string; conjoint: string | null },
+): string {
+  const prenom = holderPrenom(line.titulaire, prenoms);
+  if (line.kind === "lpp") return `LPP ${prenom}`;
+  if (line.kind === "libre_passage") return `Libre passage ${prenom}`;
+  if (line.kind === "3p") {
+    if (line.contratType === "3B" || line.exonere) return `${prenom} 3B exonéré`;
+    return `${prenom} 3A imposable`;
+  }
+  return line.label || "Autre";
 }
 
 function yearPrestationShort(
   year: WithdrawalScenario["byYear"][number],
-  p: ReportPayload,
+  prenoms: { client1: string; conjoint: string | null },
 ): string {
-  const lines = year.lines || [];
   const parts: string[] = [];
-  const seenLpp = new Set<string>();
-  for (const line of lines) {
-    if (line.kind !== "lpp") continue;
-    const label = `LPP ${holderPrenom(line.titulaire, p)}`;
-    if (seenLpp.has(label)) continue;
-    seenLpp.add(label);
-    parts.push(label);
+  const seen = new Set<string>();
+  for (const line of year.lines || []) {
+    const name = planningLineName(line, prenoms);
+    if (seen.has(name)) continue;
+    seen.add(name);
+    parts.push(name);
   }
-  if (lines.some((line) => line.kind === "libre_passage")) parts.push("Libre passage");
-  if (lines.some((line) => line.kind === "3p" && line.contratType === "3A")) {
-    parts.push("3A");
-  }
-  if (lines.some((line) => line.kind === "3p" && line.contratType === "3B")) {
-    parts.push("3B");
-  }
-  if (
-    lines.some((line) => line.kind === "3p" && !line.contratType) &&
-    !lines.some((line) => line.kind === "3p" && line.contratType)
-  ) {
-    parts.push("3e pilier");
-  }
-  if (lines.some((line) => line.kind === "autre")) parts.push("Autre");
   return parts.join(" + ") || "—";
 }
 
@@ -998,14 +1047,17 @@ function sameYearBlock(wp: WithdrawalPlanning): string {
   </table>`;
 }
 
-function strategyBlock(sc: WithdrawalScenario, p: ReportPayload): string {
+function strategyBlock(
+  sc: WithdrawalScenario,
+  prenoms: { client1: string; conjoint: string | null },
+): string {
   const rows = sc.byYear
     .map((year) => {
       const exempt = yearIsFullyExempt(year);
       const tax = exempt ? "Exonéré d'impôt" : formatChf(year.impot);
       return `<tr>
         <td class="lab">${year.year}</td>
-        <td>${esc(yearPrestationShort(year, p))}</td>
+        <td>${esc(yearPrestationShort(year, prenoms))}</td>
         <td class="num">${formatChf(year.capitalRetire)}</td>
         <td class="num${exempt ? "" : " tax"}">${tax}</td>
       </tr>`;
@@ -1056,14 +1108,27 @@ function economieBanner(gain: number | null): string {
   return `<div class="eco eco-none"><span>ÉCONOMIE FISCALE ESTIMÉE : 0 CHF — l'échelonnement n'est pas plus favorable</span></div>${formula}`;
 }
 
-function planningReportHtml(p: ReportPayload): string {
-  const wp = p.withdrawalPlanning;
+export function planningSectionHtml(
+  wp: WithdrawalPlanning,
+  prenoms: { client1: string; conjoint: string | null },
+): string {
   const strategy = strategyScenario(wp);
+  const warning = wp.avertissementRachat
+    ? `<p class="note">${esc(wp.avertissementRachat)}</p>`
+    : "";
   return `
   <div class="page-title">Planification des retraits de capitaux</div>
   ${sameYearBlock(wp)}
-  ${strategy ? strategyBlock(strategy, p) : ""}
+  ${strategy ? strategyBlock(strategy, prenoms) : ""}
+  ${warning}
   ${economieBanner(wp.economieFiscale)}`;
+}
+
+function planningReportHtml(p: ReportPayload): string {
+  return planningSectionHtml(p.withdrawalPlanning, {
+    client1: p.client1?.prenom || "",
+    conjoint: p.conjoint?.prenom ?? null,
+  });
 }
 
 function withdrawalPlanningPages(

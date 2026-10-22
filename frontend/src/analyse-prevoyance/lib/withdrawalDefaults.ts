@@ -15,6 +15,7 @@ import type {
   WithdrawalPlanItem,
   WithdrawalScenario,
 } from "./types";
+import { RETIREMENT_AGES } from "./types";
 
 export function lppPlanYear(
   input: AnalyseInput,
@@ -31,6 +32,92 @@ export function lppPlanYear(
     }
   }
   return lppWithdrawalDate(person.dateNaissance, age)?.getFullYear() ?? null;
+}
+
+function finiteYear(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(Number(value))) return null;
+  return Number(value);
+}
+
+/** Année affichée et enregistrée : capital du tableau à « 1re possible », sinon onglet LPP. */
+export function lppScenarioYear(
+  input: AnalyseInput,
+  item: WithdrawalPlanItem,
+): number | null {
+  if (item.kind !== "lpp") return selectedWithdrawalYear(item);
+  const requested = finiteYear(item.anneePremierePossible);
+  if (requested != null) {
+    const person = item.titulaire === "conjoint" ? input.conjoint : input.client1;
+    if (lppTableCapitalForYear(person, item.sourceId, requested).found) return requested;
+  }
+  return lppPlanYear(input, item) ?? selectedWithdrawalYear(item);
+}
+
+export function lppAgeForCalendarYear(
+  birth: string | null | undefined,
+  year: number | null | undefined,
+  ages?: number[],
+): number | null {
+  if (year == null || !Number.isFinite(Number(year))) return null;
+  const target = Number(year);
+  const list = (ages && ages.length ? ages : [...RETIREMENT_AGES])
+    .map((age) => Number(age))
+    .filter((age) => Number.isFinite(age));
+  const unique = [...new Set(list)].sort((a, b) => b - a);
+  for (const age of unique) {
+    const start = lppWithdrawalDate(birth, age);
+    if (start && start.getFullYear() === target) return age;
+  }
+  return null;
+}
+
+/** Capital du tableau LPP pour l'année demandée. Vide ou hors tableau : pas de montant inventé. */
+export function lppTableCapitalForYear(
+  person: PersonInput | null | undefined,
+  sourceId: string | null | undefined,
+  year: number,
+): { age: number | null; capital: number; found: boolean } {
+  if (!person) return { age: null, capital: 0, found: false };
+  const rowsForAges =
+    sourceId && sourceId !== "primary"
+      ? (person.lppAvoirs || []).find((row) => row.id === sourceId)?.rows
+      : person.lpp;
+  const ages = (rowsForAges || [])
+    .map((row) => Number(row.age))
+    .filter((age) => Number.isFinite(age));
+  const age = lppAgeForCalendarYear(
+    person.dateNaissance,
+    year,
+    ages.length ? ages : undefined,
+  );
+  if (age == null) return { age: null, capital: 0, found: false };
+  const rows =
+    sourceId && sourceId !== "primary"
+      ? (person.lppAvoirs || []).find((row) => row.id === sourceId)?.rows
+      : person.lpp;
+  const row = lppCapitalForWithdrawalAge(rows, age);
+  if (!row.found || !(row.capital > 0)) return { age, capital: 0, found: false };
+  return { age, capital: row.capital, found: true };
+}
+
+/**
+ * Nouveau disponible = capital du tableau à l'âge de l'année.
+ * Un montant retiré déjà inférieur au disponible est conservé s'il ne dépasse pas le nouveau disponible.
+ */
+export function lppAmountsForScenarioYear(
+  item: { montantDisponible?: number | null; pctCapital?: number | null },
+  newDispo: number,
+): { montantDisponible: number; pctCapital: number } {
+  const oldDispo = Number(item.montantDisponible) || 0;
+  const pct = Math.min(100, Math.max(0, Number(item.pctCapital) || 0));
+  const oldRetire = Math.round(oldDispo * (pct / 100) * 100) / 100;
+  const partial = oldDispo > 0.009 && oldRetire < oldDispo - 0.009;
+  if (!partial) return { montantDisponible: newDispo, pctCapital: 100 };
+  const kept = Math.min(oldRetire, newDispo);
+  return {
+    montantDisponible: newDispo,
+    pctCapital: newDispo > 0 ? (kept / newDispo) * 100 : 0,
+  };
 }
 
 function dossierLppAge(input: AnalyseInput): number | null {

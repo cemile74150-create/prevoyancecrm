@@ -60,3 +60,7 @@ def test_documents_list_query_couple_lpp_stays_on_owner():
     assert "Réponse recherche LPP" in cats
     items = own_or_not_lpp[1]["checklist_item"]["$nin"]
     assert "Demande LPP" in items
+    templates = own_or_not_lpp[2]["template_id"]["$nin"]
+    assert "lettre_avs" in templates
+    assert "calcul_rente_future" in templates
+    assert "lettre_lpp" in templates

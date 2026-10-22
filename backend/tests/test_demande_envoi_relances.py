@@ -4,8 +4,11 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from demande_envoi_relances import (
+    AVS_FOLLOWUP_MONTHS,
     FOLLOWUP_DAYS,
+    LPP_VERIFY_MONTHS,
     build_rappel_payload,
+    due_date_after_months,
     enrich_checklist_entry,
     enrich_checklist_map,
     is_followup_due,
@@ -91,3 +94,36 @@ def test_no_invented_sent_at_without_date():
 
 def test_source_keys_distinct_for_checklist_and_lpp():
     assert source_key_checklist("c1", "AVS") != source_key_lpp("c1", "trk1")
+
+
+def test_avs_reminder_is_two_months_and_lpp_is_one():
+    sent = "2026-09-17"
+    assert LPP_VERIFY_MONTHS == 1
+    assert AVS_FOLLOWUP_MONTHS == 2
+    assert due_date_after_months(sent, LPP_VERIFY_MONTHS) == date(2026, 10, 17)
+    assert due_date_after_months(sent, AVS_FOLLOWUP_MONTHS) == date(2026, 11, 17)
+    client = {"id": "c1", "prenom": "José", "nom": "Da Rocha"}
+    lpp = build_rappel_payload(
+        user_id="u",
+        client=client,
+        source_key=source_key_checklist("c1", "Demande LPP"),
+        demande_label="Demande LPP",
+        caisse_label="Demande LPP",
+        sent_at=sent,
+        followup_months=LPP_VERIFY_MONTHS,
+    )
+    avs = build_rappel_payload(
+        user_id="u",
+        client=client,
+        source_key=source_key_checklist("c1", "Formulaire AVS"),
+        demande_label="Formulaire AVS",
+        caisse_label="Formulaire AVS",
+        sent_at=sent,
+        followup_months=AVS_FOLLOWUP_MONTHS,
+    )
+    assert lpp["date"] == "2026-10-17"
+    assert avs["date"] == "2026-11-17"
+    assert lpp["titre"].startswith("Réponse non reçue — contacter la caisse")
+    assert avs["titre"].startswith("Réponse non reçue — contacter la caisse")
+    assert "Contacter la caisse" in lpp["description"]
+    assert "Contacter la caisse" in avs["description"]

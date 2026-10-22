@@ -49,6 +49,7 @@ const CLIENT_DETAIL_TABS = new Set([
   "infos",
   "rdv",
   "notes",
+  "journal",
   "demandes",
   "docs",
   "demande-lpp",
@@ -58,6 +59,20 @@ const CLIENT_DETAIL_TABS = new Set([
   "offres",
 ]);
 const OFFRE_CATEGORY = "Offre";
+
+function todayIsoDate() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function formatJournalDate(value) {
+  if (!value) return "";
+  const parsed = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("fr-CH");
+}
 const RACHAT_3P_DOC_CATEGORY = "Confirmation rachat 3P";
 
 const fundNameKey = (fundOrName) => {
@@ -311,6 +326,11 @@ export default function ClientDetail() {
   const [offreFormMenu, setOffreFormMenu] = useState(null);
   const [creatingOffreKey, setCreatingOffreKey] = useState(null);
   const [notes, setNotes] = useState([]);
+  const [journal, setJournal] = useState([]);
+  const [journalForm, setJournalForm] = useState({ date: todayIsoDate(), libelle: "", note: "" });
+  const [savingJournal, setSavingJournal] = useState(false);
+  const [editingJournalId, setEditingJournalId] = useState(null);
+  const [editingJournal, setEditingJournal] = useState({ date: "", libelle: "", note: "" });
   const [demandes, setDemandes] = useState([]);
   const [demandeForm, setDemandeForm] = useState({
     titre: "",
@@ -376,7 +396,7 @@ export default function ClientDetail() {
     }
     try {
       const c = await api.get(`/clients/${id}`);
-      const [n, d, a, h, lib, dem, mods] = await Promise.all([
+      const [n, d, a, h, lib, dem, mods, journalRes] = await Promise.all([
         api.get(`/clients/${id}/notes`).catch(() => ({ data: [] })),
         api.get(`/clients/${id}/documents`).catch(() => ({ data: [] })),
         api.get(`/appointments`, { params: { client_id: id } }).catch(() => ({ data: [] })),
@@ -384,6 +404,7 @@ export default function ClientDetail() {
         api.get("/form-library").catch(() => ({ data: [] })),
         api.get(`/clients/${id}/demandes`).catch(() => ({ data: [] })),
         api.get(`/clients/${id}/modules`).catch(() => ({ data: null })),
+        api.get(`/clients/${id}/journal`).catch(() => ({ data: [] })),
       ]);
       setClient(c.data);
       setModulesActivity(mods.data?.found ? mods.data : null);
@@ -398,6 +419,7 @@ export default function ClientDetail() {
         }).catch(() => {});
       }
       setNotes(n.data); setDocs(d.data); setAppts(a.data); setActions(h.data);
+      setJournal(Array.isArray(journalRes.data) ? journalRes.data : []);
       const sortRappelsByDate = (list) => {
         const toTs = (r) => {
           const day = (r.date || "").slice(0, 10);
@@ -661,6 +683,72 @@ export default function ClientDetail() {
     await api.patch(`/clients/${id}/statut`, { statut });
     toast.success("Statut mis à jour");
     const h = await api.get(`/clients/${id}/actions`); setActions(h.data);
+  };
+
+  const addJournalAction = async () => {
+    const libelle = journalForm.libelle.trim();
+    if (!libelle || !journalForm.date) {
+      toast.error("Indiquez la date et ce qui a été fait.");
+      return;
+    }
+    setSavingJournal(true);
+    try {
+      await api.post(`/clients/${id}/journal`, {
+        date: journalForm.date,
+        libelle,
+        note: journalForm.note.trim() || null,
+      });
+      setJournalForm({ date: todayIsoDate(), libelle: "", note: "" });
+      const res = await api.get(`/clients/${id}/journal`);
+      setJournal(Array.isArray(res.data) ? res.data : []);
+      toast.success("Action enregistrée");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Enregistrement impossible");
+    } finally {
+      setSavingJournal(false);
+    }
+  };
+
+  const startEditJournal = (row) => {
+    setEditingJournalId(row.id);
+    setEditingJournal({
+      date: String(row.date || "").slice(0, 10),
+      libelle: row.libelle || "",
+      note: row.note || "",
+    });
+  };
+
+  const saveJournalEdit = async (actionId) => {
+    const libelle = editingJournal.libelle.trim();
+    if (!libelle || !editingJournal.date) {
+      toast.error("Indiquez la date et ce qui a été fait.");
+      return;
+    }
+    try {
+      await api.patch(`/clients/${id}/journal/${actionId}`, {
+        date: editingJournal.date,
+        libelle,
+        note: editingJournal.note.trim() || null,
+      });
+      setEditingJournalId(null);
+      const res = await api.get(`/clients/${id}/journal`);
+      setJournal(Array.isArray(res.data) ? res.data : []);
+      toast.success("Action modifiée");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Modification impossible");
+    }
+  };
+
+  const deleteJournalAction = async (actionId) => {
+    if (!window.confirm("Supprimer cette action ?")) return;
+    try {
+      await api.delete(`/clients/${id}/journal/${actionId}`);
+      setJournal((prev) => prev.filter((row) => row.id !== actionId));
+      if (editingJournalId === actionId) setEditingJournalId(null);
+      toast.success("Action supprimée");
+    } catch {
+      toast.error("Suppression impossible");
+    }
   };
 
   const addNote = async () => {
@@ -1399,7 +1487,7 @@ export default function ClientDetail() {
     return docs.filter((d) => {
       const isDecompte =
         d.template_id === "lettre_decompte_lpp" || d.category === "Demande de décompte LPP";
-      if (!isDecompte) return false;
+      if (!isDecompte || d.client_id !== id) return false;
       if (fundNameKey(d.caisse_name || "") !== nameKey) return false;
       if (person && d.lpp_person && String(d.lpp_person).trim().toLowerCase() !== person) return false;
       return true;
@@ -1651,8 +1739,16 @@ export default function ClientDetail() {
     return d >= now && d <= oneYear;
   };
 
+  const LPP_DEMAND_TEMPLATES = ["recherche_avoirs_lpp", "procuration_avs_lpp", "lettre_lpp"];
+  const AVS_DEMAND_TEMPLATES = ["calcul_rente_future", "lettre_avs"];
+  const PERSON_DEMAND_TEMPLATES = [...LPP_DEMAND_TEMPLATES, ...AVS_DEMAND_TEMPLATES, "lettre_decompte_lpp"];
+
+  const isPersonDemandDoc = (d) =>
+    PERSON_DEMAND_TEMPLATES.includes(d?.template_id) || PERSON_DEMAND_TEMPLATES.includes(d?.meta?.template_id);
+
   const getDocsForChecklistItem = (documentName) =>
     docs.filter((d) => {
+      if (isPersonDemandDoc(d)) return false;
       if (!matchesChecklistItem(d, documentName)) return false;
       // Les PDF générés depuis la bibliothèque doivent rester visibles
       if (documentName === "Autre formulaire" || documentName === "Mandat de gestion") return true;
@@ -1662,13 +1758,16 @@ export default function ClientDetail() {
   const getDocsForTemplates = (templateIds) =>
     docs.filter((d) => templateIds.includes(d.template_id) || templateIds.includes(d?.meta?.template_id));
 
-  const LPP_DEMAND_TEMPLATES = ["recherche_avoirs_lpp", "procuration_avs_lpp", "lettre_lpp"];
-  const AVS_DEMAND_TEMPLATES = ["calcul_rente_future", "lettre_avs"];
+  const demandDocsForThisClient = (templateIds) =>
+    getDocsForTemplates(templateIds).filter((d) => d.client_id === id);
   const LPP_CHECKLIST = ["Demande LPP"];
   const AVS_CHECKLIST = ["Formulaire AVS"];
 
   const getDecompteDocs = () =>
-    docs.filter((d) => d.template_id === "lettre_decompte_lpp" || d.category === "Demande de décompte LPP");
+    docs.filter((d) =>
+      (d.template_id === "lettre_decompte_lpp" || d.category === "Demande de décompte LPP")
+      && d.client_id === id
+    );
 
   const getUnattachedDecompteDocs = () => {
     const attached = new Set();
@@ -1870,6 +1969,7 @@ export default function ClientDetail() {
     (d) =>
       !isAnalysePrevoyanceDoc(d) &&
       !isOffreDoc(d) &&
+      !isPersonDemandDoc(d) &&
       (isAutreFormulaireDoc(d) ||
         (!d.generated &&
           !checklistNameSet.has(d.checklist_item) &&
@@ -2148,6 +2248,7 @@ export default function ClientDetail() {
               <TabsTrigger value="infos" data-testid="tab-infos"><User className="h-4 w-4 mr-1.5" />Infos</TabsTrigger>
               <TabsTrigger value="rdv" data-testid="tab-rdv"><CalendarClock className="h-4 w-4 mr-1.5" />Rendez-vous</TabsTrigger>
               <TabsTrigger value="notes" data-testid="tab-notes"><StickyNote className="h-4 w-4 mr-1.5" />Notes</TabsTrigger>
+              <TabsTrigger value="journal" data-testid="tab-journal-action"><ClipboardList className="h-4 w-4 mr-1.5" />Journal d&apos;action</TabsTrigger>
               <TabsTrigger value="demandes" data-testid="tab-rappels"><Bell className="h-4 w-4 mr-1.5" />Rappels</TabsTrigger>
               <TabsTrigger value="docs" data-testid="tab-docs"><FileText className="h-4 w-4 mr-1.5" />Documents</TabsTrigger>
               <TabsTrigger value="demande-lpp" data-testid="tab-demande-lpp"><ClipboardList className="h-4 w-4 mr-1.5" />Demande LPP</TabsTrigger>
@@ -2346,6 +2447,134 @@ export default function ClientDetail() {
                               >
                                 <Pencil className="h-3 w-3" /> Modifier
                               </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="journal">
+              <Card className="p-6 space-y-5">
+                <div>
+                  <p className="text-sm font-semibold text-[#002FA7]">Journal d&apos;action</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Suivi des actions faites sur ce dossier.
+                  </p>
+                </div>
+                {canEditClient && (
+                  <div className="space-y-3 p-4 rounded-md border border-border bg-secondary/30">
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Date</Label>
+                        <Input
+                          type="date"
+                          data-testid="journal-date-input"
+                          value={journalForm.date}
+                          onChange={(e) => setJournalForm((form) => ({ ...form, date: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5 flex-1 min-w-[220px]">
+                        <Label className="text-xs text-muted-foreground">Ce qui a été fait</Label>
+                        <Input
+                          data-testid="journal-libelle-input"
+                          value={journalForm.libelle}
+                          onChange={(e) => setJournalForm((form) => ({ ...form, libelle: e.target.value }))}
+                          placeholder="Ex. mail envoyé au client avec l'offre"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Note (optionnel)</Label>
+                      <Textarea
+                        data-testid="journal-note-input"
+                        value={journalForm.note}
+                        onChange={(e) => setJournalForm((form) => ({ ...form, note: e.target.value }))}
+                        placeholder="Précision, suite à donner…"
+                        rows={2}
+                        className="resize-none"
+                      />
+                    </div>
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        onClick={addJournalAction}
+                        disabled={savingJournal}
+                        data-testid="journal-save-btn"
+                        className="bg-[#002FA7] hover:bg-[#00248a]"
+                      >
+                        {savingJournal ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enregistrer"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {journal.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center" data-testid="journal-empty">Aucune action</p>
+                ) : (
+                  <div className="space-y-3">
+                    {journal.map((row) => {
+                      const isEditing = editingJournalId === row.id;
+                      return (
+                        <div key={row.id} className="p-3 rounded-md border border-border bg-secondary/40" data-testid={`journal-row-${row.id}`}>
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap gap-2">
+                                <Input
+                                  type="date"
+                                  value={editingJournal.date}
+                                  onChange={(e) => setEditingJournal((form) => ({ ...form, date: e.target.value }))}
+                                />
+                                <Input
+                                  className="flex-1 min-w-[180px]"
+                                  value={editingJournal.libelle}
+                                  onChange={(e) => setEditingJournal((form) => ({ ...form, libelle: e.target.value }))}
+                                />
+                              </div>
+                              <Textarea
+                                value={editingJournal.note}
+                                onChange={(e) => setEditingJournal((form) => ({ ...form, note: e.target.value }))}
+                                rows={2}
+                                className="resize-none text-sm"
+                              />
+                              <div className="flex gap-2 justify-end">
+                                <Button size="sm" variant="outline" onClick={() => setEditingJournalId(null)}>Annuler</Button>
+                                <Button size="sm" className="bg-[#002FA7] hover:bg-[#00248a]" onClick={() => saveJournalEdit(row.id)}>Enregistrer</Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <p className="text-sm font-medium">{row.libelle}</p>
+                              {row.note ? (
+                                <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{row.note}</p>
+                              ) : null}
+                            </>
+                          )}
+                          <div className="flex items-center justify-between mt-2 gap-2">
+                            <p className="text-xs text-muted-foreground">
+                              {formatJournalDate(row.date)}
+                              {row.author ? ` · ${row.author}` : ""}
+                            </p>
+                            {canEditClient && !isEditing && (
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => startEditJournal(row)}
+                                  className="text-xs text-muted-foreground hover:text-[#002FA7] flex items-center gap-1"
+                                >
+                                  <Pencil className="h-3 w-3" /> Modifier
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteJournalAction(row.id)}
+                                  className="text-xs text-destructive hover:text-destructive flex items-center gap-1"
+                                  data-testid={`journal-delete-${row.id}`}
+                                >
+                                  <Trash2 className="h-3 w-3" /> Supprimer
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -2727,7 +2956,7 @@ export default function ClientDetail() {
 
                 <div>
                   <p className="text-sm font-medium mb-2">Documents générés</p>
-                  {renderDocList(getDocsForTemplates(LPP_DEMAND_TEMPLATES).filter((d) => !d.client_id || d.client_id === id))}
+                  {renderDocList(demandDocsForThisClient(LPP_DEMAND_TEMPLATES))}
                 </div>
 
                 <div className="border-t border-border pt-4">
@@ -2915,7 +3144,7 @@ export default function ClientDetail() {
                 </div>
                 <div>
                   <p className="text-sm font-medium mb-2">Documents générés</p>
-                  {renderDocList(getDocsForTemplates(AVS_DEMAND_TEMPLATES))}
+                  {renderDocList(demandDocsForThisClient(AVS_DEMAND_TEMPLATES))}
                 </div>
                 <div className="border-t border-border pt-4">
                   <p className="text-sm font-semibold mb-3">Suivi</p>

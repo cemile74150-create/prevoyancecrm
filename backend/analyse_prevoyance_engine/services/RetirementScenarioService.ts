@@ -20,10 +20,15 @@ import {
   normalizeThirdPillarType,
   type ThirdPillarType,
 } from "../types";
-import { areScenariosComparable, scenarioWithdrawalYear } from "../withdrawalPlanUtils";
 import {
+  areScenariosComparable,
+  scenarioWithdrawalYear,
+} from "../withdrawalPlanUtils";
+import {
+  acceptedLppScenarioYear,
   effectiveLppWithdrawalAge,
   lppCapitalForWithdrawalAge,
+  lppTableCapitalForYear,
   resolveThirdPillarCapital,
 } from "../rules/planification-saisie";
 import { getRetirementStartDate } from "../rules/avs-age";
@@ -415,8 +420,12 @@ export class WithdrawalPlanningService {
   }
 
   /**
-   * Regroupe tous les capitaux du scénario stratégie sur une seule année.
-   * L'année de référence est la plus tôt où un retrait imposable est prévu dans ce scénario (s'il n'y a que des retraits exonérés, la plus tôt de ce même scénario) ; les années des autres scénarios ne sont jamais mélangées.
+   * Un seul impôt sur la somme des capitaux imposables déjà retenus
+   * par la stratégie. On ne relance pas le scénario année par année :
+   * les LPP resteraient à la date de l'onglet et la somme des tranches
+   * sous-estimerait l'impôt du capital regroupé.
+   * Couple marié : un appel. Personne seule ou non mariée : un appel par assuré.
+   * Les 3B restent dans le capital affiché et hors assiette.
    */
   private async buildSameYearReference(
     input: AnalyseInput,
@@ -431,30 +440,129 @@ export class WithdrawalPlanningService {
     if (!source) return null;
     const year = this.referenceFiscalYear(input, source);
     if (year == null) return null;
-    const collapsed: WithdrawalScenario = {
-      id: `${source.id}__meme_annee`,
-      name: "Retraits la même année fiscale",
-      includeInReport: false,
-      items: source.items.map((item) => ({
-        ...item,
-        anneePremierePossible: scenarioWithdrawalYear(item) == null ? null : year,
-      })),
-    };
-    const evaluated = await this.evaluateScenario(
-      input,
-      collapsed,
-      client1,
-      conjoint,
-      taxGroupId,
-      relationship,
-    );
+
+    const lines = strategy.byYear.flatMap((bucket) => bucket.lines);
+    const taxable = lines.filter((line) => !line.exonere && line.montantRetire > 0);
+    const taxTogether = relationship === 2 && !!input.conjoint;
+    const groups: Array<{ titulaire: PersonKey; rows: typeof taxable }> = [];
+    if (taxTogether) {
+      if (taxable.length) groups.push({ titulaire: "client1", rows: taxable });
+    } else {
+      for (const titulaire of ["client1", "conjoint"] as const) {
+        const rows = taxable.filter((line) => line.titulaire === titulaire);
+        if (rows.length) groups.push({ titulaire, rows });
+      }
+    }
+
+    const capitalRetire = strategy.capitalRetireTotal;
+    if (!groups.length) {
+      return {
+        year,
+        sourceScenarioId: source.id,
+        capitalRetire,
+        impotTotal: 0,
+        capitalNet: round2(capitalRetire),
+        audits: [],
+      };
+    }
+
+    const audits: WithdrawalTaxAudit[] = [];
+    let impotTotalAcc = 0;
+    let impotOk = true;
+    for (const group of groups) {
+      const montantSoumis = round2(
+        group.rows.reduce((sum, line) => sum + line.montantRetire, 0),
+      );
+      const person = group.titulaire === "client1" ? input.client1 : input.conjoint;
+      const computed = group.titulaire === "client1" ? client1 : conjoint;
+      const ageAtPayment = ageInYear(
+        person?.dateNaissance || "",
+        year,
+        computed?.ageLegal ?? client1.ageLegal,
+      );
+      const gender = genderFromCivilite(person?.civilite || "Monsieur");
+      const capitauxInclus = group.rows.map((line) => ({
+        kind: line.kind,
+        label: line.label,
+        montantRetire: line.montantRetire,
+      }));
+      if (!person || montantSoumis <= 0) {
+        impotOk = false;
+        audits.push({
+          scenarioId: `${source.id}__meme_annee`,
+          scenarioName: "Retraits la même année fiscale",
+          year,
+          titulaire: group.titulaire,
+          taxLocationId: input.taxLocationId || 0,
+          etatCivil: input.etatCivil,
+          gender,
+          relationship,
+          ageAtPayment,
+          capitauxInclus,
+          montantSoumis,
+          request: {},
+          response: null,
+          impotTotal: null,
+          error: "Titulaire absent",
+        });
+        continue;
+      }
+      try {
+        const tax = await taxCalculationService.calculateCapitalTax({
+          ageAtPayment,
+          capital: montantSoumis,
+          gender,
+          relationship,
+          taxGroupId,
+          taxYear: input.taxYear,
+        });
+        impotTotalAcc = round2(impotTotalAcc + tax.impotTotal);
+        audits.push({
+          scenarioId: `${source.id}__meme_annee`,
+          scenarioName: "Retraits la même année fiscale",
+          year,
+          titulaire: group.titulaire,
+          taxLocationId: input.taxLocationId || taxGroupId,
+          etatCivil: input.etatCivil,
+          gender,
+          relationship,
+          ageAtPayment,
+          capitauxInclus,
+          montantSoumis,
+          request: tax.request,
+          response: tax.response,
+          impotTotal: tax.impotTotal,
+        });
+      } catch (e) {
+        impotOk = false;
+        audits.push({
+          scenarioId: `${source.id}__meme_annee`,
+          scenarioName: "Retraits la même année fiscale",
+          year,
+          titulaire: group.titulaire,
+          taxLocationId: input.taxLocationId || taxGroupId,
+          etatCivil: input.etatCivil,
+          gender,
+          relationship,
+          ageAtPayment,
+          capitauxInclus,
+          montantSoumis,
+          request: {},
+          response: null,
+          impotTotal: null,
+          error: e instanceof Error ? e.message : "Erreur ESTV",
+        });
+      }
+    }
+
+    const impotTotal = impotOk ? impotTotalAcc : null;
     return {
       year,
       sourceScenarioId: source.id,
-      capitalRetire: evaluated.capitalRetireTotal,
-      impotTotal: evaluated.impotTotal,
-      capitalNet: evaluated.capitalNet,
-      audits: evaluated.audits,
+      capitalRetire,
+      impotTotal,
+      capitalNet: impotTotal == null ? null : round2(capitalRetire - impotTotal),
+      audits,
     };
   }
 
@@ -497,6 +605,15 @@ export class WithdrawalPlanningService {
       const holder =
         item.titulaire === "client1" ? input.client1 : input.conjoint;
       if (!holder) return 0;
+      if (this.refusedLppYear(holder, item)) return 0;
+      const chosenYear = acceptedLppScenarioYear(holder, item);
+      const tabYear = lppTabYear(input, item);
+      if (chosenYear != null && chosenYear !== tabYear) {
+        const looked = lppTableCapitalForYear(holder, item.sourceId, chosenYear);
+        if (!looked.found) return 0;
+        const pct = Math.min(100, Math.max(0, item.pctCapital || 0));
+        return round2(looked.capital * (pct / 100));
+      }
       const sourced = Boolean(item.sourceId && item.sourceId !== "primary");
       if (sourced || holder.lppType === "etatique") {
         const dossierAge =
@@ -526,9 +643,36 @@ export class WithdrawalPlanningService {
     return round2((item.montantDisponible || 0) * (pct / 100));
   }
 
-  /** LPP : année de la date d'onglet LPP. Le reste garde l'année prévue du scénario. */
+  /**
+   * « 1re possible » différente de l'année prévue, sans capital dans le
+   * tableau : le retrait n'est pas fait. On ne le remplace pas par l'onglet.
+   * Deux années égales sans ligne (souvent 2034) : ce n'est pas un choix.
+   */
+  private refusedLppYear(
+    holder: AnalyseInput["client1"] | null | undefined,
+    item: WithdrawalPlanItem,
+  ): boolean {
+    if (!holder) return false;
+    const requested = Number(item.anneePremierePossible);
+    const planned = Number(item.anneeRetraitPrevue);
+    if (!Number.isFinite(requested) || !Number.isFinite(planned) || requested === planned) {
+      return false;
+    }
+    return !lppTableCapitalForYear(holder, item.sourceId, requested).found;
+  }
+
+  /**
+   * LPP : « 1re possible » si le tableau a un capital à l'âge de cette année.
+   * Sinon la date de l'onglet LPP, sauf si l'année demandée est un choix
+   * refusé (elle diffère de l'année prévue et le tableau n'a pas la ligne).
+   * 3e pilier et libre passage : « 1re possible », sinon l'année prévue.
+   */
   private itemYear(input: AnalyseInput, item: WithdrawalPlanItem): number | null {
     if (item.kind === "lpp") {
+      const holder = item.titulaire === "conjoint" ? input.conjoint : input.client1;
+      if (holder && this.refusedLppYear(holder, item)) return null;
+      const chosen = holder ? acceptedLppScenarioYear(holder, item) : null;
+      if (chosen != null) return chosen;
       const fromLpp = lppTabYear(input, item);
       if (fromLpp != null) return fromLpp;
     }

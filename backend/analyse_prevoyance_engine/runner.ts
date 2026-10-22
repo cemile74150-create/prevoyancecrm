@@ -3,10 +3,13 @@
  * Aucun calcul n'est réécrit ici : on appelle les services du module validé.
  */
 import { taxCalculationService } from "./services/TaxCalculationService";
+import { comparatifRenteOffreService } from "./services/ComparatifRenteOffreService";
 import { retirementAnalysisService } from "./services/RetirementAnalysisService";
 import { buildReportPayload } from "./report/buildReportPayload";
 import { renderPrintableReportHtml } from "./pdf/renderPrintableReportHtml";
+import { renderComparatifOffreHtml } from "./pdf/renderComparatifOffreHtml";
 import type { AnalyseInput, AnalyseRecord } from "./types";
+import type { ComparatifRenteOffreResult } from "./services/ComparatifRenteOffreService";
 import { writeFileSync } from "fs";
 
 async function readStdin(): Promise<string> {
@@ -37,6 +40,30 @@ async function main() {
     const results = await retirementAnalysisService.run(input);
     process.stdout.write(JSON.stringify({ results }));
     return;
+  }
+
+  if (cmd === "comparatif-rente") {
+    const input = body.input as AnalyseInput;
+    if (!input) throw new Error("input requis");
+    const results = await comparatifRenteOffreService.build(input);
+    process.stdout.write(JSON.stringify({ results }));
+    return;
+  }
+
+  if (cmd === "comparatif-rente-pdf") {
+    const results = body.results as ComparatifRenteOffreResult;
+    if (!results?.columns?.length) throw new Error("résultats requis");
+    const html = renderComparatifOffreHtml(results, String(body.clientLabel || ""));
+    const outPath = process.argv[3];
+    if (!outPath) {
+      process.stdout.write(html);
+      return;
+    }
+    const { pdfGenerationService } = await import("./services/PdfGenerationService");
+    const buf = await pdfGenerationService.pdfFromDocument(html);
+    writeFileSync(outPath, buf);
+    process.stdout.write(JSON.stringify({ bytes: buf.length }));
+    process.exit(0);
   }
 
   if (cmd === "html" || cmd === "pdf") {

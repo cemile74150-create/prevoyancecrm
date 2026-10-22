@@ -24,6 +24,8 @@ import HistoriqueEmails from "@/pages/HistoriqueEmails";
 import SuiviTechnique from "@/pages/SuiviTechnique";
 import EffectuerAnalyse from "@/pages/EffectuerAnalyse";
 import EffectuerAnalyseEditor from "@/pages/EffectuerAnalyseEditor";
+import ComparatifRentes from "@/pages/ComparatifRentes";
+import ComparatifRentesEditor from "@/pages/ComparatifRentesEditor";
 import LamalDashboard from "@/lamal/DashboardPage";
 import LamalCompare from "@/lamal/ComparePage";
 import LamalClients from "@/lamal/ClientsPage";
@@ -70,6 +72,8 @@ function AppRoutes() {
       <Route path="/clients/:id" element={<Protected anyOf={["clients.view", "dossiers.view"]}><ClientDetail /></Protected>} />
       <Route path="/effectuer-une-analyse" element={<Protected perm="analyses.view"><EffectuerAnalyse /></Protected>} />
       <Route path="/effectuer-une-analyse/:id" element={<Protected perm="analyses.view"><EffectuerAnalyseEditor /></Protected>} />
+      <Route path="/comparatif-rentes" element={<Protected perm="analyses.view"><ComparatifRentes /></Protected>} />
+      <Route path="/comparatif-rentes/:id" element={<Protected perm="analyses.view"><ComparatifRentesEditor /></Protected>} />
       <Route path="/dossiers/:dossierId" element={<Protected perm="dossiers.view"><DossierHub /></Protected>} />
       <Route path="/suivi-3p" element={<Protected perm="suivi_3p.view"><Suivi3P /></Protected>} />
       <Route path="/suivi-3p/:clientId" element={<Protected perm="suivi_3p.view"><Suivi3PFiche /></Protected>} />
