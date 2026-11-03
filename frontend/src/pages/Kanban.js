@@ -47,6 +47,30 @@ function pickVille(members) {
   return "";
 }
 
+function dossierCreatedAt(group) {
+  const stamps = (group?.members || [])
+    .map((member) => member?.created_at)
+    .filter(Boolean)
+    .sort();
+  return stamps[0] || "";
+}
+
+function formatDossierDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("fr-CH", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function dossierTitle(group) {
+  if (group.type === "family") return group.dossier_label || "Sans nom";
+  return `${group.members[0]?.prenom || ""} ${group.members[0]?.nom || ""}`.trim() || "Sans nom";
+}
+
 function buildKanbanGroups(clients) {
   const byId = {};
   (clients || []).forEach((c) => { byId[c.id] = c; });
@@ -214,9 +238,8 @@ export default function Kanban() {
               </div>
               <div className="px-1.5 pb-1.5 space-y-1 min-h-[80px] max-h-[calc(100vh-11rem)] overflow-y-auto">
                 {items.map((c) => {
-                  const title = c.type === "family"
-                    ? c.dossier_label
-                    : `${c.members[0]?.prenom || ""} ${c.members[0]?.nom || ""}`.trim();
+                  const title = dossierTitle(c);
+                  const createdLabel = formatDossierDate(dossierCreatedAt(c));
                   return (
                     <div
                       key={c.key}
@@ -265,6 +288,9 @@ export default function Kanban() {
                               </span>
                             )}
                           </div>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground" data-testid={`kanban-date-${c.key}`}>
+                            {createdLabel}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -278,6 +304,43 @@ export default function Kanban() {
           );
         })}
       </div>
+
+      <section className="mt-6" data-testid="nouveaux-dossiers">
+        <h2 className="text-sm font-semibold mb-2">Nouveaux dossiers</h2>
+        <div className="overflow-x-auto rounded-md border bg-card">
+          <table className="w-full max-w-xl text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs text-muted-foreground">
+                <th className="px-3 py-2 font-medium">Client</th>
+                <th className="px-3 py-2 font-medium">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredGroups
+                .slice()
+                .sort((a, b) => {
+                  const left = dossierCreatedAt(a);
+                  const right = dossierCreatedAt(b);
+                  if (!left && !right) return dossierTitle(a).localeCompare(dossierTitle(b), "fr");
+                  if (!left) return 1;
+                  if (!right) return -1;
+                  return right.localeCompare(left);
+                })
+                .map((group) => (
+                  <tr key={group.key} className="border-b last:border-0">
+                    <td className="px-3 py-2">{dossierTitle(group)}</td>
+                    <td className="px-3 py-2 tabular-nums">{formatDossierDate(dossierCreatedAt(group))}</td>
+                  </tr>
+                ))}
+              {filteredGroups.length === 0 && (
+                <tr>
+                  <td className="px-3 py-3 text-muted-foreground" colSpan={2}>Aucun dossier</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <ClientFormDialog
         open={dialog}

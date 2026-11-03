@@ -246,7 +246,7 @@ describe("libellés du formulaire conseiller", () => {
     assert.equal(source.includes("Capital effectivement retiré"), false);
     assert.equal(source.includes("Âge de fin d'activité"), false);
     assert.match(source, /% LPP disponible/);
-    assert.match(source, /Âge de retraite souhaité \(début des rentes de retraite\)/);
+    assert.match(source, /Âge de départ à la retraite professionnelle \/ perception LPP/);
     assert.match(source, /Êtes-vous sûr de vouloir supprimer cet élément \? Cette action ne pourra pas être annulée\./);
     assert.match(source, /← Analyses/);
     assert.match(source, /LeoSoft · Effectuer une planification/);

@@ -29,6 +29,8 @@ import {
   isSoumisCompagnie,
 } from "@/lib/demandesOffres";
 import { uniqueConseillerNames } from "@/lib/conseillers";
+import { PendingComplementBadge } from "@/components/NotesConseiller";
+import { offreNotificationPath } from "@/lib/complementsOffre";
 import {
   Bell, Briefcase, ClipboardList, Columns3, Eye, Filter,
   Loader2, Search, Users, AlertTriangle, Inbox, Sparkles, Clock, BarChart3,
@@ -231,8 +233,10 @@ export default function GestionReponsesOffres() {
     try {
       if (!n.read) await api.post(`/notifications/offres/${n.id}/read`);
     } catch { /* ignore */ }
-    if (n.demande_id) openFiche(n.demande_id);
-    else loadNotifs();
+    if (n.demande_id) {
+      const target = offreNotificationPath(n, { fromGestion: true });
+      if (target) navigate(target);
+    } else loadNotifs();
   };
 
   const applyDayAction = (id) => {
@@ -627,6 +631,11 @@ export default function GestionReponsesOffres() {
                           </td>
                           <td className="px-3 py-2">
                             <StatutBadge statut={r.statut} />
+                            {Number(r.nb_complements_en_attente) > 0 && (
+                              <span className="mt-1 block">
+                                <PendingComplementBadge count={r.nb_complements_en_attente} />
+                              </span>
+                            )}
                             {r.statut === "Offre modifiée" && (
                               <span className="mt-1 block text-[10px] font-semibold text-amber-950">Offre à modifier</span>
                             )}
@@ -719,7 +728,10 @@ export default function GestionReponsesOffres() {
                           <p className="text-[11px] text-slate-600 truncate mt-1">{typeLabel(r)}</p>
                           <p className="text-[10px] text-slate-400 mt-0.5 truncate">{compsShort(r)}</p>
                           <div className="flex items-center justify-between gap-1 mt-2">
-                            <StatutBadge statut={r.statut} />
+                            <span className="flex flex-wrap items-center gap-1">
+                              <StatutBadge statut={r.statut} />
+                              <PendingComplementBadge count={r.nb_complements_en_attente} />
+                            </span>
                             <PrioriteBadge niveau={r.priorite} />
                           </div>
                           <p className="text-[10px] text-slate-400 mt-1.5">{formatDateFr(r.date_envoi || r.created_at)}</p>

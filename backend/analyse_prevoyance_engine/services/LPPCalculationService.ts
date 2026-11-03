@@ -193,7 +193,7 @@ export class LPPCalculationService {
    */
   aggregateAtAge(
     person: PersonInput,
-    age: RetirementAge,
+    age: RetirementAge | null,
   ): {
     lines: LppAvoirLigne[];
     capital: number;
@@ -201,6 +201,16 @@ export class LPPCalculationService {
     capitalRetire: number;
     renteResiduelle: number;
   } {
+    if (age == null) {
+      const lines = this.listAvoirs(person).map((avoir) => this.emptyLine(avoir));
+      return {
+        lines,
+        capital: 0,
+        rente: 0,
+        capitalRetire: 0,
+        renteResiduelle: 0,
+      };
+    }
     const lines = this.listAvoirs(person).map((avoir) => this.lineAtAge(avoir, age));
     const sum = (key: "capital" | "rente" | "capitalRetire" | "renteResiduelle") =>
       round2(lines.reduce((total, line) => total + line[key], 0));
@@ -221,15 +231,31 @@ export class LPPCalculationService {
   capitalRetireForItem(
     person: PersonInput,
     sourceId: string | null | undefined,
-    age: RetirementAge,
+    age: RetirementAge | null,
   ): number {
+    if (age == null) return 0;
     const id = sourceId && sourceId !== "primary" ? sourceId : "primary";
     const line = this.aggregateAtAge(person, age).lines.find((row) => row.id === id);
     return line?.capitalRetire ?? 0;
   }
 
+  private emptyLine(avoir: AvoirRef): LppAvoirLigne {
+    return {
+      id: avoir.id,
+      institution: avoir.institution,
+      pct: avoir.type === "etatique" ? 100 : this.resolvePctDeblocable(avoir.pct),
+      type: avoir.type,
+      age: avoir.ageRetrait ?? undefined,
+      capital: 0,
+      rente: 0,
+      capitalRetire: 0,
+      renteResiduelle: 0,
+    };
+  }
+
   private lineAtAge(avoir: AvoirRef, personAge: RetirementAge): LppAvoirLigne {
     const age = fundTableAge(avoir.ageRetrait, personAge);
+    if (age == null) return this.emptyLine(avoir);
     const row = this.getAtAge(this.normalizeRows(avoir.rows), age);
     if (avoir.type === "etatique") return this.etatiqueLine(avoir, row, age);
     const pct = this.resolvePctDeblocable(avoir.pct);
@@ -329,21 +355,81 @@ export function lppRenteAnnuelle(
 function fundTableAge(
   fundAge: number | null | undefined,
   personAge: RetirementAge,
-): RetirementAge {
+): RetirementAge | null {
   if (fundAge != null && (RETIREMENT_AGES as readonly number[]).includes(fundAge)) {
     return fundAge as RetirementAge;
   }
+  if (fundAge != null && Number.isFinite(Number(fundAge))) return null;
   return personAge;
 }
 
-/** Âge du tableau LPP (60–65). Absent ou hors tableau → 65. */
+/**
+ * Âge du tableau LPP (58–65).
+ * Aucun âge choisi : ligne 65, comme les dossiers déjà enregistrés.
+ * Un âge hors tableau ne prend pas la ligne d'un autre âge.
+ */
 export function lppTableAge(
   personAge: number | null | undefined,
-): RetirementAge {
+): RetirementAge | null {
   if (personAge != null && (RETIREMENT_AGES as readonly number[]).includes(personAge)) {
     return personAge as RetirementAge;
   }
-  return 65;
+  if (personAge == null || !Number.isFinite(Number(personAge))) return 65;
+  return null;
+}
+
+function ligneADeLargent(row: LppByAge | undefined): boolean {
+  if (!row) return false;
+  return (
+    (row.capital || 0) > 0 ||
+    (row.rente || 0) > 0 ||
+    (row.renteReduite || 0) > 0 ||
+    (row.capitalSaisi || 0) > 0 ||
+    (row.renteConserveeSaisie || 0) > 0
+  );
+}
+
+/**
+ * Le montant d'un autre âge n'est pas repris.
+ * On demande la ligne de l'âge choisi lorsqu'une autre ligne est déjà remplie.
+ */
+export function avertissementLppAge(
+  person: PersonInput,
+  ageDemande: number | null | undefined,
+): string | null {
+  if (ageDemande == null || !Number.isFinite(Number(ageDemande))) return null;
+  const messages: string[] = [];
+  const funds = [
+    {
+      label: (person.lppInstitution || "").trim() || "Caisse principale",
+      rows: person.lpp || [],
+      ownAge: null as number | null,
+    },
+    ...(person.lppAvoirs || []).map((avoir) => ({
+      label: (avoir.institution || "").trim() || "Caisse",
+      rows: avoir.rows || [],
+      ownAge: avoir.ageRetrait ?? null,
+    })),
+  ];
+  for (const fund of funds) {
+    const propre = fund.ownAge;
+    const age =
+      propre != null && Number.isFinite(Number(propre)) ? Number(propre) : Number(ageDemande);
+    if (!(RETIREMENT_AGES as readonly number[]).includes(age)) {
+      messages.push(
+        `${fund.label} : l'âge ${age} ans n'a pas de ligne. Le montant d'un autre âge n'est pas repris.`,
+      );
+      continue;
+    }
+    const row = fund.rows.find((item) => item.age === age);
+    const autre = fund.rows.some((item) => item.age !== age && ligneADeLargent(item));
+    if (!ligneADeLargent(row) && autre) {
+      messages.push(
+        `${fund.label} : les montants saisis ne sont pas ceux de ${age} ans. Complétez cette ligne.`,
+      );
+    }
+  }
+  return messages.length ? messages.join(" ") : null;
 }
 
 export const lppCalculationService = new LPPCalculationService();

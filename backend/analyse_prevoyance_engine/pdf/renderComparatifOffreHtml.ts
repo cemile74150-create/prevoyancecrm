@@ -1,17 +1,22 @@
 /**
  * PDF du comparatif d'offres.
  * Même mise en page que pageComparatifDesRentes (en-tête, titre, tableau .compare).
- * Différence : une seule ligne « Total impôt fortune sur N ans », sans calendrier.
- * Le rapport d'analyse n'est pas modifié et ne reçoit pas cette ligne.
+ * L'impôt de la rente reste annuel.
+ * Sous le revenu net : total d'impôt fortune sur la durée,
+ * impôt fortune si le capital n'est pas affecté. Pas de ligne Gain net.
+ * Les revenus ajoutés (AVS, rente LPP, autre) entrent dans l'impôt sur le revenu.
+ * Pas de calendrier année par année.
+ * Le rapport d'analyse n'est pas modifié et ne reçoit pas ces lignes.
  */
 import { readFileSync } from "fs";
 import { formatChf } from "../mappers";
 import { reportCss } from "./renderPrintableReportHtml";
 import {
   impotRevenuPourPdf,
-  LIBELLE_ICC_ANNUEL,
+  LIBELLE_IMPOT_RENTE_ANNUEL,
   type OffreRenteType,
 } from "../rules/comparatif-rente-offre";
+import { compagnieEstPax, NOTE_PAX_DIFFERE } from "../rules/rente-hypotheses";
 import type {
   ComparatifOffreColumn,
   ComparatifRenteOffreResult,
@@ -64,7 +69,8 @@ export function renderComparatifOffreHtml(
       const reco = col.recommander
         ? `<span class="reco-flag">Solution recommandée</span>`
         : "";
-      return `<th class="${colRole(col)}"><span class="compare-head-title">${esc(col.label)}</span><span class="compare-head-meta">${esc(money(col.capitalPlace))}</span><span class="compare-head-type">${esc(typeLine)}</span>${reco}</th>`;
+      const title = `${esc(col.label)}${compagnieEstPax(col.compagnie || col.label) ? " *" : ""}`;
+      return `<th class="${colRole(col)}"><span class="compare-head-title">${title}</span><span class="compare-head-meta">${esc(money(col.capitalPlace))}</span><span class="compare-head-type">${esc(typeLine)}</span>${reco}</th>`;
     })
     .join("");
 
@@ -74,10 +80,6 @@ export function renderComparatifOffreHtml(
       .join("")}</tr>`;
   const sec = (label: string) =>
     `<tr class="sec-row"><td colspan="${cols.length + 1}">${label}</td></tr>`;
-
-  const revenuLabel = revenuRowLabel(cols);
-  const revenuUnifie =
-    revenuLabel.startsWith("Total ICC") || revenuLabel === LIBELLE_ICC_ANNUEL;
 
   const fortuneDurations = [
     ...new Set(
@@ -95,10 +97,10 @@ export function renderComparatifOffreHtml(
   const hasViagere = cols.some((col) => col.type === "viagere");
   const notes = [
     hasCertaine
-      ? "Rente certaine. Revenu fiscal = 70 % de la participation aux excédents. La rente garantie est encaissée, elle n'entre pas dans le revenu imposable. Pas d'AVS ni de LPP."
+      ? "Rente certaine. Revenu fiscal de l'offre = 0 % de la rente garantie + 100 % de la participation aux excédents. La rente garantie est encaissée, elle n'entre pas dans le revenu imposable. AVS, rente LPP ou autre revenu seulement s'ils sont ajoutés."
       : "",
     hasViagere
-      ? "Rente viagère. Revenu fiscal = 4 % de la rente garantie + 100 % de la participation aux excédents. Pas d'AVS ni de LPP. L'impôt reste annuel : aucune durée n'est inventée."
+      ? "Rente viagère. Revenu fiscal de l'offre = 4 % de la rente garantie + 70 % de la participation aux excédents. AVS, rente LPP ou autre revenu seulement s'ils sont ajoutés. L'impôt reste annuel : aucune durée n'est inventée."
       : "",
   ].filter(Boolean);
 
@@ -132,19 +134,17 @@ export function renderComparatifOffreHtml(
     ${row("Participation aux excédents", cols.map((col) => esc(money(col.participationExcedents))))}
     ${sec("Fiscalité")}
     ${row("Part imposable", cols.map((col) => esc(money(col.partImposable))))}
+    ${(result.revenusAjoutes || [])
+      .map((revenu) =>
+        row(revenu.libelle, cols.map(() => esc(money(revenu.montant)))),
+      )
+      .join("")}
     ${row(
-      revenuLabel,
+      LIBELLE_IMPOT_RENTE_ANNUEL,
       cols.map((col) => {
         const line = impotRevenuPourPdf(col.type as OffreRenteType, col.impotRevenu, col.dureeAnnees);
         if (line.montant == null) return "—";
-        const hint = revenuUnifie
-          ? ""
-          : line.mode === "annuel"
-            ? `<br/><span>annuel</span>`
-            : line.annees
-              ? `<br/><span>sur ${line.annees} ans</span>`
-              : "";
-        return `<span class="tax">${esc(money(line.montant))}</span>${hint}`;
+        return `<span class="tax">${esc(money(line.montant))}</span>`;
       }),
     )}
     ${sec("Revenus nets")}
@@ -158,9 +158,16 @@ export function renderComparatifOffreHtml(
       cols.map((col) => (col.totalImpotFortune == null ? "—" : esc(money(col.totalImpotFortune)))),
       "row-net",
     )}
+    ${row(
+      "Impôt fortune si capital non affecté",
+      cols.map((col) =>
+        col.impotFortuneSiNonAffecte == null ? "—" : esc(money(col.impotFortuneSiNonAffecte)),
+      ),
+    )}
   </table>
   ${notes.map((note) => `<p class="revenu-fiscal-note">${esc(note)}</p>`).join("")}
-  <p class="fiscal-note">* L'ICC/IFD d'une rente certaine est le total payé sur la durée (impôt annuel × nombre d'années). Il n'est pas détaillé année par année. La ligne d'impôt sur la fortune est le total sur cette même durée.</p>
+  ${cols.some((col) => compagnieEstPax(col.compagnie || col.label)) ? `<p class="note">${esc(NOTE_PAX_DIFFERE)}</p>` : ""}
+  <p class="fiscal-note">* L'impôt de la rente est annuel : il n'est pas multiplié par la durée. Les revenus ajoutés (AVS, rente LPP, autre) entrent dans cet impôt lorsqu'ils sont saisis. Le total d'impôt sur la fortune est la somme des impôts sur le capital qui diminue chaque année de la rente garantie. La dernière ligne est l'impôt sur ce même capital s'il n'est pas affecté à la rente (fortune constante × durée). Sans durée, les deux impôts sur la fortune restent vides.</p>
   </div>`;
 
   return `<!DOCTYPE html>
@@ -176,22 +183,17 @@ export function renderComparatifOffreHtml(
 </html>`;
 }
 
-function revenuRowLabel(cols: ComparatifOffreColumn[]): string {
-  const lines = cols.map((col) =>
-    impotRevenuPourPdf(col.type, col.impotRevenu, col.dureeAnnees),
-  );
-  const totals = lines.filter((line) => line.mode === "total");
-  if (totals.length === lines.length && totals.length > 0) {
-    const years = [...new Set(totals.map((line) => line.annees))];
-    if (years.length === 1 && years[0] != null) {
-      return `Total ICC / IFD sur ${years[0]} ans`;
-    }
-  }
-  if (lines.length > 0 && lines.every((line) => line.mode === "annuel")) return LIBELLE_ICC_ANNUEL;
-  return "ICC / IFD";
-}
-
 export function analyseReportHasFortuneLine(): boolean {
   const source = readFileSync(new URL("./renderPrintableReportHtml.ts", import.meta.url), "utf8");
   return source.includes("Total impôt fortune");
+}
+
+/** Ces libellés appartiennent au comparatif d'offres, pas au rapport d'analyse. */
+export function analyseReportHasOffreResultatLines(): boolean {
+  const source = readFileSync(new URL("./renderPrintableReportHtml.ts", import.meta.url), "utf8");
+  return (
+    source.includes("Impôt fortune si capital non affecté") ||
+    source.includes("Gain net") ||
+    source.includes(LIBELLE_IMPOT_RENTE_ANNUEL)
+  );
 }

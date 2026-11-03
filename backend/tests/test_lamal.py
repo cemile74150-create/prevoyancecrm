@@ -14,6 +14,7 @@ from access_control import (  # noqa: E402
     LAMAL_OWNER_EMAIL,
     PERM_LAMAL_MODULE_ACCESS,
     ROLE_ADMIN,
+    ROLE_CONSEILLER,
     default_permissions,
     has_perm,
     permission_for_request,
@@ -79,6 +80,19 @@ def test_lamal_permission_is_not_granted_to_other_admins():
     assert resolve_permissions({"role": ROLE_ADMIN, "email": "autre.admin@agencemendes.ch"})[PERM_LAMAL_MODULE_ACCESS] is False
     assert has_perm(other, PERM_LAMAL_MODULE_ACCESS) is False
     assert has_perm(owner, PERM_LAMAL_MODULE_ACCESS) is True
+    alberto = user_from_doc({
+        "user_id": "user_alberto",
+        "email": "compte-existant@example.invalid",
+        "prenom": "Alberto",
+        "nom": "Mendes",
+        "name": "MENDES Alberto",
+        "role": ROLE_CONSEILLER,
+        "see_all_dossiers": False,
+    })
+    assert alberto.role == ROLE_ADMIN
+    assert alberto.can_manage_users is True
+    assert alberto.see_all_dossiers is True
+    assert has_perm(alberto, PERM_LAMAL_MODULE_ACCESS) is True
     assert permission_for_request("GET", "/api/lamal/dashboard") == PERM_LAMAL_MODULE_ACCESS
     assert permission_for_request("POST", "/api/lamal/emails/abc/send") == PERM_LAMAL_MODULE_ACCESS
 

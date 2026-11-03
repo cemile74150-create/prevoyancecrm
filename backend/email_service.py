@@ -58,6 +58,8 @@ CONSEILLER_OFFRE_EVENTS = frozenset(
         "note_externe",
         "note-externe",
         "external_note",
+        "complement_demande",
+        "complement-demande",
     }
 )
 
@@ -140,6 +142,8 @@ MAIL_TYPE_OFFRE_INCOMPLETE = "offre_incomplete"
 MAIL_TYPE_OFFRE_SIGNEE = "offre_signee"
 MAIL_TYPE_OFFRE_MODIFIEE = "offre_modifiee"
 MAIL_TYPE_NOTE_EXTERNE = "note_externe"
+MAIL_TYPE_COMPLEMENT_DEMANDE = "complement_demande"
+MAIL_TYPE_COMPLEMENT_REPONSE = "complement_reponse"
 MAIL_TYPE_DOSSIER_PRESENTE = "dossier_presente"
 MAIL_TYPE_RDV_SUIVI_RELANCE = "rdv_suivi_relance"
 MAIL_TYPE_TEST = "smtp_test"
@@ -790,6 +794,7 @@ def _smtp_deliver(
     attachments: Optional[Sequence[Attachment]] = None,
     in_reply_to: Optional[str] = None,
     references: Optional[str] = None,
+    from_name: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     """Envoi SMTP pur — sans journalisation. Retourne (ok, erreur, message_id)."""
     to_email = (to_email or "").strip()
@@ -808,6 +813,7 @@ def _smtp_deliver(
         attachments=attachments,
         in_reply_to=in_reply_to,
         references=references,
+        from_name=from_name,
     )
     message_id = (msg.get("Message-ID") or "").strip() or None
     recipients = [to_email] + cc_clean + bcc_clean
@@ -855,6 +861,7 @@ def send_email(
     in_reply_to: Optional[str] = None,
     references: Optional[str] = None,
     result_out: Optional[dict] = None,
+    from_name: Optional[str] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     Envoie un e-mail via SMTP Infomaniak.
@@ -877,6 +884,7 @@ def send_email(
         attachments=attachments,
         in_reply_to=in_reply_to,
         references=references,
+        from_name=from_name,
     )
     if result_out is not None:
         result_out["message_id"] = message_id
@@ -916,6 +924,7 @@ async def send_email_async(
     in_reply_to: Optional[str] = None,
     references: Optional[str] = None,
     result_out: Optional[dict] = None,
+    from_name: Optional[str] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     Variante async : journal « pending » avant SMTP, puis sent/error après acceptation SMTP.
@@ -951,6 +960,7 @@ async def send_email_async(
         attachments=attachments,
         in_reply_to=in_reply_to,
         references=references,
+        from_name=from_name,
     )
     if result_out is not None:
         result_out["message_id"] = message_id
@@ -988,9 +998,14 @@ def _build_message(
     attachments: Optional[Sequence[Attachment]] = None,
     in_reply_to: Optional[str] = None,
     references: Optional[str] = None,
+    from_name: Optional[str] = None,
 ) -> Tuple[EmailMessage, List[str], List[str]]:
     mail_from = smtp_from_address()
-    from_header = smtp_from_header()
+    display_name = " ".join(str(from_name or "").split())
+    if display_name and mail_from:
+        from_header = formataddr((display_name, mail_from))
+    else:
+        from_header = smtp_from_header()
     reply_to = smtp_reply_to()
 
     cc_clean: List[str] = []
@@ -1088,6 +1103,15 @@ def _demande_offre_url(demande_id: Optional[str]) -> Optional[str]:
     if base and demande_id:
         return f"{base}/demandes-offres/{demande_id}"
     return None
+
+
+def _complement_offre_url(demande_id: Optional[str], complement_id: Optional[str]) -> Optional[str]:
+    """Lien direct vers la demande de complément, pas vers l'accueil."""
+    url = _demande_offre_url(demande_id)
+    cid = (complement_id or "").strip()
+    if url and cid:
+        return f"{url}?complement={cid}"
+    return url
 
 
 def _suivi_3p_fiche_url(client_id: Optional[str]) -> Optional[str]:
@@ -1608,6 +1632,126 @@ def format_note_externe_email(doc: dict, *, note: Optional[str] = None) -> Tuple
     )
     if url:
         html_parts.append(_html_button(url, link_label))
+    html_parts.append("<p>Cordialement,<br/>LeoSoft</p></div>")
+    return subject, body_text, "".join(html_parts)
+
+
+def format_complement_demande_email(
+    doc: dict,
+    *,
+    note: Optional[str] = None,
+    complement_type: Optional[str] = None,
+    complement_id: Optional[str] = None,
+) -> Tuple[str, str, str]:
+    """
+    Complément avec réponse attendue, envoyé au conseiller créateur.
+    Objet et bouton distincts d'une simple note informative.
+    """
+    client = _offre_client_name(doc)
+    numero = (doc.get("numero") or "").strip() or "—"
+    subject = f"LeoSoft — Action requise : complément demandé pour l'offre {numero}"
+    note_text = (note or "").strip() or "—"
+    kind = {"document": "Document", "information": "Information"}.get(
+        (complement_type or "").strip().lower(),
+        "Complément",
+    )
+    url = _complement_offre_url(doc.get("id"), complement_id)
+    button = "Répondre à la demande sur LeoSoft"
+    text_lines = [
+        "Bonjour,",
+        "",
+        "Une demande de complément nécessite votre intervention concernant le dossier suivant :",
+        "",
+        f"- Client : {client}",
+        f"- Référence : {numero}",
+        f"- Type : {kind}",
+        f"- Demande du gestionnaire : {note_text}",
+        "",
+        "Merci de vous connecter à LeoSoft afin de répondre à cette demande et, si nécessaire, de transmettre les documents demandés.",
+    ]
+    if url:
+        text_lines.extend(["", f"{button} :", url])
+    text_lines.extend(["", "Cordialement,", "Le service des offres"])
+    body_text = "\n".join(text_lines)
+    html_parts = [
+        '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.5;">',
+        "<p>Bonjour,</p>",
+        "<p>Une demande de complément nécessite votre intervention concernant le dossier suivant :</p>",
+        "<ul>",
+        f"<li><strong>Client</strong> : {html.escape(client)}</li>",
+        f"<li><strong>Référence</strong> : {html.escape(numero)}</li>",
+        f"<li><strong>Type</strong> : {html.escape(kind)}</li>",
+        "<li><strong>Demande du gestionnaire</strong> : "
+        + html.escape(note_text).replace("\n", "<br/>")
+        + "</li>",
+        "</ul>",
+        "<p>Merci de vous connecter à LeoSoft afin de répondre à cette demande et, si nécessaire, de transmettre les documents demandés.</p>",
+    ]
+    if url:
+        html_parts.append(_html_button(url, button))
+    html_parts.append("<p>Cordialement,<br/>Le service des offres</p></div>")
+    return subject, body_text, "".join(html_parts)
+
+
+def format_complement_reponse_email(
+    doc: dict,
+    *,
+    note: Optional[str] = None,
+    reply_text: Optional[str] = None,
+    author: Optional[str] = None,
+    complement_type: Optional[str] = None,
+    complement_id: Optional[str] = None,
+    document_names: Optional[list] = None,
+) -> Tuple[str, str, str]:
+    """Réponse du conseiller, routée vers la boîte offres déjà configurée."""
+    client = _offre_client_name(doc)
+    numero = (doc.get("numero") or "").strip() or "—"
+    subject = f"LeoSoft — Réponse reçue : complément pour l'offre {numero}"
+    kind = {"document": "Document", "information": "Information"}.get(
+        (complement_type or "").strip().lower(),
+        "Complément",
+    )
+    request_text = (note or "").strip() or "—"
+    answer = (reply_text or "").strip() or "—"
+    who = (author or "").strip() or "Le conseiller"
+    names = [str(name).strip() for name in (document_names or []) if str(name).strip()]
+    docs_line = ", ".join(names) if names else "Aucun document"
+    url = _complement_offre_url(doc.get("id"), complement_id)
+    button = "Voir la réponse dans LeoSoft"
+    text_lines = [
+        "Bonjour,",
+        "",
+        "Une réponse a été transmise à une demande de complément.",
+        "",
+        f"- Client : {client}",
+        f"- Référence : {numero}",
+        f"- Type : {kind}",
+        f"- Demande : {request_text}",
+        f"- Réponse de {who} : {answer}",
+        f"- Documents : {docs_line}",
+        "",
+        "La réponse et les documents sont enregistrés dans LeoSoft.",
+    ]
+    if url:
+        text_lines.extend(["", f"{button} :", url])
+    text_lines.extend(["", "Cordialement,", "LeoSoft"])
+    body_text = "\n".join(text_lines)
+    html_parts = [
+        '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.5;">',
+        "<p>Bonjour,</p>",
+        "<p>Une réponse a été transmise à une demande de complément.</p>",
+        "<ul>",
+        f"<li><strong>Client</strong> : {html.escape(client)}</li>",
+        f"<li><strong>Référence</strong> : {html.escape(numero)}</li>",
+        f"<li><strong>Type</strong> : {html.escape(kind)}</li>",
+        "<li><strong>Demande</strong> : " + html.escape(request_text).replace("\n", "<br/>") + "</li>",
+        f"<li><strong>Réponse de {html.escape(who)}</strong> : " + html.escape(answer).replace("\n", "<br/>") + "</li>",
+        f"<li><strong>Documents</strong> : {html.escape(docs_line)}</li>",
+        "</ul>",
+        "<p>La réponse et les documents sont enregistrés dans LeoSoft.</p>",
+    ]
+    if url:
+        html_parts.append(_html_button(url, button))
     html_parts.append("<p>Cordialement,<br/>LeoSoft</p></div>")
     return subject, body_text, "".join(html_parts)
 

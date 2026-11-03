@@ -932,7 +932,7 @@ def empty_form_defaults(user=None, *, form_type: Optional[str] = None) -> dict:
     return base
 
 
-def missing_required(doc: dict) -> list:
+def missing_required(doc: dict, *, docs: Optional[list] = None) -> list:
     form_type = (doc.get("form_type") or "pilier3_legacy").strip()
     missing: list = []
     if form_type and form_type != "pilier3_legacy":
@@ -963,6 +963,16 @@ def missing_required(doc: dict) -> list:
         finma_msg = missing_agent_finma_message(doc)
         if finma_msg and finma_msg not in missing:
             missing.append(finma_msg)
+    except Exception:
+        pass
+
+    # Mandat de gestion ≥ 1 an — Assurances professionnelles uniquement
+    try:
+        from mandat_gestion_offre import mandat_gestion_missing
+
+        for msg in mandat_gestion_missing(doc, docs=docs):
+            if msg not in missing:
+                missing.append(msg)
     except Exception:
         pass
     return missing
@@ -1547,6 +1557,10 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "date_prochain_rdv": doc.get("date_prochain_rdv") or "",
         "langue_offre": doc.get("langue_offre") or "",
         "mandat_gestion": bool(doc.get("mandat_gestion")),
+        "mandat_debut": doc.get("mandat_debut") or "",
+        "mandat_fin": doc.get("mandat_fin") or "",
+        "requires_mandat_gestion": False,
+        "mandat_gestion_info": "",
         "incomplete_comment": doc.get("incomplete_comment") or "",
         "incomplete_at": doc.get("incomplete_at"),
         "incomplete_by": doc.get("incomplete_by"),
@@ -1575,6 +1589,7 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "email_error": doc.get("email_error"),
         "email_subject": doc.get("email_subject") or "",
         "notes_externes": list(doc.get("notes_externes") or []),
+        "nb_complements_en_attente": 0,
         "demande_origine": normalize_demande_origine(doc.get("demande_origine")),
         "type_client": normalize_type_client(doc.get("type_client"), client_id=doc.get("client_id")),
         "erreurs_incomplete": list(doc.get("erreurs_incomplete") or []),
@@ -1606,6 +1621,14 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
             or statut == STATUT_OFFRE_SIGNEE
         ),
     }
+    try:
+        from mandat_gestion_offre import MANDAT_INFO_MESSAGE, is_professionnelle_demande
+
+        if is_professionnelle_demande(doc):
+            out["requires_mandat_gestion"] = True
+            out["mandat_gestion_info"] = MANDAT_INFO_MESSAGE
+    except Exception:
+        pass
     enrich_gestion_fields(doc, out)
     out["nb_variantes_sollicitees"] = len(out.get("compagnies_sollicitees") or [])
     # Notes internes + erreurs : gestionnaires process + admin (users.manage)
@@ -1640,6 +1663,22 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
     if viewer is not None:
         # Admin voit / peut agir sur le suivi conseiller ; gestionnaire non-créateur non
         out["can_follow_signature"] = can_follow_signature(viewer, doc) or is_admin_viewer
+    from complements_offres import (
+        count_pending_complements,
+        enrich_external_notes,
+        reply_document_ids,
+        user_can_answer_complement,
+    )
+
+    raw_notes = list(doc.get("notes_externes") or [])
+    can_answer = bool(viewer is not None and user_can_answer_complement(viewer, doc))
+    out["notes_externes"] = enrich_external_notes(raw_notes, can_answer=can_answer)
+    out["nb_complements_en_attente"] = count_pending_complements(raw_notes)
+    locked_ids = reply_document_ids(raw_notes)
+    if locked_ids and isinstance(out.get("documents"), list):
+        for item in out["documents"]:
+            if isinstance(item, dict) and str(item.get("id") or "") in locked_ids:
+                item["locked"] = True
     return _json_safe(out)
 
 
@@ -1836,6 +1875,74 @@ def _dedupe_company_names(names: list[str]) -> list[str]:
         seen.add(key)
         out.append(text)
     return out
+
+
+def company_offer_data_present(offer: Optional[dict]) -> bool:
+    """Vrai s'il existe une offre enregistrée, indépendamment du statut Incomplète."""
+    if not offer or not isinstance(offer, dict):
+        return False
+    if offer.get("date_reception") or offer.get("received_at"):
+        return True
+    if normalize_offre_documents(offer):
+        return True
+    if str(offer.get("reference") or "").strip():
+        return True
+    if offer.get("montant_prime") not in (None, ""):
+        return True
+    if str(offer.get("garanties") or "").strip():
+        return True
+    return False
+
+
+def coherent_company_statut(offer: Optional[dict]) -> str:
+    """Offre reçue s'il y a une offre, sinon En attente."""
+    if company_offer_data_present(offer):
+        return STATUT_COMPAGNIE_RECUE
+    return STATUT_COMPAGNIE_EN_ATTENTE
+
+
+def capture_statut_avant_incomplet(offer: dict) -> None:
+    """Mémorise le statut d'avant Incomplète, sans l'écraser à un second marquage."""
+    raw = str(offer.get("statut") or "").strip()
+    if raw and normalize_company_offer_statut(raw) == STATUT_COMPAGNIE_INCOMPLETE:
+        return
+    if not raw:
+        offer["statut_avant_incomplet"] = coherent_company_statut(offer)
+        return
+    current = normalize_company_offer_statut(raw)
+    coherent = coherent_company_statut(offer)
+    if current == STATUT_COMPAGNIE_EN_ATTENTE and coherent == STATUT_COMPAGNIE_RECUE:
+        offer["statut_avant_incomplet"] = STATUT_COMPAGNIE_RECUE
+    elif current == STATUT_COMPAGNIE_RECUE and coherent == STATUT_COMPAGNIE_EN_ATTENTE:
+        offer["statut_avant_incomplet"] = STATUT_COMPAGNIE_EN_ATTENTE
+    elif current in {STATUT_COMPAGNIE_EN_ATTENTE, STATUT_COMPAGNIE_RECUE}:
+        offer["statut_avant_incomplet"] = current
+    else:
+        offer["statut_avant_incomplet"] = coherent
+
+
+def restored_company_statut(offer: dict) -> str:
+    """Statut précédent s'il existe et ne contredit pas les données, sinon le statut cohérent."""
+    coherent = coherent_company_statut(offer)
+    raw = str(offer.get("statut_avant_incomplet") or "").strip()
+    if not raw:
+        return coherent
+    previous = normalize_company_offer_statut(raw)
+    if previous not in {STATUT_COMPAGNIE_EN_ATTENTE, STATUT_COMPAGNIE_RECUE}:
+        return coherent
+    if previous == STATUT_COMPAGNIE_EN_ATTENTE and coherent == STATUT_COMPAGNIE_RECUE:
+        return STATUT_COMPAGNIE_RECUE
+    if previous == STATUT_COMPAGNIE_RECUE and coherent == STATUT_COMPAGNIE_EN_ATTENTE:
+        return STATUT_COMPAGNIE_EN_ATTENTE
+    return previous
+
+
+def apply_restore_company_incomplete(offer: dict) -> str:
+    """Retire Incomplète. Ne supprime ni documents, ni offre, ni commentaire déjà saisi."""
+    restored = restored_company_statut(offer)
+    offer["statut"] = restored
+    offer["statut_avant_incomplet"] = None
+    return restored
 
 
 def find_offre_for_compagnie(offres: list, compagnie: str) -> Optional[dict]:
@@ -2738,6 +2845,7 @@ def apply_form_fields(target: dict, data: dict) -> None:
         "rente_invalidite", "diplome", "adaptation_auto_primes", "risque_pur",
         "taille", "poids", "renseignements_complementaires", "commentaires",
         "date_prochain_rdv", "langue_offre",
+        "mandat_debut", "mandat_fin",
     ]
     # form_type avant le reste pour savoir si on accepte les colonnes legacy 3P
     if "form_type" in data and data.get("form_type"):

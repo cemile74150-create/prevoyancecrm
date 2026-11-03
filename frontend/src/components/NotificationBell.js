@@ -6,6 +6,7 @@ import { Bell, Check, CalendarClock, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
+import { offreNotificationPath } from "@/lib/complementsOffre";
 
 function formatWhen(date, heure) {
   if (!date) return "—";
@@ -82,7 +83,7 @@ export default function NotificationBell() {
     }
     setOpen(false);
     if (n?.demande_id) {
-      navigate(canProcess ? `/demandes-offres/${n.demande_id}?from=gestion` : `/demandes-offres/${n.demande_id}`);
+      navigate(offreNotificationPath(n, { fromGestion: canProcess }) || "/demandes-offres");
     } else {
       navigate(canProcess ? "/gestion-reponses-offres" : "/demandes-offres");
     }

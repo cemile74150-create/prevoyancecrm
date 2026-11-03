@@ -5,10 +5,9 @@ import {
   formatLegalAgeLabel,
   getLegalRetirementAge,
   getRetirementStartDate,
-  reduireAvsPourAnticipation,
 } from "../rules/avs-age";
 import { effectiveLppWithdrawalAge } from "../rules/planification-saisie";
-import { lppCalculationService, lppTableAge } from "./LPPCalculationService";
+import { avertissementLppAge, lppCalculationService, lppTableAge } from "./LPPCalculationService";
 import type { PersonComputed, PersonInput } from "../types";
 
 export interface PersonBasicsContext {
@@ -56,6 +55,7 @@ export class AVSCalculationService {
     );
     const ageLppRetenu = lppTableAge(lppAgeRequested);
     const aggregated = lppCalculationService.aggregateAtAge(person, ageLppRetenu);
+    const lppAvertissement = avertissementLppAge(person, lppAgeRequested);
     const lppPctDeblocable = lppCalculationService.resolvePctDeblocable(
       person.lppPctDeblocable,
     );
@@ -74,16 +74,26 @@ export class AVSCalculationService {
     const datePerceptionAvs = formatDateIso(
       getRetirementStartDate(person.dateNaissance, ageAvs),
     );
+    const active = renteAvsDejaPercue(person);
     const pleine = this.resolveAnnual(person);
-    const saisieAnticipee =
-      anticipation > 0
-        ? (person.avsRentesAnticipees || []).find(
-            (row) => row.age === ageAvs && row.montantAnnuel > 0,
-          )
-        : undefined;
-    const avsRetenue = saisieAnticipee
-      ? round2(saisieAnticipee.montantAnnuel)
-      : reduireAvsPourAnticipation(pleine, anticipation);
+    // L'anticipation décale seulement la date. Le montant saisi reste la
+    // référence : ni la réduction de 6,8 % par an, ni une ligne anticipée
+    // ne remplacent « AVS estimée ».
+    const avsReference = person.avsDejaActive
+      ? active
+        ? this.annualFromMonthly(active.mensuel)
+        : 0
+      : pleine;
+    const dateAvs = person.avsDejaActive
+      ? active?.date || ""
+      : datePerceptionAvs;
+    const libelleAvs = person.avsDejaActive
+      ? active
+        ? "AVS déjà active"
+        : "AVS déjà active — date ou montant manquant"
+      : anticipation > 0
+        ? `${formatLegalAgeLabel(ageAvs)} (anticipation ${anticipation} an${anticipation > 1 ? "s" : ""})`
+        : formatLegalAgeLabel(ageAvs);
     const total3ePilier = person.troisiemePilier.reduce(
       (s, c) => s + (c.montant || 0),
       0,
@@ -95,25 +105,24 @@ export class AVSCalculationService {
       dateDepart,
       dateFinActivite,
       ageFinActiviteLabel: formatLegalAgeLabel(ageFin),
-      datePerceptionAvs,
-      agePerceptionAvsLabel:
-        anticipation > 0
-          ? `${formatLegalAgeLabel(ageAvs)} (anticipation ${anticipation} an${anticipation > 1 ? "s" : ""})`
-          : formatLegalAgeLabel(ageAvs),
-      ageLppRetenu,
-      avsAnnuel: avsRetenue,
+      datePerceptionAvs: dateAvs || undefined,
+      agePerceptionAvsLabel: libelleAvs,
+      ageLppRetenu: ageLppRetenu ?? undefined,
+      avsDejaActive: Boolean(person.avsDejaActive),
+      lppAvertissement,
+      avsAnnuel: avsReference,
       capitalLpp65: aggregated.capital,
       renteLpp65: aggregated.rente,
       lppPctDeblocable,
       capitalLppRetire65: aggregated.capitalRetire,
       renteLppResiduelle65: aggregated.renteResiduelle,
-      renteTotale65: round2(avsRetenue + aggregated.rente),
+      renteTotale65: round2(avsReference + aggregated.rente),
       total3ePilier: round2(total3ePilier),
       lppLignes: aggregated.lines.map((line) => ({
         ...line,
         anneeRetrait: anneeRetraitLigne(
           person.dateNaissance,
-          line.age ?? ageLppRetenu,
+          line.age ?? ageLppRetenu ?? ageFin,
         ),
       })),
     };
@@ -124,6 +133,18 @@ function anneeRetraitLigne(birth: string, age: number): number | null {
   if (!birth || !/^\d{4}-\d{2}-\d{2}/.test(birth)) return null;
   const year = getRetirementStartDate(birth, age).getFullYear();
   return Number.isFinite(year) ? year : null;
+}
+
+/** Rente déjà versée : date saisie et mensuel × 13, sans seconde rente à l'âge légal. */
+function renteAvsDejaPercue(
+  person: PersonInput,
+): { date: string; mensuel: number } | null {
+  if (!person.avsDejaActive) return null;
+  const date = String(person.dateDebutRenteAvs || "");
+  if (!/^\d{4}-\d{2}-\d{2}/.test(date)) return null;
+  const mensuel = Number(person.renteAvsPercueMensuelle);
+  if (!Number.isFinite(mensuel) || mensuel <= 0) return null;
+  return { date, mensuel };
 }
 
 function explicitAge(value: number | null | undefined): number | null {

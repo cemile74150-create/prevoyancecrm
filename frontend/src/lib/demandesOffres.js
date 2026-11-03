@@ -729,6 +729,11 @@ export function buildDemandeResume(demande, options = {}) {
   add("Adresse", adresse);
   add("Type d'offre", demande.form_type_label || (isSchemaForm ? null : demande.type_pilier));
 
+  if (demande.requires_mandat_gestion) {
+    add("Mandat — début", formatDateFr(demande.mandat_debut) !== "—" ? formatDateFr(demande.mandat_debut) : null);
+    add("Mandat — fin", formatDateFr(demande.mandat_fin) !== "—" ? formatDateFr(demande.mandat_fin) : null);
+  }
+
   if (isSchemaForm) {
     const payload = demande.form_payload || {};
     const fields = (schema?.fields || []).filter(
@@ -800,7 +805,7 @@ export function buildDemandeResume(demande, options = {}) {
   const docs = (demande.documents || []).map((d) => ({
     id: d.id,
     name: d.original_filename || d.filename || "Document",
-    category: d.category || "",
+    category: isMandatGestionCategory(d.category) ? MANDAT_GESTION_DOC_CATEGORY : (d.category || ""),
   }));
 
   const sections = [{ title: "Résumé de la demande", rows }];
@@ -885,6 +890,63 @@ export function buildModificationChanges(snapshot, current, fields = MODIFICATIO
   return changes;
 }
 
+export const MANDAT_GESTION_DOC_CATEGORY = "Mandat de gestion";
+export const MANDAT_GESTION_INFO =
+  "Pour toute demande d'offre professionnelle, un mandat de gestion d'une durée minimale de 1 an est obligatoire. Merci de joindre ce document avant de transmettre votre demande au service Offres.";
+
+export function isMandatGestionCategory(category) {
+  const key = String(category || "").trim().toLowerCase();
+  return key === "mandat" || key === "mandat de gestion" || key === "mandat_gestion";
+}
+
+export function hasMandatGestionDocument(demande) {
+  return (demande?.documents || []).some(
+    (doc) => doc && !doc.is_deleted && isMandatGestionCategory(doc.category),
+  );
+}
+
+function parseMandatDateLocal(value) {
+  const iso = toIsoDate(value);
+  if (!iso) return null;
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+function anniversaryPlusOneYear(start) {
+  const next = new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
+  if (next.getMonth() !== start.getMonth()) {
+    // 29 févr. → dernier jour de févr. année suivante
+    return new Date(start.getFullYear() + 1, start.getMonth() + 1, 0);
+  }
+  return next;
+}
+
+/** Erreurs mandat pro (alignées backend). Vide si pas de mandat obligatoire. */
+export function mandatGestionMissing(demande, form = {}) {
+  if (!demande?.requires_mandat_gestion) return [];
+
+  const missing = [];
+  if (!hasMandatGestionDocument(demande)) {
+    missing.push("Mandat de gestion (document manquant)");
+  }
+  const start = parseMandatDateLocal(form.mandat_debut ?? demande?.mandat_debut);
+  const end = parseMandatDateLocal(form.mandat_fin ?? demande?.mandat_fin);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (!start || !end) {
+    missing.push("Dates du mandat de gestion (début et fin)");
+  } else if (end < start) {
+    missing.push("Dates du mandat incohérentes (fin avant début)");
+  } else if (end < anniversaryPlusOneYear(start)) {
+    missing.push("Durée du mandat inférieure à 1 an");
+  } else if (end < today) {
+    missing.push("Mandat de gestion expiré");
+  }
+  return missing;
+}
+
 export function emptyForm() {
   return {
     client_id: null,
@@ -903,5 +965,6 @@ export function emptyForm() {
     risque_pur: "", taille: "", poids: "", renseignements_complementaires: "",
     compagnies: [], commentaires: "", inclure_cga: false,
     date_prochain_rdv: "", langue_offre: "Français", mandat_gestion: false,
+    mandat_debut: "", mandat_fin: "",
   };
 }

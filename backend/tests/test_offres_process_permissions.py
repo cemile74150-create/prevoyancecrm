@@ -68,6 +68,8 @@ def test_gestionnaire_and_ceo_can_process():
 
 def test_process_routes_require_process_perm():
     assert permission_for_request("POST", "/api/demandes-offres/abc/incomplete") == PERM_DEMANDES_OFFRES_PROCESS
+    assert permission_for_request("POST", "/api/demandes-offres/abc/compagnie-incomplete") == PERM_DEMANDES_OFFRES_PROCESS
+    assert permission_for_request("POST", "/api/demandes-offres/abc/compagnie-incomplete-annuler") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/complete") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/offres-completes") == PERM_DEMANDES_OFFRES_PROCESS
     assert permission_for_request("POST", "/api/demandes-offres/abc/offre") == PERM_DEMANDES_OFFRES_PROCESS

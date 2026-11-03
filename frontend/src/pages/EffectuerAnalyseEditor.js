@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import Layout from "@/components/Layout";
 import { AnalysePrevoyanceApp } from "@/analyse-prevoyance/components/AnalysePrevoyanceApp";
+import { ficheClientPlanificationPath } from "@/lib/planificationClient";
 import { toast } from "sonner";
 
 export default function EffectuerAnalyseEditor() {
@@ -44,8 +45,17 @@ export default function EffectuerAnalyseEditor() {
   return (
     <Layout>
       <div className="analyse-module min-h-screen bg-[#f4f5f7]" style={{ ["--ap-accent"]: "#002FA7" }}>
-        <div className="mx-auto max-w-[1680px] px-4 pt-3">
+        <div className="mx-auto max-w-[1680px] px-4 pt-3 flex flex-wrap gap-4">
           <Link to="/effectuer-une-analyse" className="text-sm underline text-[#002FA7]">← Analyses</Link>
+          {ficheClientPlanificationPath(record.clientId) && (
+            <Link
+              to={ficheClientPlanificationPath(record.clientId)}
+              className="text-sm underline text-[#002FA7]"
+              data-testid="retour-fiche-client"
+            >
+              ← Retour à la fiche client
+            </Link>
+          )}
         </div>
         <AnalysePrevoyanceApp
           key={record.updatedAt || record.id}

@@ -585,7 +585,7 @@ export function AnalysePrevoyanceApp({
         return (
           <Section
             title="3. AVS"
-            hint="Saisissez la rente mensuelle. L’annuelle s’affiche tout de suite : mensuelle × 13. L'anticipation choisie, 1 an ou 2 ans au maximum, fixe l'âge et la date du retrait AVS."
+            hint="Rente AVS habituelle, puis AVS déjà active si la rente est en cours. L'annuelle = mensuelle × 13. Les rentes anticipées s'ouvrent avec le bouton."
           >
             <AvsFields
               title="Assuré 1"
@@ -617,22 +617,36 @@ export function AnalysePrevoyanceApp({
               <LppFields
                 title="Assuré 2"
                 person={input.conjoint}
-                dossierAge={input.ageRetraiteSouhaite ?? input.client1.ageRetraiteSouhaite ?? null}
+                dossierAge={
+                  input.conjoint.ageRetraiteSouhaite ?? input.ageRetraiteSouhaite ?? null
+                }
                 onChange={(p) => patchInput({ conjoint: p })}
               />
             )}
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 shrink-0"
-                checked={Boolean(input.afficherResumePrestationsLpp)}
-                onChange={(e) => patchInput({ afficherResumePrestationsLpp: e.target.checked })}
-                data-testid="afficher-resume-prestations-lpp"
-              />
-              <span>Afficher résumé des prestations LPP</span>
-            </label>
-            {input.afficherResumePrestationsLpp ? (
-              <ResumePrestationsLppPreview input={input} />
+            <div className="flex flex-col gap-2">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                  checked={Boolean(input.afficherResumePrestationsLpp)}
+                  onChange={(e) => patchInput({ afficherResumePrestationsLpp: e.target.checked })}
+                  data-testid="afficher-resume-prestations-lpp"
+                />
+                <span>Afficher le résumé des prestations à 65 ans</span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                  checked={Boolean(input.afficherTableauAgesLpp)}
+                  onChange={(e) => patchInput({ afficherTableauAgesLpp: e.target.checked })}
+                  data-testid="afficher-tableau-ages-lpp"
+                />
+                <span>Afficher les prestations retraite disponibles de 58 à 65 ans</span>
+              </label>
+            </div>
+            {input.afficherResumePrestationsLpp || input.afficherTableauAgesLpp ? (
+              <ResumePrestationsLppPreview input={input} capitalTax={record?.results?.resumeCapitalTax} />
             ) : null}
           </Section>
         );
@@ -668,8 +682,8 @@ export function AnalysePrevoyanceApp({
               input={input}
               onChange={(libresPassages) => patchInput({ libresPassages })}
             />
-            {input.afficherResumePrestationsLpp ? (
-              <ResumePrestationsLppPreview input={input} />
+            {input.afficherResumePrestationsLpp || input.afficherTableauAgesLpp ? (
+              <ResumePrestationsLppPreview input={input} capitalTax={record?.results?.resumeCapitalTax} />
             ) : null}
           </Section>
         );

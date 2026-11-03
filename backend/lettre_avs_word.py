@@ -156,6 +156,90 @@ def _replace_perly_date(xml: str, date_line: str) -> str:
     return xml[:r_start] + replacement + xml[r_end:]
 
 
+def _address_lines_from_values(values: Dict[str, str]) -> list[str]:
+    """Lignes destinataire fournies par avs_caisse, sinon CSC du modèle."""
+    raw = values.get("avs_caisse_address_lines")
+    lines: list[str] = []
+    if isinstance(raw, (list, tuple)):
+        lines = [_safe(line) for line in raw if _safe(line)]
+    elif isinstance(raw, str) and raw.strip():
+        lines = [part.strip() for part in raw.replace("\r", "").split("\n") if part.strip()]
+    if lines:
+        return lines
+    return [
+        "Caisse suisse de compensation CSC",
+        "Avenue Edmond-Vaucher 18",
+        "Case postale 3100",
+        "1211 Genève 2",
+    ]
+
+
+def _replace_recipient_block(xml: str, address_lines: list[str]) -> str:
+    """
+    Remplace le bloc destinataire (4 paragraphes CSC du modèle) par les lignes
+    de la caisse sélectionnée, en conservant le style (retrait / police).
+    """
+    marker = "Caisse suisse de compensation CSC"
+    idx = xml.find(marker)
+    if idx < 0:
+        # Déjà remplacé ou modèle différent : chercher un bloc connu
+        for alt in ("Avenue Edmond Vaucher 18", "Avenue Edmond-Vaucher 18"):
+            idx = xml.find(alt)
+            if idx >= 0:
+                break
+    if idx < 0:
+        raise ValueError("Modèle AVS : bloc destinataire CSC introuvable")
+
+    # Remonter au début du paragraphe contenant le marqueur
+    p_start = xml.rfind("<w:p ", 0, idx)
+    if p_start < 0:
+        p_start = xml.rfind("<w:p>", 0, idx)
+    if p_start < 0:
+        raise ValueError("Modèle AVS : début du destinataire illisible")
+
+    # Les 4 paragraphes d'origine se terminent sur « 1211 Genève 2 »
+    end_marker = "1211 Genève 2"
+    end_idx = xml.find(end_marker, idx)
+    if end_idx < 0:
+        # Fallback : 4 paragraphes consécutifs à partir de p_start
+        cursor = p_start
+        for _ in range(4):
+            close = xml.find("</w:p>", cursor)
+            if close < 0:
+                raise ValueError("Modèle AVS : destinataire incomplet")
+            cursor = close + len("</w:p>")
+        p_end = cursor
+    else:
+        p_end = xml.find("</w:p>", end_idx)
+        if p_end < 0:
+            raise ValueError("Modèle AVS : fin du destinataire illisible")
+        p_end += len("</w:p>")
+
+    old_block = xml[p_start:p_end]
+    first_p_end = old_block.find("</w:p>") + len("</w:p>")
+    template_p = old_block[:first_p_end]
+    ppr_m = re.search(r"<w:pPr>.*?</w:pPr>", template_p, flags=re.DOTALL)
+    rpr_m = re.search(r"<w:rPr>.*?</w:rPr>", template_p, flags=re.DOTALL)
+    ppr = ppr_m.group(0) if ppr_m else "<w:pPr><w:spacing w:after=\"0\"/><w:ind w:left=\"5529\"/></w:pPr>"
+    rpr = rpr_m.group(0) if rpr_m else "<w:rPr><w:lang w:val=\"fr-CH\"/></w:rPr>"
+
+    lines = [line for line in address_lines if line]
+    if not lines:
+        raise ValueError("Adresse de caisse AVS vide")
+    if len(lines) > 6:
+        lines = lines[:6]
+
+    parts = []
+    for line in lines:
+        parts.append(
+            "<w:p>"
+            f"{ppr}"
+            f"<w:r>{rpr}<w:t>{xml_escape(line)}</w:t></w:r>"
+            "</w:p>"
+        )
+    return xml[:p_start] + "".join(parts) + xml[p_end:]
+
+
 def fill_lettre_avs_docx(values: Dict[str, str]) -> bytes:
     if not ORIGINAL_DOCX.exists():
         raise FileNotFoundError(
@@ -164,6 +248,7 @@ def fill_lettre_avs_docx(values: Dict[str, str]) -> bytes:
     fullname = client_fullname(values) or "le/la preneur(se) d'assurance"
     date_long = _safe(values.get("today_long"))
     date_line = f"Perly, le {date_long}" if date_long else "Perly, le"
+    address_lines = _address_lines_from_values(values)
 
     out = io.BytesIO()
     with zipfile.ZipFile(ORIGINAL_DOCX, "r") as zin, zipfile.ZipFile(
@@ -173,6 +258,7 @@ def fill_lettre_avs_docx(values: Dict[str, str]) -> bytes:
             data = zin.read(info.filename)
             if info.filename == "word/document.xml":
                 xml = data.decode("utf-8")
+                xml = _replace_recipient_block(xml, address_lines)
                 xml = _replace_name_placeholder(xml, fullname)
                 xml = _replace_perly_date(xml, date_line)
                 if "NOM Prénom" in xml or "NOM Prenom" in xml:

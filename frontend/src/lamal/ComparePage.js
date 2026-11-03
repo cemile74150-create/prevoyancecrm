@@ -21,6 +21,8 @@ export default function ComparePage() {
   const [insurerFilter, setInsurerFilter] = useState("");
   const [modelFilter, setModelFilter] = useState("");
   const [busy, setBusy] = useState(false);
+  const [imported, setImported] = useState([]);
+  const [picked, setPicked] = useState(null);
 
   useEffect(() => {
     const id = params.get("client");
@@ -41,6 +43,14 @@ export default function ComparePage() {
       }));
     }).catch(() => toast.error("Client introuvable"));
   }, [params]);
+
+  useEffect(() => {
+    api.get("/lamal/campaigns/contacts").then((res) => setImported(res.data.items || [])).catch(() => setImported([]));
+  }, []);
+
+  const openImported = (id) => {
+    api.get(`/lamal/campaigns/contacts/${id}`).then((res) => setPicked(res.data)).catch(() => toast.error("Fiche introuvable"));
+  };
 
   useEffect(() => {
     if (query.trim().length < 2) { setClients([]); return; }
@@ -108,7 +118,37 @@ export default function ComparePage() {
   );
 
   return (
-    <LamalShell title="Comparaison individuelle" subtitle="Les paramètres manquants restent vides. Aucune franchise ni aucune prime n'est supposée.">
+    <LamalShell title="Calculateur nouvelle prime" subtitle="Les paramètres manquants restent vides. Aucune franchise ni aucune prime n'est supposée.">
+      <Card className="p-4 space-y-3">
+        <p className="text-sm font-medium">Clients importés</p>
+        {!imported.length && <p className="text-sm text-muted-foreground">Aucun nom pour l’instant. L’import se fait dans Campagnes e-mails.</p>}
+        {imported.length > 0 && (
+          <div className="flex flex-wrap gap-2 max-h-36 overflow-auto">
+            {imported.map((item) => (
+              <button key={item.id} type="button" className={`text-sm border rounded-full px-3 py-1 ${picked?.contact?.id === item.id ? "bg-secondary" : "hover:bg-secondary"}`} onClick={() => openImported(item.id)}>
+                {item.prenom} {item.nom}
+              </button>
+            ))}
+          </div>
+        )}
+        {picked?.contact && (
+          <div className="space-y-3 border-t pt-3">
+            <p className="font-medium">{picked.contact.prenom} {picked.contact.nom}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+              {field("Naissance", picked.contact.naissance)}
+              {field("NPA", picked.contact.npa)}
+              {field("Lieu", picked.contact.lieu)}
+              {field("Âge en 2027", picked.contact.age == null ? "" : String(picked.contact.age))}
+              {field("E-mail", picked.contact.email)}
+            </div>
+            {String(picked.email?.body || "").trim().startsWith("<") ? (
+              <iframe title="Mail LAMal" sandbox="" srcDoc={picked.email.body} className="w-full h-[720px] border rounded-md bg-white" />
+            ) : (
+              <pre className="whitespace-pre-wrap text-xs">{picked.email?.body || "Mail pas encore préparé."}</pre>
+            )}
+          </div>
+        )}
+      </Card>
       <div className="grid lg:grid-cols-2 gap-4">
         <Card className="p-5 space-y-4">
           <div>

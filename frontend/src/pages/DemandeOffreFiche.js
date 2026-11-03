@@ -22,8 +22,11 @@ import {
   prefillSchemaPayloadFromClient, soumisCompagnieLabel, isSoumisCompagnie,
   isDemandeAnnuleeStatut, isOffreNonSigneeStatut, isHorsCours, statutLabel, isDemandeAnnuleeFlag,
   AUTRE_COMPAGNIE_VALUE, compagniesAffichees, compagniesEnregistrementOffre, resolveCompagnieSaisie,
+  MANDAT_GESTION_DOC_CATEGORY, MANDAT_GESTION_INFO, mandatGestionMissing, hasMandatGestionDocument,
+  isMandatGestionCategory,
 } from "@/lib/demandesOffres";
 import OffreSchemaForm, { SchemaReadOnlySummary, isFieldVisible } from "@/components/OffreSchemaForm";
+import NotesConseiller from "@/components/NotesConseiller";
 import ClientSuggestInput from "@/components/ClientSuggestInput";
 import {
   resolveAgentIdentity,
@@ -107,7 +110,9 @@ export default function DemandeOffreFiche() {
   const canProcess = hasPerm("demandes_offres.process");
   const canManageUsers = hasPerm("users.manage");
   const fileRef = useRef(null);
+  const mandatFileRef = useRef(null);
   const [demande, setDemande] = useState(null);
+  const [uploadingMandat, setUploadingMandat] = useState(false);
   const [meta, setMeta] = useState({});
   const [schema, setSchema] = useState(null);
   const [form, setForm] = useState(emptyForm());
@@ -125,6 +130,8 @@ export default function DemandeOffreFiche() {
   const [noteText, setNoteText] = useState("");
   const [externalNoteOpen, setExternalNoteOpen] = useState(false);
   const [externalNoteText, setExternalNoteText] = useState("");
+  const [externalAwaitReply, setExternalAwaitReply] = useState(false);
+  const [externalComplementType, setExternalComplementType] = useState("document");
   const [offresCompletesOpen, setOffresCompletesOpen] = useState(false);
   const [offresCompletesNote, setOffresCompletesNote] = useState("");
   const [erreursOpen, setErreursOpen] = useState(false);
@@ -323,13 +330,20 @@ export default function DemandeOffreFiche() {
             agent_finma: agentOverride?.agent_finma ?? form.agent_finma ?? "",
           }
         : {};
+      const mandatFields = demande?.requires_mandat_gestion
+        ? {
+            mandat_debut: toIsoDate(form.mandat_debut) || form.mandat_debut || "",
+            mandat_fin: toIsoDate(form.mandat_fin) || form.mandat_fin || "",
+          }
+        : {};
       const body = isLegacy
-        ? { ...legacyPayload, ...adminAgent }
+        ? { ...legacyPayload, ...mandatFields, ...adminAgent }
         : {
             form_payload: formPayload,
             type_client: form.type_client || formPayload.type_client || "",
             client_id: form.client_id || null,
             commentaires: form.commentaires || "",
+            ...mandatFields,
             ...adminAgent,
           };
       if (!isLegacy && schema) {
@@ -390,7 +404,7 @@ export default function DemandeOffreFiche() {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formPayload, form.commentaires, form.client_id, form.type_client, form.agent_account_id, loading, isLegacy, canEdit, isAdmin, demande?.statut, demandeId]);
+  }, [formPayload, form.commentaires, form.client_id, form.type_client, form.agent_account_id, form.mandat_debut, form.mandat_fin, loading, isLegacy, canEdit, isAdmin, demande?.statut, demandeId]);
 
   useEffect(() => {
     const onBeforeUnload = (e) => {
@@ -448,8 +462,11 @@ export default function DemandeOffreFiche() {
     if (finmaWarning && !values.includes(finmaWarning)) {
       values = [...values, finmaWarning];
     }
+    for (const msg of mandatGestionMissing(demande, form)) {
+      if (!values.includes(msg)) values.push(msg);
+    }
     return values;
-  }, [form, formPayload, isLegacy, schema, finmaWarning]);
+  }, [form, formPayload, isLegacy, schema, finmaWarning, demande]);
 
   const applyDemande = (data) => {
     setDemande(data);
@@ -544,6 +561,20 @@ export default function DemandeOffreFiche() {
       refreshFromAction(res.data, `${compagnie} marquée incomplète`);
     } catch (e) {
       toast.error(errorMessage(e, "Marquage impossible"));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const cancelCompanyIncomplete = async (compagnie) => {
+    if (!compagnie) return;
+    if (!window.confirm(`Annuler le statut incomplet de ${compagnie} ? Le statut précédent sera rétabli. Aucun document ni aucune offre ne sera supprimé.`)) return;
+    setActionBusy(true);
+    try {
+      const res = await api.post(`/demandes-offres/${demandeId}/compagnie-incomplete-annuler`, { compagnie });
+      refreshFromAction(res.data, `${compagnie} : statut incomplet annulé`);
+    } catch (e) {
+      toast.error(errorMessage(e, "Annulation impossible"));
     } finally {
       setActionBusy(false);
     }
@@ -668,18 +699,30 @@ export default function DemandeOffreFiche() {
     try {
       const res = await api.post(`/demandes-offres/${demandeId}/notes-externes`, {
         note: externalNoteText.trim(),
+        attendre_reponse: externalAwaitReply,
+        type_complement: externalAwaitReply ? externalComplementType : null,
       });
       applyDemande(res.data);
       const addr = (res.data?.notify_email || "").trim();
+      const sentLabel = externalAwaitReply
+        ? "Demande de complément envoyée au conseiller"
+        : "Note envoyée au conseiller";
       if (res.data?.note_email_sent) {
-        toast.success(addr ? `Note envoyée au conseiller (${addr})` : "Note envoyée au conseiller");
+        toast.success(addr ? `${sentLabel} (${addr})` : sentLabel);
       } else {
-        toast.warning("Note enregistrée, mais l'e-mail n'a pas été envoyé", {
-          description: String(res.data?.note_email_error || "E-mail du conseiller introuvable").slice(0, 200),
-        });
+        toast.warning(
+          externalAwaitReply
+            ? "Demande enregistrée, mais l'e-mail n'a pas été envoyé"
+            : "Note enregistrée, mais l'e-mail n'a pas été envoyé",
+          {
+            description: String(res.data?.note_email_error || "E-mail du conseiller introuvable").slice(0, 200),
+          },
+        );
       }
       setExternalNoteOpen(false);
       setExternalNoteText("");
+      setExternalAwaitReply(false);
+      setExternalComplementType("document");
     } catch (e) {
       toast.error(errorMessage(e, "Envoi de la note impossible"));
     } finally {
@@ -864,6 +907,25 @@ export default function DemandeOffreFiche() {
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const uploadMandatDocument = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploadingMandat(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("category", MANDAT_GESTION_DOC_CATEGORY);
+      await api.post(`/demandes-offres/${demandeId}/documents`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      toast.success("Mandat de gestion ajouté");
+      await load();
+    } catch (e) {
+      toast.error(errorMessage(e, "Ajout du mandat impossible"));
+    } finally {
+      setUploadingMandat(false);
+      if (mandatFileRef.current) mandatFileRef.current.value = "";
     }
   };
 
@@ -1064,6 +1126,12 @@ export default function DemandeOffreFiche() {
             {demande.email_sent ? `E-mail envoyé le ${formatDateFr(demande.date_envoi)}` : `Demande enregistrée, mais e-mail non envoyé : ${demande.email_error || "configuration indisponible"}`}
           </div>
         )}
+        {Number(demande.nb_complements_en_attente) > 0 && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950" data-testid="complements-pending-banner">
+            <span className="font-semibold">Action requise.</span>{" "}
+            {demande.nb_complements_en_attente} demande{demande.nb_complements_en_attente > 1 ? "s" : ""} de complément en attente de réponse.
+          </div>
+        )}
 
         {editable ? (
           isLegacy ? (
@@ -1174,6 +1242,19 @@ export default function DemandeOffreFiche() {
                     )}
                   </div>
                 ) : null}
+                {demande.requires_mandat_gestion ? (
+                  <MandatGestionSection
+                    form={form}
+                    setValue={setValue}
+                    demande={demande}
+                    canEdit={canEdit}
+                    uploading={uploadingMandat}
+                    fileRef={mandatFileRef}
+                    upload={uploadMandatDocument}
+                    remove={deleteDocument}
+                    infoMessage={demande.mandat_gestion_info || MANDAT_GESTION_INFO}
+                  />
+                ) : null}
                 <div className="mt-6 space-y-2 border-t pt-5">
                   <SectionTitle
                     title="Commentaires / informations complémentaires"
@@ -1197,6 +1278,13 @@ export default function DemandeOffreFiche() {
                 )}
               </Card>
               <Documents demande={demande} canEdit={canEdit} uploading={uploading} fileRef={fileRef} upload={uploadDocument} remove={deleteDocument} />
+              <NotesConseiller
+                demandeId={demandeId}
+                notes={notesExternes}
+                canProcess={canProcess || isAdmin}
+                focusId={searchParams.get("complement")}
+                onUpdated={applyDemande}
+              />
               <div className="flex flex-wrap justify-between gap-2">
                 <div className="flex flex-wrap gap-2">
                   {(demande.statut === "Brouillon" || isDemandeAnnuleeStatut(demande.statut)) && (
@@ -1214,9 +1302,15 @@ export default function DemandeOffreFiche() {
                   <Button variant="outline" onClick={() => save()} disabled={saving}>
                     {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />} Enregistrer
                   </Button>
-                  <Button onClick={validateAndSend} disabled={actionBusy || missing.length > 0} className="bg-[#002FA7] hover:bg-[#00248a]">
+                  <Button
+                    onClick={validateAndSend}
+                    disabled={actionBusy || missing.length > 0}
+                    className="bg-[#002FA7] hover:bg-[#00248a]"
+                    data-testid="offre-envoyer-demande-btn"
+                    title={missing.length ? missing.join(" · ") : undefined}
+                  >
                     {actionBusy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-                    {demande.statut === "Brouillon" ? "Valider et envoyer" : "Informations complétées – Renvoyer"}
+                    {demande.statut === "Brouillon" ? "Envoyer la demande" : "Informations complétées – Renvoyer"}
                   </Button>
                 </div>
               </div>
@@ -1259,6 +1353,7 @@ export default function DemandeOffreFiche() {
                 onAddOffer={openAddOffer}
                 onAddDocs={openAddDocs}
                 onMarkIncomplete={markCompanyIncomplete}
+                onCancelIncomplete={cancelCompanyIncomplete}
                 onNotifyIncomplete={openIncompleteNotify}
                 onDeleteDoc={deleteOfferDocument}
               />
@@ -1275,24 +1370,13 @@ export default function DemandeOffreFiche() {
                   </ul>
                 </Card>
               )}
-              {notesExternes.length > 0 && (
-                <Card className="p-5 space-y-3">
-                  <h2 className="font-display font-bold flex items-center gap-2"><Mail className="h-5 w-5 text-[#002FA7]" /> Notes envoyées au conseiller</h2>
-                  <p className="text-xs text-muted-foreground">Conservées dans LeoSoft et transmises par e-mail au conseiller créateur.</p>
-                  <ul className="space-y-3">
-                    {[...notesExternes].reverse().map((n) => (
-                      <li key={n.id} className="rounded-md border bg-white px-3 py-2 text-sm">
-                        <p className="whitespace-pre-wrap">{n.note}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {formatDateFr(n.at)}{n.by_name ? ` · ${n.by_name}` : ""}
-                          {n.email_sent && n.email_to ? ` · envoyée à ${n.email_to}` : ""}
-                          {n.email_sent === false ? " · e-mail non envoyé" : ""}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              )}
+              <NotesConseiller
+                demandeId={demandeId}
+                notes={notesExternes}
+                canProcess={canProcess || isAdmin}
+                focusId={searchParams.get("complement")}
+                onUpdated={applyDemande}
+              />
               {(canProcess || isAdmin) && (
                 <Card className="p-5 space-y-3">
                   <div className="flex items-center justify-between gap-2">
@@ -1343,6 +1427,21 @@ export default function DemandeOffreFiche() {
                   </p>
                 </Card>
               )}
+              {demande.requires_mandat_gestion ? (
+                <Card className="p-5">
+                  <MandatGestionSection
+                    form={form}
+                    setValue={setValue}
+                    demande={demande}
+                    canEdit={false}
+                    uploading={false}
+                    fileRef={mandatFileRef}
+                    upload={uploadMandatDocument}
+                    remove={deleteDocument}
+                    infoMessage={demande.mandat_gestion_info || MANDAT_GESTION_INFO}
+                  />
+                </Card>
+              ) : null}
               <Documents demande={demande} canEdit={canProcess || isAdmin} uploading={uploading} fileRef={fileRef} upload={uploadDocument} remove={deleteDocument} />
               <History entries={demande.historique || []} />
             </div>
@@ -1479,7 +1578,16 @@ export default function DemandeOffreFiche() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={externalNoteOpen} onOpenChange={setExternalNoteOpen}>
+      <Dialog
+        open={externalNoteOpen}
+        onOpenChange={(open) => {
+          setExternalNoteOpen(open);
+          if (!open) {
+            setExternalAwaitReply(false);
+            setExternalComplementType("document");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader><DialogTitle>Note externe</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">
@@ -1495,6 +1603,32 @@ export default function DemandeOffreFiche() {
               data-testid="note-externe-text"
             />
           </Field>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-[#002FA7]"
+              checked={externalAwaitReply}
+              onChange={(e) => setExternalAwaitReply(e.target.checked)}
+              data-testid="note-externe-attendre"
+            />
+            <span>Attendre une réponse du conseiller</span>
+          </label>
+          {externalAwaitReply && (
+            <Field label="Type de complément attendu" required>
+              <select
+                className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                value={externalComplementType}
+                onChange={(e) => setExternalComplementType(e.target.value)}
+                data-testid="note-externe-type"
+              >
+                <option value="document">Document</option>
+                <option value="information">Information</option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Le conseiller pourra transmettre une seule réponse. Un document joint est obligatoire si vous demandez un document.
+              </p>
+            </Field>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setExternalNoteOpen(false)}>Annuler</Button>
             <Button onClick={addExternalNote} disabled={actionBusy || !externalNoteText.trim()} data-testid="note-externe-confirm">
@@ -1741,7 +1875,7 @@ function companyStatusLabel(statut) {
 
 function CompanyResponsesPanel({
   cards, canProcess, busy,
-  onAddOffer, onAddDocs, onMarkIncomplete, onNotifyIncomplete, onDeleteDoc,
+  onAddOffer, onAddDocs, onMarkIncomplete, onCancelIncomplete, onNotifyIncomplete, onDeleteDoc,
 }) {
   return (
     <Card className="p-5" data-testid="reponses-compagnies">
@@ -1804,6 +1938,11 @@ function CompanyResponsesPanel({
                       {!incomplete && (
                         <Button size="sm" variant="outline" className="border-rose-300 text-rose-800" disabled={busy} onClick={() => onMarkIncomplete(card.compagnie)}>
                           Marquer incomplète
+                        </Button>
+                      )}
+                      {incomplete && (
+                        <Button size="sm" variant="outline" disabled={busy} onClick={() => onCancelIncomplete(card.compagnie)} data-testid="annuler-statut-incomplet">
+                          Annuler le statut incomplet
                         </Button>
                       )}
                       {incomplete && (
@@ -2389,6 +2528,115 @@ function PilierStep({ form, setValue, meta }) {
   </div>;
 }
 
+function MandatGestionSection({
+  form, setValue, demande, canEdit, uploading, fileRef, upload, remove, infoMessage,
+}) {
+  const mandatDocs = (demande?.documents || []).filter(
+    (doc) => doc && !doc.is_deleted && isMandatGestionCategory(doc.category),
+  );
+  const errors = mandatGestionMissing(demande, form);
+  return (
+    <div className="mt-6 space-y-4 border-t pt-5" data-testid="offre-mandat-gestion-section">
+      <SectionTitle
+        title="Mandat de gestion obligatoire"
+        subtitle="Document PDF ou image + dates de validité (durée minimale 1 an)."
+      />
+      <div className="rounded-md border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
+        {infoMessage || MANDAT_GESTION_INFO}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Date de début du mandat" required>
+          <Input
+            type="date"
+            value={toIsoDate(form.mandat_debut) || ""}
+            onChange={(e) => setValue("mandat_debut", e.target.value)}
+            disabled={!canEdit}
+            data-testid="offre-mandat-debut"
+          />
+        </Field>
+        <Field label="Date de fin du mandat" required>
+          <Input
+            type="date"
+            value={toIsoDate(form.mandat_fin) || ""}
+            onChange={(e) => setValue("mandat_fin", e.target.value)}
+            disabled={!canEdit}
+            data-testid="offre-mandat-fin"
+          />
+        </Field>
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">Téléversement du mandat (PDF ou image)</p>
+          {canEdit ? (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="application/pdf,image/*"
+                className="hidden"
+                onChange={upload}
+              />
+              <Button
+                size="sm"
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="bg-[#002FA7] hover:bg-[#00248a]"
+                data-testid="offre-mandat-upload-btn"
+              >
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+                Joindre le mandat
+              </Button>
+            </>
+          ) : null}
+        </div>
+        {!mandatDocs.length ? (
+          <p className="border border-dashed rounded-md p-4 text-center text-sm text-muted-foreground">
+            Aucun mandat de gestion joint.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {mandatDocs.map((doc) => (
+              <div key={doc.id} className="flex items-center justify-between gap-3 border border-[#002FA7]/25 bg-[#002FA7]/5 rounded-md p-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <ShieldCheck className="h-5 w-5 text-[#002FA7] shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{doc.original_filename}</p>
+                    <p className="text-xs text-[#002FA7] font-semibold">{MANDAT_GESTION_DOC_CATEGORY}</p>
+                  </div>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <Button size="icon" variant="ghost" title="Ouvrir" onClick={() => openAuthenticatedBlob(`/demandes-offres/documents/${doc.id}/download`)}>
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" title="Télécharger" onClick={() => downloadAuthenticatedBlob(`/demandes-offres/documents/${doc.id}/download`, doc.original_filename)}>
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  {canEdit && !doc.locked ? (
+                    <Button size="icon" variant="ghost" className="text-rose-600" title="Supprimer" onClick={() => remove(doc)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {errors.length > 0 ? (
+        <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800" data-testid="offre-mandat-errors">
+          <p className="font-semibold flex items-center gap-2"><XCircle className="h-4 w-4" /> Mandat non conforme</p>
+          <ul className="mt-1 list-disc list-inside">{errors.map((e) => <li key={e}>{e}</li>)}</ul>
+        </div>
+      ) : hasMandatGestionDocument(demande) ? (
+        <p className="text-sm text-emerald-800 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4" /> Mandat de gestion conforme (≥ 1 an, en cours de validité).
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function Documents({ demande, canEdit, uploading, fileRef, upload, remove }) {
   const docs = documentsForGeneralList(demande);
   return <div className="space-y-4">
@@ -2400,16 +2648,28 @@ function Documents({ demande, canEdit, uploading, fileRef, upload, remove }) {
         </Button></>}
     </div>
     {!docs.length ? <p className="border border-dashed rounded-md p-8 text-center text-sm text-muted-foreground">Aucun document ajouté.</p> :
-      <div className="space-y-2">{docs.map((doc) => <div key={doc.id} className="flex items-center justify-between gap-3 border rounded-md p-3">
-        <div className="flex items-center gap-3 min-w-0"><FileText className="h-5 w-5 text-[#002FA7] shrink-0" /><div className="min-w-0">
-          <p className="text-sm font-medium truncate">{doc.original_filename}</p><p className="text-xs text-muted-foreground">{doc.category} · {formatDateFr(doc.created_at)}</p>
-        </div></div>
-        <div className="flex gap-1 shrink-0">
-          <Button size="icon" variant="ghost" title="Ouvrir" onClick={() => openAuthenticatedBlob(`/demandes-offres/documents/${doc.id}/download`)}><ExternalLink className="h-4 w-4" /></Button>
-          <Button size="icon" variant="ghost" title="Télécharger" onClick={() => downloadAuthenticatedBlob(`/demandes-offres/documents/${doc.id}/download`, doc.original_filename)}><Download className="h-4 w-4" /></Button>
-          {canEdit && <Button size="icon" variant="ghost" className="text-rose-600" title="Supprimer" onClick={() => remove(doc)}><Trash2 className="h-4 w-4" /></Button>}
-        </div>
-      </div>)}</div>}
+      <div className="space-y-2">{docs.map((doc) => {
+        const isMandat = isMandatGestionCategory(doc.category);
+        const categoryLabel = isMandat ? MANDAT_GESTION_DOC_CATEGORY : doc.category;
+        return (
+          <div key={doc.id} className={`flex items-center justify-between gap-3 border rounded-md p-3 ${isMandat ? "border-[#002FA7]/30 bg-[#002FA7]/5" : ""}`}>
+            <div className="flex items-center gap-3 min-w-0">
+              <FileText className="h-5 w-5 text-[#002FA7] shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{doc.original_filename}</p>
+                <p className={`text-xs ${isMandat ? "text-[#002FA7] font-semibold" : "text-muted-foreground"}`}>
+                  {categoryLabel} · {formatDateFr(doc.created_at)}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-1 shrink-0">
+              <Button size="icon" variant="ghost" title="Ouvrir" onClick={() => openAuthenticatedBlob(`/demandes-offres/documents/${doc.id}/download`)}><ExternalLink className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" title="Télécharger" onClick={() => downloadAuthenticatedBlob(`/demandes-offres/documents/${doc.id}/download`, doc.original_filename)}><Download className="h-4 w-4" /></Button>
+              {canEdit && !doc.locked && <Button size="icon" variant="ghost" className="text-rose-600" title="Supprimer" onClick={() => remove(doc)}><Trash2 className="h-4 w-4" /></Button>}
+            </div>
+          </div>
+        );
+      })}</div>}
   </div>;
 }
 

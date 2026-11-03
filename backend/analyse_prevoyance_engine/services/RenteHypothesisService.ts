@@ -10,6 +10,9 @@ import { avsCalculationService } from "./AVSCalculationService";
 import { taxCalculationService } from "./TaxCalculationService";
 import { ageRetraitePersonne } from "../rules/age-retraite";
 import {
+  anneesDiffere,
+  buildColonneCombinee,
+  offresDeHypothese,
   revenuBrutEncaisse,
   revenuFiscalImposable,
   revenuFiscalRenteLpp,
@@ -60,11 +63,13 @@ function pensionsImprimees(input: AnalyseInput): {
 }
 
 function hypothesisUsable(row: RenteHypothesisInput): boolean {
-  return Boolean(
-    (row.compagnie || "").trim() ||
-      row.capitalPlace ||
-      row.renteGarantieAnnuelle ||
-      row.participationExcedentsAnnuelle,
+  return offresDeHypothese(row).some((offre) =>
+    Boolean(
+      (offre.compagnie || "").trim() ||
+        offre.capitalPlace ||
+        offre.renteGarantie ||
+        offre.participationExcedents,
+    ),
   );
 }
 
@@ -108,7 +113,25 @@ export class RenteHypothesisService {
       );
     }
     for (const [index, row] of hypotheses.entries()) {
-      columns.push(await this.columnOffre(input, row, index, avs, residuelle, age1, age2));
+      const offres = offresDeHypothese(row);
+      if (offres.length >= 2) {
+        columns.push(
+          await this.columnCombinee(
+            input,
+            row,
+            offres,
+            index,
+            avs,
+            residuelle,
+            age1,
+            age2,
+          ),
+        );
+      } else {
+        columns.push(
+          await this.columnOffre(input, row, index, avs, residuelle, age1, age2),
+        );
+      }
     }
 
     const lppNet = columns.find((col) => col.kind === "lpp")?.revenuNetApresImpot;
@@ -203,6 +226,7 @@ export class RenteHypothesisService {
       typeLabel: "LPP",
       capitalPlace: null,
       dureeAnnees: null,
+      dureeDiffereAnnees: null,
       renteAvs: avs,
       renteLppResiduelle: null,
       renteGarantie: lpp,
@@ -214,6 +238,32 @@ export class RenteHypothesisService {
       ecartNetAnnuelVsLpp: null,
       revenuAnnuelSurCapital: null,
     };
+  }
+
+  /** Une colonne, un seul appel ESTV sur l'assiette globale de l'année commune. */
+  private async columnCombinee(
+    input: AnalyseInput,
+    row: RenteHypothesisInput,
+    offres: ReturnType<typeof offresDeHypothese>,
+    index: number,
+    avs: number,
+    renteLppResiduelle: number,
+    age1: number | null,
+    age2: number | null,
+  ): Promise<RenteHypothesisColumn> {
+    const colonne = buildColonneCombinee(
+      row.id,
+      index,
+      offres,
+      avs,
+      renteLppResiduelle,
+      Boolean(row.recommander),
+    );
+    const impot = await this.taxOn(input, colonne.revenuFiscalImposable, age1, age2);
+    colonne.impotEstv = impot;
+    colonne.revenuNetApresImpot =
+      impot == null ? null : revenuNetApresImpot(colonne.revenuBrutEncaisse, impot);
+    return colonne;
   }
 
   private async columnOffre(
@@ -250,6 +300,7 @@ export class RenteHypothesisService {
       typeLabel: typeLabel(row.type),
       capitalPlace: capital || null,
       dureeAnnees: row.type === "certaine" ? row.dureeAnnees : null,
+      dureeDiffereAnnees: anneesDiffere(row.dureeDiffereAnnees),
       renteAvs: avs,
       renteLppResiduelle,
       renteGarantie: garantie,

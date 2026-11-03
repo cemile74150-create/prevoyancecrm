@@ -81,7 +81,10 @@ export function PersonIdentityFields({
         />
       </div>
       <div className="space-y-2">
-        <Label>Âge de retraite souhaité (début des rentes de retraite)</Label>
+        <Label>Âge de départ à la retraite professionnelle / perception LPP</Label>
+        <p className="text-xs text-muted-foreground">
+          Fin de l'activité et début de la LPP. Indépendant de l'âge légal AVS.
+        </p>
         <select
           className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
           value={desiredAge == null ? "" : String(desiredAge)}

@@ -26,13 +26,34 @@ export interface ResumeNote {
   text: string;
 }
 
+export interface ResumeAgeRow {
+  age: number;
+  capital: number;
+  rente: number | null;
+  renteMinimum: number | null;
+  renteMaximum: number | null;
+  impot: number | null;
+}
+
+export interface ResumeCapitalTaxLine {
+  personKey: PersonKey;
+  age: number;
+  capital: number;
+  impot: number | null;
+}
+
 export interface ResumePersonTable {
+  personKey: PersonKey;
   subtitle: string;
   headers: string[];
   rows: ResumeRow[];
   totals: ResumeCell[];
   notes: ResumeNote[];
+  ages: ResumeAgeRow[];
 }
+
+export const RESUME_LPP_TITLE = "Résumé des prestations deuxième pilier à 65 ans";
+const AGE_SCHEDULE = [58, 59, 60, 61, 62, 63, 64, 65] as const;
 
 const NOTE_CPEG =
   "CPEG : l'assuré peut demander au maximum 25 % de son avoir de vieillesse LPP sous forme de capital. Le solde est versé sous forme de rente de retraite.";
@@ -43,15 +64,43 @@ const NOTE_RETRAITES_POPULAIRES =
 const MARKS = ["*", "**", "***"];
 
 export function buildResumePrestationsLpp(
-  input: Pick<AnalyseInput, "afficherResumePrestationsLpp" | "client1" | "conjoint" | "libresPassages">,
-): { title: string; tables: ResumePersonTable[] } | null {
-  if (!input.afficherResumePrestationsLpp) return null;
+  input: Pick<
+    AnalyseInput,
+    | "afficherResumePrestationsLpp"
+    | "afficherTableauAgesLpp"
+    | "client1"
+    | "conjoint"
+    | "libresPassages"
+  >,
+): { title: string; showResume: boolean; showAges: boolean; tables: ResumePersonTable[] } | null {
+  const showResume = Boolean(input.afficherResumePrestationsLpp);
+  const showAges = Boolean(input.afficherTableauAgesLpp);
+  if (!showResume && !showAges) return null;
   const tables = [personTable(input.client1, "client1", input, "Assuré 1")];
   if (input.conjoint) tables.push(personTable(input.conjoint, "conjoint", input, "Assuré 2"));
-  return {
-    title: "Résumé des prestations deuxième pilier",
-    tables: tables.filter((table) => table.rows.length > 0),
-  };
+  let kept = tables.filter((table) => table.rows.length > 0);
+  if (!showAges) kept = kept.map((table) => ({ ...table, ages: [] }));
+  if (!showResume) kept = kept.filter((table) => table.ages.length > 0);
+  if (kept.length === 0) return null;
+  return { title: RESUME_LPP_TITLE, showResume, showAges, tables: kept };
+}
+
+export function applyResumeCapitalTax(
+  block: { tables: ResumePersonTable[] },
+  lines: ResumeCapitalTaxLine[] | null | undefined,
+): void {
+  if (!lines?.length) return;
+  for (const table of block.tables) {
+    for (const row of table.ages) {
+      const hit = lines.find(
+        (line) =>
+          line.personKey === table.personKey &&
+          line.age === row.age &&
+          line.capital === row.capital,
+      );
+      row.impot = hit?.impot ?? null;
+    }
+  }
 }
 
 function annual(amount: number | null | undefined, unite: LppRenteUnite | undefined): number {
@@ -87,12 +136,76 @@ function personTable(
     });
   }
   return {
+    personKey: key,
     subtitle: personSubtitle(person, fallback),
     headers: range ? ["", "Capital max", "Rente minimum", "Rente maximum"] : ["", "Capital", "Rente"],
     rows,
     totals: totalCells(rows),
     notes: notes.map(({ mark, text }) => ({ mark, text })),
+    ages: ageSchedule(person, range),
   };
+}
+
+function ageSchedule(person: PersonInput, range: boolean): ResumeAgeRow[] {
+  const funds = rawFunds(person);
+  const rows: ResumeAgeRow[] = [];
+  for (const age of AGE_SCHEDULE) {
+    let capital = 0;
+    let rente = 0;
+    let renteMin = 0;
+    let renteMax = 0;
+    let hasMinimum = false;
+    let any = false;
+    for (const fund of funds) {
+      const row = fund.rows.find((item) => item.age === age);
+      if (!row) continue;
+      const cap = Number(row.capital) || 0;
+      const full = annual(row.rente, fund.unite);
+      const reduced = annual(row.renteReduite, fund.unite);
+      if (cap === 0 && full === 0 && reduced === 0) continue;
+      any = true;
+      capital += cap;
+      rente += full;
+      renteMax += full;
+      if (fund.type === "etatique" && row.renteReduite != null && Number(row.renteReduite) > 0) {
+        hasMinimum = true;
+        renteMin += reduced;
+      }
+    }
+    if (!any) continue;
+    rows.push({
+      age,
+      capital: Math.round(capital * 100) / 100,
+      rente: range ? null : Math.round(rente * 100) / 100,
+      renteMinimum: range ? (hasMinimum ? Math.round(renteMin * 100) / 100 : null) : null,
+      renteMaximum: range ? Math.round(renteMax * 100) / 100 : null,
+      impot: null,
+    });
+  }
+  return rows;
+}
+
+function rawFunds(person: PersonInput) {
+  const funds: Array<{ type: LppCaisseType; unite: LppRenteUnite | undefined; rows: LppByAge[] }> = [];
+  const primaryRows = person.lpp || [];
+  const primaryHas =
+    (person.lppInstitution || "").trim() ||
+    primaryRows.some((row) => (row.capital || 0) !== 0 || (row.rente || 0) !== 0 || (row.renteReduite || 0) !== 0);
+  if (primaryHas) {
+    funds.push({
+      type: person.lppType === "etatique" ? "etatique" : "classique",
+      unite: person.lppRenteUnite,
+      rows: primaryRows,
+    });
+  }
+  for (const avoir of person.lppAvoirs || []) {
+    funds.push({
+      type: avoir.type === "etatique" ? "etatique" : "classique",
+      unite: avoir.renteUnite,
+      rows: avoir.rows || [],
+    });
+  }
+  return funds;
 }
 
 function fundLines(person: PersonInput) {

@@ -127,6 +127,37 @@ def get_form_type(form_type_id: Optional[str]) -> Optional[dict[str, Any]]:
     return None
 
 
+@lru_cache(maxsize=1)
+def professional_form_type_ids() -> frozenset[str]:
+    """Ids des formulaires du menu « Assurances professionnelles »."""
+    ids: set[str] = set()
+    menu = load_form_menu()
+    for family in menu.get("families") or []:
+        if (family.get("id") or "").strip().lower() != "professionnelles":
+            continue
+        for section in family.get("sections") or []:
+            for item in section.get("items") or []:
+                fid = (item.get("form_type") or "").strip()
+                if fid:
+                    ids.add(fid)
+    return frozenset(ids)
+
+
+def is_professionnelle_form(
+    form_type_id: Optional[str] = None,
+    *,
+    form_category: Optional[str] = None,
+) -> bool:
+    """True si le formulaire appartient à Assurances professionnelles (pas particulier)."""
+    fid = (form_type_id or "").strip()
+    if fid and fid in professional_form_type_ids():
+        return True
+    cat = (form_category or "").strip().lower()
+    if "professionnelle" in cat or cat == "entreprise":
+        return True
+    return False
+
+
 def _fold_label(label: str) -> str:
     s = unicodedata.normalize("NFKD", label or "")
     s = "".join(c for c in s if not unicodedata.combining(c))
@@ -322,7 +353,7 @@ def filter_form_payload_to_schema(
             out[k] = v
         elif is_field_comment_key(k) and base_field_name_from_comment_key(k) in allowed:
             out[k] = v
-    return out
+    return blank_incapacite_gain_when_hidden(fid, out)
 
 
 def prefill_form_payload_from_crm(
@@ -427,6 +458,39 @@ def prefill_form_payload_from_crm(
             next_payload[name] = val
 
     return next_payload
+
+
+# Suivi de « Toutes les personnes assurées sont-elles en pleine capacité de travail ? »
+# Oui = pleine capacité : le champ est masqué. Non = il est affiché et obligatoire.
+INCAPACITE_GAIN_LABEL = "Nature de l'incapacité de gain et depuis quand ?"
+
+
+def blank_incapacite_gain_when_hidden(form_type_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """N'envoie pas une nature d'incapacité si les personnes sont en pleine capacité.
+
+    Le champ n'est visible que si la réponse est Non. Une saisie faite puis
+    abandonnée en repassant à Oui est effacée avant enregistrement.
+    """
+    if not isinstance(payload, dict):
+        return {}
+    schema = load_form_schema(form_type_id) or {}
+    out = dict(payload)
+    for field in schema.get("fields") or []:
+        if not isinstance(field, dict):
+            continue
+        if (field.get("label") or "") != INCAPACITE_GAIN_LABEL:
+            continue
+        if _field_visible(field, payload):
+            continue
+        name = field.get("name") or field.get("id")
+        if not name:
+            continue
+        if str(out.get(name) or "").strip():
+            out[name] = ""
+        comment = field_comment_key(str(name))
+        if str(out.get(comment) or "").strip():
+            out[comment] = ""
+    return out
 
 
 def _field_visible(field: dict, payload: dict) -> bool:

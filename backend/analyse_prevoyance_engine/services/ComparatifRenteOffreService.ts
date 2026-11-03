@@ -8,8 +8,12 @@ import { ageRetraitePersonne } from "../rules/age-retraite";
 import {
   assietteOffreComparatif,
   fortunesDecroissantes,
+  gainNetOffre,
+  impotFortuneCapitalNonAffecte,
+  libelleRevenuAjoute,
   revenuEncaisseOffre,
   totalImpotFortune,
+  totalRevenusAjoutesImpot,
   type OffreRenteType,
 } from "../rules/comparatif-rente-offre";
 import { roundMoney } from "../rules/rente-hypotheses";
@@ -41,15 +45,29 @@ export interface ComparatifOffreColumn {
   partImposable: number;
   impotRevenu: number | null;
   revenuNet: number | null;
+  /** Revenu net annuel × durée saisie − capital. Null sans durée. */
+  gainNet: number | null;
   recommander: boolean;
   /** Null pour une viagère, ou une certaine sans durée. */
   fortuneAnnees: FortuneAnnee[] | null;
   totalImpotFortune: number | null;
+  /**
+   * Impôt ESTV sur le capital affecté, fortune constante, × durée saisie.
+   * Null sans durée. Ce n'est pas le total de la fortune décroissante.
+   */
+  impotFortuneSiNonAffecte: number | null;
   dureeFortune: number | null;
+}
+
+export interface RevenuAjouteAffiche {
+  libelle: string;
+  montant: number;
 }
 
 export interface ComparatifRenteOffreResult {
   columns: ComparatifOffreColumn[];
+  /** Mêmes montants pour chaque offre : ils entrent dans l'impôt sur le revenu. */
+  revenusAjoutes: RevenuAjouteAffiche[];
   anneesAffichees: number;
   avertissement: string | null;
 }
@@ -110,8 +128,15 @@ export class ComparatifRenteOffreService {
 
   async build(input: AnalyseInput): Promise<ComparatifRenteOffreResult> {
     const hypotheses = (input.renteHypotheses || []).filter(offerUsable);
+    const revenusAjoutes = (input.revenusAjoutesImpot || [])
+      .map((row) => ({
+        libelle: libelleRevenuAjoute(row),
+        montant: roundMoney(Math.max(0, n(row.montant))),
+      }))
+      .filter((row) => row.montant > 0);
+    const extra = totalRevenusAjoutesImpot(input.revenusAjoutesImpot);
     if (!input.taxLocationId || !hypotheses.length) {
-      return { columns: [], anneesAffichees: 0, avertissement: null };
+      return { columns: [], revenusAjoutes, anneesAffichees: 0, avertissement: null };
     }
 
     const married = input.etatCivil === "Marié(e)";
@@ -156,7 +181,7 @@ export class ComparatifRenteOffreService {
 
     const columns: ComparatifOffreColumn[] = [];
     for (const [index, row] of hypotheses.entries()) {
-      columns.push(await this.column(row, index, age1, taxAt, warnings));
+      columns.push(await this.column(row, index, age1, extra, taxAt, warnings));
     }
     const anneesAffichees = columns.reduce(
       (max, col) => Math.max(max, col.fortuneAnnees?.length || 0),
@@ -164,6 +189,7 @@ export class ComparatifRenteOffreService {
     );
     return {
       columns,
+      revenusAjoutes,
       anneesAffichees,
       avertissement: warnings[0] || null,
     };
@@ -173,6 +199,7 @@ export class ComparatifRenteOffreService {
     row: RenteHypothesisInput,
     index: number,
     age1: number,
+    extraRevenue: number,
     taxAt: (
       revenue: number,
       fortune: number,
@@ -191,18 +218,26 @@ export class ComparatifRenteOffreService {
       participationExcedents: participation,
     });
     const revenuEncaisse = revenuEncaisseOffre(garantie, participation);
-    const impotRevenu = await taxAt(partImposable, 0, age1, "comparatif-offre-revenu");
+    const impotRevenu = await taxAt(
+      roundMoney(partImposable + extraRevenue),
+      0,
+      age1,
+      "comparatif-offre-revenu",
+    );
     const company = (row.compagnie || "").trim();
+    const revenuNet = impotRevenu == null ? null : roundMoney(revenuEncaisse - impotRevenu);
 
     let fortuneAnnees: FortuneAnnee[] | null = null;
     let total: number | null = null;
     let dureeFortune: number | null = null;
+    let gainNet: number | null = null;
+    let impotFortuneSiNonAffecte: number | null = null;
     if (type === "certaine" && row.dureeAnnees != null && n(row.dureeAnnees) > 0) {
       const asked = Math.floor(n(row.dureeAnnees));
       const duree = Math.min(asked, DUREE_FORTUNE_MAX);
       if (asked > DUREE_FORTUNE_MAX) {
         warnings.push(
-          `Durée limitée à ${DUREE_FORTUNE_MAX} ans pour le calcul de l'impôt sur la fortune.`,
+          `Le calendrier de fortune décroissante est limité à ${DUREE_FORTUNE_MAX} ans. L'impôt fortune si le capital n'est pas affecté utilise la durée saisie (${asked} ans).`,
         );
       }
       const fortunes = fortunesDecroissantes(capital, garantie, duree);
@@ -216,6 +251,13 @@ export class ComparatifRenteOffreService {
       }));
       total = totalImpotFortune(impots);
       dureeFortune = duree;
+      // Durée saisie du contrat, y compris au-delà du calendrier plafonné.
+      // L'année 1 est déjà l'impôt ESTV sur le capital entier (revenu 0, âge de retraite).
+      gainNet = gainNetOffre(revenuNet, asked, capital);
+      impotFortuneSiNonAffecte = impotFortuneCapitalNonAffecte(
+        fortuneAnnees[0]?.impotFortune ?? null,
+        asked,
+      );
     }
 
     return {
@@ -231,10 +273,12 @@ export class ComparatifRenteOffreService {
       revenuEncaisse,
       partImposable,
       impotRevenu,
-      revenuNet: impotRevenu == null ? null : roundMoney(revenuEncaisse - impotRevenu),
+      revenuNet,
+      gainNet,
       recommander: Boolean(row.recommander),
       fortuneAnnees,
       totalImpotFortune: total,
+      impotFortuneSiNonAffecte,
       dureeFortune,
     };
   }

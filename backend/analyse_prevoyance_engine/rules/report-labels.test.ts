@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 import { helferAnalyseInput } from "../fixtures/helfer.ts";
+import { formatChf } from "../mappers.ts";
 import { buildReportPayload } from "../report/buildReportPayload.ts";
 import {
-  AVS_SIMULATION_DISCLAIMER,
+  buildReportPages,
   renderPrintableReportHtml,
-  revenuFiscalNoteText,
 } from "../pdf/renderPrintableReportHtml.ts";
 import { retirementAnalysisService } from "../services/RetirementAnalysisService.ts";
 import { taxCalculationService } from "../services/TaxCalculationService.ts";
@@ -78,11 +78,16 @@ describe("libellés PDF — prénoms et destin LPP", () => {
     assert.ok(labels.includes("AVS – Wiliam"));
     assert.ok(labels.includes("AVS – Ariane"));
     assert.ok(labels.includes("LPP – Wiliam – Capital"));
-    assert.ok(labels.includes("LPP – Ariane – Capital + rente"));
-    const ariane = timeline.events.find(
-      (event) => event.label === "LPP – Ariane – Capital + rente",
+    assert.ok(labels.includes("LPP – Ariane – Capital"));
+    assert.ok(labels.includes("LPP – Ariane – Rente réduite"));
+    const arianeCapital = timeline.events.find(
+      (event) => event.label === "LPP – Ariane – Capital",
     );
-    assert.equal(ariane?.amount, 74_339);
+    const arianeRente = timeline.events.find(
+      (event) => event.label === "LPP – Ariane – Rente réduite",
+    );
+    assert.equal(arianeCapital?.amount, 74_339);
+    assert.equal(arianeRente?.amount, 8_028.5);
   });
 
   it("affiche une rente pure et retombe sur Assuré N si le prénom manque", () => {
@@ -104,6 +109,94 @@ describe("libellés PDF — prénoms et destin LPP", () => {
     assert.equal(
       timeline.events.find((event) => event.kind === "avs")?.label,
       "AVS – Assuré 1",
+    );
+  });
+
+  it("garde le capital de chaque caisse, avec la rente réduite quand elle existe", () => {
+    const input = emptyAnalyseInput();
+    input.etatCivil = "Marié(e)";
+    input.client1 = {
+      ...emptyPerson("Madame"),
+      prenom: "Judith",
+      dateNaissance: "1973-06-01",
+    };
+    input.conjoint = {
+      ...emptyPerson("Monsieur"),
+      prenom: "Corentin",
+      dateNaissance: "1978-03-01",
+    };
+    const timeline = timelineService.build(
+      input,
+      computed({
+        dateDepart: "2038-06-01",
+        lppLignes: [
+          {
+            id: "cpeg",
+            institution: "CPEG",
+            pct: 100,
+            type: "etatique",
+            age: 65,
+            capital: 58_437,
+            rente: 26_400,
+            capitalRetire: 58_437,
+            renteResiduelle: 23_196,
+          },
+          {
+            id: "cpev",
+            institution: "CPEV",
+            pct: 100,
+            type: "etatique",
+            age: 65,
+            capital: 246_444,
+            rente: 30_000,
+            capitalRetire: 246_444,
+            renteResiduelle: 15_000,
+          },
+          {
+            id: "rp",
+            institution: "Retraite Populaire",
+            pct: 100,
+            type: "etatique",
+            age: 65,
+            capital: 198_782,
+            rente: 9_542,
+            capitalRetire: 198_782,
+            renteResiduelle: 0,
+          },
+        ],
+      }),
+      computed({
+        dateDepart: "2043-03-01",
+        lppLignes: [
+          {
+            id: "pk",
+            institution: "Pensionskasse",
+            pct: 100,
+            type: "classique",
+            age: 65,
+            capital: 422,
+            rente: 23,
+            capitalRetire: 422,
+            renteResiduelle: 0,
+          },
+        ],
+      }),
+    );
+    const lpp = timeline.events.filter((event) => event.kind === "lpp");
+    const amount = (label: string) => lpp.find((event) => event.label === label)?.amount;
+    assert.equal(amount("LPP – Judith – CPEG – Capital"), 58_437);
+    assert.equal(amount("LPP – Judith – CPEG – Rente réduite"), 23_196);
+    assert.equal(amount("LPP – Judith – CPEV – Capital"), 246_444);
+    assert.equal(amount("LPP – Judith – CPEV – Rente réduite"), 15_000);
+    assert.equal(amount("LPP – Judith – Retraite Populaire – Capital"), 198_782);
+    assert.equal(
+      lpp.some((event) => event.label.includes("Retraite Populaire") && event.label.includes("Rente")),
+      false,
+    );
+    assert.equal(amount("LPP – Corentin – Pensionskasse – Capital"), 422);
+    assert.equal(
+      lpp.filter((event) => event.label.includes("Capital")).length,
+      4,
     );
   });
 });
@@ -137,6 +230,15 @@ const offreC: RenteHypothesisInput = {
   renteGarantieAnnuelle: 7_500,
   participationExcedentsAnnuelle: 800,
 };
+
+function lppPctDisponibleRow(html: string): string {
+  const marker = '<td class="lab">% LPP disponible</td>';
+  const start = html.indexOf(marker);
+  assert.ok(start >= 0, "ligne % LPP disponible absente");
+  const end = html.indexOf("</tr>", start);
+  assert.ok(end > start);
+  return html.slice(start, end);
+}
 
 function comparaisonSection(html: string): string {
   const marker = '<div class="page-title">COMPARATIF DES RENTES</div>';
@@ -233,23 +335,41 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
 
     assert.deepEqual(lppLabels, [
       "LPP – Wiliam – Capital",
-      "LPP – Ariane – Capital + rente",
+      "LPP – Ariane – Capital",
+      "LPP – Ariane – Rente réduite",
     ]);
     assert.equal(
       results.timeline?.events.find((event) => event.person === "client1" && event.kind === "lpp")
         ?.amount,
       results.client1.capitalLppRetire65,
     );
+    const arianeLpp = (results.timeline?.events || []).filter(
+      (event) => event.person === "conjoint" && event.kind === "lpp",
+    );
     assert.equal(
-      results.timeline?.events.find((event) => event.person === "conjoint" && event.kind === "lpp")
-        ?.amount,
+      arianeLpp.find((event) => event.label.endsWith("Capital"))?.amount,
       results.conjoint?.capitalLppRetire65,
     );
+    assert.equal(
+      arianeLpp.find((event) => event.label.endsWith("Rente réduite"))?.amount,
+      results.conjoint?.renteLppResiduelle65,
+    );
     assert.ok(html.includes("LPP – Wiliam – Capital"));
-    assert.ok(html.includes("LPP – Ariane – Capital + rente"));
+    assert.ok(html.includes("LPP – Ariane – Capital + rente réduite"));
+    const arianeRow = html.indexOf("<td>LPP – Ariane – Capital + rente réduite</td>");
+    assert.ok(arianeRow >= 0);
+    const arianeDetail = html.slice(arianeRow, arianeRow + 400);
+    assert.match(arianeDetail, /\/an/);
+    assert.ok(arianeDetail.includes(formatChf(results.conjoint?.capitalLppRetire65)));
+    assert.ok(html.includes("/an"));
     assert.ok(html.includes("Rente LPP – Wiliam"));
     assert.ok(html.includes("Rente LPP – Ariane"));
     assert.ok(html.includes("Capital LPP disponible"));
+    assert.equal(html.includes("Caisses LPP"), false);
+    const pctRow = lppPctDisponibleRow(html);
+    const pctCells = [...pctRow.matchAll(/<td class="val">([^<]*)<\/td>/g)].map((m) => m[1]);
+    assert.deepEqual(pctCells, ["100 %", "50 %"]);
+    assert.equal(pctRow.includes("selon règlement de la caisse"), false);
     assert.equal(html.includes('<td class="lab">Capital LPP</td>'), false);
     const payload = buildReportPayload(record);
     const capitalSplit =
@@ -292,6 +412,115 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     assert.equal(compare.includes("calculateur officiel AVS"), false);
   });
 
+  it("bilan : 100 % sans rente réduite, règlement si rente réduite, 50 % conservé", async () => {
+    const input = emptyAnalyseInput();
+    input.etatCivil = "Marié(e)";
+    input.taxLocationId = 170_000_000;
+    input.taxGroupId = 170_000_000;
+    input.ageRetraiteSouhaite = 65;
+    input.afficherResumePrestationsLpp = true;
+    input.client1 = {
+      ...emptyPerson("Madame"),
+      prenom: "Judith",
+      nom: "Bouchardy Clement",
+      dateNaissance: "1973-06-01",
+      lppPctDeblocable: 100,
+      lppInstitution: "CPEG",
+      lppType: "etatique",
+      lppRetraitEtatique: "capital_max",
+      lpp: emptyPerson("Madame").lpp.map((row) =>
+        row.age === 65 ? { ...row, capital: 58_437, rente: 26_400, renteReduite: 23_196 } : row,
+      ),
+      lppAvoirs: [
+        {
+          id: "cpev",
+          institution: "CPEV",
+          type: "etatique",
+          rows: emptyPerson("Madame").lpp.map((row) =>
+            row.age === 65 ? { ...row, capital: 246_444, rente: 30_000, renteReduite: 15_000 } : row,
+          ),
+        },
+        {
+          id: "rp",
+          institution: "Retraite Populaire",
+          type: "etatique",
+          rows: emptyPerson("Madame").lpp.map((row) =>
+            row.age === 65 ? { ...row, capital: 198_782, rente: 9_542 } : row,
+          ),
+        },
+      ],
+    };
+    input.conjoint = {
+      ...emptyPerson("Monsieur"),
+      prenom: "Corentin",
+      nom: "Clement",
+      dateNaissance: "1978-03-01",
+      lppPctDeblocable: 100,
+      lppInstitution: "Pensionskasse Musik",
+      lppType: "classique",
+      lpp: emptyPerson("Monsieur").lpp.map((row) =>
+        row.age === 65 ? { ...row, capital: 422, rente: 276 } : row,
+      ),
+    };
+    const html = await htmlOf(input);
+    const start = html.indexOf("3. Prévoyance actuelle");
+    const end = html.indexOf("4. Synthèse", start);
+    assert.ok(start >= 0 && end > start);
+    const bilan = html.slice(start, end);
+    assert.equal(bilan.includes("Caisses LPP"), false);
+    assert.equal(html.includes("Caisses LPP"), false);
+    for (const label of [
+      "AVS estimée",
+      "Avoir LPP total",
+      "% LPP disponible",
+      "Capital LPP disponible",
+      "3e pilier",
+      "Libre passage",
+    ]) {
+      assert.ok(bilan.includes(label), label);
+    }
+    const pctRow = lppPctDisponibleRow(html);
+    const cells = [...pctRow.matchAll(/<td class="val">([^<]*)<\/td>/g)].map((m) => m[1]);
+    assert.deepEqual(cells, ["selon règlement de la caisse", "100 %"]);
+    assert.equal(pctRow.includes("25 %"), false);
+
+    const half = emptyAnalyseInput();
+    half.etatCivil = "Marié(e)";
+    half.taxLocationId = 170_000_000;
+    half.taxGroupId = 170_000_000;
+    half.ageRetraiteSouhaite = 65;
+    half.client1 = {
+      ...emptyPerson("Monsieur"),
+      prenom: "Corentin",
+      nom: "Clement",
+      dateNaissance: "1978-03-01",
+      lppPctDeblocable: 50,
+      lppInstitution: "Pensionskasse Musik",
+      lppType: "classique",
+      lpp: emptyPerson("Monsieur").lpp.map((row) =>
+        row.age === 65 ? { ...row, capital: 422, rente: 276 } : row,
+      ),
+    };
+    half.conjoint = {
+      ...emptyPerson("Madame"),
+      prenom: "Judith",
+      nom: "Bouchardy",
+      dateNaissance: "1973-06-01",
+      lppPctDeblocable: 100,
+      lppInstitution: "CPEG",
+      lppType: "etatique",
+      lppRetraitEtatique: "capital_max",
+      lpp: emptyPerson("Madame").lpp.map((row) =>
+        row.age === 65 ? { ...row, capital: 58_437, rente: 26_400, renteReduite: 23_196 } : row,
+      ),
+    };
+    const halfHtml = await htmlOf(half);
+    const halfRow = lppPctDisponibleRow(halfHtml);
+    const halfCells = [...halfRow.matchAll(/<td class="val">([^<]*)<\/td>/g)].map((m) => m[1]);
+    assert.deepEqual(halfCells, ["50 %", "selon règlement de la caisse"]);
+    assert.equal(halfHtml.includes("Caisses LPP"), false);
+  });
+
   it("met la compagnie, le capital et le type dans l'en-tête — 1 offre certaine", async () => {
     const input = helferAnalyseInput();
     input.ageRetraiteSouhaite = 65;
@@ -306,7 +535,11 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     assert.equal(compare.includes("Helvetia"), false);
     assert.equal(compare.includes('<td class="lab">Capital placé</td>'), false);
     assert.equal(compare.includes("Écart vs référence"), false);
-    assert.ok(html.includes("Revenu annuel obtenu sur le capital placé"));
+    assert.equal(html.includes("Revenu annuel obtenu sur le capital placé"), false);
+    assert.equal(html.includes("Ce ratio rapporte le revenu encaissé"), false);
+    assert.equal(html.includes("Revenu annuel / capital"), false);
+    assert.ok(html.includes("COMPARATIF DES RENTES"));
+    assert.equal(html.includes("Gain net"), false);
   });
 
   it("aligne N offres mixtes certaine et viagère", async () => {
@@ -324,7 +557,7 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     assert.equal((compare.match(/col-offer/g) || []).length >= 2, true);
   });
 
-  it("ajoute la mention AVS simulation seulement si une case est cochée", async () => {
+  it("n'imprime plus la mention AVS simulation sous le comparatif", async () => {
     const off = helferAnalyseInput();
     off.ageRetraiteSouhaite = 65;
     off.comparerAvecRenteLpp = true;
@@ -338,9 +571,8 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     on.renteHypotheses = [offreA];
     on.client1 = { ...on.client1, avsMontantIssuSimulation: true };
     const htmlOn = await htmlOf(on);
-    assert.ok(htmlOn.includes(AVS_SIMULATION_DISCLAIMER));
-    assert.ok(htmlOn.includes("calculateur officiel AVS"));
-    assert.ok(htmlOn.includes("avs-sim-note"));
+    assert.equal(htmlOn.includes("calculateur officiel AVS"), false);
+    assert.equal(htmlOn.includes("avs-sim-note"), false);
 
     const conjointOnly = helferAnalyseInput();
     conjointOnly.ageRetraiteSouhaite = 65;
@@ -351,7 +583,7 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
       avsMontantIssuSimulation: true,
     };
     const htmlConjoint = await htmlOf(conjointOnly);
-    assert.ok(htmlConjoint.includes("calculateur officiel AVS"));
+    assert.equal(htmlConjoint.includes("calculateur officiel AVS"), false);
   });
 
   it("relit le booléen AVS simulation sans migration", () => {
@@ -397,6 +629,7 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     const payload = buildReportPayload(record);
     const html = renderPrintableReportHtml(payload);
     assert.ok(html.includes("Capital LPP disponible"));
+    assert.equal(html.includes("Caisses LPP"), false);
     assert.ok(html.includes("Marc"));
     assert.equal(html.includes("Assuré 2"), false);
     assert.equal(payload.conjoint, null);
@@ -490,31 +723,164 @@ describe("HTML Helfer — présentation sans calcul fiscal réel", { concurrency
     assert.equal(compare.includes("Solution recommandée"), false);
   });
 
-  it("place la note revenu fiscal sous le tableau COMPARATIF DES RENTES", async () => {
+  it("ne laisse sous le comparatif que la note fiscale et, s'il y a Pax, la note de différé", async () => {
     const input = helferAnalyseInput();
     input.ageRetraiteSouhaite = 65;
     input.comparerAvecRenteLpp = true;
     input.renteHypotheses = [offreA];
     const html = await htmlOf(input);
-    const start = html.indexOf("COMPARATIF DES RENTES");
+    const start = html.indexOf('<div class="page-title">COMPARATIF DES RENTES</div>');
     assert.ok(start >= 0, "page COMPARATIF DES RENTES absente");
     const tableStart = html.indexOf('<table class="data compare">', start);
     assert.ok(tableStart >= 0, "tableau compare absent");
     const tableEnd = html.indexOf("</table>", tableStart);
     assert.ok(tableEnd >= 0);
-    const note = revenuFiscalNoteText([
-      { kind: "hypothese", typeLabel: "Rente certaine" },
-    ]);
+    const page = html.slice(start);
+    const fiscal =
+      "Le montant de l'impôt présenté est une estimation calculée uniquement sur la base des rentes AVS et LPP prises en compte dans cette analyse.";
+    const fiscalPos = page.indexOf(fiscal);
+    assert.ok(fiscalPos > tableEnd - start, "la note * doit suivre le tableau");
+    assert.equal(page.includes("Rente certaine. Revenu fiscal"), false);
+    assert.equal(page.includes("Rente viagère. Revenu fiscal"), false);
+    assert.equal(page.includes("calculateur officiel AVS"), false);
+    assert.equal(page.includes("Aucun cumul"), false);
+    assert.equal(page.includes("revenu-fiscal-note"), false);
+    assert.equal(page.includes("avs-sim-note"), false);
+  });
+
+  it("écrit le différé saisi et n'invente pas Différé : 0", async () => {
+    const input = helferAnalyseInput();
+    input.ageRetraiteSouhaite = 65;
+    input.comparerAvecRenteLpp = true;
+    input.renteHypotheses = [
+      { ...offreA, dureeAnnees: 20, dureeDiffereAnnees: 3 },
+      { ...offreB, dureeDiffereAnnees: 3 },
+    ];
+    const html = await htmlOf(input);
+    const compare = comparaisonSection(html);
+    assert.ok(compare.includes("Différé"));
+    assert.ok(compare.includes("Différé : 3 ans"));
+    assert.ok(compare.includes("3"));
+    const dureeRow = (compare.split('<td class="lab">Durée</td>')[1] || "").split("</tr>")[0];
+    assert.ok(dureeRow.includes("20 ans"));
+    assert.ok(dureeRow.includes("À vie"));
+    assert.equal(dureeRow.includes("Différé"), false);
+    const differeRow = (compare.split('<td class="lab">Différé</td>')[1] || "").split("</tr>")[0];
+    assert.ok(differeRow.includes("Différé : 3 ans"));
+    assert.equal(compare.includes("Différé : 0"), false);
+    assert.equal(compare.includes("Gain net"), false);
     assert.equal(
-      note,
-      "Revenu fiscal = rente AVS + rente LPP résiduelle + 100 % de la participation aux excédents. La rente garantie d'une rente certaine n'entre pas dans le revenu imposable selon l'hypothèse fiscale utilisée dans cette analyse.",
+      html.includes(
+        "100 % de la participation aux excédents. La rente garantie est encaissée et n'entre pas dans l'impôt",
+      ),
+      false,
     );
-    const notePos = html.indexOf(note, start);
-    assert.ok(notePos >= 0, "note revenu fiscal absente");
-    assert.ok(
-      notePos > tableEnd,
-      "la note revenu fiscal doit suivre le tableau comparatif",
+    assert.ok(html.includes("4 % de la rente garantie + 70 % de la participation aux excédents"));
+    assert.equal(html.includes("4 % de la rente garantie + 100 % de la participation"), false);
+    assert.equal(html.includes("70 % de la participation aux excédents. La rente garantie"), false);
+
+    const sans = helferAnalyseInput();
+    sans.ageRetraiteSouhaite = 65;
+    sans.comparerAvecRenteLpp = false;
+    sans.renteHypotheses = [{ ...offreA, dureeDiffereAnnees: 0 }, offreB];
+    const htmlSans = await htmlOf(sans);
+    const compareSans = comparaisonSection(htmlSans);
+    assert.equal(compareSans.includes("Différé : 0"), false);
+    assert.equal(compareSans.includes('<td class="lab">Différé</td>'), false);
+
+    const calcule = helferAnalyseInput();
+    calcule.ageRetraiteSouhaite = 65;
+    calcule.comparerAvecRenteLpp = false;
+    calcule.renteHypotheses = [offreA];
+    const results = await retirementAnalysisService.run(calcule);
+    const stale: AnalyseRecord = {
+      id: "differe-apres-calcul",
+      createdAt: "2026-10-07T00:00:00.000Z",
+      updatedAt: "2026-10-07T00:00:00.000Z",
+      clientId: null,
+      status: "calculee",
+      input: {
+        ...calcule,
+        renteHypotheses: [{ ...offreA, dureeDiffereAnnees: 3 }],
+      },
+      results,
+    };
+    const htmlStale = renderPrintableReportHtml(buildReportPayload(stale));
+    assert.ok(comparaisonSection(htmlStale).includes("Différé : 3 ans"));
+    assert.equal(comparaisonSection(htmlStale).includes("Différé : 0"), false);
+  });
+
+  it("place le comparatif des offres après les solutions, en dernière page", async () => {
+    const input = helferAnalyseInput();
+    input.ageRetraiteSouhaite = 65;
+    input.comparerAvecRenteLpp = true;
+    input.renteHypotheses = [offreA, offreB];
+    const results = await retirementAnalysisService.run(input);
+    const record: AnalyseRecord = {
+      id: "ordre-pages",
+      createdAt: "2026-10-07T00:00:00.000Z",
+      updatedAt: "2026-10-07T00:00:00.000Z",
+      clientId: null,
+      status: "calculee",
+      input,
+      results,
+    };
+    const pages = buildReportPages(buildReportPayload(record));
+    const solutions = pages.findIndex((page) =>
+      page.html.includes("Comparatif des solutions de rentes"),
     );
-    assert.ok(html.includes("revenu-fiscal-note"));
+    const offres = pages.findIndex((page) =>
+      page.html.includes('<div class="page-title">COMPARATIF DES RENTES</div>'),
+    );
+    assert.ok(solutions >= 0, "page solutions absente");
+    assert.ok(offres > solutions, "le comparatif des offres doit suivre les solutions");
+    assert.equal(offres, pages.length - 1);
+    assert.ok(pages[offres].html.includes("Vaudoise"));
+    assert.equal(pages[offres].html.includes("Revenu annuel obtenu sur le capital placé"), false);
+    assert.equal(pages[solutions].html.includes("COMPARATIF DES RENTES"), false);
+    const solutionsHtml = pages[solutions].html;
+    assert.ok(solutionsHtml.includes("Valeur de rachat 31.12"));
+    assert.ok(solutionsHtml.includes("Pas de fortune imposable"));
+    assert.ok(solutionsHtml.includes("Fortune imposable selon la variante choisie avec des particularités VD"));
+    assert.ok(solutionsHtml.includes("Fortune imposable (montant versé en cas de résiliation)"));
+    const timbre = solutionsHtml.indexOf("Droit de timbre fédéral");
+    const rachat = solutionsHtml.indexOf("Valeur de rachat 31.12");
+    const imposable = solutionsHtml.indexOf("Part du revenu imposable");
+    assert.ok(timbre >= 0 && timbre < rachat && rachat < imposable);
+    assert.ok(solutionsHtml.includes("4 % de la rente garantie + 70 % de la participation aux excédents"));
+    assert.ok(solutionsHtml.includes("0 % de la rente garantie + 100 % de la participation aux excédents"));
+    assert.ok(solutionsHtml.includes("100 % de la rente versée"));
+    assert.equal(solutionsHtml.includes("4 % de la rente garantie + 100 % de la participation"), false);
+    assert.equal(solutionsHtml.includes("impôt anticipé 35 %"), false);
+  });
+
+  it("signale Pax sans remplir le différé, et pas Rentes Genevoises", async () => {
+    const phrase =
+      "Pour les contrats PAX, un différé d’un an s’applique systématiquement avant le premier versement de la rente.";
+    const ancienne = "Avec Pax, il y aura toujours un différé de 1 an.";
+    const paxInput = helferAnalyseInput();
+    paxInput.ageRetraiteSouhaite = 65;
+    paxInput.comparerAvecRenteLpp = false;
+    paxInput.renteHypotheses = [{ ...offreA, compagnie: "Pax", dureeDiffereAnnees: null }];
+    const htmlPax = await htmlOf(paxInput);
+    assert.ok(htmlPax.includes(phrase));
+    assert.equal(htmlPax.includes(ancienne), false);
+    assert.ok(htmlPax.includes("Pax *"));
+    assert.equal(htmlPax.includes("Différé : 1"), false);
+    const pagePax = htmlPax.slice(
+      htmlPax.indexOf('<div class="page-title">COMPARATIF DES RENTES</div>'),
+    );
+    const etoile = pagePax.indexOf("Le montant de l'impôt présenté est une estimation");
+    const notePax = pagePax.indexOf(phrase);
+    assert.ok(etoile >= 0 && notePax > etoile, "la note Pax suit la phrase *");
+    assert.ok(pagePax.includes("compare-footnotes"));
+
+    const geneveInput = helferAnalyseInput();
+    geneveInput.ageRetraiteSouhaite = 65;
+    geneveInput.comparerAvecRenteLpp = false;
+    geneveInput.renteHypotheses = [{ ...offreA, compagnie: "Rentes Genevoises" }];
+    const htmlGeneve = await htmlOf(geneveInput);
+    assert.equal(htmlGeneve.includes(phrase), false);
+    assert.ok(htmlGeneve.includes("Rentes Genevoises"));
   });
 });

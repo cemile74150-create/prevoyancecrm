@@ -177,7 +177,7 @@ describe("impôt capital du couple selon l'année de retrait", () => {
     const avs = timeline.events.find((event) => event.kind === "avs");
     assert.equal(computed.datePerceptionAvs, "2027-04-01");
     assert.equal(avs?.year, 2027);
-    assert.equal(avs?.amount, 25_920);
+    assert.equal(avs?.amount, 30_000);
   });
 
   it("impose les deux LPP ensemble quand l'onglet LPP dit 60 ans la même année", async () => {

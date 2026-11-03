@@ -507,6 +507,19 @@ export function ResultsPanel({ record }: Props) {
                   ["Capital placé", (col) => formatChf(col.capitalPlace)],
                   ["Compagnie", (col) => col.compagnie || "—"],
                   ["Type", (col) => col.typeLabel],
+                  ...(results.renteHypotheses.columns.some(
+                    (col) => Math.floor(Number(col.dureeDiffereAnnees)) > 0,
+                  )
+                    ? [[
+                        "Différé",
+                        (col) => {
+                          const years = Math.floor(Number(col.dureeDiffereAnnees));
+                          return Number.isFinite(years) && years > 0
+                            ? `Différé : ${years} ans`
+                            : "—";
+                        },
+                      ]]
+                    : []),
                   ["Rente AVS", (col) => formatChf(col.renteAvs)],
                   ["Rente LPP résiduelle", (col) => col.kind === "lpp" ? "—" : formatChf(col.renteLppResiduelle)],
                   ["Rente garantie", (col) => formatChf(col.renteGarantie)],
@@ -535,6 +548,11 @@ export function ResultsPanel({ record }: Props) {
                 )}
               </TableBody>
             </Table>
+            {results.renteHypotheses.columns.some((col) => col.calendriersDifferents) ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Pour une offre combinée, les montants sont ceux de l&apos;année où les rentes sont versées ensemble.
+              </p>
+            ) : null}
           </CardContent>
         </Card>
       )}

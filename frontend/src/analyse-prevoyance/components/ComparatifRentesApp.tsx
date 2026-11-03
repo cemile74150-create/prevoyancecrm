@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/analyse-prevoyance/ui/select";
 import { withSingleRecommander } from "@/analyse-prevoyance/lib/analyseWizard";
+import { compagnieEstPax, NOTE_PAX_DIFFERE } from "@/analyse-prevoyance/lib/compagniePax";
 import { formatChf } from "@/analyse-prevoyance/lib/mappers";
 import {
   emptyPerson,
@@ -214,7 +215,9 @@ export function ComparatifRentesApp({
   const uniqueDurations = [...new Set(fortuneDurations)];
   const totalLabel = uniqueDurations.length === 1
     ? `Total impôt fortune sur ${uniqueDurations[0]} ans`
-    : "Total impôt fortune sur la durée";
+    : uniqueDurations.length === 0
+      ? "Total impôt fortune"
+      : "Total impôt fortune sur la durée";
 
   return (
     <div className="mx-auto max-w-[1680px] px-4 pt-3 pb-10 sm:px-6 lg:px-8">
@@ -226,8 +229,8 @@ export function ComparatifRentesApp({
           Tableau comparatif de rentes
         </h1>
         <p className="max-w-3xl text-muted-foreground">
-          Même fiche client que la planification. Cet onglet ne calcule que les offres de rente :
-          l&apos;impôt sur le revenu porte sur l&apos;offre, et l&apos;impôt sur la fortune suit le capital qui diminue chaque année.
+          Même fiche client que la planification. Cet onglet ne calcule que les offres de rente.
+          L&apos;impôt de la rente est annuel. Le bouton + ajoute une AVS, une rente LPP ou un autre revenu dans cet impôt. Les deux impôts sur la fortune n&apos;apparaissent que si la rente a une durée.
         </p>
       </header>
 
@@ -337,9 +340,9 @@ export function ComparatifRentesApp({
           <div>
             <h2 className="font-heading text-lg font-semibold">Offres de rente</h2>
             <p className="text-sm text-muted-foreground">
-              Rente certaine : la rente garantie est encaissée, elle n&apos;est pas imposable. L&apos;assiette est 70 % de la participation aux excédents, sans AVS ni LPP.
+              Rente certaine : la rente garantie est encaissée, elle n&apos;est pas imposable. L&apos;assiette est 0 % de la rente garantie + 100 % de la participation aux excédents, sans AVS ni LPP.
               L&apos;impôt sur la fortune part du capital, puis retire la rente garantie chaque année.
-              Rente viagère : 4 % de la rente garantie + 100 % de la participation, sans calendrier de fortune.
+              Rente viagère : 4 % de la rente garantie + 70 % de la participation, sans calendrier de fortune.
             </p>
           </div>
           {rows.map((row, index) => (
@@ -395,6 +398,9 @@ export function ComparatifRentesApp({
                     data-testid={`comparatif-compagnie-${row.id}`}
                     onChange={(e) => updateOffer(row.id, { compagnie: e.target.value })}
                   />
+                  {compagnieEstPax(row.compagnie) ? (
+                    <p className="text-xs text-muted-foreground">* {NOTE_PAX_DIFFERE}</p>
+                  ) : null}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Capital placé (CHF)</Label>
@@ -450,8 +456,8 @@ export function ComparatifRentesApp({
               </div>
               <p className="text-xs text-muted-foreground">
                 {row.type === "certaine"
-                  ? "Revenu imposable = 70 % de la participation. La rente garantie est encaissée, elle n'entre pas dans l'impôt. Sans AVS ni LPP."
-                  : "Revenu imposable = 4 % de la rente garantie + 100 % de la participation. Sans AVS ni LPP."}
+                  ? "Revenu imposable de l'offre = 0 % de la rente garantie + 100 % de la participation. La rente garantie est encaissée, elle n'entre pas dans l'impôt. AVS, rente LPP ou autre revenu : seulement avec le bouton +."
+                  : "Revenu imposable de l'offre = 4 % de la rente garantie + 70 % de la participation. AVS, rente LPP ou autre revenu : seulement avec le bouton +."}
               </p>
             </div>
           ))}
@@ -465,6 +471,100 @@ export function ComparatifRentesApp({
             <Plus className="size-4" />
             Ajouter une offre
           </Button>
+          <div className="space-y-3 border-t pt-4">
+            <div>
+              <h3 className="font-medium">Impôt sur le revenu</h3>
+              <p className="text-sm text-muted-foreground">
+                Ces montants s&apos;ajoutent à l&apos;assiette de chaque offre. Ils ne vont pas dans le rapport de planification.
+              </p>
+            </div>
+            {(input.revenusAjoutesImpot || []).map((row) => (
+              <div key={row.id} className="grid gap-3 sm:grid-cols-[180px_1fr_160px_auto] sm:items-end">
+                <div className="space-y-1">
+                  <Label className="text-xs">Revenu</Label>
+                  <select
+                    className="border-input bg-background h-8 w-full rounded-md border px-2 text-sm"
+                    value={row.kind}
+                    data-testid={`comparatif-revenu-kind-${row.id}`}
+                    onChange={(e) =>
+                      patchInput({
+                        revenusAjoutesImpot: (input.revenusAjoutesImpot || []).map((item) =>
+                          item.id === row.id ? { ...item, kind: e.target.value } : item,
+                        ),
+                      })
+                    }
+                  >
+                    <option value="avs">AVS</option>
+                    <option value="lpp">Rente LPP</option>
+                    <option value="autre">Autre revenu</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Libellé</Label>
+                  <Input
+                    value={row.libelle || ""}
+                    disabled={row.kind !== "autre"}
+                    placeholder={row.kind === "autre" ? "Ex. location" : row.kind === "lpp" ? "Rente LPP" : "AVS"}
+                    onChange={(e) =>
+                      patchInput({
+                        revenusAjoutesImpot: (input.revenusAjoutesImpot || []).map((item) =>
+                          item.id === row.id ? { ...item, libelle: e.target.value } : item,
+                        ),
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Montant annuel (CHF)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={row.montant || ""}
+                    data-testid={`comparatif-revenu-montant-${row.id}`}
+                    onChange={(e) =>
+                      patchInput({
+                        revenusAjoutesImpot: (input.revenusAjoutesImpot || []).map((item) =>
+                          item.id === row.id ? { ...item, montant: Number(e.target.value) || 0 } : item,
+                        ),
+                      })
+                    }
+                  />
+                </div>
+                <ConfirmDeleteButton
+                  ariaLabel="Retirer ce revenu"
+                  onConfirm={() =>
+                    patchInput({
+                      revenusAjoutesImpot: (input.revenusAjoutesImpot || []).filter((item) => item.id !== row.id),
+                    })
+                  }
+                >
+                  <Trash2 className="size-4" />
+                </ConfirmDeleteButton>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="comparatif-ajouter-revenu"
+              onClick={() =>
+                patchInput({
+                  revenusAjoutesImpot: [
+                    ...(input.revenusAjoutesImpot || []),
+                    {
+                      id: `revenu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                      kind: "avs",
+                      libelle: "",
+                      montant: 0,
+                    },
+                  ],
+                })
+              }
+            >
+              <Plus className="size-4" />
+              Ajouter AVS, rente LPP ou autre revenu
+            </Button>
+          </div>
         </section>
 
         <div className="flex flex-wrap gap-2">
@@ -534,7 +634,9 @@ export function ComparatifRentesApp({
                         key={col.id}
                         className={`border px-3 py-3 text-center text-white ${col.recommander ? "bg-[#1f6b45]" : "bg-[#7B1E2B]"}`}
                       >
-                        <div className="text-sm font-semibold uppercase">{col.label}</div>
+                        <div className="text-sm font-semibold uppercase">
+                          {col.label}{compagnieEstPax(col.compagnie || col.label) ? " *" : ""}
+                        </div>
                         <div className="mt-1 text-base">{money(col.capitalPlace)}</div>
                         <div className="text-xs font-normal opacity-90">
                           {col.typeLabel}{col.dureeAnnees ? ` · ${col.dureeAnnees} ans` : ""}
@@ -561,18 +663,47 @@ export function ComparatifRentesApp({
                   <DataRow label="Participation aux excédents" columns={columns} cell={(col) => money(col.participationExcedents)} />
                   <SectionRow label="Fiscalité de l'offre" span={columns.length} />
                   <DataRow label="Part imposable" columns={columns} cell={(col) => money(col.partImposable)} />
+                  {(results?.revenusAjoutes || []).map((revenu, index) => (
+                    <DataRow
+                      key={`${revenu.libelle}-${index}`}
+                      label={revenu.libelle}
+                      columns={columns}
+                      cell={() => money(revenu.montant)}
+                    />
+                  ))}
                   <DataRow
-                    label="ICC / IFD sur l'offre"
+                    label="Impôt de la rente (par an)"
                     columns={columns}
                     cell={(col) => money(col.impotRevenu)}
                   />
+                  <SectionRow label="Revenus nets" span={columns.length} />
                   <DataRow
                     label="Revenu net"
                     columns={columns}
-                    emphasize
+                    tone="net"
                     cell={(col) => money(col.revenuNet)}
                   />
-                  <SectionRow label="Impôt sur la fortune" span={columns.length} />
+                  <DataRow
+                    label={totalLabel}
+                    columns={columns}
+                    tone="net"
+                    testId="comparatif-fortune-total"
+                    cell={(col) => {
+                      if (col.totalImpotFortune == null) return "—";
+                      const amount = money(col.totalImpotFortune);
+                      if (uniqueDurations.length !== 1 && col.dureeFortune) {
+                        return `${amount} (sur ${col.dureeFortune} ans)`;
+                      }
+                      return amount;
+                    }}
+                  />
+                  <DataRow
+                    label="Impôt fortune si capital non affecté"
+                    columns={columns}
+                    testId="comparatif-fortune-non-affectee"
+                    cell={(col) => money(col.impotFortuneSiNonAffecte)}
+                  />
+                  <SectionRow label="Détail de la fortune décroissante" span={columns.length} />
                   {yearCount === 0 ? (
                     <tr>
                       <td className="border border-slate-200 px-3 py-2 text-slate-600" colSpan={columns.length + 1}>
@@ -605,32 +736,18 @@ export function ComparatifRentesApp({
                       );
                     })
                   )}
-                  <tr data-testid="comparatif-fortune-total" className="bg-slate-50 font-semibold">
-                    <td className="border border-slate-200 px-3 py-2">{totalLabel}</td>
-                    {columns.map((col) => (
-                      <td
-                        key={col.id}
-                        className={`border border-slate-200 px-3 py-2 text-right tabular-nums ${col.recommander ? "bg-emerald-50" : ""}`}
-                      >
-                        {col.totalImpotFortune == null ? (
-                          "—"
-                        ) : (
-                          <div>
-                            <div>{money(col.totalImpotFortune)}</div>
-                            {uniqueDurations.length !== 1 && col.dureeFortune ? (
-                              <div className="text-xs font-normal text-slate-600">sur {col.dureeFortune} ans</div>
-                            ) : null}
-                          </div>
-                        )}
-                      </td>
-                    ))}
-                  </tr>
                 </tbody>
               </table>
             </div>
+            {columns.some((col) => compagnieEstPax(col.compagnie || col.label)) ? (
+              <p className="text-xs text-slate-600">* {NOTE_PAX_DIFFERE}</p>
+            ) : null}
             <p className="text-xs text-slate-600">
-              Année 1 : impôt sur la fortune du capital placé. Chaque année suivante : le même capital diminué de la rente garantie, sans descendre sous 0.
-              Le total est la somme de ces impôts annuels. L&apos;ICC/IFD du haut est l&apos;impôt annuel sur l&apos;offre seule (fortune à 0) : 70 % de la participation pour une rente certaine, 4 % de la rente garantie plus toute la participation pour une viagère. L&apos;AVS et la LPP n&apos;entrent pas dans ce tableau.
+              L&apos;impôt de la rente est annuel. Il n&apos;est pas multiplié par la durée.
+              Les revenus ajoutés avec + (AVS, rente LPP, autre) entrent dans cet impôt.
+              Le total d&apos;impôt sur la fortune est la somme des impôts sur le capital qui diminue chaque année de la rente garantie, sans descendre sous 0.
+              La dernière ligne est l&apos;impôt sur la fortune de ce capital s&apos;il n&apos;est pas affecté à la rente : même fortune chaque année, impôt d&apos;une année × durée.
+              Sans durée, les deux impôts sur la fortune restent vides.
             </p>
           </section>
         )}
@@ -653,15 +770,18 @@ function DataRow({
   label,
   columns,
   cell,
-  emphasize = false,
+  tone = "plain",
+  testId,
 }: {
   label: string;
   columns: Array<{ id: string; recommander?: boolean }>;
   cell: (col: { id: string }) => string;
-  emphasize?: boolean;
+  tone?: "plain" | "net";
+  testId?: string;
 }) {
+  const rowClass = tone === "net" ? "bg-slate-50 font-semibold" : "";
   return (
-    <tr className={emphasize ? "bg-slate-50 font-semibold" : ""}>
+    <tr className={rowClass} data-testid={testId}>
       <td className="border border-slate-200 px-3 py-2">{label}</td>
       {columns.map((col) => (
         <td

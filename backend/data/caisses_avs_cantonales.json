@@ -1,0 +1,426 @@
+{
+  "source": "https://www.ahv-iv.ch/fr/Contacts/Caisses-cantonales-de-compensation",
+  "source_label": "Centre d'information AVS/AI — Caisses cantonales de compensation",
+  "updated_note": "Modifier ce fichier pour corriger une adresse sans toucher au code.",
+  "csc": {
+    "id": "CSC",
+    "canton": null,
+    "canton_label": "Étranger / Suisse hors canton",
+    "name": "Caisse suisse de compensation CSC",
+    "name_lines": ["Caisse suisse de compensation CSC"],
+    "street": "Avenue Edmond-Vaucher 18",
+    "po_box": "Case postale 3100",
+    "npa": "1211",
+    "locality": "Genève 2",
+    "address_lines": [
+      "Caisse suisse de compensation CSC",
+      "Avenue Edmond-Vaucher 18",
+      "Case postale 3100",
+      "1211 Genève 2"
+    ]
+  },
+  "caisses": [
+    {
+      "id": "AG",
+      "canton": "AG",
+      "canton_label": "Argovie",
+      "name": "SVA Aargau",
+      "name_lines": ["SVA Aargau"],
+      "street": "Bahnhofplatz 3C",
+      "po_box": null,
+      "npa": "5001",
+      "locality": "Aarau",
+      "address_lines": ["SVA Aargau", "Bahnhofplatz 3C", "5001 Aarau"]
+    },
+    {
+      "id": "AI",
+      "canton": "AI",
+      "canton_label": "Appenzell Rhodes-Intérieures",
+      "name": "Ausgleichskasse Appenzell Innerrhoden",
+      "name_lines": ["Ausgleichskasse Appenzell Innerrhoden"],
+      "street": "Poststrasse 9",
+      "po_box": "Postfach 62",
+      "npa": "9050",
+      "locality": "Appenzell",
+      "address_lines": [
+        "Ausgleichskasse Appenzell Innerrhoden",
+        "Poststrasse 9",
+        "Postfach 62",
+        "9050 Appenzell"
+      ]
+    },
+    {
+      "id": "AR",
+      "canton": "AR",
+      "canton_label": "Appenzell Rhodes-Extérieures",
+      "name": "Sozialversicherungen Appenzell Ausserrhoden",
+      "name_lines": ["Sozialversicherungen Appenzell Ausserrhoden"],
+      "street": "Neue Steig 15",
+      "po_box": "Postfach 1254",
+      "npa": "9102",
+      "locality": "Herisau",
+      "address_lines": [
+        "Sozialversicherungen Appenzell Ausserrhoden",
+        "Neue Steig 15",
+        "Postfach 1254",
+        "9102 Herisau"
+      ]
+    },
+    {
+      "id": "BE",
+      "canton": "BE",
+      "canton_label": "Berne",
+      "name": "Caisse de compensation du canton de Berne",
+      "name_lines": ["Caisse de compensation du canton de Berne"],
+      "street": "Chutzenstrasse 10",
+      "po_box": null,
+      "npa": "3007",
+      "locality": "Bern",
+      "address_lines": [
+        "Caisse de compensation du canton de Berne",
+        "Chutzenstrasse 10",
+        "3007 Bern"
+      ]
+    },
+    {
+      "id": "BL",
+      "canton": "BL",
+      "canton_label": "Bâle-Campagne",
+      "name": "SVA Basel-Landschaft",
+      "name_lines": ["SVA Basel-Landschaft"],
+      "street": "Hauptstrasse 109",
+      "po_box": null,
+      "npa": "4102",
+      "locality": "Binningen",
+      "address_lines": ["SVA Basel-Landschaft", "Hauptstrasse 109", "4102 Binningen"]
+    },
+    {
+      "id": "BS",
+      "canton": "BS",
+      "canton_label": "Bâle-Ville",
+      "name": "Ausgleichskasse Basel-Stadt",
+      "name_lines": ["Ausgleichskasse Basel-Stadt"],
+      "street": "Wettsteinplatz 1",
+      "po_box": "Postfach",
+      "npa": "4001",
+      "locality": "Basel",
+      "address_lines": [
+        "Ausgleichskasse Basel-Stadt",
+        "Wettsteinplatz 1",
+        "Postfach",
+        "4001 Basel"
+      ]
+    },
+    {
+      "id": "FR",
+      "canton": "FR",
+      "canton_label": "Fribourg",
+      "name": "Caisse de compensation du canton de Fribourg",
+      "name_lines": ["Caisse de compensation du canton de Fribourg"],
+      "street": "Impasse de la Colline 1",
+      "po_box": "Case postale",
+      "npa": "1762",
+      "locality": "Givisiez",
+      "address_lines": [
+        "Caisse de compensation du canton de Fribourg",
+        "Impasse de la Colline 1",
+        "Case postale",
+        "1762 Givisiez"
+      ]
+    },
+    {
+      "id": "GE",
+      "canton": "GE",
+      "canton_label": "Genève",
+      "name": "Caisse genevoise de compensation",
+      "name_lines": [
+        "Office cantonal des assurances sociales",
+        "Caisse genevoise de compensation"
+      ],
+      "street": "Rue des Gares 12",
+      "po_box": "Case postale 2595",
+      "npa": "1211",
+      "locality": "Genève 2",
+      "address_lines": [
+        "Office cantonal des assurances sociales",
+        "Caisse genevoise de compensation",
+        "Rue des Gares 12 – Case postale 2595",
+        "1211 Genève 2"
+      ]
+    },
+    {
+      "id": "GL",
+      "canton": "GL",
+      "canton_label": "Glaris",
+      "name": "sozialversicherungen glarus",
+      "name_lines": ["sozialversicherungen glarus"],
+      "street": "Burgstrasse 6",
+      "po_box": null,
+      "npa": "8750",
+      "locality": "Glarus",
+      "address_lines": ["sozialversicherungen glarus", "Burgstrasse 6", "8750 Glarus"]
+    },
+    {
+      "id": "GR",
+      "canton": "GR",
+      "canton_label": "Grisons",
+      "name": "Sozialversicherungsanstalt des Kantons Graubünden",
+      "name_lines": ["Sozialversicherungsanstalt des Kantons Graubünden"],
+      "street": "Ottostrasse 24",
+      "po_box": "Postfach",
+      "npa": "7001",
+      "locality": "Chur",
+      "address_lines": [
+        "Sozialversicherungsanstalt des Kantons Graubünden",
+        "Ottostrasse 24",
+        "Postfach",
+        "7001 Chur"
+      ]
+    },
+    {
+      "id": "JU",
+      "canton": "JU",
+      "canton_label": "Jura",
+      "name": "Etablissement cantonal des assurances sociales",
+      "name_lines": ["Etablissement cantonal des assurances sociales"],
+      "street": "Rue Bel-Air 3",
+      "po_box": "Case postale 368",
+      "npa": "2350",
+      "locality": "Saignelégier",
+      "address_lines": [
+        "Etablissement cantonal des assurances sociales",
+        "Rue Bel-Air 3",
+        "Case postale 368",
+        "2350 Saignelégier"
+      ]
+    },
+    {
+      "id": "LU",
+      "canton": "LU",
+      "canton_label": "Lucerne",
+      "name": "WAS Ausgleichskasse Luzern",
+      "name_lines": ["WAS Ausgleichskasse Luzern"],
+      "street": "Langsägestrasse 13",
+      "po_box": null,
+      "npa": "6010",
+      "locality": "Kriens",
+      "address_lines": ["WAS Ausgleichskasse Luzern", "Langsägestrasse 13", "6010 Kriens"]
+    },
+    {
+      "id": "NE",
+      "canton": "NE",
+      "canton_label": "Neuchâtel",
+      "name": "Caisse cantonale neuchâteloise de compensation",
+      "name_lines": ["Caisse cantonale neuchâteloise de compensation"],
+      "street": "Fbg de l'Hôpital 28",
+      "po_box": "Case postale 2116",
+      "npa": "2001",
+      "locality": "Neuchâtel",
+      "address_lines": [
+        "Caisse cantonale neuchâteloise de compensation",
+        "Fbg de l'Hôpital 28",
+        "Case postale 2116",
+        "2001 Neuchâtel"
+      ]
+    },
+    {
+      "id": "NW",
+      "canton": "NW",
+      "canton_label": "Nidwald",
+      "name": "Ausgleichskasse Nidwalden",
+      "name_lines": ["Ausgleichskasse Nidwalden"],
+      "street": "Stansstaderstrasse 88",
+      "po_box": "Postfach",
+      "npa": "6371",
+      "locality": "Stans",
+      "address_lines": [
+        "Ausgleichskasse Nidwalden",
+        "Stansstaderstrasse 88",
+        "Postfach",
+        "6371 Stans"
+      ]
+    },
+    {
+      "id": "OW",
+      "canton": "OW",
+      "canton_label": "Obwald",
+      "name": "Ausgleichskasse IV-Stelle Obwalden",
+      "name_lines": ["Ausgleichskasse IV-Stelle Obwalden"],
+      "street": "Brünigstrasse 144",
+      "po_box": null,
+      "npa": "6060",
+      "locality": "Sarnen",
+      "address_lines": [
+        "Ausgleichskasse IV-Stelle Obwalden",
+        "Brünigstrasse 144",
+        "6060 Sarnen"
+      ]
+    },
+    {
+      "id": "SG",
+      "canton": "SG",
+      "canton_label": "Saint-Gall",
+      "name": "SVA St.Gallen",
+      "name_lines": ["SVA St.Gallen"],
+      "street": "Brauerstrasse 54",
+      "po_box": "Postfach 368",
+      "npa": "9016",
+      "locality": "St.Gallen",
+      "address_lines": [
+        "SVA St.Gallen",
+        "Brauerstrasse 54",
+        "Postfach 368",
+        "9016 St.Gallen"
+      ]
+    },
+    {
+      "id": "SH",
+      "canton": "SH",
+      "canton_label": "Schaffhouse",
+      "name": "SVA Schaffhausen",
+      "name_lines": ["SVA Schaffhausen"],
+      "street": "Oberstadt 9",
+      "po_box": null,
+      "npa": "8200",
+      "locality": "Schaffhausen",
+      "address_lines": ["SVA Schaffhausen", "Oberstadt 9", "8200 Schaffhausen"]
+    },
+    {
+      "id": "SO",
+      "canton": "SO",
+      "canton_label": "Soleure",
+      "name": "Ausgleichskasse des Kantons Solothurn",
+      "name_lines": ["Ausgleichskasse des Kantons Solothurn"],
+      "street": "Allmendweg 6",
+      "po_box": null,
+      "npa": "4528",
+      "locality": "Zuchwil",
+      "address_lines": [
+        "Ausgleichskasse des Kantons Solothurn",
+        "Allmendweg 6",
+        "4528 Zuchwil"
+      ]
+    },
+    {
+      "id": "SZ",
+      "canton": "SZ",
+      "canton_label": "Schwyz",
+      "name": "SVA Schwyz",
+      "name_lines": ["SVA Schwyz"],
+      "street": "Rubiswilstrasse 8",
+      "po_box": "Postfach",
+      "npa": "6431",
+      "locality": "Schwyz",
+      "address_lines": ["SVA Schwyz", "Rubiswilstrasse 8", "Postfach", "6431 Schwyz"]
+    },
+    {
+      "id": "TG",
+      "canton": "TG",
+      "canton_label": "Thurgovie",
+      "name": "Sozialversicherungszentrum Thurgau",
+      "name_lines": ["Sozialversicherungszentrum Thurgau"],
+      "street": "St. Gallerstr. 11",
+      "po_box": "Postfach",
+      "npa": "8501",
+      "locality": "Frauenfeld",
+      "address_lines": [
+        "Sozialversicherungszentrum Thurgau",
+        "St. Gallerstr. 11",
+        "Postfach",
+        "8501 Frauenfeld"
+      ]
+    },
+    {
+      "id": "TI",
+      "canton": "TI",
+      "canton_label": "Tessin",
+      "name": "Istituto delle assicurazioni sociali",
+      "name_lines": ["Istituto delle assicurazioni sociali"],
+      "street": "Via Ghiringhelli 15a",
+      "po_box": null,
+      "npa": "6501",
+      "locality": "Bellinzona",
+      "address_lines": [
+        "Istituto delle assicurazioni sociali",
+        "Via Ghiringhelli 15a",
+        "6501 Bellinzona"
+      ]
+    },
+    {
+      "id": "UR",
+      "canton": "UR",
+      "canton_label": "Uri",
+      "name": "Sozialversicherungsstelle Uri",
+      "name_lines": ["Sozialversicherungsstelle Uri"],
+      "street": "Dätwylerstrasse 11",
+      "po_box": null,
+      "npa": "6460",
+      "locality": "Altdorf",
+      "address_lines": [
+        "Sozialversicherungsstelle Uri",
+        "Dätwylerstrasse 11",
+        "6460 Altdorf"
+      ]
+    },
+    {
+      "id": "VD",
+      "canton": "VD",
+      "canton_label": "Vaud",
+      "name": "Caisse cantonale vaudoise de compensation",
+      "name_lines": ["Caisse cantonale vaudoise de compensation"],
+      "street": "Rue des Moulins 3",
+      "po_box": null,
+      "npa": "1800",
+      "locality": "Vevey",
+      "address_lines": [
+        "Caisse cantonale vaudoise de compensation",
+        "Rue des Moulins 3",
+        "1800 Vevey"
+      ]
+    },
+    {
+      "id": "VS",
+      "canton": "VS",
+      "canton_label": "Valais",
+      "name": "Caisse de compensation du canton du Valais",
+      "name_lines": ["Caisse de compensation du canton du Valais"],
+      "street": "Avenue Pratifori 22",
+      "po_box": null,
+      "npa": "1950",
+      "locality": "Sion",
+      "address_lines": [
+        "Caisse de compensation du canton du Valais",
+        "Avenue Pratifori 22",
+        "1950 Sion"
+      ]
+    },
+    {
+      "id": "ZG",
+      "canton": "ZG",
+      "canton_label": "Zoug",
+      "name": "Ausgleichskasse Zug",
+      "name_lines": ["Ausgleichskasse Zug"],
+      "street": "Baarerstrasse 11",
+      "po_box": "Postfach",
+      "npa": "6302",
+      "locality": "Zug",
+      "address_lines": ["Ausgleichskasse Zug", "Baarerstrasse 11", "Postfach", "6302 Zug"]
+    },
+    {
+      "id": "ZH",
+      "canton": "ZH",
+      "canton_label": "Zürich",
+      "name": "SVA Zürich Ausgleichskasse",
+      "name_lines": ["SVA Zürich Ausgleichskasse"],
+      "street": "Röntgenstrasse 17",
+      "po_box": "Postfach",
+      "npa": "8087",
+      "locality": "Zürich",
+      "address_lines": [
+        "SVA Zürich Ausgleichskasse",
+        "Röntgenstrasse 17 / Postfach",
+        "8087 Zürich"
+      ]
+    }
+  ]
+}

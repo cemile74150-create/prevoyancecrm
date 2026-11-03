@@ -4,8 +4,13 @@
  */
 
 import { formatChf, personFirstName } from "../mappers";
-import { renderResumePrestationsLppHtml } from "../rules/resume-prestations-lpp";
+import { renderAnalyseAvsHtml } from "../rules/analyse-avs-depart";
+import {
+  renderResumeAgesHtml,
+  renderResumePrestationsLppHtml,
+} from "../rules/resume-prestations-lpp";
 import type { ReportPayload } from "../report/ReportPayload";
+import { compagnieEstPax, mentionDiffere, NOTE_PAX_DIFFERE } from "../rules/rente-hypotheses";
 import type { RenteHypothesisColumn } from "../types";
 
 const BRAND = "#800000";
@@ -37,11 +42,26 @@ export function buildReportPages(payload: ReportPayload): ReportPageSpec[] {
   pages.push({ kind: "portrait", html: pageCover(payload, next(), total) });
   pages.push({ kind: "portrait", html: pageAgency(next(), total) });
   pages.push({ kind: "portrait", html: pageBilan(payload, next(), total) });
-  if (payload.resumePrestationsLpp) {
+  for (const analyse of payload.analysesAvs || []) {
+    pages.push({ kind: "portrait", html: `${renderAnalyseAvsHtml(analyse)}${footer(next(), total)}` });
+  }
+  if (
+    payload.resumePrestationsLpp?.showResume &&
+    payload.resumePrestationsLpp.tables.length > 0
+  ) {
     pages.push({
       kind: "portrait",
       html: pageResumePrestationsLpp(payload, next(), total),
     });
+  }
+  if (payload.resumePrestationsLpp) {
+    const ages = renderResumeAgesHtml(payload.resumePrestationsLpp);
+    if (ages) {
+      pages.push({
+        kind: "portrait",
+        html: `${ages}${footer(next(), total)}`,
+      });
+    }
   }
   pages.push({
     kind: "portrait",
@@ -63,17 +83,18 @@ export function buildReportPages(payload: ReportPayload): ReportPageSpec[] {
 
   pages.push({ kind: "landscape", html: pageFrise(payload, next(), total) });
 
+  pages.push({
+    kind: "landscape",
+    html: pageSolutionsComparatif(next(), total),
+  });
+
+  // Dernière page : offres saisies (Rentes Genevoises, etc.), pas le tableau pédagogique.
   if (payload.hypothesesRente || payload.vaudoise?.include) {
     pages.push({
       kind: "landscape",
       html: pageComparatifDesRentes(payload, next(), total),
     });
   }
-
-  pages.push({
-    kind: "landscape",
-    html: pageSolutionsComparatif(next(), total),
-  });
 
   return pages;
 }
@@ -427,6 +448,15 @@ export function reportCss(forceOrient?: ReportPageKind) {
     line-height: 1.3;
     opacity: 0.95;
   }
+  .compare-head-note {
+    display: block;
+    margin-top: 4px;
+    font-weight: 500;
+    font-size: 6.5pt;
+    line-height: 1.3;
+    text-transform: none;
+    letter-spacing: 0;
+  }
   table.data.compare th.col-lpp,
   table.data.compare td.col-lpp {
     border-left: 1px solid #e4e4e4;
@@ -481,6 +511,11 @@ export function reportCss(forceOrient?: ReportPageKind) {
     page-break-inside: auto;
     break-inside: auto;
   }
+  /* Les deux phrases sous le tableau restent ensemble. */
+  .compare-footnotes {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
   table.data.compare td {
     height: auto;
     padding: 4px 6px;
@@ -489,9 +524,7 @@ export function reportCss(forceOrient?: ReportPageKind) {
     padding: 6px 4px;
   }
   .solutions-footnote,
-  .fiscal-note,
-  .avs-sim-note,
-  .revenu-fiscal-note {
+  .fiscal-note {
     font-size: 8.5pt;
     line-height: 1.45;
     color: ${GRAY};
@@ -608,30 +641,21 @@ function pageAgency(n: number, total: number): string {
   ${footer(n, total)}`;
 }
 
-function lppCaisseText(person: ReportPayload["client1"] | null): string {
-  const lines = person?.lppLignes || [];
-  const detailed =
-    lines.length > 1 || lines.some((line) => line.type === "etatique");
-  if (!person || !detailed) return "";
-  return lines
-    .map((line) => {
-      const name = line.institution || "LPP";
-      if (line.type === "etatique") {
-        return `${esc(name)} : capital maximal ${formatChf(line.capitalRetire)}, rente réduite ${formatChf(line.renteResiduelle)}`;
-      }
-      return `${esc(name)} : ${line.pct} %, capital ${formatChf(line.capitalRetire)}, rente résiduelle ${formatChf(line.renteResiduelle)}`;
-    })
-    .join("<br/>");
+/**
+ * Bilan « % LPP disponible ».
+ * Rente réduite étatique > 0 : règlement de la caisse.
+ * Sinon 50 % saisi reste « 50 % », et tout autre cas (capital seul, résiduelle classique nulle) affiche « 100 % ».
+ */
+function hasRenteReduiteEtatique(person: ReportPayload["client1"]): boolean {
+  return (person.lppLignes || []).some(
+    (line) => line.type === "etatique" && Number(line.renteResiduelle) > 0,
+  );
 }
 
-function lppCaisseDetailRow(
-  client1: ReportPayload["client1"],
-  conjoint: ReportPayload["client1"] | null,
-): string {
-  const left = lppCaisseText(client1);
-  const right = lppCaisseText(conjoint);
-  if (!left && !right) return "";
-  return `<tr><td class="lab">Caisses LPP</td><td class="val">${left || "—"}</td><td class="val">${conjoint ? right || "—" : ""}</td></tr>`;
+function lppPctDisponibleLabel(person: ReportPayload["client1"]): string {
+  if (hasRenteReduiteEtatique(person)) return "selon règlement de la caisse";
+  if (Number(person.lppPctDeblocable) === 50) return "50 %";
+  return "100 %";
 }
 
 function pageResumePrestationsLpp(p: ReportPayload, n: number, total: number): string {
@@ -685,11 +709,12 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
       ${spouse(c2 ? when(c2.dateFinActiviteLabel || c2.dateDepartLabel, c2.ageFinActiviteLabel || c2.ageLegalLabel) : "")}
     </tr>
     <tr>
-      <td class="lab">Retrait AVS</td>
+      <td class="lab">Début de perception AVS</td>
       <td class="val">${when(p.client1.datePerceptionAvsLabel || p.client1.dateDepartLabel, p.client1.agePerceptionAvsLabel || p.client1.ageLegalLabel)}</td>
       ${spouse(c2 ? when(c2.datePerceptionAvsLabel || c2.dateDepartLabel, c2.agePerceptionAvsLabel || c2.ageLegalLabel) : "")}
     </tr>
   </table>
+  ${[p.client1.lppAvertissement, c2?.lppAvertissement].filter(Boolean).map((note) => `<p class="muted">${esc(note || "")}</p>`).join("")}
   <div class="sec-title">3. Prévoyance actuelle</div>
   <table class="data kv">
     ${cols}
@@ -710,15 +735,14 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
     </tr>
     <tr>
       <td class="lab">% LPP disponible</td>
-      <td class="val">${p.client1.lppPctDeblocable} %</td>
-      ${spouse(c2 ? `${c2.lppPctDeblocable} %` : "")}
+      <td class="val">${lppPctDisponibleLabel(p.client1)}</td>
+      ${spouse(c2 ? lppPctDisponibleLabel(c2) : "")}
     </tr>
     <tr>
       <td class="lab">Capital LPP disponible</td>
       <td class="val">${formatChf(p.client1.capitalLppRetire65)}</td>
       ${spouse(c2 ? formatChf(c2.capitalLppRetire65) : "")}
     </tr>
-    ${lppCaisseDetailRow(p.client1, c2)}
     <tr>
       <td class="lab">3e pilier</td>
       <td class="val">${formatChf(p.client1.total3ePilier)}</td>
@@ -735,7 +759,6 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
       ${spouse(c2 ? formatChf(c2.librePassage) : "")}
     </tr>
   </table>
-  ${avsSimulationNoteHtml(p)}
   <div class="sec-title">4. Synthèse des prestations attendues à la retraite</div>
   <table class="synth">
     <tr>
@@ -1230,14 +1253,13 @@ function friseLines(
     const acc = item.acc;
     const institution = (acc.institution || knownInstitution(payload, acc.who)).trim();
     const fate = lppFatePhrase(acc.components);
-    const core = `LPP – ${acc.who} – ${fate}`;
+    const label = institution
+      ? `LPP – ${acc.who} – ${institution} – ${fate}`
+      : `LPP – ${acc.who} – ${fate}`;
     let detail = formatChf(acc.capital);
     if (acc.hasCapital && acc.hasRente) detail = `${formatChf(acc.capital)}<br/>${formatChf(acc.rente)} /an`;
     else if (acc.hasRente) detail = `${formatChf(acc.rente)} /an`;
-    return {
-      label: institution ? `${core} – ${institution}` : core,
-      detail,
-    };
+    return { label, detail };
   });
 }
 
@@ -1283,6 +1305,10 @@ function compareColgroup(colCount: number): string {
   return `<colgroup><col style="width:${labelPct}%" />${Array.from({ length: colCount }, () => `<col style="width:${rest}%" />`).join("")}</colgroup>`;
 }
 
+function offreCombinee(col: RenteHypothesisColumn): boolean {
+  return col.kind === "hypothese" && (col.offres?.length || 0) >= 2;
+}
+
 function compareOfferTypeLine(col: RenteHypothesisColumn): string {
   const viagere = /viag/i.test(col.typeLabel || "");
   const typeText = viagere ? "Rente viagère" : "Rente certaine";
@@ -1294,7 +1320,39 @@ function compareColumnHeader(col: RenteHypothesisColumn): string {
   if (col.kind === "lpp") {
     return `<span class="compare-head-title">Rente LPP (référence)</span>`;
   }
-  const company = esc((col.compagnie || col.label || "").trim() || "Offre");
+  if (offreCombinee(col)) {
+    const star = col.offres!.some((offre) => compagnieEstPax(offre.compagnie)) ? " *" : "";
+    const capital =
+      col.capitalPlace != null
+        ? `<span class="compare-head-meta">${esc(formatChf(col.capitalPlace))}</span>`
+        : "";
+    const lines = col.offres!
+      .map((offre) => {
+        const typeText = offre.type === "viagere" ? "Rente viagère" : "Rente certaine";
+        const duree =
+          offre.type === "viagere"
+            ? "À vie"
+            : offre.dureeAnnees != null
+              ? `${offre.dureeAnnees} ans`
+              : "—";
+        const diff = mentionDiffere(offre.dureeDiffereAnnees);
+        return `<span class="compare-head-type">${esc(
+          diff ? `${typeText} · ${duree} · ${diff}` : `${typeText} · ${duree}`,
+        )}</span>`;
+      })
+      .join("");
+    const note =
+      col.calendriersDifferents && col.anneeCommune != null
+        ? `<span class="compare-head-note">${esc(
+            col.offres!.length === 2
+              ? "Montants de l'année où les deux rentes sont versées."
+              : "Montants de l'année où toutes les rentes sont versées.",
+          )}</span>`
+        : "";
+    return `<span class="compare-head-title">${esc(col.label || "Offre")}${star}</span>${capital}${lines}${note}`;
+  }
+  const rawCompany = (col.compagnie || col.label || "").trim() || "Offre";
+  const company = `${esc(rawCompany)}${compagnieEstPax(rawCompany) ? " *" : ""}`;
   const capital =
     col.capitalPlace != null
       ? `<span class="compare-head-meta">${esc(formatChf(col.capitalPlace))}</span>`
@@ -1321,14 +1379,30 @@ function signedHtml(
   return `<span class="indic-minus">−${formatChf(Math.abs(value))}</span>`;
 }
 
-function typeLine(col: RenteHypothesisColumn): string {
+function typeCell(col: RenteHypothesisColumn): string {
   if (col.kind === "lpp") return "Rente LPP";
+  if (offreCombinee(col)) {
+    return col
+      .offres!.map((offre) =>
+        esc(offre.type === "viagere" ? "Rente viagère" : "Rente certaine"),
+      )
+      .join("<br/>");
+  }
   if (/viag/i.test(col.typeLabel || "")) return "Rente viagère";
   return "Rente certaine";
 }
 
-function dureeLine(col: RenteHypothesisColumn): string {
+function dureeCell(col: RenteHypothesisColumn): string {
   if (col.kind === "lpp") return "À vie";
+  if (offreCombinee(col)) {
+    return col
+      .offres!      .map((offre) => {
+        if (offre.type === "viagere") return "À vie";
+        return offre.dureeAnnees != null ? `${offre.dureeAnnees} ans` : "—";
+      })
+      .map((text) => esc(text))
+      .join("<br/>");
+  }
   if (/viag/i.test(col.typeLabel || "")) return "À vie";
   return col.dureeAnnees != null ? `${col.dureeAnnees} ans` : "—";
 }
@@ -1369,6 +1443,26 @@ function columnsFromVaudoise(p: ReportPayload): RenteHypothesisColumn[] {
       recommander: false,
     } as RenteHypothesisColumn;
   });
+}
+
+/** Ligne seulement si une offre démarre plus tard. Pas de « Différé : 0 ». */
+function differeCell(col: RenteHypothesisColumn): string | null {
+  if (offreCombinee(col)) {
+    const parts = col.offres!.map((offre) => mentionDiffere(offre.dureeDiffereAnnees));
+    if (!parts.some((part) => part != null)) return null;
+    return parts.map((part) => esc(part ?? "—")).join("<br/>");
+  }
+  const mention = mentionDiffere(col.dureeDiffereAnnees);
+  return mention == null ? null : esc(mention);
+}
+
+function differeRow(
+  cols: RenteHypothesisColumn[],
+  row: (label: string, values: string[]) => string,
+): string[] {
+  const cells = cols.map((col) => differeCell(col));
+  if (!cells.some((cell) => cell != null)) return [];
+  return [row("Différé", cells.map((cell) => cell ?? "—"))];
 }
 
 /** AVS imprimée sur la colonne + rentes LPP imprimées. Pas d'autre pension. */
@@ -1438,8 +1532,9 @@ function pageComparatifDesRentes(
   const lines = [
     ...capitalRows,
     sec("Caractéristiques"),
-    row("Type", cols.map((c) => esc(typeLine(c)))),
-    row("Durée", cols.map((c) => esc(dureeLine(c)))),
+    row("Type", cols.map((c) => typeCell(c))),
+    row("Durée", cols.map((c) => dureeCell(c))),
+    ...differeRow(cols, row),
     sec("Prestations brutes"),
     row("AVS", cols.map((c) => moneyOrDash(c.renteAvs))),
     row(
@@ -1511,24 +1606,13 @@ function pageComparatifDesRentes(
     );
   }
 
-  const hasViagere = cols.some((c) => offerRenteType(c) === "viagere");
-  const viagereNote = hasViagere
-    ? `<p class="note">Rente viagère : versement à vie. Aucun cumul n’est extrapolé sur une durée forfaitaire.</p>`
-    : "";
-
-  const indicateurs = "";
-  const rendements =
-    withLpp
-      ? ""
-      : cols
-          .filter((c) => c.kind === "hypothese" && c.revenuAnnuelSurCapital != null)
-          .map(
-            (c) =>
-              `<tr><td class="lab">Revenu annuel / capital · ${esc(c.label)}</td><td class="num">${new Intl.NumberFormat("fr-CH", { style: "percent", maximumFractionDigits: 2 }).format(c.revenuAnnuelSurCapital || 0)}</td></tr>`,
-          )
-          .join("");
-  const rendementNote = rendements
-    ? `<div class="sec-title">Revenu annuel obtenu sur le capital placé</div><table class="data"><tr><th class="lab">Indicateur</th><th>Valeur</th></tr>${rendements}</table><p class="note">Ce ratio rapporte le revenu encaissé au capital placé. Ce n’est pas un gain en capital.</p>`
+  const paxNote = cols.some(
+    (col) =>
+      col.kind === "hypothese" &&
+      (compagnieEstPax(col.compagnie || col.label) ||
+        col.offres?.some((offre) => compagnieEstPax(offre.compagnie))),
+  )
+    ? `<p class="note">${esc(NOTE_PAX_DIFFERE)}</p>`
     : "";
 
   return `
@@ -1543,13 +1627,11 @@ function pageComparatifDesRentes(
     <tr><th class="lab"></th>${head}</tr>
     ${lines.filter(Boolean).join("")}
   </table>
-  ${revenuFiscalNoteHtml(cols)}
-  ${avsSimulationNoteHtml(p)}
+  <div class="compare-footnotes">
   ${fiscalNoteHtml()}
+  ${paxNote}
   </div>
-  ${viagereNote}
-  ${indicateurs}
-  ${rendementNote}
+  </div>
   ${footer(n, total)}`;
 }
 
@@ -1557,59 +1639,8 @@ function pageComparatifDesRentes(
 const FISCAL_NOTE =
   "Le montant de l'impôt présenté est une estimation calculée uniquement sur la base des rentes AVS et LPP prises en compte dans cette analyse. Il ne tient pas compte des autres revenus éventuels du client, ni de sa fortune. L'imposition effective pourra donc différer selon sa situation fiscale globale.";
 
-const FISCAL_NOTE_CERTAINE =
-  "Revenu fiscal = rente AVS + rente LPP résiduelle + 100 % de la participation aux excédents. La rente garantie d'une rente certaine n'entre pas dans le revenu imposable selon l'hypothèse fiscale utilisée dans cette analyse.";
-const FISCAL_NOTE_VIAGERE =
-  "Revenu fiscal = rente AVS + rente LPP résiduelle + 4 % de la rente garantie + 100 % de la participation aux excédents.";
-
-/** Type d'offre saisi. Ni la compagnie ni la durée ne servent à le déduire. */
-function offerRenteType(col: RenteHypothesisColumn): "certaine" | "viagere" | null {
-  if (col.kind !== "hypothese") return null;
-  const label = (col.typeLabel || "").trim();
-  if (label === "Viagère" || label === "Rente viagère") return "viagere";
-  if (label === "Certaine" || label === "Rente certaine") return "certaine";
-  return null;
-}
-
-/** Note sous le comparatif, limitée aux types d'offres réellement présents. */
-export function revenuFiscalNoteText(cols: RenteHypothesisColumn[]): string {
-  const types = new Set(
-    cols.map(offerRenteType).filter((type): type is "certaine" | "viagere" => type != null),
-  );
-  const parts: string[] = [];
-  if (types.has("certaine") && types.has("viagere")) {
-    parts.push(`Rente certaine. ${FISCAL_NOTE_CERTAINE}`);
-    parts.push(`Rente viagère. ${FISCAL_NOTE_VIAGERE}`);
-  } else if (types.has("certaine")) {
-    parts.push(FISCAL_NOTE_CERTAINE);
-  } else if (types.has("viagere")) {
-    parts.push(FISCAL_NOTE_VIAGERE);
-  }
-  return parts.join(" ");
-}
-
-export const AVS_SIMULATION_DISCLAIMER =
-  "Le montant de la rente AVS présenté dans cette analyse est une estimation établie à l'aide du calculateur officiel AVS. Il repose sur les hypothèses et les informations disponibles au moment de la simulation. Le montant définitif pourra différer et devra être confirmé par la caisse de compensation compétente.";
-
 function fiscalNoteHtml(): string {
   return `<p class="fiscal-note">* ${esc(FISCAL_NOTE)}</p>`;
-}
-
-function revenuFiscalNoteHtml(cols: RenteHypothesisColumn[]): string {
-  const text = revenuFiscalNoteText(cols);
-  if (!text) return "";
-  return `<p class="revenu-fiscal-note">${esc(text)}</p>`;
-}
-
-function hasAvsSimulationDisclaimer(p: ReportPayload): boolean {
-  return Boolean(
-    p.client1.avsMontantIssuSimulation || p.conjoint?.avsMontantIssuSimulation,
-  );
-}
-
-function avsSimulationNoteHtml(p: ReportPayload): string {
-  if (!hasAvsSimulationDisclaimer(p)) return "";
-  return `<p class="avs-sim-note">${esc(AVS_SIMULATION_DISCLAIMER)}</p>`;
 }
 
 /**
@@ -1644,9 +1675,15 @@ function solutionsComparatifBlock(): string {
       "Cotisations et rachats non soumis au droit de timbre fédéral",
     ],
     [
+      "Valeur de rachat 31.12",
+      "Fortune imposable selon la variante choisie avec des particularités VD",
+      "Fortune imposable (montant versé en cas de résiliation)",
+      "Pas de fortune imposable",
+    ],
+    [
       "Part du revenu imposable",
-      "4 % de la rente garantie + 100 % de la participation aux excédents",
-      "Part des intérêts comprise dans la rente (rendement) et excédents ; diapositive : impôt anticipé 35 %",
+      "4 % de la rente garantie + 70 % de la participation aux excédents",
+      "0 % de la rente garantie + 100 % de la participation aux excédents",
       "100 % de la rente versée",
     ],
   ];

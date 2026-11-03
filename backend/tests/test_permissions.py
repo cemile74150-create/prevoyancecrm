@@ -149,6 +149,7 @@ def test_route_permissions():
     )
     assert permission_for_request("POST", "/api/clients") == (PERM_CLIENTS_CREATE, "dossiers.create")
     assert permission_for_request("PATCH", "/api/clients/abc/statut") == PERM_DOSSIERS_EDIT
+    assert permission_for_request("PATCH", "/api/clients/abc/lpp-funds/person") == PERM_DOSSIERS_EDIT
     assert permission_for_request("POST", "/api/clients/abc/documents") == PERM_DOCUMENTS_ADD
     assert permission_for_request("GET", "/api/clients/abc/journal") == (
         PERM_CLIENTS_VIEW,
@@ -156,6 +157,7 @@ def test_route_permissions():
     )
     assert permission_for_request("POST", "/api/clients/abc/journal") == PERM_CLIENTS_EDIT
     assert permission_for_request("PATCH", "/api/clients/abc/journal/act1") == PERM_CLIENTS_EDIT
+    assert permission_for_request("PATCH", "/api/clients/abc/journal/act1/treated") == PERM_CLIENTS_EDIT
     assert permission_for_request("DELETE", "/api/clients/abc/journal/act1") == PERM_CLIENTS_EDIT
     assert permission_for_request("GET", "/api/suivi-3p") == PERM_SUIVI_3P_VIEW
     assert permission_for_request("PUT", "/api/suivi-3p/abc") == PERM_SUIVI_3P_EDIT

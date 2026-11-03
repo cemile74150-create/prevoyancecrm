@@ -310,7 +310,7 @@ def resolve_permissions(doc: dict) -> Dict[str, bool]:
         if doc.get("can_manage_users"):
             perms[PERM_USERS_MANAGE] = True
     email = (doc.get("email") or "").strip().lower()
-    perms[PERM_LAMAL_MODULE_ACCESS] = email == LAMAL_OWNER_EMAIL
+    perms[PERM_LAMAL_MODULE_ACCESS] = email == LAMAL_OWNER_EMAIL or is_named_alberto_mendes(doc)
     return perms
 
 
@@ -343,13 +343,22 @@ def user_from_doc(doc: dict) -> User:
     role = doc.get("role") or ROLE_CONSEILLER
     if role not in ROLES:
         role = ROLE_CONSEILLER
+    named_admin = is_named_alberto_mendes(doc)
+    if named_admin:
+        role = ROLE_ADMIN
     perms = resolve_permissions({**doc, "role": role})
+    if named_admin:
+        perms[PERM_USERS_MANAGE] = True
+        perms[PERM_LAMAL_MODULE_ACCESS] = True
     prenom = doc.get("prenom") or ""
     nom = doc.get("nom") or ""
     name = doc.get("name") or display_name(prenom, nom) or doc.get("email", "")
     conseiller = doc.get("conseiller")
     if role == ROLE_CONSEILLER and not conseiller:
         conseiller = name
+    see_source = {**doc, "role": role}
+    if named_admin:
+        see_source["see_all_dossiers"] = True
     return User(
         user_id=TENANT_USER_ID,
         account_id=doc["user_id"],
@@ -365,7 +374,7 @@ def user_from_doc(doc: dict) -> User:
         active=doc.get("active", True) is not False,
         can_manage_users=bool(perms.get(PERM_USERS_MANAGE)),
         can_manage_settings=bool(perms.get(PERM_USERS_MANAGE)),
-        see_all_dossiers=resolve_see_all_dossiers({**doc, "role": role}),
+        see_all_dossiers=resolve_see_all_dossiers(see_source),
         permissions=perms,
     )
 
@@ -577,13 +586,35 @@ def conseiller_scope_mongo_filter(user: User) -> dict:
     return {"$or": ors}
 
 
+def is_named_alberto_mendes(source) -> bool:
+    """Reconnaît Alberto Mendes par son nom, sans inventer d'adresse e-mail."""
+    from conseiller_identity import normalize_conseiller_key
+
+    if source is None:
+        return False
+    if isinstance(source, dict):
+        prenom = source.get("prenom") or ""
+        nom = source.get("nom") or ""
+        candidates = (source.get("name"), source.get("conseiller"), f"{prenom} {nom}", f"{nom} {prenom}")
+    else:
+        prenom = getattr(source, "prenom", "") or ""
+        nom = getattr(source, "nom", "") or ""
+        candidates = (getattr(source, "name", ""), getattr(source, "conseiller", ""), f"{prenom} {nom}", f"{nom} {prenom}")
+    expected = {"alberto", "mendes"}
+    for raw in candidates:
+        tokens = set(normalize_conseiller_key(raw).split())
+        if tokens == expected:
+            return True
+    return False
+
+
 def is_lamal_owner(user) -> bool:
     email = ""
     if isinstance(user, dict):
         email = user.get("email") or ""
     else:
         email = getattr(user, "email", "") or ""
-    return email.strip().lower() == LAMAL_OWNER_EMAIL
+    return email.strip().lower() == LAMAL_OWNER_EMAIL or is_named_alberto_mendes(user)
 
 
 def has_perm(user: User, key: str) -> bool:
@@ -728,6 +759,8 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("GET",), r"^/clients/[^/]+/documents", PERM_DOCUMENTS_VIEW),
     (("POST",), r"^/clients/[^/]+/documents", PERM_DOCUMENTS_ADD),
     (("POST",), r"^/clients/[^/]+/offres/", PERM_DOCUMENTS_VIEW),
+    (("GET",), r"^/clients/[^/]+/avs-caisse$", (PERM_CLIENTS_VIEW, PERM_DOSSIERS_VIEW, PERM_DOCUMENTS_VIEW)),
+    (("PUT",), r"^/clients/[^/]+/avs-caisse$", (PERM_CLIENTS_EDIT, PERM_DOSSIERS_EDIT, PERM_DOCUMENTS_ADD)),
     (("POST",), r"^/clients/[^/]+/generate-", PERM_DOCUMENTS_ADD),
     (("POST",), r"^/clients/[^/]+/parse-", PERM_DOCUMENTS_ADD),
     (("POST",), r"^/clients/[^/]+/reparse-", PERM_DOCUMENTS_ADD),
@@ -766,6 +799,7 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("PATCH",), r"^/clients/[^/]+/statut$", PERM_DOSSIERS_EDIT),
     (("PATCH",), r"^/clients/[^/]+/document-checklist$", PERM_DOSSIERS_EDIT),
     (("PATCH",), r"^/clients/[^/]+/lpp-caisse-tracking$", PERM_DOSSIERS_EDIT),
+    (("PATCH",), r"^/clients/[^/]+/lpp-funds/person$", PERM_DOSSIERS_EDIT),
     (("DELETE",), r"^/clients/[^/]+$", (PERM_CLIENTS_DELETE, PERM_DOSSIERS_DELETE)),
     (("PUT",), r"^/clients/[^/]+$", PERM_CLIENTS_EDIT),
     (("GET",), r"^/dossiers/", PERM_DOSSIERS_VIEW),
@@ -791,11 +825,15 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("GET",), r"^/demandes-offres", PERM_DEMANDES_OFFRES_VIEW),
     # Traitement réservé gestionnaire / CEO / admin (avant le POST générique edit)
     (("POST",), r"^/demandes-offres/[^/]+/incomplete$", PERM_DEMANDES_OFFRES_PROCESS),
+    (("POST",), r"^/demandes-offres/[^/]+/compagnie-incomplete-annuler$", PERM_DEMANDES_OFFRES_PROCESS),
+    (("POST",), r"^/demandes-offres/[^/]+/compagnie-incomplete$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/complete$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/offres-completes$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/offre$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/notes-internes$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/notes-externes$", PERM_DEMANDES_OFFRES_PROCESS),
+    (("POST",), r"^/demandes-offres/[^/]+/complements/[^/]+/reponse$", (PERM_DEMANDES_OFFRES_EDIT, PERM_DEMANDES_OFFRES_PROCESS)),
+    (("POST",), r"^/demandes-offres/[^/]+/complements/[^/]+/cloturer$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/erreurs$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/soumis-compagnie$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/demande-annulee$", PERM_DEMANDES_OFFRES_PROCESS),

@@ -23,6 +23,13 @@ import {
   injectAgentIdentity,
   isAgentIdentityField,
 } from "@/lib/offreAgentIdentity";
+import {
+  incapaciteBlocksNext,
+  isFieldVisible,
+  omitIncapaciteWhenHidden,
+} from "@/lib/offreIncapaciteGain";
+
+export { isFieldVisible };
 
 const CHANGED_CONTROL =
   "border-rose-600 bg-rose-50 text-rose-700 placeholder:text-rose-400 focus-visible:ring-rose-400";
@@ -188,23 +195,6 @@ function ListField({ columns, value, onChange, disabled, changed }) {
   );
 }
 
-/** Evaluate Gravity-Forms style show_when against current values. */
-export function isFieldVisible(field, values) {
-  const sw = field?.show_when;
-  if (!sw || !Array.isArray(sw.rules) || !sw.rules.length) return true;
-  const results = sw.rules.map((rule) => {
-    const raw = values?.[rule.field];
-    const expected = rule.value;
-    if (Array.isArray(raw)) {
-      // Checkbox multi: "is" means contains
-      return raw.includes(expected);
-    }
-    const actual = raw == null ? "" : String(raw);
-    if (rule.op === "isnot") return actual !== expected;
-    return actual === expected;
-  });
-  return (sw.logic || "all") === "any" ? results.some(Boolean) : results.every(Boolean);
-}
 
 function applyDefaults(schema, values) {
   const next = { ...(values || {}) };
@@ -400,6 +390,7 @@ export default function OffreSchemaForm({
       next = injectAgentIdentity(schema, next, agentIdentity, { overwrite: lockAgent || Boolean(agentIdentity.prenom || agentIdentity.nom) });
     }
     next = applyNationalitePermisRules(schema, next);
+    next = omitIncapaciteWhenHidden(schema, next);
     if (!payloadsEqual(next, values)) onChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schema?.id, nationaliteSignature, agentSignature]);
@@ -410,6 +401,7 @@ export default function OffreSchemaForm({
     if (isPermisLockedByNationalite(schema, values, name)) return;
     let next = { ...(values || {}), [name]: value };
     next = applyNationalitePermisRules(schema, next);
+    next = omitIncapaciteWhenHidden(schema, next);
     if (typeof onManualEdit === "function") onManualEdit(name);
     onChange(next);
   };
@@ -419,9 +411,10 @@ export default function OffreSchemaForm({
     if (lockedAgentNames.has(name)) return;
     const current = Array.isArray(values?.[name]) ? values[name] : [];
     const field = (schema?.fields || []).find((f) => (f.name || f.id) === name);
-    const next = toggleExclusiveCheckboxSelection(current, option, field?.exclusive_none);
+    let next = { ...(values || {}), [name]: toggleExclusiveCheckboxSelection(current, option, field?.exclusive_none) };
+    next = omitIncapaciteWhenHidden(schema, next);
     if (typeof onManualEdit === "function") onManualEdit(name);
-    onChange({ ...(values || {}), [name]: next });
+    onChange(next);
   };
 
   const goToPage = (nextPage) => {
@@ -443,6 +436,8 @@ export default function OffreSchemaForm({
     if (hasPages && (field.page || 1) !== currentPage) return false;
     return isFieldVisible(field, values || {});
   });
+  // Non + nature vide : Suivant est bloqué. Oui : le champ est masqué, il ne bloque pas.
+  const incapaciteBloqueSuivant = incapaciteBlocksNext(fields, values, currentPage);
 
   const renderField = (field) => {
     const name = field.name || field.id;
@@ -664,7 +659,15 @@ export default function OffreSchemaForm({
           <Button
             type="button"
             className="bg-[#002FA7] hover:bg-[#00248a]"
-            disabled={pageNums.indexOf(currentPage) >= pageNums.length - 1}
+            disabled={
+              pageNums.indexOf(currentPage) >= pageNums.length - 1
+              || incapaciteBloqueSuivant
+            }
+            title={
+              incapaciteBloqueSuivant
+                ? "Indiquez la nature de l'incapacité de gain pour continuer"
+                : undefined
+            }
             onClick={() => goToPage(pageNums[pageNums.indexOf(currentPage) + 1])}
           >
             Suivant <ChevronRight className="h-4 w-4 ml-1" />

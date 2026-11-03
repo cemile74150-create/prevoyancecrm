@@ -20,5 +20,10 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "../backend/analyse_prevoyance_engine/rules/comparatif-avs.ts",
+    "../backend/analyse_prevoyance_engine/rules/analyse-avs-depart.ts",
+    "../backend/analyse_prevoyance_engine/rules/avs-age.ts"
+  ]
 }

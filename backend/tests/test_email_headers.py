@@ -31,3 +31,22 @@ def test_reply_to_honors_env_only_when_set(monkeypatch):
     monkeypatch.setenv("SMTP_FROM", "crm@agencemendes.ch")
     monkeypatch.setenv("SMTP_REPLY_TO", "crm@agencemendes.ch")
     assert smtp_reply_to() == "crm@agencemendes.ch"
+
+
+def test_optional_from_name_uses_same_smtp_address(monkeypatch):
+    """Le nom affiché peut être celui de la personne connectée, l'adresse SMTP reste la même."""
+    from email_service import _build_message
+
+    monkeypatch.setenv("SMTP_FROM", "crm@agencemendes.ch")
+    monkeypatch.setenv("SMTP_FROM_NAME", "LeoSoft")
+    msg, _, _ = _build_message(
+        to_email="paul.berger@example.test",
+        subject="Vous avez une notification de Nadia Rossi sur le dossier Claire Martin",
+        body_text="Date : 29/10/2026",
+        from_name="Nadia Rossi",
+    )
+    decoded = str(make_header(decode_header(msg["From"])))
+    assert "Nadia Rossi" in decoded
+    assert "crm@agencemendes.ch" in msg["From"]
+    assert msg.get_content().strip().startswith("Date")
+    assert list(msg.iter_attachments()) == []

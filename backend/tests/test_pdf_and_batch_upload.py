@@ -14,8 +14,12 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from pdf_generator import (  # noqa: E402
+    FICHE_CLIENT_M,
+    FICHE_CLIENT_MME,
     TEMPLATES_DIR,
+    _annot_qualified_name,
     _map_calcul_rente,
+    _map_fiche_client,
     _map_mandat_de_gestion,
     _mandat_de_gestion_fill_style,
     _split_ch_date,
@@ -334,6 +338,61 @@ def test_map_mandat_never_writes_undefined_placeholders():
     assert mapping["Nom"] == ""
     assert mapping["Prénom_2"] == ""
     assert mapping["Nom_2"] == ""
+
+
+def test_map_fiche_client_fills_agent_date_and_identity():
+    values = client_field_values(
+        {
+            **SAMPLE_CLIENT,
+            "profession": "Infirmière",
+            "conseiller": "Sophie Martin",
+            "sexe": "Femme",
+        },
+        agent_name="Sophie Martin",
+    )
+    mapping = _map_fiche_client(values)
+    assert mapping["NOM DE LGENT"] == "SOPHIE MARTIN"
+    assert mapping["DATE DU JOUR"] == values["today"]
+    assert mapping["Nom.0"] == "DUPONT"
+    assert mapping["Prénom"] == "Jean"
+    assert mapping["Nationalité"] == "Suisse"
+    assert mapping["Profession"] == "Infirmière"
+    assert mapping["Etat civil"] == "Marié(e)"
+    assert mapping["Adresse"] == "Rue du Lac 12"
+    assert mapping["undefined"] == "1200"
+    assert mapping["undefined_2"] == "Genève"
+    assert mapping["Tel"] == "0791234567"
+    assert mapping[FICHE_CLIENT_MME] == "/Oui"
+    assert FICHE_CLIENT_M not in mapping
+    assert "Nom.1.0" not in mapping
+
+
+def test_generate_fiche_client_draws_identity_and_checks_monsieur():
+    path = TEMPLATES_DIR / "fiche_client_off2020.pdf"
+    assert path.exists()
+    assert validate_template_fields("fiche_client", path) == []
+    client = {
+        **SAMPLE_CLIENT,
+        "profession": "Conseiller",
+        "conseiller": "Sophie Martin",
+    }
+    pdf_bytes, meta = generate_document_pdf("fiche_client", client, agent_name="Sophie Martin")
+    assert meta["template_id"] == "fiche_client"
+    assert meta["checklist_item"] == "Fiche client"
+    assert meta["original_filename"] == "Fiche_client_DUPONT_Jean.pdf"
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    checked = []
+    for annot in reader.pages[0].get("/Annots") or []:
+        obj = annot.get_object()
+        if str(obj.get("/AS") or "") == "/Oui":
+            checked.append(_annot_qualified_name(obj))
+    assert checked == [FICHE_CLIENT_M]
+    import fitz
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    text = doc[0].get_text()
+    doc.close()
+    for token in ("SOPHIE MARTIN", "DUPONT", "Jean", "Suisse", "Conseiller", "Marié(e)", "Rue du Lac 12", "1200", "Genève", "0791234567"):
+        assert token in text, token
 
 
 def test_generate_mandat_filename_uses_first_person():

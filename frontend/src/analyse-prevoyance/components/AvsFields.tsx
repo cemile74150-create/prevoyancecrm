@@ -12,10 +12,47 @@ import {
   formatLegalAgeLabel,
   getLegalRetirementAge,
 } from "@/analyse-prevoyance/lib/avsAge";
+import { useState } from "react";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { ConfirmDeleteButton } from "@/analyse-prevoyance/components/ConfirmDeleteButton";
+import {
+  annuelAvs,
+  anticipationAvsRenseignee,
+  formatChfAvs,
+  suggestionAvsDepart,
+} from "../../../../backend/analyse_prevoyance_engine/rules/analyse-avs-depart";
 
 const ACOR_AVS_URL = "https://acor-avs.ch/requerant";
+
+const CHAMPS_ANTICIPATION = [
+  {
+    depart: 63,
+    titre: "Départ à 63 ans",
+    lignes: [
+      ["mensuel63Avant65", "Rente AVS mensuelle de 63 à 65 ans (CHF)"],
+      ["mensuel63Des65", "Rente AVS mensuelle dès 65 ans (CHF)"],
+    ],
+  },
+  {
+    depart: 64,
+    titre: "Départ à 64 ans",
+    lignes: [
+      ["mensuel64Avant65", "Rente AVS mensuelle de 64 à 65 ans (CHF)"],
+      ["mensuel64Des65", "Rente AVS mensuelle dès 65 ans (CHF)"],
+    ],
+  },
+  {
+    depart: 65,
+    titre: "Départ à 65 ans",
+    lignes: [["mensuel65", "Rente AVS mensuelle dès 65 ans, sans anticipation (CHF)"]],
+  },
+];
+
+function valeurAnticipation(person, cle) {
+  const stocke = person?.avsDepart?.[cle];
+  if (stocke == null) return "";
+  return stocke;
+}
 
 export function AvsFields({
   title,
@@ -34,6 +71,11 @@ export function AvsFields({
     : null;
   const ageRetenu =
     ageLegal == null ? null : ageAvecAnticipationAvs(ageLegal, anticipation);
+  const [anticipationOuverte, setAnticipationOuverte] = useState(() =>
+    anticipationAvsRenseignee(person),
+  );
+  const suggestion = suggestionAvsDepart(person);
+  const dejaActive = Boolean(person.avsDejaActive);
 
   function setAnticipees(next: AvsRenteAnticipee[]) {
     onChange({ ...person, avsRentesAnticipees: next });
@@ -122,7 +164,67 @@ export function AvsFields({
           />
           <span>Montant AVS issu d'une simulation (estimation)</span>
         </label>
+        <label className="flex items-start gap-2 text-sm sm:col-span-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0"
+            checked={dejaActive}
+            onChange={(e) =>
+              onChange({
+                ...person,
+                avsDejaActive: e.target.checked,
+              })
+            }
+            data-testid={`avs-deja-active-${title}`}
+          />
+          <span>AVS déjà active – L'assuré perçoit actuellement une rente AVS.</span>
+        </label>
+        {dejaActive && (
+          <>
+            <div className="space-y-2">
+              <Label>Date de début de perception de la rente AVS</Label>
+              <Input
+                type="date"
+                value={person.dateDebutRenteAvs || ""}
+                onChange={(e) =>
+                  onChange({ ...person, dateDebutRenteAvs: e.target.value || null })
+                }
+                data-testid={`avs-date-debut-${title}`}
+                aria-required="true"
+              />
+              <p className="text-xs text-muted-foreground">JJ/MM/AAAA. Indépendante de la fin d'activité.</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Montant de la rente AVS mensuelle (CHF)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={person.renteAvsPercueMensuelle ?? ""}
+                onChange={(e) =>
+                  onChange({
+                    ...person,
+                    renteAvsPercueMensuelle:
+                      e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
+                data-testid={`avs-montant-percu-${title}`}
+                aria-required="true"
+              />
+              <p className="text-xs text-muted-foreground">
+                {person.renteAvsPercueMensuelle
+                  ? `Annuelle : ${formatChfAvs(annuelAvs(Number(person.renteAvsPercueMensuelle)))} (mensuelle × 13, une fois)`
+                  : "Montant effectivement perçu. L'annuelle = mensuelle × 13."}
+              </p>
+            </div>
+            {(!person.dateDebutRenteAvs || !(Number(person.renteAvsPercueMensuelle) > 0)) && (
+              <p className="text-sm text-orange-800 sm:col-span-3">
+                Date de début et montant mensuel obligatoires.
+              </p>
+            )}
+          </>
+        )}
       </div>
+      {anticipees.length > 0 && (
       <div className="space-y-2">
         {anticipees.map((row) => (
           <div key={row.id} className="flex flex-wrap items-end gap-2">
@@ -170,25 +272,70 @@ export function AvsFields({
             </ConfirmDeleteButton>
           </div>
         ))}
+      </div>
+      )}
+      {anticipationOuverte ? (
+        <div className="space-y-3" data-testid={`avs-anticipation-champs-${title}`}>
+          <div className="grid gap-3 lg:grid-cols-3">
+            {CHAMPS_ANTICIPATION.map((bloc) => (
+              <div key={bloc.depart} className="space-y-3 rounded-md bg-slate-50 p-3">
+                <p className="text-sm font-medium">{bloc.titre}</p>
+                {bloc.lignes.map(([cle, libelle]) => {
+                  const affiche = valeurAnticipation(person, cle);
+                  const propose = suggestion?.[cle];
+                  const mensuel = affiche === "" ? null : Number(affiche);
+                  return (
+                    <div key={cle} className="space-y-1">
+                      <Label className="text-xs">{libelle}</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={affiche}
+                        placeholder={propose != null ? String(propose) : ""}
+                        onChange={(e) => {
+                          const brut = e.target.value;
+                          const valeur = brut === "" ? null : Number(brut);
+                          onChange({
+                            ...person,
+                            avsDepart: {
+                              ...(person.avsDepart || {}),
+                              [cle]: Number.isFinite(valeur) ? valeur : null,
+                            },
+                          });
+                        }}
+                        data-testid={`avs-${cle}`}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {mensuel == null || !Number.isFinite(mensuel)
+                          ? "Annuelle : à compléter"
+                          : `Annuelle : ${formatChfAvs(annuelAvs(mensuel))} (× 13)`}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setAnticipationOuverte(false)}
+          >
+            Masquer les rentes anticipées
+          </Button>
+        </div>
+      ) : (
         <Button
           type="button"
           variant="outline"
           size="sm"
-          onClick={() =>
-            setAnticipees([
-              ...anticipees,
-              {
-                id: `avs-${Date.now()}`,
-                age: 64,
-                montantAnnuel: 0,
-              },
-            ])
-          }
+          onClick={() => setAnticipationOuverte(true)}
         >
           <Plus className="size-4" />
           Ajouter une rente AVS anticipée
         </Button>
-      </div>
+      )}
     </div>
   );
 }

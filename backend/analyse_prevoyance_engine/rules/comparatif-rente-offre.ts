@@ -1,19 +1,25 @@
 /**
  * Comparatif d'offres de rente, hors parcours AVS / LPP.
  *
- * Cet onglet a sa propre assiette. Le rapport d'analyse
- * (revenuFiscalImposable, participation à 100 %) n'est pas modifié :
- * - certaine : 70 % de la participation aux excédents
- *   (la rente garantie est encaissée, elle n'est pas imposable) ;
- * - viagère : 4 % de la rente garantie + 100 % de la participation.
+ * Même part imposable que le rapport d'analyse, sans AVS ni LPP
+ * tant qu'ils ne sont pas ajoutés :
+ * - certaine : 0 % de la rente garantie + 100 % de la participation
+ *   (la rente garantie est encaissée, elle n'entre pas dans l'impôt) ;
+ * - viagère : 4 % de la rente garantie + 70 % de la participation.
  * Pas d'AVS, pas de LPP.
  *
+ * L'impôt sur le revenu de la rente est annuel. Il n'est pas
+ * multiplié par la durée.
  * L'impôt sur la fortune d'une rente certaine suit le capital
  * qui diminue de la rente garantie chaque année. Plancher à 0.
- * Une rente viagère n'a pas de calendrier sur une durée inventée.
+ * L'impôt fortune « si capital non affecté » garde ce capital
+ * constant et multiplie l'impôt d'une année par la durée saisie.
+ * Une rente viagère n'a pas de durée inventée : gain net et
+ * impôts fortune qui dépendent d'une durée restent vides.
  */
 
 import { roundMoney } from "./rente-hypotheses.ts";
+import type { RevenuAjouteImpot } from "../types.ts";
 
 export type OffreRenteType = "certaine" | "viagere";
 
@@ -27,14 +33,34 @@ function n(value: number): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-/** Revenu transmis à ESTV pour cet onglet. Pas d'AVS, pas de LPP. */
+/** Libellé d'une ligne ajoutée à l'impôt sur le revenu du comparatif d'offres. */
+export function libelleRevenuAjoute(row: RevenuAjouteImpot): string {
+  if (row.kind === "avs") return "AVS";
+  if (row.kind === "lpp") return "Rente LPP";
+  const label = (row.libelle || "").trim();
+  return label || "Autre revenu";
+}
+
+/**
+ * Somme des revenus ajoutés avec +. Le dossier (AVS saisie, LPP, fortune)
+ * n'entre pas tout seul : seulement ces lignes.
+ */
+export function totalRevenusAjoutesImpot(
+  rows: RevenuAjouteImpot[] | null | undefined,
+): number {
+  return roundMoney(
+    (rows || []).reduce((sum, row) => sum + Math.max(0, n(row.montant)), 0),
+  );
+}
+
+/** Revenu de l'offre transmis à ESTV, avant les lignes ajoutées avec +. */
 export function assietteOffreComparatif(input: AssietteOffreInput): number {
   const garantie = n(input.renteGarantie);
   const participation = n(input.participationExcedents);
   if (input.type === "viagere") {
-    return roundMoney(garantie * 0.04 + participation);
+    return roundMoney(garantie * 0.04 + participation * 0.7);
   }
-  return roundMoney(participation * 0.7);
+  return roundMoney(participation);
 }
 
 /** Ce que l'offre verse : rente garantie + participation. */
@@ -67,15 +93,11 @@ export function fortunesDecroissantes(
   return out;
 }
 
-export const LIBELLE_ICC_ANNUEL = "ICC / IFD annuel";
-
-export function libelleTotalIccDuree(annees: number): string {
-  return `Total ICC / IFD sur ${annees} ans`;
-}
+export const LIBELLE_IMPOT_RENTE_ANNUEL = "Impôt de la rente (par an)";
 
 export interface ImpotRevenuPdf {
-  /** total = rente certaine à durée connue. annuel = viagère ou certaine sans durée. */
-  mode: "total" | "annuel" | "inconnu";
+  /** annuel = impôt de l'année. inconnu = impôt non calculé. Jamais un total sur N ans. */
+  mode: "annuel" | "inconnu";
   libelle: string;
   montant: number | null;
   annees: number | null;
@@ -83,32 +105,59 @@ export interface ImpotRevenuPdf {
 
 /**
  * PDF du comparatif d'offres seulement.
- * Rente certaine : impôt annuel × durée, sans calendrier.
- * Rente viagère : impôt annuel, sans durée inventée.
+ * Le montant est l'impôt annuel de la rente, certaine ou viagère.
+ * La durée ne le multiplie pas : un total « sur N ans » montrait
+ * l'annuel comme un cumul, ou le cumul comme s'il était l'annuel.
  */
 export function impotRevenuPourPdf(
-  type: OffreRenteType,
+  _type: OffreRenteType,
   impotAnnuel: number | null | undefined,
-  dureeAnnees: number | null | undefined,
+  _dureeAnnees: number | null | undefined,
 ): ImpotRevenuPdf {
   if (impotAnnuel == null || Number.isNaN(Number(impotAnnuel))) {
-    return { mode: "inconnu", libelle: "ICC / IFD", montant: null, annees: null };
-  }
-  const years = Math.floor(n(Number(dureeAnnees)));
-  if (type === "certaine" && years > 0) {
     return {
-      mode: "total",
-      libelle: libelleTotalIccDuree(years),
-      montant: roundMoney(n(impotAnnuel) * years),
-      annees: years,
+      mode: "inconnu",
+      libelle: LIBELLE_IMPOT_RENTE_ANNUEL,
+      montant: null,
+      annees: null,
     };
   }
   return {
     mode: "annuel",
-    libelle: LIBELLE_ICC_ANNUEL,
+    libelle: LIBELLE_IMPOT_RENTE_ANNUEL,
     montant: roundMoney(n(impotAnnuel)),
     annees: null,
   };
+}
+
+/**
+ * Gain net = revenu net annuel × durée saisie − capital affecté à la rente.
+ * Sans durée (viagère, ou certaine sans durée) : pas de montant.
+ */
+export function gainNetOffre(
+  revenuNetAnnuel: number | null | undefined,
+  dureeAnnees: number | null | undefined,
+  capitalPlace: number | null | undefined,
+): number | null {
+  if (revenuNetAnnuel == null || Number.isNaN(Number(revenuNetAnnuel))) return null;
+  const years = Math.floor(n(Number(dureeAnnees)));
+  if (years <= 0) return null;
+  return roundMoney(n(revenuNetAnnuel) * years - n(Number(capitalPlace)));
+}
+
+/**
+ * Impôt fortune si le capital n'est pas affecté à la rente.
+ * Fortune constante = capital affecté. Impôt ESTV d'une année (revenu 0) × durée.
+ * Ce n'est pas la fortune qui diminue de la rente garantie.
+ */
+export function impotFortuneCapitalNonAffecte(
+  impotAnnuelSurCapital: number | null | undefined,
+  dureeAnnees: number | null | undefined,
+): number | null {
+  if (impotAnnuelSurCapital == null || Number.isNaN(Number(impotAnnuelSurCapital))) return null;
+  const years = Math.floor(n(Number(dureeAnnees)));
+  if (years <= 0) return null;
+  return roundMoney(n(impotAnnuelSurCapital) * years);
 }
 
 /** Somme des impôts fortune annuels. Null si une année n'a pas de montant. */

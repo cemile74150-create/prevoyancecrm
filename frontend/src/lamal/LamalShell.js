@@ -3,18 +3,17 @@ import Layout from "@/components/Layout";
 
 const LINKS = [
   { to: "/lamal", label: "Tableau de bord", end: true },
-  { to: "/lamal/comparaison", label: "Comparaison individuelle" },
-  { to: "/lamal/clients", label: "Comparaisons clients" },
+  { to: "/lamal/comparaison", label: "Calculateur nouvelle prime" },
   { to: "/lamal/campagnes", label: "Campagnes e-mails" },
   { to: "/lamal/historique", label: "Historique" },
-  { to: "/lamal/parametres", label: "Paramètres et données OFSP" },
+  { to: "/lamal/parametres", label: "Paramètres et données" },
 ];
 
-export default function LamalShell({ title, subtitle, children }) {
+export default function LamalShell({ title, subtitle, children, wide = false }) {
   const location = useLocation();
   return (
     <Layout>
-      <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+      <div className={`${wide ? "max-w-[90rem]" : "max-w-6xl"} mx-auto px-4 py-6 space-y-6`}>
         <header className="space-y-3">
           <p className="text-xs uppercase tracking-[0.16em] text-[#002FA7] font-semibold">Assurance obligatoire des soins</p>
           <div>

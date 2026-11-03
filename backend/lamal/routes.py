@@ -4,11 +4,31 @@ from __future__ import annotations
 import io
 from typing import Callable, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from access_control import User, require_perm, PERM_LAMAL_MODULE_ACCESS
+from lamal.campaign_lists import (
+    ACCIDENT_NOTE,
+    EMAIL_SUBJECT,
+    age_in_2027,
+    apply_identity_edit,
+    calculation_payload,
+    comparatif_for_contact,
+    email_document_fields,
+    load_ofsp_catalog,
+    parse_workbook,
+    plan_prepare,
+    premium_index_for,
+    present_person,
+    refuse_campaign_delivery,
+    regenerate_draft,
+    render_contact_email,
+    save_draft_text,
+    summarize,
+    validate_draft,
+)
 from lamal.engine import (
     SOURCES,
     accident_code,
@@ -79,6 +99,31 @@ class CampaignBody(BaseModel):
 
 class SendBody(BaseModel):
     confirm: str = ""
+
+
+class ContactEditBody(BaseModel):
+    prenom: Optional[str] = None
+    nom: Optional[str] = None
+    naissance: Optional[str] = None
+    adresse: Optional[str] = None
+    npa: Optional[str] = None
+    lieu: Optional[str] = None
+    email: Optional[str] = None
+
+
+class DraftTextBody(BaseModel):
+    subject: Optional[str] = None
+    intro: Optional[str] = None
+    closing: Optional[str] = None
+
+
+class ConfirmBody(BaseModel):
+    confirm: bool = False
+
+
+class PrepareBody(BaseModel):
+    offset: int = 0
+    limit: int = 40
 
 
 class StatusBody(BaseModel):
@@ -415,12 +460,151 @@ def attach_lamal_routes(api_router: APIRouter, *, db, get_current_user, decrypt_
         email = await db[COLLECTIONS["emails"]].find_one({"id": email_id}, {"_id": 0})
         if not email:
             raise HTTPException(status_code=404, detail="E-mail introuvable")
+        if email.get("campaign_id"):
+            campaign = await db[COLLECTIONS["campaigns"]].find_one({"id": email["campaign_id"]}, {"_id": 0, "id": 1, "status": 1})
+            decision = refuse_campaign_delivery(campaign or {"status": "preparation", "id": email["campaign_id"]})
+            await audit(db, user.email, "campaign_send_refused", {"id": email["campaign_id"], "sent": 0, "queued": 0})
+            raise HTTPException(status_code=409, detail=decision["detail"])
         if email.get("status") == "envoye":
             raise HTTPException(status_code=409, detail="Cet e-mail a déjà été envoyé.")
         outcome = commit_delivery(email, confirm=body.confirm, transport=None)
         await db[COLLECTIONS["emails"]].update_one({"id": email_id}, {"$set": {"status": outcome["status"], "send_attempt_at": now_iso()}})
         await audit(db, user.email, "email_send_blocked", {"id": email_id, "status": outcome["status"]})
         raise HTTPException(status_code=409, detail=outcome["detail"])
+
+    @router.post("/campaigns/import")
+    async def import_campaign_list(file: UploadFile = File(...), user: User = Depends(get_current_user)):
+        """Importe une liste Excel dans la campagne. Aucun client CRM, aucun envoi."""
+        guard(user)
+        filename = (file.filename or "liste.xlsx").replace("\\", "/").split("/")[-1]
+        if not filename.lower().endswith((".xlsx", ".xlsm")):
+            raise HTTPException(status_code=400, detail="Déposez un fichier Excel .xlsx")
+        payload = await file.read()
+        if len(payload) > 20 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Fichier trop volumineux")
+        try:
+            parsed = parse_workbook(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if not parsed["contacts"]:
+            raise HTTPException(status_code=422, detail="Aucune ligne de contact dans ce fichier")
+        try:
+            catalog = load_ofsp_catalog()
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        index = premium_index_for(catalog)
+        stamp = str((catalog.source or {}).get("stamp") or "") if catalog is not None else ""
+        campaign_id = new_id()
+        created = now_iso()
+        contacts = []
+        emails = []
+        with_premiums = 0
+        residence_unresolved = 0
+        birth_missing = 0
+        for source in parsed["contacts"]:
+            message = render_contact_email(source, catalog, index)
+            calculated = message["calculated"]
+            contact_id = new_id()
+            residence = calculated["residence"]
+            if calculated["premiums_found"]:
+                with_premiums += 1
+            if not residence.get("ok"):
+                residence_unresolved += 1
+            if not calculated.get("birth_year"):
+                birth_missing += 1
+            payload = calculation_payload(calculated, stamp, created)
+            contacts.append({
+                "id": contact_id,
+                "campaign_id": campaign_id,
+                "prenom": source.get("prenom") or "",
+                "nom": source.get("nom") or "",
+                "email": source.get("email") or "",
+                "email_ok": valid_email(source.get("email")),
+                "npa": source.get("npa") or "",
+                "lieu": source.get("lieu") or "",
+                "naissance": source.get("naissance") or "",
+                "age_fichier": source.get("age_fichier") or "",
+                "assureur_actuel": source.get("assureur") or "",
+                "adresse": source.get("adresse") or "",
+                "complement": source.get("complement") or "",
+                "telephone": source.get("telephone") or "",
+                "telephone_prive": source.get("telephone_prive") or "",
+                "police": source.get("police") or "",
+                "extras": source.get("extras") or {},
+                "ligne": source.get("ligne"),
+                "fichier": filename,
+                "importe_le": created,
+                "created_at": created,
+                **payload,
+            })
+            emails.append({
+                "id": new_id(),
+                "campaign_id": campaign_id,
+                "client_id": contact_id,
+                "contact_id": contact_id,
+                "comparison_id": None,
+                "created_at": created,
+                "created_by": user.email,
+                **email_document_fields(source, message, created),
+            })
+        document = {
+            "id": campaign_id,
+            "year": 2027,
+            "dataset_id": None,
+            "status": "preparation",
+            "source": "import_liste",
+            "filename": filename,
+            "created_at": created,
+            "created_by": user.email,
+            "recipient_ids": [row["id"] for row in contacts],
+            "progress": {
+                "total": len(contacts),
+                "selected": len(emails),
+                "done": 0,
+                "with_premiums": with_premiums,
+                "without_premiums": len(contacts) - with_premiums,
+                "skipped_empty": parsed["skipped_empty"],
+            },
+            "calculation": {
+                "year": 2027,
+                "accident": "avec",
+                "accident_note": ACCIDENT_NOTE,
+                "tariff_loaded": catalog is not None,
+                "models": ["Médecin de famille", "Télémédecine", "Flexible"],
+                "franchises": [300, 2500],
+            },
+        }
+        await ensure_indexes(db)
+        await db[COLLECTIONS["campaigns"]].insert_one(document)
+        if contacts:
+            await db[COLLECTIONS["contacts"]].insert_many(contacts)
+        for start in range(0, len(emails), 200):
+            await db[COLLECTIONS["emails"]].insert_many(emails[start:start + 200])
+        await audit(db, user.email, "campaign_import_liste", {
+            "id": campaign_id,
+            "filename": filename,
+            "contacts": len(contacts),
+            "emails": len(emails),
+        })
+        document.pop("_id", None)
+        return {
+            "id": campaign_id,
+            "year": 2027,
+            "filename": filename,
+            "contacts_created": len(contacts),
+            "emails_prepared": len(emails),
+            "skipped_empty": parsed["skipped_empty"],
+            "duplicates_skipped": parsed["duplicates_skipped"],
+            "with_premiums": with_premiums,
+            "without_premiums": len(contacts) - with_premiums,
+            "residence_unresolved": residence_unresolved,
+            "birth_missing": birth_missing,
+            "tariff_loaded": catalog is not None,
+            "accident": "avec",
+            "accident_note": ACCIDENT_NOTE,
+            "headers": parsed["headers"],
+            "send": False,
+        }
 
     @router.post("/campaigns")
     async def create_campaign(body: CampaignBody, user: User = Depends(get_current_user)):
@@ -488,9 +672,90 @@ def attach_lamal_routes(api_router: APIRouter, *, db, get_current_user, decrypt_
     @router.post("/campaigns/{campaign_id}/send")
     async def send_campaign(campaign_id: str, body: SendBody, user: User = Depends(get_current_user)):
         guard(user)
-        outcome = commit_delivery({"campaign_id": campaign_id}, confirm=body.confirm, transport=None)
-        await audit(db, user.email, "campaign_send_blocked", {"id": campaign_id})
-        raise HTTPException(status_code=409, detail=outcome["detail"])
+        campaign = await db[COLLECTIONS["campaigns"]].find_one({"id": campaign_id}, {"_id": 0, "id": 1, "status": 1})
+        if not campaign:
+            raise HTTPException(status_code=404, detail="Campagne introuvable")
+        decision = refuse_campaign_delivery(campaign)
+        await audit(db, user.email, "campaign_send_refused", {"id": campaign_id, "sent": 0, "queued": 0})
+        raise HTTPException(status_code=409, detail=decision["detail"])
+
+    @router.post("/campaigns/{campaign_id}/preparer")
+    async def prepare_campaign_drafts(campaign_id: str, body: PrepareBody, user: User = Depends(get_current_user)):
+        """Calcule les comparatifs et brouillons manquants. Aucun envoi, aucun doublon."""
+        guard(user)
+        campaign = await db[COLLECTIONS["campaigns"]].find_one({"id": campaign_id}, {"_id": 0})
+        if not campaign:
+            raise HTTPException(status_code=404, detail="Campagne introuvable")
+        contacts = []
+        async for row in db[COLLECTIONS["contacts"]].find({"campaign_id": campaign_id}, {"_id": 0}).sort([("nom", 1), ("prenom", 1), ("id", 1)]):
+            contacts.append(row)
+        emails_by = {}
+        async for row in db[COLLECTIONS["emails"]].find({"campaign_id": campaign_id}, {"_id": 0}):
+            key = row.get("contact_id") or row.get("client_id")
+            if key:
+                emails_by[key] = row
+        total = len(contacts)
+        offset = max(0, int(body.offset or 0))
+        limit = min(50, max(1, int(body.limit or 40)))
+        batch = contacts[offset:offset + limit]
+        try:
+            catalog = load_ofsp_catalog()
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        index = premium_index_for(catalog)
+        stamp = str((catalog.source or {}).get("stamp") or "") if catalog is not None else ""
+        when = now_iso()
+        written = kept = incomplete = 0
+        for contact in batch:
+            email = emails_by.get(contact.get("id"))
+            plan = plan_prepare(contact, email, catalog, index, stamp, when)
+            if plan["action"] == "kept":
+                kept += 1
+                continue
+            await db[COLLECTIONS["contacts"]].update_one({"id": contact["id"]}, {"$set": {**plan["contact_updates"], "modifie_le": when}})
+            email_fields = plan["email_updates"]
+            await db[COLLECTIONS["emails"]].update_one(
+                {"campaign_id": campaign_id, "client_id": contact["id"]},
+                {"$set": email_fields, "$setOnInsert": {
+                    "id": new_id(),
+                    "campaign_id": campaign_id,
+                    "client_id": contact["id"],
+                    "contact_id": contact["id"],
+                    "comparison_id": None,
+                    "created_at": when,
+                    "created_by": user.email,
+                }},
+                upsert=True,
+            )
+            if plan["comparatif_statut"] == "calcule":
+                written += 1
+            else:
+                incomplete += 1
+        next_offset = offset + len(batch)
+        done = next_offset >= total
+        await db[COLLECTIONS["campaigns"]].update_one(
+            {"id": campaign_id},
+            {"$set": {"progress.prepare_offset": next_offset, "progress.prepare_total": total, "status": campaign.get("status") or "preparation"}},
+        )
+        await audit(db, user.email, "campaign_prepare_drafts", {
+            "id": campaign_id,
+            "processed": len(batch),
+            "written": written,
+            "kept": kept,
+            "sent": 0,
+        })
+        return {
+            "offset": offset,
+            "next_offset": next_offset,
+            "total": total,
+            "processed": len(batch),
+            "written": written,
+            "kept": kept,
+            "incomplete": incomplete,
+            "done": done,
+            "sent": 0,
+            "queued": 0,
+        }
 
     @router.get("/campaigns")
     async def list_campaigns(user: User = Depends(get_current_user)):
@@ -499,6 +764,208 @@ def attach_lamal_routes(api_router: APIRouter, *, db, get_current_user, decrypt_
         async for row in db[COLLECTIONS["campaigns"]].find({}, {"_id": 0}).sort("created_at", -1):
             rows.append(row)
         return {"items": rows}
+
+    @router.get("/campaigns/contacts")
+    async def list_campaign_contacts(user: User = Depends(get_current_user)):
+        guard(user)
+        items = []
+        cursor = db[COLLECTIONS["contacts"]].find({}, {"_id": 0}).sort([("nom", 1), ("prenom", 1)])
+        async for row in cursor:
+            items.append({
+                "id": row.get("id"),
+                "campaign_id": row.get("campaign_id"),
+                "prenom": row.get("prenom") or "",
+                "nom": row.get("nom") or "",
+                "npa": row.get("npa") or "",
+                "lieu": row.get("lieu") or "",
+                "naissance": row.get("naissance") or "",
+                "email": row.get("email") or "",
+                "age": age_in_2027(row.get("naissance")),
+            })
+        return {"items": items}
+
+    @router.get("/campaigns/contacts/{contact_id}")
+    async def one_campaign_contact(contact_id: str, user: User = Depends(get_current_user)):
+        guard(user)
+        contact = await db[COLLECTIONS["contacts"]].find_one({"id": contact_id}, {"_id": 0})
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contact introuvable")
+        contact["age"] = age_in_2027(contact.get("naissance"))
+        email = await db[COLLECTIONS["emails"]].find_one({"contact_id": contact_id}, {"_id": 0})
+        if email is None:
+            email = await db[COLLECTIONS["emails"]].find_one({"client_id": contact_id}, {"_id": 0})
+        return {"contact": present_person(contact, email, _tariff_stamp()), "email": email}
+
+    def _tariff_stamp() -> Optional[str]:
+        try:
+            catalog = load_ofsp_catalog()
+        except ValueError:
+            return None
+        if catalog is None:
+            return None
+        return str((catalog.source or {}).get("stamp") or "") or None
+
+    async def _contact_and_email(contact_id: str):
+        contact = await db[COLLECTIONS["contacts"]].find_one({"id": contact_id}, {"_id": 0})
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contact introuvable")
+        email = await db[COLLECTIONS["emails"]].find_one({"contact_id": contact_id}, {"_id": 0})
+        if email is None:
+            email = await db[COLLECTIONS["emails"]].find_one({"client_id": contact_id}, {"_id": 0})
+        return contact, email
+
+    @router.patch("/campaigns/contacts/{contact_id}")
+    async def edit_campaign_contact(contact_id: str, body: ContactEditBody, user: User = Depends(get_current_user)):
+        guard(user)
+        contact, email = await _contact_and_email(contact_id)
+        edited = apply_identity_edit(contact, body.model_dump())
+        when = now_iso()
+        updates = {key: edited["contact"][key] for key in edited["changed"]}
+        updates["modifie_le"] = when
+        if edited["recalculate"]:
+            updates["comparatif_statut"] = "a_recalculer"
+            if edited["contact"].get("brouillon_statut") == "a_verifier":
+                updates["brouillon_statut"] = "a_verifier"
+        if "email" in edited["changed"]:
+            updates["email_ok"] = bool(edited["contact"].get("email_ok"))
+        if updates:
+            await db[COLLECTIONS["contacts"]].update_one({"id": contact_id}, {"$set": updates})
+        if email and ("email" in edited["changed"] or edited["recalculate"]):
+            email_updates = {}
+            if "email" in edited["changed"]:
+                email_updates["to"] = edited["contact"].get("email") or ""
+            if edited["recalculate"] and email.get("brouillon_statut") == "valide":
+                email_updates["brouillon_statut"] = "a_verifier"
+                email_updates["valide_le"] = None
+                email_updates["valide_par"] = None
+            if email_updates:
+                await db[COLLECTIONS["emails"]].update_one({"id": email["id"]}, {"$set": email_updates})
+        contact, email = await _contact_and_email(contact_id)
+        await audit(db, user.email, "campaign_contact_edit", {"id": contact_id, "fields": edited["changed"]})
+        return {"contact": present_person(contact, email, _tariff_stamp()), "email": email, "sent": 0}
+
+    @router.post("/campaigns/contacts/{contact_id}/recalculer")
+    async def recalculate_contact(contact_id: str, body: ConfirmBody, user: User = Depends(get_current_user)):
+        guard(user)
+        contact, email = await _contact_and_email(contact_id)
+        if email and email.get("manual_edit") and not body.confirm:
+            raise HTTPException(status_code=409, detail="Ce brouillon a été modifié. Confirmez la régénération.")
+        try:
+            catalog = load_ofsp_catalog()
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        index = premium_index_for(catalog)
+        stamp = str((catalog.source or {}).get("stamp") or "") if catalog is not None else ""
+        when = now_iso()
+        plan = plan_prepare(contact, None, catalog, index, stamp, when)
+        if plan["action"] == "kept":
+            raise HTTPException(status_code=409, detail=plan["warning"])
+        await db[COLLECTIONS["contacts"]].update_one({"id": contact_id}, {"$set": {**plan["contact_updates"], "modifie_le": when}})
+        await db[COLLECTIONS["emails"]].update_one(
+            {"campaign_id": contact.get("campaign_id"), "client_id": contact_id},
+            {"$set": plan["email_updates"], "$setOnInsert": {
+                "id": new_id(),
+                "campaign_id": contact.get("campaign_id"),
+                "client_id": contact_id,
+                "contact_id": contact_id,
+                "comparison_id": None,
+                "created_at": when,
+                "created_by": user.email,
+            }},
+            upsert=True,
+        )
+        contact, email = await _contact_and_email(contact_id)
+        return {"contact": present_person(contact, email, stamp), "email": email, "sent": 0}
+
+    @router.post("/campaigns/contacts/{contact_id}/offres")
+    async def all_offers(contact_id: str, user: User = Depends(get_current_user)):
+        guard(user)
+        contact, _email = await _contact_and_email(contact_id)
+        try:
+            catalog = load_ofsp_catalog()
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        calculated = comparatif_for_contact(contact, catalog, premium_index_for(catalog), cheapest_only=False)
+        payload = calculation_payload(calculated, "", "")
+        return {
+            "afficher": not calculated.get("blocked"),
+            "message": None if not calculated.get("blocked") else "Comparatif indisponible : veuillez vérifier les informations de ce contact.",
+            "motifs": calculated.get("motifs") or [],
+            "lignes": payload["comparatif"]["lignes"],
+            "sent": 0,
+        }
+
+    @router.patch("/campaigns/contacts/{contact_id}/brouillon")
+    async def save_contact_draft(contact_id: str, body: DraftTextBody, user: User = Depends(get_current_user)):
+        guard(user)
+        contact, email = await _contact_and_email(contact_id)
+        if email is None:
+            raise HTTPException(status_code=404, detail="Brouillon introuvable")
+        updated = save_draft_text(email, contact, subject=body.subject, intro=body.intro, closing=body.closing)
+        fields = {key: updated.get(key) for key in ("subject", "intro", "closing", "body", "manual_edit", "status", "brouillon_statut", "valide_le", "valide_par")}
+        fields["modifie_le"] = now_iso()
+        await db[COLLECTIONS["emails"]].update_one({"id": email["id"]}, {"$set": fields})
+        if contact.get("brouillon_statut") != updated.get("brouillon_statut"):
+            await db[COLLECTIONS["contacts"]].update_one({"id": contact_id}, {"$set": {"brouillon_statut": updated.get("brouillon_statut"), "modifie_le": fields["modifie_le"]}})
+        contact, email = await _contact_and_email(contact_id)
+        return {"contact": present_person(contact, email, _tariff_stamp()), "email": email, "sent": 0}
+
+    @router.post("/campaigns/contacts/{contact_id}/regenerer")
+    async def regenerate_contact_draft(contact_id: str, body: ConfirmBody, user: User = Depends(get_current_user)):
+        guard(user)
+        contact, email = await _contact_and_email(contact_id)
+        try:
+            catalog = load_ofsp_catalog()
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        message = render_contact_email(contact, catalog, premium_index_for(catalog))
+        decision = regenerate_draft(email, message, confirm=body.confirm)
+        if not decision["ok"]:
+            raise HTTPException(status_code=409, detail=decision["detail"])
+        when = now_iso()
+        fields = decision["email"]
+        fields["modifie_le"] = when
+        if email:
+            await db[COLLECTIONS["emails"]].update_one({"id": email["id"]}, {"$set": {
+                "subject": fields.get("subject"),
+                "body": fields.get("body"),
+                "intro": fields.get("intro"),
+                "closing": fields.get("closing"),
+                "brouillon_statut": fields.get("brouillon_statut"),
+                "manual_edit": False,
+                "status": "a_valider",
+                "modifie_le": when,
+                "valide_le": None,
+                "valide_par": None,
+            }})
+        stamp = str((catalog.source or {}).get("stamp") or "") if catalog is not None else ""
+        await db[COLLECTIONS["contacts"]].update_one(
+            {"id": contact_id},
+            {"$set": {**calculation_payload(message["calculated"], stamp, when), "modifie_le": when}},
+        )
+        contact, email = await _contact_and_email(contact_id)
+        return {"contact": present_person(contact, email, stamp), "email": email, "sent": 0}
+
+    @router.post("/campaigns/contacts/{contact_id}/valider")
+    async def validate_contact_draft(contact_id: str, user: User = Depends(get_current_user)):
+        guard(user)
+        contact, email = await _contact_and_email(contact_id)
+        if email is None:
+            raise HTTPException(status_code=404, detail="Brouillon introuvable")
+        decision = validate_draft(email, contact, when=now_iso(), actor=user.email)
+        if not decision["ok"]:
+            raise HTTPException(status_code=422, detail=decision["detail"])
+        updated = decision["email"]
+        await db[COLLECTIONS["emails"]].update_one({"id": email["id"]}, {"$set": {
+            "brouillon_statut": "valide",
+            "status": "a_valider",
+            "valide_le": updated.get("valide_le"),
+            "valide_par": updated.get("valide_par"),
+        }})
+        await db[COLLECTIONS["contacts"]].update_one({"id": contact_id}, {"$set": {"brouillon_statut": "valide", "modifie_le": updated.get("valide_le")}})
+        await audit(db, user.email, "campaign_draft_validated", {"id": contact_id, "sent": 0})
+        contact, email = await _contact_and_email(contact_id)
+        return {"contact": present_person(contact, email, _tariff_stamp()), "email": email, "sent": 0, "queued": 0}
 
     @router.get("/campaigns/{campaign_id}")
     async def get_campaign(campaign_id: str, user: User = Depends(get_current_user)):
@@ -509,7 +976,23 @@ def attach_lamal_routes(api_router: APIRouter, *, db, get_current_user, decrypt_
         emails = []
         async for row in db[COLLECTIONS["emails"]].find({"campaign_id": campaign_id}, {"_id": 0}):
             emails.append(row)
-        return {"campaign": campaign, "emails": emails}
+        contacts = []
+        async for row in db[COLLECTIONS["contacts"]].find({"campaign_id": campaign_id}, {"_id": 0}):
+            contacts.append(row)
+        emails_by = {}
+        for row in emails:
+            key = row.get("contact_id") or row.get("client_id")
+            if key and key not in emails_by:
+                emails_by[key] = row
+        stamp = _tariff_stamp()
+        presented = [present_person(row, emails_by.get(row.get("id")), stamp) for row in contacts]
+        return {
+            "campaign": campaign,
+            "emails": emails,
+            "contacts": presented,
+            "summary": summarize(presented, emails),
+            "sent": 0,
+        }
 
     @router.delete("/campaigns/{campaign_id}/recipients/{client_id}")
     async def remove_recipient(campaign_id: str, client_id: str, user: User = Depends(get_current_user)):

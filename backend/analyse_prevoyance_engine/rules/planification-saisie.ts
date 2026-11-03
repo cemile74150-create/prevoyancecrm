@@ -99,12 +99,22 @@ export function resolveThirdPillarCapital(
 }
 
 export function effectiveLppWithdrawalAge(
-  person: { ageRetraitLppSouhaite?: number | null } | null | undefined,
+  person:
+    | {
+        ageRetraitLppSouhaite?: number | null;
+        ageRetraiteSouhaite?: number | null;
+      }
+    | null
+    | undefined,
   dossierAge: number | null | undefined,
 ): number | null {
   const custom = person?.ageRetraitLppSouhaite;
   if (custom != null && custom !== ("" as unknown) && Number.isFinite(Number(custom))) {
     return Number(custom);
+  }
+  const profil = person?.ageRetraiteSouhaite;
+  if (profil != null && profil !== ("" as unknown) && Number.isFinite(Number(profil))) {
+    return Number(profil);
   }
   if (dossierAge != null && Number.isFinite(Number(dossierAge))) {
     return Number(dossierAge);
@@ -125,7 +135,7 @@ export function lppAgeForCalendarYear(
   if (!birth || !/^\d{4}-\d{2}-\d{2}/.test(String(birth))) return null;
   if (year == null || !Number.isFinite(Number(year))) return null;
   const target = Number(year);
-  const list = (ages && ages.length ? ages : [65, 64, 63, 62, 61, 60])
+  const list = (ages && ages.length ? ages : [65, 64, 63, 62, 61, 60, 59, 58])
     .map((age) => Number(age))
     .filter((age) => Number.isFinite(age));
   const unique = [...new Set(list)].sort((a, b) => b - a);

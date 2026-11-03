@@ -86,7 +86,7 @@ export const PERMISSION_CATALOG = [
     id: "lamal",
     label: "Comparateur LAMal",
     items: [
-      { key: "lamal_module_access", label: "Accès au comparateur LAMal (réservé au compte Cemile Demirtas)" },
+      { key: "lamal_module_access", label: "Accès au comparateur LAMal (Cemile Demirtas et Alberto Mendes)" },
     ],
   },
 ];
@@ -112,11 +112,29 @@ export function defaultSeeAllDossiers(role) {
   return role === "admin" || role === "ceo" || role === "gestionnaire_offres";
 }
 
+function identityKey(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function isAlbertoMendes(user) {
+  const prenom = user?.prenom || "";
+  const nom = user?.nom || "";
+  const candidates = [user?.name, user?.conseiller, `${prenom} ${nom}`, `${nom} ${prenom}`];
+  return candidates.some((value) => identityKey(value) === "alberto mendes");
+}
+
 export function hasPerm(user, key) {
   if (!user || !key) return false;
   if (key === "lamal_module_access") {
-    return (user.email || "").trim().toLowerCase() === "cdemirtas@agencemendes.ch";
+    const email = (user.email || "").trim().toLowerCase();
+    return email === "cdemirtas@agencemendes.ch" || isAlbertoMendes(user);
   }
+  if (isAlbertoMendes(user) && key === "users.manage") return true;
   if (user.permissions && typeof user.permissions === "object" && key in user.permissions) {
     return Boolean(user.permissions[key]);
   }

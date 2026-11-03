@@ -15,13 +15,13 @@ describe("âge légal AVS — convention années + mois/12", () => {
     expect(opts[0]).toEqual({ value: 64.75, label: "64 ans et 9 mois" });
     expect(opts.filter((row) => row.value === 64.75)).toHaveLength(1);
     expect(opts.filter((row) => row.value === 64)).toHaveLength(1);
-    expect(opts.map((row) => row.value)).toEqual([64.75, 65, 64, 63, 62, 61, 60]);
+    expect(opts.map((row) => row.value)).toEqual([64.75, 65, 64, 63, 62, 61, 60, 59, 58]);
   });
 
   it("n'ajoute pas de doublon si l'âge légal est déjà un entier (65 ans)", () => {
     const opts = desiredRetirementAgeOptions("Monsieur", "1961-12-13");
     expect(opts.filter((row) => row.value === 65)).toHaveLength(1);
-    expect(opts.map((row) => row.value)).toEqual([65, 64, 63, 62, 61, 60]);
+    expect(opts.map((row) => row.value)).toEqual([65, 64, 63, 62, 61, 60, 59, 58]);
     expect(formatLegalAgeLabel(65)).toBe("65 ans");
   });
 

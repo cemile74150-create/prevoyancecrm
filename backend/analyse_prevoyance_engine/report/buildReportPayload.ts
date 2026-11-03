@@ -1,10 +1,17 @@
 import { formatDateFr } from "../rules/avs-age";
-import { buildResumePrestationsLpp } from "../rules/resume-prestations-lpp";
+import { analysesAvsDuDossier } from "../rules/analyse-avs-depart";
+import {
+  applyResumeCapitalTax,
+  buildResumePrestationsLpp,
+} from "../rules/resume-prestations-lpp";
 import { personDisplayName } from "../mappers";
 import { resolveThirdPillarCapital } from "../rules/planification-saisie";
 import { postRetirementEvolutionService } from "../services/PostRetirementEvolutionService";
 import { scenarioWithdrawalYear } from "../withdrawalPlanUtils";
 import {
+  anneesDiffere,
+  buildColonneCombinee,
+  offresDeHypothese,
   revenuBrutEncaisse,
   revenuFiscalImposable,
 } from "../rules/rente-hypotheses";
@@ -269,10 +276,20 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
   };
 
   const resumePrestationsLpp = buildResumePrestationsLpp(input);
+  if (resumePrestationsLpp) {
+    applyResumeCapitalTax(resumePrestationsLpp, results.resumeCapitalTax);
+  }
 
-  // Pages : 1 cover, 2 agency, 3 bilan, 4 compare — puis conditionnels
-  let pageCount = 4;
-  if (resumePrestationsLpp && resumePrestationsLpp.tables.length > 0) {
+  // L'ancien comparatif AVS (couple, pourcentages) n'est plus une page du PDF.
+  const comparatifAvs = null;
+  const analysesAvs = analysesAvsDuDossier(input.client1, input.conjoint, isCouple);
+
+  // Pages : 1 cover, 2 agency, 3 bilan, puis une page AVS par assuré
+  let pageCount = 4 + analysesAvs.length;
+  if (resumePrestationsLpp?.showResume && resumePrestationsLpp.tables.length > 0) {
+    pageCount += 1;
+  }
+  if (resumePrestationsLpp?.tables.some((table) => table.ages.length > 0)) {
     pageCount += 1;
   }
   if (hasThirdPillar) {
@@ -405,6 +422,8 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
       resumePrestationsLpp && resumePrestationsLpp.tables.length > 0
         ? resumePrestationsLpp
         : null,
+    comparatifAvs,
+    analysesAvs,
     flags: {
       hasThirdPillar,
       hasRentePont,
@@ -491,11 +510,13 @@ function buildPersonBlock(
       computed.dateFinActivite || computed.dateDepart,
     ),
     ageFinActiviteLabel: computed.ageFinActiviteLabel || computed.ageLegalLabel,
-    datePerceptionAvsLabel: formatDateFr(
-      computed.datePerceptionAvs || computed.dateDepart,
-    ),
+    datePerceptionAvsLabel:
+      computed.avsDejaActive && !computed.datePerceptionAvs
+        ? "À compléter"
+        : formatDateFr(computed.datePerceptionAvs || computed.dateDepart),
     agePerceptionAvsLabel:
       computed.agePerceptionAvsLabel || computed.ageLegalLabel,
+    lppAvertissement: computed.lppAvertissement || null,
     lppLignes: (computed.lppLignes || []).map((line) => ({
       institution: line.institution,
       type: line.type,
@@ -654,11 +675,13 @@ function buildVaudoise(
 }
 
 function hypotheseSaisie(row: RenteHypothesisInput): boolean {
-  return Boolean(
-    (row.compagnie || "").trim() ||
-      row.capitalPlace ||
-      row.renteGarantieAnnuelle ||
-      row.participationExcedentsAnnuelle,
+  return offresDeHypothese(row).some((offre) =>
+    Boolean(
+      (offre.compagnie || "").trim() ||
+        offre.capitalPlace ||
+        offre.renteGarantie ||
+        offre.participationExcedents,
+    ),
   );
 }
 
@@ -682,11 +705,38 @@ function resolveHypothesesRente(
 
   const byId = new Map(computedOffres.map((col) => [col.id, col]));
   const offerCols = saisie.length
-    ? saisie.map(
-        (row, index) =>
-          byId.get(row.id) ??
-          columnFromSaisie(row, index, ctx.avsTotal, ctx.renteLppResiduelleTotal),
-      )
+    ? saisie.map((row, index) => {
+        const fresh = columnFromSaisie(
+          row,
+          index,
+          ctx.avsTotal,
+          ctx.renteLppResiduelleTotal,
+        );
+        const prev = byId.get(row.id);
+        if (!prev) return fresh;
+        if ((fresh.offres?.length || 0) >= 2) {
+          const memeAssiette =
+            Math.abs(prev.revenuFiscalImposable - fresh.revenuFiscalImposable) < 0.02 &&
+            Math.abs((prev.revenuBrutEncaisse || 0) - fresh.revenuBrutEncaisse) < 0.02;
+          if (!memeAssiette) return fresh;
+          return {
+            ...fresh,
+            impotEstv: prev.impotEstv,
+            revenuNetApresImpot: prev.revenuNetApresImpot,
+            ecartNetAnnuelVsLpp: prev.ecartNetAnnuelVsLpp,
+          };
+        }
+        return {
+          ...prev,
+          label: fresh.label,
+          compagnie: fresh.compagnie,
+          typeLabel: fresh.typeLabel,
+          capitalPlace: fresh.capitalPlace,
+          dureeAnnees: fresh.dureeAnnees,
+          dureeDiffereAnnees: fresh.dureeDiffereAnnees,
+          recommander: Boolean(row.recommander),
+        };
+      })
     : computedOffres;
   const withLpp = Boolean(input.comparerAvecRenteLpp) || Boolean(lppCol);
   const columns: RenteHypothesisColumn[] = [
@@ -707,6 +757,17 @@ function columnFromSaisie(
   avs: number,
   renteLppResiduelle: number,
 ): RenteHypothesisColumn {
+  const offres = offresDeHypothese(row);
+  if (offres.length >= 2) {
+    return buildColonneCombinee(
+      row.id,
+      index,
+      offres,
+      avs,
+      renteLppResiduelle,
+      Boolean(row.recommander),
+    );
+  }
   const garantie = row.renteGarantieAnnuelle || 0;
   const participation = row.participationExcedentsAnnuelle || 0;
   const capital = row.capitalPlace || 0;
@@ -731,6 +792,7 @@ function columnFromSaisie(
     typeLabel: row.type === "viagere" ? "Viagère" : "Certaine",
     capitalPlace: capital || null,
     dureeAnnees: row.type === "certaine" ? row.dureeAnnees : null,
+    dureeDiffereAnnees: anneesDiffere(row.dureeDiffereAnnees),
     renteAvs: avs,
     renteLppResiduelle,
     renteGarantie: garantie,

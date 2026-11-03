@@ -1,9 +1,11 @@
 /**
  * Résumé des prestations LPP à 65 ans, pour la planification seulement.
- * Les montants sont ceux de la ligne d'âge 65. Aucun barème de caisse n'est recalculé.
+ * Les montants sont ceux saisis. Aucun barème de caisse n'est recalculé.
+ * Le tableau 60–65 reprend le capital disponible et la rente de chaque âge.
  */
-import { formatChf } from "../mappers";
+import { formatChf, genderFromCivilite, relationshipFromEtat } from "../mappers";
 import { lppRenteAnnuelle } from "../services/LPPCalculationService";
+import { taxCalculationService } from "../services/TaxCalculationService";
 import type {
   AnalyseInput,
   LppByAge,
@@ -28,16 +30,40 @@ export interface ResumeNote {
   text: string;
 }
 
+export interface ResumeAgeRow {
+  age: number;
+  /** Capital LPP disponible à cet âge. Le libre passage n'est pas inclus. */
+  capital: number;
+  /** Rente annuelle. Null quand le tableau distingue minimum et maximum. */
+  rente: number | null;
+  renteMinimum: number | null;
+  renteMaximum: number | null;
+  impot: number | null;
+}
+
+export interface ResumeCapitalTaxLine {
+  personKey: PersonKey;
+  age: number;
+  capital: number;
+  impot: number | null;
+}
+
 export interface ResumePersonTable {
+  personKey: PersonKey;
   subtitle: string;
   headers: string[];
   rows: ResumeRow[];
   totals: ResumeCell[];
   notes: ResumeNote[];
+  ages: ResumeAgeRow[];
 }
 
 export interface ResumePrestationsLpp {
-  title: "Résumé des prestations deuxième pilier";
+  title: typeof RESUME_LPP_TITLE;
+  /** Page « à 65 ans ». Indépendante du tableau 60–65. */
+  showResume: boolean;
+  /** Page « Capital disponible et rente de 58 à 65 ans ». */
+  showAges: boolean;
   tables: ResumePersonTable[];
 }
 
@@ -49,6 +75,9 @@ const NOTE_RETRAITES_POPULAIRES =
   "Retraites Populaires : l'assuré peut, selon le règlement applicable, choisir de prendre tout ou partie de son avoir de vieillesse sous forme de capital, ou de le percevoir sous forme de rente.";
 
 const MARKS = ["*", "**", "***"];
+const AGE_SCHEDULE = [58, 59, 60, 61, 62, 63, 64, 65] as const;
+
+export const RESUME_LPP_TITLE = "Résumé des prestations deuxième pilier à 65 ans";
 
 interface FundLine {
   institution: string;
@@ -58,19 +87,126 @@ interface FundLine {
 }
 
 export function buildResumePrestationsLpp(
-  input: Pick<AnalyseInput, "afficherResumePrestationsLpp" | "client1" | "conjoint" | "libresPassages">,
+  input: Pick<
+    AnalyseInput,
+    | "afficherResumePrestationsLpp"
+    | "afficherTableauAgesLpp"
+    | "client1"
+    | "conjoint"
+    | "libresPassages"
+  >,
 ): ResumePrestationsLpp | null {
-  if (!input.afficherResumePrestationsLpp) return null;
+  const showResume = Boolean(input.afficherResumePrestationsLpp);
+  const showAges = Boolean(input.afficherTableauAgesLpp);
+  if (!showResume && !showAges) return null;
   const tables = [
     personTable(input.client1, "client1", input, "Assuré 1"),
   ];
   if (input.conjoint) {
     tables.push(personTable(input.conjoint, "conjoint", input, "Assuré 2"));
   }
+  let kept = tables.filter((table) => table.rows.length > 0);
+  if (!showAges) {
+    kept = kept.map((table) => ({ ...table, ages: [] }));
+  }
+  if (!showResume) {
+    kept = kept.filter((table) => table.ages.length > 0);
+  }
+  if (kept.length === 0) return null;
   return {
-    title: "Résumé des prestations deuxième pilier",
-    tables: tables.filter((table) => table.rows.length > 0),
+    title: RESUME_LPP_TITLE,
+    showResume,
+    showAges,
+    tables: kept,
   };
+}
+
+/** Pose l'impôt déjà calculé si le capital de la ligne n'a pas changé. */
+export function applyResumeCapitalTax(
+  block: ResumePrestationsLpp,
+  lines: ResumeCapitalTaxLine[] | null | undefined,
+): void {
+  if (!lines?.length) return;
+  for (const table of block.tables) {
+    for (const row of table.ages) {
+      const hit = lines.find(
+        (line) =>
+          line.personKey === table.personKey &&
+          line.age === row.age &&
+          line.capital === row.capital,
+      );
+      row.impot = hit?.impot ?? null;
+    }
+  }
+}
+
+/**
+ * Impôt ESTV sur le capital LPP disponible de chaque âge.
+ * Un assuré à la fois : le capital du conjoint n'est pas additionné.
+ */
+export async function fillResumeCapitalTax(
+  input: Pick<
+    AnalyseInput,
+    "client1" | "conjoint" | "etatCivil" | "taxGroupId" | "taxLocationId" | "taxYear"
+  >,
+  block: ResumePrestationsLpp,
+  reuseClient1?: Array<{ age: number; capital: number; impot: number | null; error?: string }>,
+): Promise<ResumeCapitalTaxLine[]> {
+  const taxGroupId = input.taxGroupId ?? input.taxLocationId;
+  const lines: ResumeCapitalTaxLine[] = [];
+  if (!taxGroupId) return lines;
+  const relationship = relationshipFromEtat(input.etatCivil);
+  for (const table of block.tables) {
+    const person = table.personKey === "conjoint" ? input.conjoint : input.client1;
+    if (!person) continue;
+    const gender = genderFromCivilite(person.civilite);
+    for (const row of table.ages) {
+      if (!(row.capital > 0)) {
+        lines.push({ personKey: table.personKey, age: row.age, capital: row.capital, impot: null });
+        continue;
+      }
+      const reused =
+        table.personKey === "client1"
+          ? reuseClient1?.find(
+              (scenario) =>
+                scenario.age === row.age &&
+                scenario.capital === row.capital &&
+                scenario.impot != null &&
+                !scenario.error,
+            )
+          : undefined;
+      if (reused) {
+        row.impot = reused.impot;
+        lines.push({
+          personKey: table.personKey,
+          age: row.age,
+          capital: row.capital,
+          impot: reused.impot,
+        });
+        continue;
+      }
+      try {
+        const tax = await taxCalculationService.calculateCapitalTax({
+          ageAtPayment: row.age,
+          capital: row.capital,
+          gender,
+          relationship,
+          taxGroupId,
+          taxYear: input.taxYear,
+        });
+        row.impot = tax.impotTotal;
+      } catch {
+        row.impot = null;
+      }
+      lines.push({
+        personKey: table.personKey,
+        age: row.age,
+        capital: row.capital,
+        impot: row.impot,
+      });
+    }
+  }
+  return lines;
 }
 
 export function renderResumePrestationsLppHtml(block: ResumePrestationsLpp): string {
@@ -112,11 +248,13 @@ function personTable(
     ? ["", "Capital max", "Rente minimum", "Rente maximum"]
     : ["", "Capital", "Rente"];
   return {
+    personKey: key,
     subtitle: personSubtitle(person, fallback),
     headers,
     rows,
     totals: totalCells(rows),
     notes: notes.map(({ mark, text }) => ({ mark, text })),
+    ages: ageSchedule(person, range),
   };
 }
 
@@ -254,6 +392,115 @@ function renderTable(table: ResumePersonTable): string {
     <tr class="total"><td class="lab">Total</td>${totals}</tr>
   </table>
   ${notes}`;
+}
+
+function ageSchedule(person: PersonInput, range: boolean): ResumeAgeRow[] {
+  const funds = rawFunds(person);
+  const rows: ResumeAgeRow[] = [];
+  for (const age of AGE_SCHEDULE) {
+    let capital = 0;
+    let rente = 0;
+    let renteMin = 0;
+    let renteMax = 0;
+    let hasMinimum = false;
+    let any = false;
+    for (const fund of funds) {
+      const row = fund.rows.find((item) => item.age === age);
+      if (!row) continue;
+      const cap = Number(row.capital) || 0;
+      const full = lppRenteAnnuelle(row.rente, fund.unite);
+      const reduced = lppRenteAnnuelle(row.renteReduite, fund.unite);
+      if (cap === 0 && full === 0 && reduced === 0) continue;
+      any = true;
+      capital += cap;
+      rente += full;
+      renteMax += full;
+      if (fund.type === "etatique" && row.renteReduite != null && Number(row.renteReduite) > 0) {
+        hasMinimum = true;
+        renteMin += reduced;
+      }
+    }
+    if (!any) continue;
+    rows.push({
+      age,
+      capital: round2(capital),
+      rente: range ? null : round2(rente),
+      renteMinimum: range ? (hasMinimum ? round2(renteMin) : null) : null,
+      renteMaximum: range ? round2(renteMax) : null,
+      impot: null,
+    });
+  }
+  return rows;
+}
+
+function rawFunds(person: PersonInput): Array<{
+  type: LppCaisseType;
+  unite: LppRenteUnite | undefined;
+  rows: LppByAge[];
+}> {
+  const funds: Array<{ type: LppCaisseType; unite: LppRenteUnite | undefined; rows: LppByAge[] }> = [];
+  const primaryRows = person.lpp || [];
+  const primaryHas =
+    (person.lppInstitution || "").trim() ||
+    primaryRows.some((row) => (row.capital || 0) !== 0 || (row.rente || 0) !== 0 || (row.renteReduite || 0) !== 0);
+  if (primaryHas) {
+    funds.push({
+      type: person.lppType === "etatique" ? "etatique" : "classique",
+      unite: person.lppRenteUnite,
+      rows: primaryRows,
+    });
+  }
+  for (const avoir of person.lppAvoirs || []) {
+    funds.push({
+      type: avoir.type === "etatique" ? "etatique" : "classique",
+      unite: avoir.renteUnite,
+      rows: avoir.rows || [],
+    });
+  }
+  return funds;
+}
+
+export function renderResumeAgesHtml(block: ResumePrestationsLpp): string {
+  const tables = block.tables.filter((table) => table.ages.length > 0);
+  if (tables.length === 0) return "";
+  return `<section class="lpp-resume" data-block="resume-prestations-lpp-ages">
+  <div class="lpp-resume-title">Capital disponible et rente de 58 à 65 ans</div>
+  <p class="lpp-resume-note">Chaque ligne reprend le capital LPP disponible et la rente à cet âge. L'impôt est estimé sur ce capital, pour cet assuré et la commune fiscale du dossier. Le libre passage n'est pas compris.</p>
+  ${tables.map((table) => renderAgeTable(table)).join("")}
+</section>`;
+}
+
+function renderAgeTable(table: ResumePersonTable): string {
+  const range = table.ages.some((row) => row.renteMaximum != null);
+  const headers = range
+    ? ["Âge", "Capital disponible", "Rente minimum", "Rente maximum", "Impôt sur le capital"]
+    : ["Âge", "Capital disponible", "Rente", "Impôt sur le capital"];
+  const head = headers
+    .map((header, index) => `<th class="${index === 0 ? "lab" : "val"}">${esc(header)}</th>`)
+    .join("");
+  const body = table.ages
+    .map((row) => {
+      const renteCells = range
+        ? `${moneyCell(row.renteMinimum, true)}${moneyCell(row.renteMaximum, true)}`
+        : moneyCell(row.rente, true);
+      return `<tr><td class="lab">${row.age} ans</td>${moneyCell(row.capital, false)}${renteCells}${moneyCell(row.impot, false)}</tr>`;
+    })
+    .join("");
+  return `<p class="lpp-resume-name">${esc(table.subtitle)}</p>
+  <table class="data lpp-resume">
+    <tr>${head}</tr>
+    ${body}
+  </table>`;
+}
+
+function moneyCell(value: number | null, annual: boolean): string {
+  if (value == null) return `<td class="val">—</td>`;
+  const text = annual ? `${formatChf(value)}/an` : formatChf(value);
+  return `<td class="val">${esc(text)}</td>`;
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function renderCell(cell: ResumeCell | undefined): string {

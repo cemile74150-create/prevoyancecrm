@@ -332,3 +332,47 @@ def test_entreprise_offres_gform14_core():
     assert by_name["input_34"]["label"] == "Commentaires"
     assert by_name["input_100"]["type"] == "textarea"
     assert by_name["input_100"]["label"] == "Vos commentaires"
+
+
+def test_lpp_incapacite_visible_seulement_si_pas_pleine_capacite():
+    """Oui masque la nature d'incapacité ; Non l'affiche et l'exige.
+
+    Une saisie puis un retour à Oui ne doit pas partir comme une incapacité.
+    """
+    from offre_form_types import filter_form_payload_to_schema, iter_schema_filled_fields, missing_schema_required
+
+    data = _load("entreprise_46.json")
+    by_name = {f["name"]: f for f in data["fields"]}
+    question = by_name["input_62"]
+    detail = by_name["input_83"]
+    label = "Nature de l'incapacité de gain et depuis quand ?"
+    assert question["label"] == "Toutes les personnes assurées sont-elles en pleine capacité de travail ?"
+    assert question["options"] == ["Oui", "Non"]
+    assert detail["label"] == label
+    assert detail["required"] is True
+    assert detail["show_when"]["rules"] == [
+        {"field": "input_62", "op": "is", "value": "Non"},
+    ]
+
+    oui = {
+        "input_62": "Oui",
+        "input_83": "dos depuis 2024",
+        "input_83__comment": "ancienne précision",
+    }
+    assert label not in missing_schema_required("entreprise_46", oui)
+    cleaned = filter_form_payload_to_schema("entreprise_46", oui)
+    assert cleaned["input_62"] == "Oui"
+    assert cleaned["input_83"] == ""
+    assert cleaned["input_83__comment"] == ""
+    sent = [row_label for row_label, value in iter_schema_filled_fields("entreprise_46", cleaned) if value]
+    assert label not in sent
+
+    non_vide = {"input_62": "Non", "input_83": ""}
+    assert label in missing_schema_required("entreprise_46", non_vide)
+
+    non_saisi = {"input_62": "Non", "input_83": "dos depuis 2024"}
+    assert label not in missing_schema_required("entreprise_46", non_saisi)
+    kept = filter_form_payload_to_schema("entreprise_46", non_saisi)
+    assert kept["input_83"] == "dos depuis 2024"
+    sent_non = [row_label for row_label, value in iter_schema_filled_fields("entreprise_46", kept) if value]
+    assert label in sent_non

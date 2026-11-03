@@ -4,19 +4,30 @@ import { revenuFiscalImposable } from "./rente-hypotheses.ts";
 import {
   assietteOffreComparatif,
   fortunesDecroissantes,
+  gainNetOffre,
+  impotFortuneCapitalNonAffecte,
+  impotRevenuPourPdf,
   revenuEncaisseOffre,
   totalImpotFortune,
 } from "./comparatif-rente-offre.ts";
 
 describe("assiette de l'onglet comparatif", () => {
-  it("rente certaine : 70 % de la participation, rente garantie hors assiette", () => {
+  it("rente certaine : 0 % de la garantie + 100 % de la participation", () => {
     assert.equal(
       assietteOffreComparatif({
         type: "certaine",
         renteGarantie: 6001,
         participationExcedents: 1742,
       }),
-      1219.4,
+      1742,
+    );
+    assert.equal(
+      assietteOffreComparatif({
+        type: "certaine",
+        renteGarantie: 10_000,
+        participationExcedents: 1_000,
+      }),
+      1_000,
     );
     assert.equal(
       assietteOffreComparatif({
@@ -41,14 +52,22 @@ describe("assiette de l'onglet comparatif", () => {
     );
   });
 
-  it("rente viagère : 4 % de la garantie + 100 % de la participation, sans AVS ni LPP", () => {
+  it("rente viagère : 4 % de la garantie + 70 % de la participation, sans AVS ni LPP", () => {
     assert.equal(
       assietteOffreComparatif({
         type: "viagere",
         renteGarantie: 6001,
         participationExcedents: 1742,
       }),
-      1982.04,
+      240.04 + 1219.4,
+    );
+    assert.equal(
+      assietteOffreComparatif({
+        type: "viagere",
+        renteGarantie: 10_000,
+        participationExcedents: 1_000,
+      }),
+      400 + 700,
     );
   });
 });
@@ -91,5 +110,34 @@ describe("total impôt fortune", () => {
 describe("revenu encaissé de l'offre", () => {
   it("additionne la rente garantie et la participation", () => {
     assert.equal(revenuEncaisseOffre(6001, 1742), 7743);
+  });
+});
+
+describe("impôt de la rente sur le PDF", () => {
+  it("garde le montant annuel : 340 sur 10 ans reste 340 par an", () => {
+    const line = impotRevenuPourPdf("certaine", 340, 10);
+    assert.equal(line.mode, "annuel");
+    assert.equal(line.montant, 340);
+    assert.equal(line.libelle, "Impôt de la rente (par an)");
+    assert.equal(line.annees, null);
+    assert.equal(impotRevenuPourPdf("viagere", 340, 20).montant, 340);
+  });
+});
+
+describe("gain net et fortune non affectée", () => {
+  it("gain net = revenu net annuel × durée − capital affecté", () => {
+    assert.equal(gainNetOffre(7621.06, 20, 130_000), 22_421.2);
+    assert.equal(gainNetOffre(10_000, 10, 400_000), -300_000);
+    assert.equal(gainNetOffre(10_000, null, 400_000), null);
+    assert.equal(gainNetOffre(null, 20, 130_000), null);
+    assert.equal(gainNetOffre(10_000, 0, 400_000), null);
+  });
+
+  it("impôt fortune du capital non affecté = impôt annuel sur ce capital × durée", () => {
+    assert.equal(impotFortuneCapitalNonAffecte(1_300, 20), 26_000);
+    assert.equal(impotFortuneCapitalNonAffecte(400, 10), 4_000);
+    assert.equal(impotFortuneCapitalNonAffecte(400, null), null);
+    assert.equal(impotFortuneCapitalNonAffecte(null, 20), null);
+    assert.equal(impotFortuneCapitalNonAffecte(400, 0), null);
   });
 });

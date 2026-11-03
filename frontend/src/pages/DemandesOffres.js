@@ -18,6 +18,7 @@ import {
   isDemandeAnnuleeStatut, isHorsCours, statutLabel,
 } from "@/lib/demandesOffres";
 import { uniqueConseillerNames } from "@/lib/conseillers";
+import { PendingComplementBadge } from "@/components/NotesConseiller";
 import {
   BarChart3, Briefcase, CheckCircle2, Clock3, FilePlus2, FileSpreadsheet,
   FileText, Layers, Loader2, Mail, Pencil, RotateCcw, Search, Tag, Trash2, TriangleAlert,
@@ -998,6 +999,7 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                                 <OrigineBadge origine={r.demande_origine} />
                                 <span className="flex items-center gap-1.5 flex-wrap justify-end">
                                   <StatutBadge statut={r.statut} />
+                                  <PendingComplementBadge count={r.nb_complements_en_attente} />
                                   {isAdmin && r.statut === "Demande envoyée" && (
                                     <button
                                       type="button"
@@ -1079,7 +1081,10 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                             >
                               <p className="text-sm font-medium" style={{ color: RED }}>{r.client_label}</p>
                               <p className="text-xs text-muted-foreground mt-0.5">{typeLabel(r)}</p>
-                              <div className="mt-1.5"><OrigineBadge origine={r.demande_origine} /></div>
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                <OrigineBadge origine={r.demande_origine} />
+                                <PendingComplementBadge count={r.nb_complements_en_attente} />
+                              </div>
                               <p className="text-sm font-bold mt-1.5 text-slate-800">{formatChf(r.montant_prime)}</p>
                             </button>
                           ))}

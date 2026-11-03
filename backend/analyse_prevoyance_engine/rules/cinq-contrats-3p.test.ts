@@ -347,7 +347,7 @@ describe("5 contrats 3A/3B", () => {
     assert.ok(html.includes("Rente LPP – Deux"));
     assert.equal(html.includes("Assuré 1"), false);
     assert.equal(html.includes("Assuré 2"), false);
-    assert.ok(html.includes("LPP – Assuré – Capital + rente"));
+    assert.ok(html.includes("LPP – Assuré – Capital + rente réduite"));
     assert.ok(html.includes("LPP – Deux – Capital"));
     assert.ok(html.includes("Analyse des contrats de prévoyance 3A/3B"));
     assert.equal(html.includes("(suite)"), false);

@@ -81,6 +81,69 @@ let webpackConfig = {
       '@': path.resolve(__dirname, 'src'),
     },
     configure: (webpackConfig) => {
+      const moteurAvs = path.resolve(
+        __dirname,
+        "../backend/analyse_prevoyance_engine/rules",
+      );
+      const appSrc = path.resolve(__dirname, "src");
+      const allowedAvs = [
+        path.join(moteurAvs, "comparatif-avs.ts"),
+        path.join(moteurAvs, "avs-age.ts"),
+      ];
+      webpackConfig.resolve.plugins = (webpackConfig.resolve.plugins || []).filter(
+        (plugin) => plugin.constructor.name !== "ModuleScopePlugin",
+      );
+      // Le module partagé est hors de src. Babel y injecte des helpers
+      // @babel/runtime par chemin absolu : le plugin CRA les refuse.
+      webpackConfig.resolve.plugins.push({
+        apply(resolver) {
+          resolver.hooks.file.tapAsync(
+            "LeoSoftModuleScopePlugin",
+            (request, _contextResolver, callback) => {
+              if (!request.context || !request.context.issuer) return callback();
+              const raw = String(request.__innerRequest_request || "");
+              const root = String(request.descriptionFileRoot || "");
+              const resolved = String(request.path || "");
+              const inNodeModules = [raw, root, resolved].some(
+                (value) =>
+                  value.includes(`${path.sep}node_modules${path.sep}`) ||
+                  value.includes("/node_modules/") ||
+                  value.includes("\\node_modules\\"),
+              );
+              if (inNodeModules || !raw) return callback();
+              const issuerOutside = path.relative(appSrc, request.context.issuer).startsWith("..");
+              if (issuerOutside) return callback();
+              const requestFullPath = path.resolve(path.dirname(request.context.issuer), raw);
+              if (
+                allowedAvs.includes(requestFullPath) ||
+                requestFullPath.startsWith(moteurAvs)
+              ) {
+                return callback();
+              }
+              if (path.relative(appSrc, requestFullPath).startsWith("..")) {
+                return callback(
+                  new Error(
+                    `You attempted to import ${raw} which falls outside of the project src/ directory. Relative imports outside of src/ are not supported.`,
+                  ),
+                );
+              }
+              return callback();
+            },
+          );
+        },
+      });
+      const oneOf = (webpackConfig.module.rules || []).find((rule) =>
+        Array.isArray(rule.oneOf),
+      );
+      if (oneOf) {
+        for (const rule of oneOf.oneOf) {
+          const loader = String(rule.loader || "");
+          if (!loader.includes("babel-loader") || !rule.include) continue;
+          const include = Array.isArray(rule.include) ? rule.include : [rule.include];
+          const couvreSrc = include.some((item) => String(item).includes(`${path.sep}src`));
+          if (couvreSrc) rule.include = include.concat(moteurAvs);
+        }
+      }
 
       // Add ignored patterns to reduce watched directories
         webpackConfig.watchOptions = {

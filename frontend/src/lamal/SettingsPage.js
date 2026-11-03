@@ -27,7 +27,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <LamalShell title="Paramètres et données OFSP" subtitle="Les primes actives ne sont remplacées qu'après contrôle du fichier. Un jeu incomplet est rejeté.">
+    <LamalShell title="Paramètres et données" subtitle="Les primes actives ne sont remplacées qu'après contrôle du fichier. Un jeu incomplet est rejeté.">
       <Card className="p-5 space-y-3 text-sm">
         <p>Source : {meta?.sources?.premiums}</p>
         <p>Régions : {meta?.sources?.regions}</p>

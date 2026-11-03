@@ -98,12 +98,22 @@ export function resolveThirdPillarCapital(
 }
 
 export function effectiveLppWithdrawalAge(
-  person: { ageRetraitLppSouhaite?: number | null } | null | undefined,
+  person:
+    | {
+        ageRetraitLppSouhaite?: number | null;
+        ageRetraiteSouhaite?: number | null;
+      }
+    | null
+    | undefined,
   dossierAge: number | null | undefined,
 ): number | null {
   const custom = person?.ageRetraitLppSouhaite;
   if (custom != null && custom !== ("" as unknown) && Number.isFinite(Number(custom))) {
     return Number(custom);
+  }
+  const profil = person?.ageRetraiteSouhaite;
+  if (profil != null && profil !== ("" as unknown) && Number.isFinite(Number(profil))) {
+    return Number(profil);
   }
   if (dossierAge != null && Number.isFinite(Number(dossierAge))) {
     return Number(dossierAge);

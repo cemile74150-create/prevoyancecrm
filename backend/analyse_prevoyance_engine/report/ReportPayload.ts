@@ -2,6 +2,8 @@
  * Objet rapport unique — seule source pour preview HTML, contrôle UI et PDF.
  * Aucun calcul métier dans le rendu PDF : tout vient du moteur via ce payload.
  */
+import type { ComparatifAvs } from "../rules/comparatif-avs";
+import type { AnalyseAvsPersonne } from "../rules/analyse-avs-depart";
 import type { ResumePrestationsLpp } from "../rules/resume-prestations-lpp";
 
 export interface ReportMoney {
@@ -43,6 +45,8 @@ export interface ReportPersonBlock {
   ageFinActiviteLabel?: string;
   datePerceptionAvsLabel?: string;
   agePerceptionAvsLabel?: string;
+  /** Ligne LPP d'un autre âge, non utilisée. */
+  lppAvertissement?: string | null;
   /** Détail seulement s'il y a plusieurs caisses ou une caisse étatique. */
   lppLignes?: Array<{
     institution: string;
@@ -269,6 +273,10 @@ export interface ReportPayload {
   };
   /** Absent quand la case du dossier est décochée. */
   resumePrestationsLpp: ResumePrestationsLpp | null;
+  /** Tableau, âge d'équilibre et cumul AVS. Null : l'ancien comparatif n'est plus imprimé. */
+  comparatifAvs: ComparatifAvs | null;
+  /** Une analyse AVS par assuré. Jamais un cumul de couple. */
+  analysesAvs: AnalyseAvsPersonne[];
   flags: {
     hasThirdPillar: boolean;
     hasRentePont: boolean;

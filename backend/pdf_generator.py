@@ -39,6 +39,17 @@ DOCUMENT_TEMPLATES = [
         "template_version": "mg_lsa_v2",
     },
     {
+        "id": "fiche_client",
+        "label": "Fiche client",
+        "description": "Fiche client OFF 2020 — agent, date et identité du client",
+        "filename": "fiche_client_off2020.pdf",
+        "mode": "acroform",
+        "output_prefix": "Fiche_client",
+        "category": "Fiche client",
+        "checklist_item": "Fiche client",
+        "filename_no_stamp": True,
+    },
+    {
         "id": "procuration_avs_lpp",
         "label": "Procuration AVS/LPP",
         "description": "Procuration Agence Mendes pour AVS et 2e pilier",
@@ -426,8 +437,30 @@ def client_field_values(
     }
     if extra:
         for k, v in extra.items():
-            if v is not None:
+            if v is None:
+                continue
+            if k == "avs_caisse_address_lines" and isinstance(v, (list, tuple)):
+                values[k] = [str(x).strip() for x in v if str(x).strip()]
+            else:
                 values[k] = _safe(v)
+
+    if not values.get("avs_caisse_address_lines"):
+        try:
+            from avs_caisse import get_caisse, resolve_avs_caisse
+
+            preferred = None
+            stored = client.get("avs_caisse") if isinstance(client.get("avs_caisse"), dict) else None
+            if stored:
+                preferred = stored.get("id")
+            preferred = preferred or client.get("avs_caisse_id")
+            resolved = resolve_avs_caisse(client, selected_id=preferred)
+            caisse = resolved.get("caisse") or get_caisse("CSC")
+            if caisse:
+                values["avs_caisse_id"] = _safe(caisse.get("id"))
+                values["avs_caisse_name"] = _safe(caisse.get("name"))
+                values["avs_caisse_address_lines"] = list(caisse.get("address_lines") or [])
+        except Exception:
+            pass
     return values
 
 
@@ -1094,6 +1127,71 @@ def _map_mandat_de_gestion(values: Dict[str, str], options: Optional[Dict[str, A
     return {k: _clean_pdf_text(v) if isinstance(v, str) and not v.startswith("/") else v for k, v in mapping.items()}
 
 
+# Cases M. / Mme / Société de la fiche client (modèle OFF 2020).
+FICHE_CLIENT_M = "Check Box1.2.0.1.0"
+FICHE_CLIENT_MME = "Check Box1.2.1.1"
+FICHE_CLIENT_SOCIETE = "Check Box1.2.1.0"
+
+
+def _fiche_client_fill_style() -> Dict[str, Any]:
+    style = _mandat_de_gestion_fill_style()
+    style["center_field_names"] = []
+    style["valign"] = "center"
+    style["text_inset_x"] = 2.0
+    return style
+
+
+def _fiche_client_civility(values: Dict[str, str]) -> Dict[str, str]:
+    """Coche M. ou Mme, comme sur le mandat."""
+    sexe = _norm(values.get("sexe") or "")
+    chosen: Optional[str] = None
+    if sexe.startswith("f") or "feminin" in sexe or sexe in {"f", "femme", "madame", "mme"}:
+        chosen = "F"
+    elif sexe.startswith("m") or "masculin" in sexe or sexe in {"h", "homme", "monsieur", "mr"}:
+        chosen = "M"
+    else:
+        civ = _norm(values.get("civilite") or "")
+        if civ in {"madame", "mme"}:
+            chosen = "F"
+        elif civ in {"monsieur", "mr", "m"}:
+            chosen = "M"
+    if chosen == "F":
+        return {FICHE_CLIENT_MME: "/Oui"}
+    if chosen == "M":
+        return {FICHE_CLIENT_M: "/Oui"}
+    return {}
+
+
+def _map_fiche_client(values: Dict[str, str], options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Fiche client OFF 2020 : agent, date, et identité déjà saisie dans LeoSoft."""
+    del options
+    agent = _clean_pdf_text(values.get("conseiller") or values.get("agent_full") or "")
+    raison = _clean_pdf_text(values.get("raison_sociale") or values.get("societe") or "")
+    mapping: Dict[str, Any] = {
+        "NOM DE LGENT": agent.upper() if agent else "",
+        "DATE DU JOUR": _clean_pdf_text(values.get("today")),
+        "Nom.0": _safe(values.get("nom")),
+        "Prénom": _safe(values.get("prenom")),
+        "Date de naissance.0": _clean_pdf_text(values.get("date_naissance")),
+        "Nationalité": _safe(values.get("nationalite")),
+        "Profession": _safe(values.get("profession")),
+        "Etat civil": _safe(values.get("etat_civil")),
+        "Adresse": _safe(values.get("adresse")),
+        "undefined": _safe(values.get("npa")),
+        "undefined_2": _safe(values.get("ville")),
+        "Tel": _safe(values.get("telephone")),
+        "Email.0": _safe(values.get("email")),
+        "Raison Sociale": raison,
+    }
+    mapping.update(_fiche_client_civility(values))
+    if raison:
+        mapping[FICHE_CLIENT_SOCIETE] = "/Oui"
+    return {
+        k: _clean_pdf_text(v) if isinstance(v, str) and not str(v).startswith("/") else v
+        for k, v in mapping.items()
+    }
+
+
 def _civility_checkbox_mandat(values: Dict[str, str], *, person: str = "client") -> Dict[str, str]:
     """Coche M./Mme sur le modèle MG+LSA (Check Box*) et l'ancien modèle (Monsieur/Madame)."""
     if person == "spouse":
@@ -1131,6 +1229,7 @@ FIELD_MAPPERS = {
     "lettre_avs": _map_lettre_avs,
     "lettre_decompte_lpp": _map_lettre_decompte,
     "mandat_de_gestion": _map_mandat_de_gestion,
+    "fiche_client": _map_fiche_client,
 }
 
 # Champs texte attendus par modèle (validation au remplissage)
@@ -1148,6 +1247,10 @@ TEMPLATE_EXPECTED_TEXT_FIELDS: Dict[str, List[str]] = {
         "Text1", "Text2",
         "Représenté par le courtier",
         "Le représentant du Mandataire inscrit au registre de la FINMA sous le numéro",
+    ],
+    "fiche_client": [
+        "NOM DE LGENT", "DATE DU JOUR", "Nom.0", "Prénom",
+        "Nationalité", "Profession", "Etat civil", "Adresse", "Tel",
     ],
 }
 
@@ -2116,6 +2219,8 @@ def _fill_acroform(
     fill_style = _detect_fill_style_from_pdf(template_path)
     if template_id == "mandat_de_gestion":
         fill_style = _mandat_de_gestion_fill_style()
+    elif template_id == "fiche_client":
+        fill_style = _fiche_client_fill_style()
     elif template_id == "procuration_avs_lpp":
         # Ne pas peindre de rectangles blancs : les encadrés du modèle sont gris clair.
         fill_style["erase_background"] = False
@@ -2219,6 +2324,11 @@ def _fill_acroform(
 
     # Activer Multiline si besoin. Sur la lettre de décompte, le champ
     # destinataire (« Adresse » / « Adresse caisse ») est multi-lignes.
+    qualified = template_id == "fiche_client"
+
+    def _widget_name(obj) -> Optional[str]:
+        return _annot_qualified_name(obj) if qualified else _annot_field_name(obj)
+
     MULTILINE = 1 << 12
     adresse_rect = None
     recherche_adresse_rect = None
@@ -2230,7 +2340,7 @@ def _fill_acroform(
             annots = annots.get_object()
         for annot in annots:
             obj = annot.get_object() if isinstance(annot, IndirectObject) else annot
-            name_s = _annot_field_name(obj)
+            name_s = _widget_name(obj)
             if not name_s:
                 continue
             name_low = name_s.casefold()
@@ -2260,6 +2370,7 @@ def _fill_acroform(
         "lettre_lpp",
         "lettre_avs",
         "mandat_de_gestion",
+        "fiche_client",
         "procuration_avs_lpp",
     }
     for page in writer.pages:
@@ -2280,7 +2391,7 @@ def _fill_acroform(
                 annots = annots.get_object()
             for annot in annots:
                 obj = annot.get_object() if isinstance(annot, IndirectObject) else annot
-                name_s = _annot_field_name(obj)
+                name_s = _widget_name(obj)
                 if not name_s:
                     continue
                 # Effacer toute apparence texte résiduelle
@@ -2306,9 +2417,9 @@ def _fill_acroform(
 
         # Boutons / radios : activation sûre par widget (états /AP locaux)
         if button_values:
-            _apply_button_states_on_page(page, button_values)
+            _apply_button_states_on_page(page, button_values, qualified_names=qualified)
 
-    if template_id not in {"mandat_de_gestion", "procuration_avs_lpp", "lettre_lpp", "lettre_avs"}:
+    if template_id not in {"mandat_de_gestion", "fiche_client", "procuration_avs_lpp", "lettre_lpp", "lettre_avs"}:
         _ensure_need_appearances(
             writer,
             acro_font=str(fill_style.get("acro_font") or PDF_FILL_FALLBACK_ACRO),
@@ -2320,7 +2431,7 @@ def _fill_acroform(
 
     # Une seule écriture visible : police du document (Calibri…).
     pdf_bytes = _overlay_filled_acroform_fields(
-        pdf_bytes, overlay_draw_values, multiline_names, style=fill_style
+        pdf_bytes, overlay_draw_values, multiline_names, style=fill_style, qualified_names=qualified
     )
     if template_id == "mandat_de_gestion":
         # Nouveau modèle MG+LSA : dates déjà en cases séparées via AcroForm.
@@ -2450,6 +2561,33 @@ def _overlay_multiline_text(
     )
 
 
+def _annot_qualified_name(obj) -> Optional[str]:
+    """Nom complet Parent.Enfant, comme PdfReader.get_fields()."""
+    parts: List[str] = []
+    cur = obj
+    seen: set[int] = set()
+    for _ in range(8):
+        if cur is None:
+            break
+        ident = id(cur)
+        if ident in seen:
+            break
+        seen.add(ident)
+        try:
+            if hasattr(cur, "get_object"):
+                cur = cur.get_object()
+        except Exception:
+            break
+        name = cur.get("/T") if hasattr(cur, "get") else None
+        if name is not None:
+            parts.append(str(name))
+        parent = cur.get("/Parent") if hasattr(cur, "get") else None
+        cur = parent
+    if not parts:
+        return None
+    return ".".join(reversed(parts))
+
+
 def _annot_field_name(obj) -> Optional[str]:
     """Nom du champ AcroForm, y compris via /Parent (widgets sans /T local)."""
     cur = obj
@@ -2504,7 +2642,7 @@ def _normalize_button_targets(raw: Any) -> List[str]:
     return []
 
 
-def _apply_button_states_on_page(page, button_values: Dict[str, Any]) -> None:
+def _apply_button_states_on_page(page, button_values: Dict[str, Any], *, qualified_names: bool = False) -> None:
     """
     Active les cases/radios de façon sûre :
     - remet /Off les widgets du groupe non sélectionnés
@@ -2520,7 +2658,7 @@ def _apply_button_states_on_page(page, button_values: Dict[str, Any]) -> None:
         annots = annots.get_object()
     for annot in annots:
         obj = annot.get_object() if isinstance(annot, IndirectObject) else annot
-        name_s = _annot_field_name(obj)
+        name_s = _annot_qualified_name(obj) if qualified_names else _annot_field_name(obj)
         if not name_s or name_s not in button_values:
             continue
         targets = _normalize_button_targets(button_values[name_s])
@@ -2560,6 +2698,8 @@ def _overlay_filled_acroform_fields(
     text_values: Dict[str, Any],
     multiline_names: set[str],
     style: Optional[Dict[str, Any]] = None,
+    *,
+    qualified_names: bool = False,
 ) -> bytes:
     """
     Redessine toutes les valeurs texte avec la police du document (Calibri…).
@@ -2601,7 +2741,7 @@ def _overlay_filled_acroform_fields(
             annots = annots.get_object()
         for annot in annots:
             obj = annot.get_object() if isinstance(annot, IndirectObject) else annot
-            name_s = _annot_field_name(obj)
+            name_s = _annot_qualified_name(obj) if qualified_names else _annot_field_name(obj)
             if not name_s or name_s not in text_values or name_s in seen_names:
                 continue
             rect = obj.get("/Rect")
@@ -3343,6 +3483,90 @@ def merge_lpp_detected_funds(
     return [merged[k] for k in order]
 
 
+def assign_unknown_lpp_person(
+    funds: Optional[List[Dict[str, Any]]],
+    tracking: Optional[List[Dict[str, Any]]],
+    *,
+    person: str,
+    name: str,
+    source_doc_id: Optional[str] = None,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[str]]:
+    """Attribue Madame ou Monsieur à une réponse LPP dont la personne est inconnue.
+
+    Une réponse (même PDF) concerne une seule personne : toutes ses caisses
+    encore sans personne reçoivent le choix. Une caisse déjà Madame ou Monsieur
+    n'est pas modifiée.
+    """
+    wanted = resolve_lpp_person(explicit=person)
+    if wanted not in {"Madame", "Monsieur"}:
+        raise ValueError("Choisissez Madame ou Monsieur.")
+    name_key = _safe(name).casefold()
+    if not name_key:
+        raise ValueError("Caisse introuvable.")
+    source_filter = _safe(source_doc_id)
+
+    def unknown(item: Dict[str, Any]) -> bool:
+        return not _safe(item.get("person"))
+
+    def item_name(item: Dict[str, Any]) -> str:
+        return _safe(item.get("name") or item.get("nom")).casefold()
+
+    source_ids: set[str] = set()
+    matched = False
+    for collection in (funds or [], tracking or []):
+        for item in collection:
+            if not isinstance(item, dict) or not unknown(item):
+                continue
+            if item_name(item) != name_key:
+                continue
+            sid = _safe(item.get("source_doc_id"))
+            if source_filter and sid and sid != source_filter:
+                continue
+            matched = True
+            if sid:
+                source_ids.add(sid)
+
+    if not matched:
+        raise ValueError("Cette caisse a déjà une personne, ou elle est introuvable.")
+
+    def applies(item: Dict[str, Any]) -> bool:
+        if not isinstance(item, dict) or not unknown(item):
+            return False
+        sid = _safe(item.get("source_doc_id"))
+        if source_ids:
+            return bool(sid) and sid in source_ids
+        if source_filter and sid and sid != source_filter:
+            return False
+        return item_name(item) == name_key
+
+    new_funds: List[Dict[str, Any]] = []
+    assigned_names: set[str] = set()
+    for fund in funds or []:
+        if applies(fund):
+            item = dict(fund)
+            item["person"] = wanted
+            new_funds.append(item)
+            assigned_names.add(item_name(item))
+        else:
+            new_funds.append(fund)
+
+    new_tracking: List[Dict[str, Any]] = []
+    for entry in tracking or []:
+        if applies(entry) or (
+            isinstance(entry, dict)
+            and unknown(entry)
+            and not _safe(entry.get("source_doc_id"))
+            and item_name(entry) in assigned_names
+        ):
+            item = dict(entry)
+            item["person"] = wanted
+            new_tracking.append(item)
+        else:
+            new_tracking.append(entry)
+
+    return new_funds, new_tracking, sorted(source_ids)
+
+
 def generate_decompte_letters(
     client: Dict[str, Any],
     funds: List[Dict[str, Any]],
@@ -3356,21 +3580,22 @@ def generate_decompte_letters(
         # Uniquement la personne attachée à la caisse (PDF), jamais le titulaire global.
         person = resolve_lpp_person(explicit=fund.get("person"))
         if person not in {"Madame", "Monsieur"}:
-            raise ValueError(
-                f"Caisse « {name} » : personne Madame/Monsieur manquante. "
-                "Relancez l'analyse de la réponse LPP avant de générer les lettres."
+            # Pas de Madame/Monsieur détecté : la lettre standard part quand même.
+            letter_client = dict(client)
+            letter_client["civilite"] = ""
+            person = ""
+        else:
+            letter_client = resolve_lpp_assure_for_letter(client, person, spouse=spouse)
+            # Assertion finale avant écriture du document
+            assert_label = (
+                _civilite_from_sexe(letter_client.get("sexe"))
+                or _civilite_from_sexe(letter_client.get("civilite"))
             )
-        letter_client = resolve_lpp_assure_for_letter(client, person, spouse=spouse)
-        # Assertion finale avant écriture du document
-        assert_label = (
-            _civilite_from_sexe(letter_client.get("sexe"))
-            or _civilite_from_sexe(letter_client.get("civilite"))
-        )
-        if assert_label != person:
-            raise ValueError(
-                f"Refus génération : PDF/caisse={person} ≠ lettre={assert_label} "
-                f"({letter_client.get('prenom')} {letter_client.get('nom')})"
-            )
+            if assert_label != person:
+                raise ValueError(
+                    f"Refus génération : PDF/caisse={person} ≠ lettre={assert_label} "
+                    f"({letter_client.get('prenom')} {letter_client.get('nom')})"
+                )
 
         person_slug = {"Madame": "Mme", "Monsieur": "Mr"}.get(person, "")
         slug = re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_")[:50] or "Caisse"

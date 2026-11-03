@@ -17,6 +17,10 @@ import {
   withdrawalPlanningService,
 } from "./RetirementScenarioService";
 import { genderFromCivilite, relationshipFromEtat } from "../mappers";
+import {
+  buildResumePrestationsLpp,
+  fillResumeCapitalTax,
+} from "../rules/resume-prestations-lpp";
 
 /**
  * Orchestrateur d’analyse — calcule AVS/LPP/3P, lacune, scénarios + ESTV,
@@ -161,6 +165,26 @@ export class RetirementAnalysisService {
     }
     reuseHouseholdPensionTax(incomeScenarios, renteHypotheses);
 
+    let resumeCapitalTax: AnalyseResults["resumeCapitalTax"] = [];
+    if (input.afficherTableauAgesLpp && taxGroupId) {
+      const resume = buildResumePrestationsLpp(input);
+      if (resume && resume.tables.length > 0) {
+        resumeCapitalTax = await fillResumeCapitalTax(
+          input,
+          resume,
+          capitalScenarios,
+        );
+        const missing = resumeCapitalTax.some(
+          (line) => line.capital > 0 && line.impot == null,
+        );
+        if (missing) {
+          errors.push(
+            "Impôt capital du résumé LPP : un âge n'a pas pu être calculé.",
+          );
+        }
+      }
+    }
+
     return {
       computedAt: new Date().toISOString(),
       client1,
@@ -177,6 +201,7 @@ export class RetirementAnalysisService {
       evolution,
       comparative,
       renteHypotheses,
+      resumeCapitalTax,
       errors,
     };
   }

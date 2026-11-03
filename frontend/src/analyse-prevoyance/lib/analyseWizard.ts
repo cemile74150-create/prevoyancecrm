@@ -156,11 +156,14 @@ export function isStepComplete(
 }
 
 export function hypothesisFilled(row: RenteHypothesisInput): boolean {
-  return Boolean(
-    filledText(row.compagnie) ||
-      positiveMoney(row.capitalPlace) ||
-      positiveMoney(row.renteGarantieAnnuelle) ||
-      positiveMoney(row.participationExcedentsAnnuelle),
+  const offers = row.offres && row.offres.length >= 2 ? row.offres : [row];
+  return offers.some((offer) =>
+    Boolean(
+      filledText(offer.compagnie) ||
+        positiveMoney(offer.capitalPlace) ||
+        positiveMoney(offer.renteGarantieAnnuelle) ||
+        positiveMoney(offer.participationExcedentsAnnuelle),
+    ),
   );
 }
 

@@ -208,17 +208,21 @@ describe("graphique évolution Helfer — full rente LPP", () => {
     assert.equal(y2026.phase, "salaire");
 
     const williamRente = results.client1.renteTotale65;
-    const arianeRente = conjoint.renteTotale65;
+    const arianeAvs = conjoint.avsAnnuel;
+    const arianeLpp = conjoint.renteLpp65;
     const williamSalaire = input.salaireClient1;
     const arianeSalaire = input.salaireConjoint;
+    assert.equal(conjoint.datePerceptionAvs, "2027-11-01");
+    assert.notEqual(conjoint.datePerceptionAvs, conjoint.dateFinActivite);
     const william2027 = round2((williamSalaire * 1) / 12 + (williamRente * 11) / 12);
-    assert.equal(y2027.revenu, round2(william2027 + arianeSalaire));
+    const ariane2027 = round2(arianeSalaire + arianeAvs / 12);
+    assert.equal(y2027.revenu, round2(william2027 + ariane2027));
     assert.equal(y2027.phase, "transition");
-    assert.notEqual(y2027.revenu, round2(williamRente + arianeRente));
+    assert.notEqual(y2027.revenu, round2(williamRente + conjoint.renteTotale65));
     const gap2027 = round2(SALAIRE - y2027.revenu);
     assert.notEqual(gap2027, ROUGE);
 
-    const ariane2028 = round2((arianeSalaire * 2) / 12 + (arianeRente * 10) / 12);
+    const ariane2028 = round2((arianeSalaire * 2 + arianeAvs * 12 + arianeLpp * 10) / 12);
     const expected2028 = round2(williamRente + ariane2028);
     assert.equal(y2028.revenu, expected2028);
     assert.equal(y2028.phase, "transition");

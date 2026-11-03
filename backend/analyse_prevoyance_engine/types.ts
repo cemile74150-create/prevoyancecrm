@@ -3,10 +3,10 @@
 export type Civilite = "Monsieur" | "Madame";
 export type EtatCivil = "Personne vivant seule" | "Marié(e)";
 
-export const RETIREMENT_AGES = [65, 64, 63, 62, 61, 60] as const;
+export const RETIREMENT_AGES = [65, 64, 63, 62, 61, 60, 59, 58] as const;
 export type RetirementAge = (typeof RETIREMENT_AGES)[number];
 
-/** Taux de conversion LPP Excel (64→60 fixes ; 65 = rente/capital). */
+/** Taux de conversion LPP Excel (64→60 fixes ; 65, 59 et 58 = rente saisie). */
 export const LPP_CONVERSION_RATES: Record<RetirementAge, number | null> = {
   65: null,
   64: 0.052,
@@ -14,6 +14,8 @@ export const LPP_CONVERSION_RATES: Record<RetirementAge, number | null> = {
   62: 0.05,
   61: 0.049,
   60: 0.048,
+  59: null,
+  58: null,
 };
 
 export const TAX_YEAR_DEFAULT = 2025;
@@ -208,6 +210,19 @@ export interface AvsRenteAnticipee {
 
 export type RenteHypothesisType = "certaine" | "viagere";
 
+/** Une rente dans une hypothèse. Même champs que l'hypothèse à une seule offre. */
+export interface RenteOffreSaisie {
+  id: string;
+  type: RenteHypothesisType;
+  compagnie: string;
+  capitalPlace: number;
+  /** Durée en années — rente certaine uniquement. */
+  dureeAnnees: number | null;
+  dureeDiffereAnnees?: number | null;
+  renteGarantieAnnuelle: number;
+  participationExcedentsAnnuelle: number;
+}
+
 /** Offre de rente saisie par le conseiller (pas un barème). */
 export interface RenteHypothesisInput {
   id: string;
@@ -216,14 +231,40 @@ export interface RenteHypothesisInput {
   capitalPlace: number;
   /** Durée en années — rente certaine uniquement. */
   dureeAnnees: number | null;
+  /**
+   * Différé en années, rente certaine ou viagère.
+   * Vide, 0 ou absent : la rente démarre tout de suite.
+   * Distinct de {@link dureeAnnees}.
+   */
+  dureeDiffereAnnees?: number | null;
   renteGarantieAnnuelle: number;
   participationExcedentsAnnuelle: number;
   /**
    * Case conseiller « Inclure / Recommander ».
    * Seule une offre cochée reçoit le cadre vert PDF.
    * Absent / false : pas de recommandation automatique.
+   * Reste au niveau de l'hypothèse, y compris si plusieurs offres y sont réunies.
    */
   recommander?: boolean;
+  /**
+   * Deux offres ou plus dans la même hypothèse.
+   * Absent, vide ou une seule entrée : les champs ci-dessus restent l'offre unique
+   * déjà enregistrée. On ne les recopie pas dans ce tableau.
+   */
+  offres?: RenteOffreSaisie[];
+}
+
+/** Détail d'une offre dans une colonne combinée. Le différé PAX implicite n'est pas recopié dans dureeDiffereAnnees. */
+export interface RenteOffreDetail {
+  compagnie: string;
+  type: RenteHypothesisType;
+  capitalPlace: number;
+  dureeAnnees: number | null;
+  dureeDiffereAnnees: number | null;
+  /** Années avant le premier versement : champ saisi, ou 1 an si la note PAX s'applique. */
+  differeVersementAnnees: number;
+  renteGarantie: number;
+  participationExcedents: number;
 }
 
 export interface RenteHypothesisColumn {
@@ -234,6 +275,8 @@ export interface RenteHypothesisColumn {
   typeLabel: string;
   capitalPlace: number | null;
   dureeAnnees: number | null;
+  /** Différé recopié de la saisie. Null : pas de mention dans le tableau. */
+  dureeDiffereAnnees?: number | null;
   renteAvs: number;
   /**
    * Rente LPP conservée parce que le capital n'est pas déblocable à 100 %.
@@ -252,12 +295,33 @@ export interface RenteHypothesisColumn {
   revenuAnnuelSurCapital: number | null;
   /** Recopie du flag conseiller — pas un choix automatique au revenu max. */
   recommander?: boolean;
+  /** Présent seulement si l'hypothèse réunit au moins deux offres. Une colonne. */
+  offres?: RenteOffreDetail[];
+  /** Les calendriers de versement ne coïncident pas. */
+  calendriersDifferents?: boolean;
+  /**
+   * Année 1 = première année de retraite.
+   * Année où toutes les offres de la colonne sont versées ensemble.
+   */
+  anneeCommune?: number | null;
 }
 
 export interface RenteHypothesisComparison {
   ageRetraite: number | null;
   comparerAvecRenteLpp: boolean;
   columns: RenteHypothesisColumn[];
+}
+
+/**
+ * Cinq rentes mensuelles saisies pour le comparatif 63 / 64 / 65.
+ * Null = champ vidé. Absent = pas encore saisi (un repli fiable peut s'afficher).
+ */
+export interface AvsDepartSaisie {
+  mensuel63Avant65?: number | null;
+  mensuel63Des65?: number | null;
+  mensuel64Avant65?: number | null;
+  mensuel64Des65?: number | null;
+  mensuel65?: number | null;
 }
 
 export interface PersonInput {
@@ -278,11 +342,19 @@ export interface PersonInput {
   avsMontantIssuSimulation?: boolean;
   /** Rentes AVS anticipées saisies explicitement (63, 64, …). */
   avsRentesAnticipees?: AvsRenteAnticipee[];
+  /** Comparatif individuel 63 / 64 / 65. N'alimente pas le reste du rapport. */
+  avsDepart?: AvsDepartSaisie;
   /**
    * Anticipation choisie pour l'étude : 0 = âge de référence, 1 ou 2 ans.
    * Au-delà de 2 ans n'est pas accepté.
    */
   anticipationAvsAnnees?: 0 | 1 | 2;
+  /** La rente AVS est déjà versée. La date et le montant mensuel font foi. */
+  avsDejaActive?: boolean;
+  /** Date réelle de début de perception, ISO. Indépendante de la fin d'activité. */
+  dateDebutRenteAvs?: string | null;
+  /** Montant mensuel effectivement perçu. L'annuel = ce montant × 13, une fois. */
+  renteAvsPercueMensuelle?: number | null;
   lpp: LppByAge[];
   /**
    * % du capital LPP disponible / déblocable en capital (0–100).
@@ -312,6 +384,17 @@ export interface PersonInput {
   ageRetraiteSouhaite?: number | null;
 }
 
+export type RevenuAjouteImpotKind = "avs" | "lpp" | "autre";
+
+/** Ligne ajoutée avec + dans l'impôt sur le revenu du comparatif d'offres. */
+export interface RevenuAjouteImpot {
+  id: string;
+  kind: RevenuAjouteImpotKind;
+  /** Utilisé quand kind vaut « autre ». */
+  libelle?: string;
+  montant: number;
+}
+
 export interface AnalyseInput {
   villeRecherche: string;
   taxLocationId: number | null;
@@ -337,10 +420,26 @@ export interface AnalyseInput {
   /** Colonne de référence « Rente LPP » dans le comparatif d'hypothèses. */
   comparerAvecRenteLpp?: boolean;
   /**
-   * Page et aperçu « Résumé des prestations deuxième pilier ».
-   * Absent ou false : aucun tableau de ce type.
+   * Comparatif d'offres seulement. Ces montants s'ajoutent à l'assiette
+   * de l'impôt sur le revenu de chaque offre. Le rapport de planification
+   * ne les lit pas.
+   */
+  revenusAjoutesImpot?: RevenuAjouteImpot[];
+  /**
+   * Résumé des prestations à 65 ans, à l'écran et dans le PDF.
+   * Absent ou false : ce résumé est masqué. N'agit pas sur le tableau 60–65.
    */
   afficherResumePrestationsLpp?: boolean;
+  /**
+   * Prestations retraite disponibles de 60 à 65 ans, à l'écran et dans le PDF.
+   * Absent ou false : ce tableau est masqué. N'agit pas sur le résumé à 65 ans.
+   */
+  afficherTableauAgesLpp?: boolean;
+  /**
+   * Tableau d'anticipation AVS (3 scénarios, âge d'équilibre, graphique) dans le PDF.
+   * Absent ou false : la page n'est pas dans le PDF. L'écran de planification ne l'affiche pas.
+   */
+  afficherTableauAnticipationAvs?: boolean;
   renteHypotheses?: RenteHypothesisInput[];
   /**
    * Rente certaine Vaudoise annuelle (Excel Comparatif C5/D5 vides dans le fichier).
@@ -404,6 +503,7 @@ export interface PersonComputed {
   ageLegal: number;
   ageLegalLabel: string;
   dateDepart: string;
+  /** Rente AVS annuelle de référence : montant saisi, pas la rente réduite. */
   avsAnnuel: number;
   /** Capital LPP total à 65 (saisie). */
   capitalLpp65: number;
@@ -424,8 +524,12 @@ export interface PersonComputed {
   /** Date de retrait AVS. Égale à dateDepart tant que l'onglet Client n'a pas d'âge. */
   datePerceptionAvs?: string;
   agePerceptionAvsLabel?: string;
-  /** Âge du tableau LPP utilisé pour les totaux (60–65). */
+  /** Âge du tableau LPP utilisé pour les totaux (58–65). Absent si l'âge n'a pas de ligne. */
   ageLppRetenu?: RetirementAge;
+  /** La rente AVS est déjà en cours : une seule rente, depuis datePerceptionAvs. */
+  avsDejaActive?: boolean;
+  /** Montant d'un autre âge non repris. Vide si la ligne de l'âge choisi est utilisable. */
+  lppAvertissement?: string | null;
   /** Détail par caisse. Une seule ligne classique = la caisse historique. */
   lppLignes?: LppAvoirLigne[];
 }
@@ -607,6 +711,16 @@ export interface AnalyseResults {
   evolution?: import("./services/PostRetirementEvolutionService").EvolutionResult;
   comparative?: import("./services/ComparativeAnalysisService").ComparativeResult;
   renteHypotheses?: RenteHypothesisComparison | null;
+  /**
+   * Impôt sur le capital LPP disponible à chaque âge du résumé (60–65).
+   * Un assuré à la fois. Absent tant que le résumé n'est pas calculé.
+   */
+  resumeCapitalTax?: Array<{
+    personKey: PersonKey;
+    age: number;
+    capital: number;
+    impot: number | null;
+  }>;
   errors: string[];
 }
 
@@ -676,6 +790,8 @@ export function emptyAnalyseInput(): AnalyseInput {
     ageRetraitLpp: null,
     comparerAvecRenteLpp: false,
     afficherResumePrestationsLpp: false,
+    afficherTableauAgesLpp: false,
+    afficherTableauAnticipationAvs: false,
     renteHypotheses: [],
     libresPassages: [],
     withdrawalScenarios: [],

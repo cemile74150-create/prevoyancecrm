@@ -43,8 +43,8 @@ export class TimelineService {
     const who2 = personFirstName(c2, "Assuré 2");
 
     events.push({
-      year: yearOf(client1.datePerceptionAvs || client1.dateDepart),
-      label: `AVS – ${who1}`,
+      year: yearOf(client1.datePerceptionAvs || (client1.avsDejaActive ? "" : client1.dateDepart)),
+      label: client1.avsDejaActive ? `AVS déjà active – ${who1}` : `AVS – ${who1}`,
       amount: client1.avsAnnuel,
       kind: "avs",
       person: "client1",
@@ -52,8 +52,10 @@ export class TimelineService {
 
     if (conjoint && c2) {
       events.push({
-        year: yearOf(conjoint.datePerceptionAvs || conjoint.dateDepart),
-        label: `AVS – ${who2}`,
+        year: yearOf(
+          conjoint.datePerceptionAvs || (conjoint.avsDejaActive ? "" : conjoint.dateDepart),
+        ),
+        label: conjoint.avsDejaActive ? `AVS déjà active – ${who2}` : `AVS – ${who2}`,
         amount: conjoint.avsAnnuel,
         kind: "avs",
         person: "conjoint",
@@ -119,6 +121,88 @@ export function lppTimelineFate(
   return "Capital + rente";
 }
 
+function lppEventYear(
+  computed: PersonComputed,
+  personInput: PersonInput,
+  person: "client1" | "conjoint",
+  fate: "Capital" | "Rente" | "Capital + rente",
+  items: WithdrawalPlanItem[],
+): number | null {
+  const explicitLppAge =
+    personInput.ageRetraitLppSouhaite != null &&
+    Number.isFinite(Number(personInput.ageRetraitLppSouhaite));
+  const profilAge =
+    personInput.ageRetraiteSouhaite != null &&
+    Number.isFinite(Number(personInput.ageRetraiteSouhaite));
+  const tabYear = yearOf(computed.dateFinActivite);
+  const legalYear = yearOf(computed.dateDepart);
+  const planned = items.find((item) => item.kind === "lpp" && item.titulaire === person);
+  const chosen = planned ? acceptedLppScenarioYear(personInput, planned) : null;
+  const override = chosen != null && chosen !== tabYear ? chosen : null;
+  const plannedYear = planned ? scenarioWithdrawalYear(planned) : null;
+  return (
+    override ??
+    (explicitLppAge || profilAge || fate === "Rente"
+      ? (tabYear ?? legalYear)
+      : (plannedYear ?? tabYear ?? legalYear))
+  );
+}
+
+function lppComponentLabel(who: string, institution: string, component: string): string {
+  const parts = ["LPP", who];
+  if (institution) parts.push(institution);
+  parts.push(component);
+  return parts.join(" – ");
+}
+
+/** Une caisse : capital, rente réduite, ou les deux. Une rente seule reste « Rente ». */
+function pushLppComponents(
+  events: TimelineEvent[],
+  who: string,
+  person: "client1" | "conjoint",
+  institution: string,
+  capital: number,
+  rente: number,
+  year: number | null,
+) {
+  if (capital > 0 && rente > 0) {
+    events.push({
+      year,
+      label: lppComponentLabel(who, institution, "Capital"),
+      amount: capital,
+      kind: "lpp",
+      person,
+    });
+    events.push({
+      year,
+      label: lppComponentLabel(who, institution, "Rente réduite"),
+      amount: rente,
+      kind: "lpp",
+      person,
+    });
+    return;
+  }
+  if (capital > 0) {
+    events.push({
+      year,
+      label: lppComponentLabel(who, institution, "Capital"),
+      amount: capital,
+      kind: "lpp",
+      person,
+    });
+    return;
+  }
+  if (rente > 0) {
+    events.push({
+      year,
+      label: lppComponentLabel(who, institution, "Rente"),
+      amount: rente,
+      kind: "lpp",
+      person,
+    });
+  }
+}
+
 function pushLpp(
   events: TimelineEvent[],
   computed: PersonComputed,
@@ -128,6 +212,30 @@ function pushLpp(
   person: "client1" | "conjoint",
   items: WithdrawalPlanItem[],
 ) {
+  const lines = (computed.lppLignes || []).filter(
+    (line) => (line.capitalRetire || 0) > 0 || (line.renteResiduelle || 0) > 0,
+  );
+  if (lines.length > 0) {
+    const multiple = lines.length > 1;
+    lines.forEach((line, index) => {
+      const capital = line.capitalRetire || 0;
+      const rente = line.renteResiduelle || 0;
+      const fate: "Capital" | "Rente" | "Capital + rente" =
+        capital > 0 && rente > 0 ? "Capital + rente" : capital > 0 ? "Capital" : "Rente";
+      let institution = (line.institution || "").trim();
+      if (!institution && multiple) institution = `Caisse ${index + 1}`;
+      const ownYear =
+        line.anneeRetrait != null &&
+        line.age != null &&
+        computed.ageLppRetenu != null &&
+        line.age !== computed.ageLppRetenu
+          ? line.anneeRetrait
+          : lppEventYear(computed, personInput, person, fate, items);
+      pushLppComponents(events, who, person, institution, capital, rente, ownYear);
+    });
+    return;
+  }
+
   const pct = lppCalculationService.resolvePctDeblocable(computed.lppPctDeblocable);
   const fate = lppTimelineFate(pct);
   const age = effectiveLppWithdrawalAge(personInput, dossierAge);
@@ -144,29 +252,20 @@ function pushLpp(
   if (fate === "Capital" && !(capital > 0)) return;
   if (fate === "Rente" && !(rente > 0)) return;
   if (fate === "Capital + rente" && !(capital > 0) && !(rente > 0)) return;
-  const explicitLppAge =
-    personInput.ageRetraitLppSouhaite != null &&
-    Number.isFinite(Number(personInput.ageRetraitLppSouhaite));
-  const tabYear = yearOf(computed.dateFinActivite);
-  const legalYear = yearOf(computed.dateDepart);
-  const planned = items.find((item) => item.kind === "lpp" && item.titulaire === person);
-  const chosen = planned ? acceptedLppScenarioYear(personInput, planned) : null;
-  const override = chosen != null && chosen !== tabYear ? chosen : null;
-  const plannedYear = planned ? scenarioWithdrawalYear(planned) : null;
-  const year =
-    override ??
-    (explicitLppAge
-      ? (tabYear ?? legalYear)
-      : fate === "Rente"
-        ? (legalYear ?? tabYear)
-        : (plannedYear ?? tabYear ?? legalYear));
-  events.push({
-    year,
-    label: `LPP – ${who} – ${fate}`,
-    amount: fate === "Rente" ? rente : capital,
-    kind: "lpp",
+  const year = lppEventYear(computed, personInput, person, fate, items);
+  if (fate === "Capital + rente") {
+    pushLppComponents(events, who, person, "", capital, rente, year);
+    return;
+  }
+  pushLppComponents(
+    events,
+    who,
     person,
-  });
+    "",
+    fate === "Rente" ? 0 : capital,
+    fate === "Rente" ? rente : 0,
+    year,
+  );
 }
 
 function pushPillars(

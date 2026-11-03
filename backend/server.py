@@ -70,6 +70,7 @@ from pdf_generator import (
     resolve_lpp_person,
     tag_lpp_funds_with_person,
     merge_lpp_detected_funds,
+    assign_unknown_lpp_person,
     CRM_FIELD_SOURCES,
     DEMAND_PACKS,
     DOCUMENT_TYPES_3P,
@@ -506,11 +507,17 @@ class JournalActionCreate(BaseModel):
     libelle: str
     date: str
     note: Optional[str] = None
+    assignee_account_id: Optional[str] = None
 
 class JournalActionUpdate(BaseModel):
     libelle: str
     date: str
     note: Optional[str] = None
+    assignee_account_id: Optional[str] = None
+
+
+class JournalActionTreated(BaseModel):
+    treated: bool
 
 class DemandeCreate(BaseModel):
     """Rappel (ex-demande). date=YYYY-MM-DD, heure=HH:MM."""
@@ -567,6 +574,12 @@ class TestLibraryFormRequest(BaseModel):
 
 class GenerateDemandRequest(BaseModel):
     pack_id: str
+    avs_caisse_id: Optional[str] = None
+
+
+class AvsCaisseSelectionRequest(BaseModel):
+    caisse_id: str
+    manual: bool = True
 
 class GenerateDecompteRequest(BaseModel):
     funds: List[dict] = Field(default_factory=list)
@@ -670,6 +683,11 @@ class Suivi3PCreate(BaseModel):
 
 class LppCaisseTrackingUpdate(BaseModel):
     lpp_caisse_tracking: List[dict] = Field(default_factory=list)
+
+class LppAssignPersonRequest(BaseModel):
+    person: str
+    name: str
+    source_doc_id: Optional[str] = None
 
 class CreateSpouseRequest(BaseModel):
     prenom: str = ""
@@ -1113,11 +1131,32 @@ def _encrypt_client_patch(updates: dict) -> dict:
         raise HTTPException(status_code=503, detail=str(e)) from e
 
 
+async def _journal_assignee_can_open(user: User, client: dict) -> bool:
+    """La personne désignée peut ouvrir le dossier pour cocher Action traitée."""
+    from journal_actions import assigned_journal_query
+
+    scope = await _dossier_scope(user.user_id, client)
+    query = assigned_journal_query(user.user_id, user.account_id, scope)
+    if not query:
+        return False
+    row = await db.journal_actions.find_one(query, {"_id": 1})
+    return row is not None
+
+
+def _journal_dossier_url(client_id: str) -> str:
+    from email_service import public_app_url
+
+    base = public_app_url()
+    if not base:
+        return ""
+    return f"{base}/clients/{client_id}?tab=journal"
+
+
 async def require_client(client_id: str, user: User) -> dict:
     c = await db.clients.find_one({"id": client_id, "user_id": user.user_id}, {"_id": 0})
     if not c:
         raise HTTPException(status_code=404, detail="Client introuvable")
-    if not can_access_client(user, c):
+    if not can_access_client(user, c) and not await _journal_assignee_can_open(user, c):
         raise HTTPException(status_code=403, detail="Accès non autorisé à ce dossier")
     return _decrypt_client_doc(c)
 
@@ -2359,6 +2398,49 @@ async def update_lpp_caisse_tracking(client_id: str, payload: LppCaisseTrackingU
     return {"lpp_caisse_tracking": tracking}
 
 
+@api_router.patch("/clients/{client_id}/lpp-funds/person")
+async def assign_lpp_fund_person(client_id: str, payload: LppAssignPersonRequest, user: User = Depends(get_current_user)):
+    """Choix manuel Madame/Monsieur quand l'analyse de la réponse LPP ne l'a pas trouvé."""
+    c = await require_client(client_id, user)
+    try:
+        funds, tracking, source_ids = assign_unknown_lpp_person(
+            list(c.get("lpp_detected_funds") or []),
+            list(c.get("lpp_caisse_tracking") or []),
+            person=payload.person,
+            name=payload.name,
+            source_doc_id=payload.source_doc_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    wanted = resolve_lpp_person(explicit=payload.person)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.clients.update_one(
+        {"user_id": user.user_id, "id": client_id},
+        {"$set": {
+            "lpp_detected_funds": funds,
+            "lpp_caisse_tracking": tracking,
+            "updated_at": now_iso,
+        }},
+    )
+    for sid in source_ids:
+        doc_funds = [f for f in funds if isinstance(f, dict) and f.get("source_doc_id") == sid]
+        persons = {str(f.get("person") or "").strip() for f in doc_funds}
+        update = {"detected_funds": doc_funds, "fund_count": len(doc_funds)}
+        if persons == {wanted}:
+            update["lpp_person"] = wanted
+        await db.documents.update_one(
+            {"id": sid, "client_id": client_id, "user_id": user.user_id},
+            {"$set": update},
+        )
+    await log_action(
+        user.user_id,
+        client_id,
+        f"Personne LPP choisie manuellement : {wanted} ({payload.name})",
+    )
+    return {"funds": funds, "lpp_caisse_tracking": tracking, "lpp_person": wanted}
+
+
 @api_router.get("/admin/demande-envoi-missing-sent-at")
 async def admin_demande_envoi_missing_sent_at(user: User = Depends(get_current_user)):
     """Rapport : Envoyé sans date — non récupérables faute d'historique de coche."""
@@ -2522,24 +2604,96 @@ async def list_journal_actions(client_id: str, user: User = Depends(get_current_
     return sort_journal_actions(rows)
 
 
+async def _journal_assignee(account_id: Optional[str]) -> Optional[dict]:
+    """Collaborateur déjà dans LeoSoft. L'adresse vient du compte, jamais du formulaire."""
+    from journal_actions import assignee_identity
+
+    key = (account_id or "").strip()
+    if not key:
+        return None
+    row = await db.users.find_one(
+        {
+            "active": {"$ne": False},
+            "$or": [{"account_id": key}, {"user_id": key}],
+        },
+        {
+            "_id": 0,
+            "account_id": 1,
+            "user_id": 1,
+            "name": 1,
+            "prenom": 1,
+            "nom": 1,
+            "conseiller": 1,
+            "email": 1,
+        },
+    )
+    if not row:
+        raise HTTPException(status_code=400, detail="Cette personne n'est pas dans LeoSoft.")
+    identity = assignee_identity(row, requested_id=key)
+    if not identity.get("name"):
+        raise HTTPException(status_code=400, detail="Cette personne n'est pas dans LeoSoft.")
+    return identity
+
+
 @api_router.post("/clients/{client_id}/journal")
 async def add_journal_action(client_id: str, payload: JournalActionCreate, user: User = Depends(get_current_user)):
+    from journal_actions import (
+        assignee_storage,
+        blank_treated_fields,
+        journal_client_label,
+        person_display_name,
+        plan_journal_assignment_mail,
+        send_planned_journal_mail,
+    )
+
     c = await require_client(client_id, user)
     scope = await _dossier_scope(user.user_id, c)
     fields = _journal_payload(payload)
+    assignee = await _journal_assignee(payload.assignee_account_id)
     now = datetime.now(timezone.utc).isoformat()
+    author = person_display_name(user) or (user.name or "").strip()
     doc = {
         "id": str(uuid.uuid4()),
         "client_id": client_id,
         "dossier_id": scope["dossier_id"],
         "user_id": user.user_id,
-        "author": user.name,
+        "author": author or user.name,
         "created_at": now,
         "updated_at": now,
+        **assignee_storage(assignee),
+        **blank_treated_fields(),
         **fields,
     }
     await db.journal_actions.insert_one(doc)
     doc.pop("_id", None)
+    client_name = journal_client_label(c)
+    plan = plan_journal_assignment_mail(
+        assigned=assignee is not None,
+        author_name=author,
+        client_name=client_name,
+        action_date=fields["date"],
+        libelle=fields["libelle"],
+        note=fields.get("note"),
+        assignee_email=(assignee or {}).get("email"),
+        dossier_url=_journal_dossier_url(client_id),
+    )
+    try:
+        notice = await send_planned_journal_mail(
+            plan,
+            log_meta={
+                "client_id": client_id,
+                "dossier_id": scope["dossier_id"],
+                "user_id": user.user_id,
+                "created_by": author or None,
+                "client_label": client_name,
+                "event": "journal_attribution",
+                "module": "journal",
+            } if plan.get("send") else None,
+        )
+    except Exception:
+        logger.exception("Notification journal non envoyée client=%s", client_id)
+        notice = {"sent": False, "reason": "send_failed"}
+    doc["notification"] = notice
     return doc
 
 
@@ -2550,19 +2704,102 @@ async def update_journal_action(
     payload: JournalActionUpdate,
     user: User = Depends(get_current_user),
 ):
-    from journal_actions import journal_belongs_to_scope
+    from journal_actions import (
+        assignee_storage,
+        blank_treated_fields,
+        journal_belongs_to_scope,
+        journal_client_label,
+        person_display_name,
+        plan_journal_assignment_mail,
+        send_planned_journal_mail,
+    )
     c = await require_client(client_id, user)
     scope = await _dossier_scope(user.user_id, c)
     row = await db.journal_actions.find_one({"id": action_id, "user_id": user.user_id}, {"_id": 0})
     if not row or not journal_belongs_to_scope(row, scope):
         raise HTTPException(status_code=404, detail="Action introuvable")
     fields = _journal_payload(payload)
+    assignee = await _journal_assignee(payload.assignee_account_id)
+    stored = assignee_storage(assignee)
+    previous = (row.get("assignee_account_id") or "").strip() or None
+    nxt = stored.get("assignee_account_id") or None
+    reassigned = previous != nxt
     now = datetime.now(timezone.utc).isoformat()
+    updates = {**fields, **stored, "updated_at": now}
+    if reassigned:
+        updates.update(blank_treated_fields())
     await db.journal_actions.update_one(
         {"id": action_id, "user_id": user.user_id},
-        {"$set": {**fields, "updated_at": now}},
+        {"$set": updates},
     )
-    return {**row, **fields, "updated_at": now}
+    updated = {**row, **updates}
+    notice = {"sent": False, "reason": None}
+    if reassigned and assignee:
+        author = person_display_name(user) or (user.name or "").strip()
+        client_name = journal_client_label(c)
+        plan = plan_journal_assignment_mail(
+            assigned=True,
+            author_name=author,
+            client_name=client_name,
+            action_date=fields["date"],
+            libelle=fields["libelle"],
+            note=fields.get("note"),
+            assignee_email=assignee.get("email"),
+            dossier_url=_journal_dossier_url(client_id),
+        )
+        try:
+            notice = await send_planned_journal_mail(
+                plan,
+                log_meta={
+                    "client_id": client_id,
+                    "dossier_id": scope["dossier_id"],
+                    "user_id": user.user_id,
+                    "created_by": author or None,
+                    "client_label": client_name,
+                    "event": "journal_attribution",
+                    "module": "journal",
+                } if plan.get("send") else None,
+            )
+        except Exception:
+            logger.exception("Notification journal non envoyée client=%s", client_id)
+            notice = {"sent": False, "reason": "send_failed"}
+    updated["notification"] = notice
+    return updated
+
+
+@api_router.patch("/clients/{client_id}/journal/{action_id}/treated")
+async def mark_journal_action_treated(
+    client_id: str,
+    action_id: str,
+    payload: JournalActionTreated,
+    user: User = Depends(get_current_user),
+):
+    from journal_actions import journal_belongs_to_scope, mark_journal_treated, person_display_name
+
+    client = await require_client(client_id, user)
+    scope = await _dossier_scope(user.user_id, client)
+    row = await db.journal_actions.find_one({"id": action_id, "user_id": user.user_id}, {"_id": 0})
+    if not row or not journal_belongs_to_scope(row, scope):
+        raise HTTPException(status_code=404, detail="Action introuvable")
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        treated_fields = mark_journal_treated(
+            row,
+            treated=payload.treated,
+            actor_account_id=user.account_id,
+            actor_name=person_display_name(user) or (user.name or "").strip(),
+            now=now,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    treated_fields["updated_at"] = now
+    await db.journal_actions.update_one(
+        {"id": action_id, "user_id": user.user_id},
+        {"$set": treated_fields},
+    )
+    return {**row, **treated_fields}
 
 
 @api_router.delete("/clients/{client_id}/journal/{action_id}")
@@ -3745,6 +3982,7 @@ async def _reconcile_echeances_3p_lines(user_id: str, client_id: str) -> None:
     - 1 document PDF « Police 3e pilier » = 1 ligne Échéance 3P
     - Les lignes manuelles (sans source_doc_id) sont conservées
     - Pour chaque PDF 3P sans ligne, crée une ligne (extraction si possible)
+    - Un PDF marqué echeance_3p_exclu ne recrée pas de ligne : il reste dans Documents
     - Supprime les lignes liées à des documents disparus
     """
     client = await db.clients.find_one({"id": client_id, "user_id": user_id}, {"_id": 0})
@@ -3800,6 +4038,8 @@ async def _reconcile_echeances_3p_lines(user_id: str, client_id: str) -> None:
     # Créer une ligne pour chaque PDF 3P qui n'en a pas encore.
     # Enrichir aussi document_type si manquant (sans écraser les corrections manuelles de date).
     for doc_id, doc in docs_by_id.items():
+        if doc.get("echeance_3p_exclu") and doc_id not in best_by_source:
+            continue
         if doc_id in best_by_source:
             existing_line = best_by_source[doc_id]
             if not existing_line.get("document_type"):
@@ -4805,6 +5045,20 @@ async def generate_client_document(client_id: str, payload: GenerateDocumentRequ
             },
             {"$set": {"is_deleted": True}},
         )
+    if payload.template_id == "fiche_client":
+        await db.documents.update_many(
+            {
+                "user_id": user.user_id,
+                "client_id": client_id,
+                "is_deleted": False,
+                "$or": [
+                    {"template_id": "fiche_client"},
+                    {"checklist_item": "Fiche client"},
+                    {"category": "Fiche client"},
+                ],
+            },
+            {"$set": {"is_deleted": True}},
+        )
 
     doc = await _store_pdf_bytes(
         user.user_id,
@@ -4816,6 +5070,63 @@ async def generate_client_document(client_id: str, payload: GenerateDocumentRequ
     await log_action(user.user_id, client_id, f"Document généré: {meta['template_label']}")
     return doc
 
+@api_router.get("/clients/{client_id}/avs-caisse")
+async def get_client_avs_caisse(client_id: str, user: User = Depends(get_current_user)):
+    """Propose la caisse AVS destinataire selon le domicile, sans générer de document."""
+    from avs_caisse import resolve_avs_caisse
+
+    c = await require_client(client_id, user)
+    preferred = None
+    stored = c.get("avs_caisse") if isinstance(c.get("avs_caisse"), dict) else None
+    if stored:
+        preferred = stored.get("id")
+    preferred = preferred or c.get("avs_caisse_id")
+    return resolve_avs_caisse(c, selected_id=preferred)
+
+
+@api_router.put("/clients/{client_id}/avs-caisse")
+async def put_client_avs_caisse(
+    client_id: str,
+    payload: AvsCaisseSelectionRequest,
+    user: User = Depends(get_current_user),
+):
+    """Enregistre le choix de caisse AVS pour les prochaines générations."""
+    from avs_caisse import (
+        caisse_storage_payload,
+        detect_residence_canton,
+        get_caisse,
+        list_caisses,
+    )
+
+    c = await require_client(client_id, user)
+    caisse = get_caisse(payload.caisse_id)
+    if not caisse:
+        raise HTTPException(status_code=422, detail="Caisse AVS inconnue")
+    detection = detect_residence_canton(c)
+    stored = caisse_storage_payload(
+        caisse,
+        manual=bool(payload.manual),
+        detection=detection,
+    )
+    await db.clients.update_one(
+        {"id": client_id, "user_id": user.user_id},
+        {
+            "$set": {
+                "avs_caisse": stored,
+                "avs_caisse_id": stored["id"],
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        },
+    )
+    return {
+        "ok": True,
+        "avs_caisse": stored,
+        "detection": detection,
+        "caisse": caisse,
+        "options": list_caisses(),
+    }
+
+
 @api_router.post("/clients/{client_id}/generate-demand")
 async def generate_client_demand(client_id: str, payload: GenerateDemandRequest, user: User = Depends(get_current_user)):
     c = await require_client(client_id, user)
@@ -4823,7 +5134,41 @@ async def generate_client_demand(client_id: str, payload: GenerateDemandRequest,
         raise HTTPException(status_code=400, detail="Type de demande inconnu")
     try:
         agent = c.get("conseiller") or user.name or ""
-        generated = generate_demand_pack(payload.pack_id, c, agent_name=agent)
+        client_for_pack = dict(c)
+        if payload.pack_id == "demande_avs":
+            from avs_caisse import caisse_storage_payload, resolve_avs_caisse
+
+            preferred = (payload.avs_caisse_id or "").strip() or None
+            if not preferred:
+                stored = c.get("avs_caisse") if isinstance(c.get("avs_caisse"), dict) else None
+                preferred = (stored or {}).get("id") or c.get("avs_caisse_id")
+            resolved = resolve_avs_caisse(client_for_pack, selected_id=preferred)
+            caisse = resolved.get("caisse")
+            if not caisse:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Sélectionnez une caisse AVS avant de générer la lettre",
+                )
+            client_for_pack["avs_caisse"] = caisse_storage_payload(
+                caisse,
+                manual=bool(preferred) and preferred != (resolved.get("detection") or {}).get("canton"),
+                detection=resolved.get("detection"),
+            )
+            client_for_pack["avs_caisse_id"] = caisse.get("id")
+            # Persister le choix pour les prochaines générations
+            await db.clients.update_one(
+                {"id": client_id, "user_id": user.user_id},
+                {
+                    "$set": {
+                        "avs_caisse": client_for_pack["avs_caisse"],
+                        "avs_caisse_id": caisse.get("id"),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                },
+            )
+        generated = generate_demand_pack(payload.pack_id, client_for_pack, agent_name=agent)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Génération demande échouée")
         raise HTTPException(status_code=500, detail=f"Génération impossible: {e}")
@@ -5239,6 +5584,7 @@ async def create_echeance_3p_line(client_id: str, payload: Echeance3PLineCreate,
 
 @api_router.patch("/clients/{client_id}/echeances-3p/{line_id}")
 async def update_echeance_3p_line(client_id: str, line_id: str, payload: Echeance3PLineUpdate, user: User = Depends(get_current_user)):
+    """Corrige la ligne de suivi. Les PDF du dossier ne sont pas retirés."""
     c = await require_client(client_id, user)
 
     lines = c.get("echeances_3p") or []
@@ -5345,12 +5691,16 @@ async def delete_echeance_3p_line(client_id: str, line_id: str, user: User = Dep
             "done": False,
         })
 
-    # Si la ligne était liée à un document, on le soft-supprime pour éviter qu'elle soit recréée.
-    source_doc_id = target.get("source_doc_id")
-    if source_doc_id:
+    # La ligne de suivi disparaît. Les PDF restent dans Documents, y compris
+    # la police liée et les autres pièces du même contrat. On marque seulement
+    # le document source pour ne pas recréer la ligne automatiquement.
+    from echeance_3p_suivi import echeance_3p_line_removal_plan
+
+    plan = echeance_3p_line_removal_plan(target)
+    for doc_id in plan["exclude_from_auto_line_doc_ids"]:
         await db.documents.update_one(
-            {"id": source_doc_id, "user_id": user.user_id, "is_deleted": False},
-            {"$set": {"is_deleted": True}},
+            {"id": doc_id, "user_id": user.user_id},
+            {"$set": {"echeance_3p_exclu": True}},
         )
 
     detected_dates = [l.get("echeance_3p") for l in remaining if isinstance(l, dict) and l.get("echeance_3p")]
@@ -5359,8 +5709,47 @@ async def delete_echeance_3p_line(client_id: str, line_id: str, user: User = Dep
         {"id": client_id, "user_id": user.user_id},
         {"$set": {"echeances_3p": remaining, "echeance_3p": new_first, "updated_at": now_iso}},
     )
-    await log_action(user.user_id, client_id, "Contrat 3e pilier supprimé")
+    await log_action(user.user_id, client_id, "Ligne de suivi 3e pilier supprimée — documents conservés")
     return await require_client(client_id, user)
+
+
+@api_router.get("/clients/{client_id}/echeances-3p/{line_id}/lettre-rachat")
+async def download_lettre_rachat_3a(client_id: str, line_id: str, user: User = Depends(get_current_user)):
+    """Télécharge la lettre Word de rachat préremplie. N'envoie pas d'e-mail."""
+    c = await require_client(client_id, user)
+    lines = c.get("echeances_3p") or []
+    if not isinstance(lines, list):
+        lines = []
+    target = next((l for l in lines if isinstance(l, dict) and l.get("id") == line_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Ligne d'échéance introuvable")
+
+    document = None
+    source_doc_id = target.get("source_doc_id")
+    if source_doc_id:
+        document = await db.documents.find_one(
+            {"id": source_doc_id, "user_id": user.user_id, "is_deleted": {"$ne": True}},
+            {"_id": 0},
+        )
+
+    from lettre_rachat_3a_word import DOCX_MEDIA_TYPE, generate_lettre_rachat_docx
+
+    try:
+        data, filename = generate_lettre_rachat_docx(c, target, document=document)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    company = str(target.get("company") or "").strip()
+    policy = str(target.get("policy_number") or "").strip()
+    label = " ".join(part for part in (company, policy) if part) or "3e pilier"
+    await log_action(user.user_id, client_id, f"Lettre de rachat 3a téléchargée — {label}")
+    return Response(
+        content=data,
+        media_type=DOCX_MEDIA_TYPE,
+        headers=_file_response_headers(filename, inline=False),
+    )
 
 
 @api_router.get("/echeances-3p")

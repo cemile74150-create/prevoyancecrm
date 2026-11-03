@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import api, { openAuthenticatedBlob, downloadAuthenticatedBlob } from "@/lib/api";
+import api, { openAuthenticatedBlob, downloadAuthenticatedBlob, blobErrorMessage } from "@/lib/api";
 import { documentDisplayName, hasWordDownload, openClientDocument, wordDownloadFilename, wordDownloadPath } from "@/lib/documents";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { STATUTS, normalizeStatut, DOCUMENT_TYPES_3P, NO_EXPIRY_DOC_TYPES_3P } f
 import { finmaByConseillerName, lookupConseillerFinma } from "@/lib/conseillers";
 import { useAuth } from "@/context/AuthContext";
 import LamalClientHistory from "@/lamal/ClientHistory";
+import PlanificationClientTab from "@/pages/PlanificationClientTab";
 import { getInitialDocumentChecklistState, getNextDocumentStatus, getDemandesChecklistItems, getChecklistDisplayLabel, isStandardChecklistItem, omitChecklistItem } from "@/lib/documentChecklist";
 import {
   LPP_DECOMPTE_PIECES_JOINTES_INTRO,
@@ -41,7 +42,7 @@ import {
   ArrowLeft, Pencil, Trash2, Mail, Phone, MapPin, Briefcase, Users2, AlertTriangle,
   FileText, Upload, Plus, StickyNote, CalendarClock, User, Sparkles, Loader2,
   Send, ClipboardList, Shield, Eye, Download, BarChart3, Bell, FileSpreadsheet,
-  Paperclip, ExternalLink,
+  Paperclip, ExternalLink, Calculator,
 } from "lucide-react";
 
 const ANALYSE_PREVOYANCE_CATEGORY = "Analyse de prévoyance";
@@ -56,6 +57,7 @@ const CLIENT_DETAIL_TABS = new Set([
   "demande-avs",
   "echeance3p",
   "analyse-prevoyance",
+  "planification",
   "offres",
 ]);
 const OFFRE_CATEGORY = "Offre";
@@ -72,6 +74,44 @@ function formatJournalDate(value) {
   const parsed = new Date(`${String(value).slice(0, 10)}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleDateString("fr-CH");
+}
+
+function journalPersonId(person) {
+  return String(person?.account_id || person?.user_id || "").trim();
+}
+
+function journalPersonLabel(person) {
+  return String(person?.name || `${person?.prenom || ""} ${person?.nom || ""}`).trim();
+}
+
+function isJournalAssignee(user, row) {
+  const mine = String(user?.account_id || user?.user_id || "").trim();
+  const theirs = String(row?.assignee_account_id || "").trim();
+  return Boolean(mine) && mine === theirs;
+}
+
+function JournalAssigneeSelect({ value, people, onChange, testId }) {
+  return (
+    <Select
+      value={value || "__none__"}
+      onValueChange={(next) => onChange(next === "__none__" ? "" : next)}
+    >
+      <SelectTrigger data-testid={testId}>
+        <SelectValue placeholder="Aucune personne" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none__">Aucune personne</SelectItem>
+        {(people || []).map((person) => {
+          const personId = journalPersonId(person);
+          const label = journalPersonLabel(person);
+          if (!personId || !label) return null;
+          return (
+            <SelectItem key={personId} value={personId}>{label}</SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
+  );
 }
 const RACHAT_3P_DOC_CATEGORY = "Confirmation rachat 3P";
 
@@ -304,7 +344,7 @@ const FileChip = ({ doc, onDelete }) => {
 };
 
 export default function ClientDetail() {
-  const { hasPerm } = useAuth();
+  const { hasPerm, user } = useAuth();
   const canEditClient = hasPerm("clients.edit");
   const canDeleteClient = hasPerm("clients.delete");
   const canAddDocs = hasPerm("documents.add");
@@ -327,10 +367,17 @@ export default function ClientDetail() {
   const [creatingOffreKey, setCreatingOffreKey] = useState(null);
   const [notes, setNotes] = useState([]);
   const [journal, setJournal] = useState([]);
-  const [journalForm, setJournalForm] = useState({ date: todayIsoDate(), libelle: "", note: "" });
+  const [journalPeople, setJournalPeople] = useState([]);
+  const [journalForm, setJournalForm] = useState({
+    date: todayIsoDate(),
+    libelle: "",
+    note: "",
+    assignee_account_id: "",
+  });
   const [savingJournal, setSavingJournal] = useState(false);
   const [editingJournalId, setEditingJournalId] = useState(null);
-  const [editingJournal, setEditingJournal] = useState({ date: "", libelle: "", note: "" });
+  const [editingJournal, setEditingJournal] = useState({ date: "", libelle: "", note: "", assignee_account_id: "" });
+  const [treatingJournalId, setTreatingJournalId] = useState(null);
   const [demandes, setDemandes] = useState([]);
   const [demandeForm, setDemandeForm] = useState({
     titre: "",
@@ -354,14 +401,20 @@ export default function ClientDetail() {
   const [echeance3pDraftById, setEcheance3pDraftById] = useState({});
   const [editingEcheance3pLineId, setEditingEcheance3pLineId] = useState(null);
   const [uploadingRachatLineId, setUploadingRachatLineId] = useState(null);
+  const [downloadingRachatLetterId, setDownloadingRachatLetterId] = useState(null);
   const rachat3pFileRef = useRef();
   const rachat3pLineIdRef = useRef(null);
   const [generatingDemand, setGeneratingDemand] = useState(null);
+  const [avsCaisseInfo, setAvsCaisseInfo] = useState(null);
+  const [avsCaisseLoading, setAvsCaisseLoading] = useState(false);
+  const [avsCaisseEditOpen, setAvsCaisseEditOpen] = useState(false);
+  const [avsCaisseDraftId, setAvsCaisseDraftId] = useState("");
   const [lppFunds, setLppFunds] = useState([]);
   const [lppCaisseTracking, setLppCaisseTracking] = useState([]);
   const [selectedFunds, setSelectedFunds] = useState([]);
   const [lppResponseDoc, setLppResponseDoc] = useState(null);
   const [parsingLpp, setParsingLpp] = useState(false);
+  const [assigningLppKey, setAssigningLppKey] = useState("");
   const [apptDialog, setApptDialog] = useState(false);
   const [apptForm, setApptForm] = useState({ titre: "", date: "", type: "Rendez-vous", lieu: "" });
   const [generateDialog, setGenerateDialog] = useState(false);
@@ -372,6 +425,7 @@ export default function ClientDetail() {
   const [selectedLibraryForm, setSelectedLibraryForm] = useState("");
   const [generatingLibrary, setGeneratingLibrary] = useState(false);
   const [generatingMandat, setGeneratingMandat] = useState(false);
+  const [generatingFicheClient, setGeneratingFicheClient] = useState(false);
   const checklistFileRef = useRef();
   const uploadTargetRef = useRef(null);
   const lppResponseRef = useRef();
@@ -396,7 +450,7 @@ export default function ClientDetail() {
     }
     try {
       const c = await api.get(`/clients/${id}`);
-      const [n, d, a, h, lib, dem, mods, journalRes] = await Promise.all([
+      const [n, d, a, h, lib, dem, mods, journalRes, peopleRes] = await Promise.all([
         api.get(`/clients/${id}/notes`).catch(() => ({ data: [] })),
         api.get(`/clients/${id}/documents`).catch(() => ({ data: [] })),
         api.get(`/appointments`, { params: { client_id: id } }).catch(() => ({ data: [] })),
@@ -405,21 +459,19 @@ export default function ClientDetail() {
         api.get(`/clients/${id}/demandes`).catch(() => ({ data: [] })),
         api.get(`/clients/${id}/modules`).catch(() => ({ data: null })),
         api.get(`/clients/${id}/journal`).catch(() => ({ data: [] })),
+        api.get("/users/conseillers").catch(() => ({ data: [] })),
       ]);
-      setClient(c.data);
-      setModulesActivity(mods.data?.found ? mods.data : null);
-      // Filet de sécurité : si le backend n'a pas encore renvoyé le FINMA, le résoudre via la liste conseillers
-      const consName = (c.data?.conseiller || "").trim();
-      if (consName && !(c.data?.conseiller_finma || "").trim()) {
-        api.get("/users/conseillers").then((res) => {
-          const finma = lookupConseillerFinma(finmaByConseillerName(res.data), consName);
-          if (finma) {
-            setClient((prev) => (prev && prev.id === c.data.id ? { ...prev, conseiller_finma: finma } : prev));
-          }
-        }).catch(() => {});
+      let clientDoc = c.data;
+      const consName = (clientDoc?.conseiller || "").trim();
+      if (consName && !(clientDoc?.conseiller_finma || "").trim()) {
+        const finma = lookupConseillerFinma(finmaByConseillerName(peopleRes.data), consName);
+        if (finma) clientDoc = { ...clientDoc, conseiller_finma: finma };
       }
+      setClient(clientDoc);
+      setModulesActivity(mods.data?.found ? mods.data : null);
       setNotes(n.data); setDocs(d.data); setAppts(a.data); setActions(h.data);
       setJournal(Array.isArray(journalRes.data) ? journalRes.data : []);
+      setJournalPeople(Array.isArray(peopleRes.data) ? peopleRes.data : []);
       const sortRappelsByDate = (list) => {
         const toTs = (r) => {
           const day = (r.date || "").slice(0, 10);
@@ -693,15 +745,25 @@ export default function ClientDetail() {
     }
     setSavingJournal(true);
     try {
-      await api.post(`/clients/${id}/journal`, {
+      const created = await api.post(`/clients/${id}/journal`, {
         date: journalForm.date,
         libelle,
         note: journalForm.note.trim() || null,
+        assignee_account_id: journalForm.assignee_account_id || null,
       });
-      setJournalForm({ date: todayIsoDate(), libelle: "", note: "" });
+      setJournalForm({ date: todayIsoDate(), libelle: "", note: "", assignee_account_id: "" });
       const res = await api.get(`/clients/${id}/journal`);
       setJournal(Array.isArray(res.data) ? res.data : []);
-      toast.success("Action enregistrée");
+      const notice = created.data?.notification;
+      if (notice?.reason === "no_email") {
+        toast.warning("Action enregistrée. La notification n'a pas pu être envoyée : cette personne n'a pas d'adresse e-mail.");
+      } else if (notice?.reason === "send_failed") {
+        toast.warning("Action enregistrée. La notification n'a pas pu être envoyée.");
+      } else if (notice?.sent) {
+        toast.success("Action enregistrée. Notification envoyée.");
+      } else {
+        toast.success("Action enregistrée");
+      }
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Enregistrement impossible");
     } finally {
@@ -715,6 +777,7 @@ export default function ClientDetail() {
       date: String(row.date || "").slice(0, 10),
       libelle: row.libelle || "",
       note: row.note || "",
+      assignee_account_id: row.assignee_account_id || "",
     });
   };
 
@@ -725,17 +788,40 @@ export default function ClientDetail() {
       return;
     }
     try {
-      await api.patch(`/clients/${id}/journal/${actionId}`, {
+      const updated = await api.patch(`/clients/${id}/journal/${actionId}`, {
         date: editingJournal.date,
         libelle,
         note: editingJournal.note.trim() || null,
+        assignee_account_id: editingJournal.assignee_account_id || null,
       });
       setEditingJournalId(null);
       const res = await api.get(`/clients/${id}/journal`);
       setJournal(Array.isArray(res.data) ? res.data : []);
-      toast.success("Action modifiée");
+      const notice = updated.data?.notification;
+      if (notice?.reason === "no_email") {
+        toast.warning("Action modifiée. La notification n'a pas pu être envoyée : cette personne n'a pas d'adresse e-mail.");
+      } else if (notice?.reason === "send_failed") {
+        toast.warning("Action modifiée. La notification n'a pas pu être envoyée.");
+      } else if (notice?.sent) {
+        toast.success("Action modifiée. Notification envoyée.");
+      } else {
+        toast.success("Action modifiée");
+      }
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Modification impossible");
+    }
+  };
+
+  const toggleJournalTreated = async (row, treated) => {
+    setTreatingJournalId(row.id);
+    try {
+      const res = await api.patch(`/clients/${id}/journal/${row.id}/treated`, { treated });
+      setJournal((prev) => prev.map((item) => (item.id === row.id ? { ...item, ...res.data } : item)));
+      toast.success(treated ? "Action traitée" : "Action à traiter");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Mise à jour impossible");
+    } finally {
+      setTreatingJournalId(null);
     }
   };
 
@@ -1284,6 +1370,35 @@ export default function ClientDetail() {
     }
   };
 
+  const generateFicheClient = async () => {
+    setGeneratingFicheClient(true);
+    try {
+      const res = await api.post(`/clients/${id}/generate-document`, {
+        template_id: "fiche_client",
+        checklist_item: "Fiche client",
+      });
+      toast.success("Fiche client générée");
+      const [d, h] = await Promise.all([
+        api.get(`/clients/${id}/documents`),
+        api.get(`/clients/${id}/actions`),
+      ]);
+      setDocs(d.data);
+      setActions(h.data);
+      const docId = res?.data?.id;
+      if (docId) {
+        try {
+          await openAuthenticatedBlob(`/documents/${docId}/download`);
+        } catch (_) {
+          /* liste déjà rafraîchie */
+        }
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Génération de la fiche client impossible");
+    } finally {
+      setGeneratingFicheClient(false);
+    }
+  };
+
   const generateLibraryForm = async () => {
     if (!selectedLibraryForm) {
       toast.error("Choisissez un formulaire dans la bibliothèque");
@@ -1340,18 +1455,81 @@ export default function ClientDetail() {
     }
   };
 
+  const loadAvsCaisse = useCallback(async () => {
+    if (!id) return;
+    setAvsCaisseLoading(true);
+    try {
+      const res = await api.get(`/clients/${id}/avs-caisse`);
+      setAvsCaisseInfo(res.data);
+      setAvsCaisseDraftId(res.data?.caisse?.id || "");
+    } catch (err) {
+      setAvsCaisseInfo(null);
+      toast.error(err?.response?.data?.detail || "Impossible de déterminer la caisse AVS");
+    } finally {
+      setAvsCaisseLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === "demande-avs" && id) {
+      loadAvsCaisse();
+    }
+  }, [activeTab, id, loadAvsCaisse, client?.npa, client?.ville, client?.pays, client?.avs_caisse_id]);
+
+  const saveAvsCaisseSelection = async (caisseId) => {
+    if (!caisseId) {
+      toast.error("Choisissez une caisse");
+      return;
+    }
+    setAvsCaisseLoading(true);
+    try {
+      const res = await api.put(`/clients/${id}/avs-caisse`, { caisse_id: caisseId, manual: true });
+      setAvsCaisseInfo({
+        ...(avsCaisseInfo || {}),
+        detection: res.data.detection,
+        caisse: res.data.caisse,
+        options: res.data.options || avsCaisseInfo?.options || [],
+        needs_selection: false,
+        manual: true,
+      });
+      setAvsCaisseDraftId(caisseId);
+      setClient((prev) => (prev ? { ...prev, avs_caisse: res.data.avs_caisse, avs_caisse_id: caisseId } : prev));
+      setAvsCaisseEditOpen(false);
+      toast.success("Caisse AVS enregistrée");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Enregistrement impossible");
+    } finally {
+      setAvsCaisseLoading(false);
+    }
+  };
+
   const generateDemand = async (packId) => {
+    if (packId === "demande_avs") {
+      const selected = avsCaisseDraftId || avsCaisseInfo?.caisse?.id;
+      if (!selected) {
+        toast.error("Sélectionnez une caisse AVS avant de générer");
+        setAvsCaisseEditOpen(true);
+        return;
+      }
+    }
     setGeneratingDemand(packId);
     try {
-      const res = await api.post(`/clients/${id}/generate-demand`, { pack_id: packId });
+      const body = { pack_id: packId };
+      if (packId === "demande_avs") {
+        body.avs_caisse_id = avsCaisseDraftId || avsCaisseInfo?.caisse?.id || null;
+      }
+      const res = await api.post(`/clients/${id}/generate-demand`, body);
       const documents = res.data?.documents ?? (Array.isArray(res.data) ? res.data : res.data ? [res.data] : []);
       toast.success(`${documents.length || ""} document(s) généré(s) — cliquez pour télécharger`.trim());
-      const [d, h] = await Promise.all([
+      const [d, h, c] = await Promise.all([
         api.get(`/clients/${id}/documents`),
         api.get(`/clients/${id}/actions`),
+        api.get(`/clients/${id}`),
       ]);
       setDocs(d.data);
       setActions(h.data);
+      setClient(c.data);
+      if (packId === "demande_avs") await loadAvsCaisse();
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Échec de la génération");
     } finally {
@@ -1394,6 +1572,9 @@ export default function ClientDetail() {
             ? `${list.length} caisse(s) au total (${person} pris en compte, sans écraser l'autre personne)`
             : `${list.length} caisse(s) détectée(s)`
         );
+        if (!person) {
+          toast.warning("Leo n'a pas reconnu Madame ou Monsieur. Choisissez sur la caisse.");
+        }
       }
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Échec de l'analyse du PDF (timeout possible — rechargez la page)");
@@ -1444,6 +1625,29 @@ export default function ClientDetail() {
       }
     } finally {
       setParsingLpp(false);
+    }
+  };
+
+  const assignLppPerson = async (fund, person) => {
+    const name = fund?.name || fund?.nom || "";
+    if (!name) return;
+    const key = fund?.source_doc_id || fundTrackKey(fund);
+    setAssigningLppKey(key);
+    try {
+      const res = await api.patch(`/clients/${id}/lpp-funds/person`, {
+        person,
+        name,
+        source_doc_id: fund?.source_doc_id || undefined,
+      });
+      if (Array.isArray(res.data?.funds)) setLppFunds(res.data.funds);
+      if (Array.isArray(res.data?.lpp_caisse_tracking)) {
+        setLppCaisseTracking(res.data.lpp_caisse_tracking);
+      }
+      toast.success(`Réponse attribuée à ${person}.`);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Impossible d'enregistrer le choix");
+    } finally {
+      setAssigningLppKey("");
     }
   };
 
@@ -1512,13 +1716,6 @@ export default function ClientDetail() {
         id: tracking?.id || fund.id,
       };
     }).filter(Boolean);
-    const missingPerson = funds.filter((f) => !String(f.person || "").trim());
-    if (missingPerson.length > 0) {
-      toast.error(
-        "Certaines caisses n'ont pas de personne (Madame/Monsieur). Relancez l'analyse LPP avant de générer."
-      );
-      return;
-    }
     setGeneratingDemand("decompte_lpp");
     try {
       const res = await api.post(`/clients/${id}/generate-decompte-letters`, { funds });
@@ -1711,8 +1908,24 @@ export default function ClientDetail() {
     }
   };
 
+  const downloadLettreRachat = async (line) => {
+    setDownloadingRachatLetterId(line.id);
+    try {
+      const company = String(line?.company || "compagnie").replace(/[^\w.-]+/g, "_");
+      const policy = String(line?.policy_number || "").replace(/[^\w.-]+/g, "_");
+      await downloadAuthenticatedBlob(
+        `/clients/${id}/echeances-3p/${line.id}/lettre-rachat`,
+        `Lettre_rachat_3a_${company}${policy ? `_${policy}` : ""}.docx`
+      );
+    } catch (err) {
+      toast.error(await blobErrorMessage(err, "Impossible de générer la lettre de rachat"));
+    } finally {
+      setDownloadingRachatLetterId(null);
+    }
+  };
+
   const deleteEcheance3pLine = async (lineId) => {
-    if (!window.confirm("Supprimer ce contrat 3e pilier ? Si une police PDF est liée, elle sera aussi retirée des Documents.")) return;
+    if (!window.confirm("Supprimer cette ligne de suivi 3e pilier ? La ligne (type, compagnie, numéro de police, date et statut) est retirée. Les documents restent dans Documents.")) return;
     setSavingEcheance3p(true);
     try {
       const res = await api.delete(`/clients/${id}/echeances-3p/${lineId}`);
@@ -1720,7 +1933,7 @@ export default function ClientDetail() {
       setClient(updated);
       applyEcheancesFromClient(updated);
       if (editingEcheance3pLineId === lineId) setEditingEcheance3pLineId(null);
-      toast.success("Contrat 3e pilier supprimé");
+      toast.success("Ligne de suivi supprimée — les documents restent");
       await loadAll({ quiet: true });
     } catch (err) {
       toast.error("Impossible de supprimer la ligne");
@@ -1751,7 +1964,7 @@ export default function ClientDetail() {
       if (isPersonDemandDoc(d)) return false;
       if (!matchesChecklistItem(d, documentName)) return false;
       // Les PDF générés depuis la bibliothèque doivent rester visibles
-      if (documentName === "Autre formulaire" || documentName === "Mandat de gestion") return true;
+      if (documentName === "Autre formulaire" || documentName === "Mandat de gestion" || documentName === "Fiche client") return true;
       return !d.generated;
     });
 
@@ -1895,6 +2108,18 @@ export default function ClientDetail() {
               >
                 {generatingMandat ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                 Générer le mandat
+              </Button>
+            )}
+            {documentName === "Fiche client" && (
+              <Button
+                size="sm"
+                data-testid="generate-fiche-client"
+                onClick={generateFicheClient}
+                disabled={generatingFicheClient}
+                className="h-8 px-3 gap-1.5 text-xs bg-[#002FA7] hover:bg-[#00248a] text-white shrink-0"
+              >
+                {generatingFicheClient ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                Générer la fiche client
               </Button>
             )}
           </div>
@@ -2255,6 +2480,9 @@ export default function ClientDetail() {
               <TabsTrigger value="demande-avs" data-testid="tab-demande-avs"><Send className="h-4 w-4 mr-1.5" />Demande AVS</TabsTrigger>
               <TabsTrigger value="echeance3p" data-testid="tab-echeance3p"><Shield className="h-4 w-4 mr-1.5" />Échéance 3P</TabsTrigger>
               <TabsTrigger value="analyse-prevoyance" data-testid="tab-analyse-prevoyance"><BarChart3 className="h-4 w-4 mr-1.5" />Analyse de prévoyance</TabsTrigger>
+              {hasPerm("analyses.view") && (
+                <TabsTrigger value="planification" data-testid="tab-planification"><Calculator className="h-4 w-4 mr-1.5" />Planification</TabsTrigger>
+              )}
               <TabsTrigger value="offres" data-testid="tab-offres"><FileSpreadsheet className="h-4 w-4 mr-1.5" />Offres</TabsTrigger>
               {hasPerm("lamal_module_access") && (
                 <TabsTrigger value="lamal" data-testid="tab-lamal"><Shield className="h-4 w-4 mr-1.5" />LAMal</TabsTrigger>
@@ -2462,7 +2690,7 @@ export default function ClientDetail() {
                 <div>
                   <p className="text-sm font-semibold text-[#002FA7]">Journal d&apos;action</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Suivi des actions faites sur ce dossier.
+                    Suivi des actions faites sur ce dossier. Attribuez-en une à un collaborateur : c&apos;est lui qui coche « Action traitée ».
                   </p>
                 </div>
                 {canEditClient && (
@@ -2498,6 +2726,18 @@ export default function ClientDetail() {
                         className="resize-none"
                       />
                     </div>
+                    <div className="space-y-1.5 max-w-sm">
+                      <Label className="text-xs text-muted-foreground">Attribuer à</Label>
+                      <JournalAssigneeSelect
+                        value={journalForm.assignee_account_id}
+                        people={journalPeople}
+                        testId="journal-assignee-select"
+                        onChange={(assigneeId) => setJournalForm((form) => ({
+                          ...form,
+                          assignee_account_id: assigneeId,
+                        }))}
+                      />
+                    </div>
                     <div className="flex justify-end">
                       <Button
                         type="button"
@@ -2517,8 +2757,21 @@ export default function ClientDetail() {
                   <div className="space-y-3">
                     {journal.map((row) => {
                       const isEditing = editingJournalId === row.id;
+                      const assigned = Boolean(row.assignee_account_id);
+                      const canTreat = isJournalAssignee(user, row);
+                      const treated = Boolean(row.treated);
                       return (
-                        <div key={row.id} className="p-3 rounded-md border border-border bg-secondary/40" data-testid={`journal-row-${row.id}`}>
+                        <div
+                          key={row.id}
+                          className={`p-3 rounded-md border ${
+                            assigned && !treated
+                              ? "border-amber-200 bg-amber-50/70"
+                              : treated
+                                ? "border-border bg-secondary/20"
+                                : "border-border bg-secondary/40"
+                          }`}
+                          data-testid={`journal-row-${row.id}`}
+                        >
                           {isEditing ? (
                             <div className="space-y-2">
                               <div className="flex flex-wrap gap-2">
@@ -2539,6 +2792,18 @@ export default function ClientDetail() {
                                 rows={2}
                                 className="resize-none text-sm"
                               />
+                              <div className="space-y-1.5 max-w-sm">
+                                <Label className="text-xs text-muted-foreground">Attribuer à</Label>
+                                <JournalAssigneeSelect
+                                  value={editingJournal.assignee_account_id}
+                                  people={journalPeople}
+                                  testId={`journal-edit-assignee-${row.id}`}
+                                  onChange={(assigneeId) => setEditingJournal((form) => ({
+                                    ...form,
+                                    assignee_account_id: assigneeId,
+                                  }))}
+                                />
+                              </div>
                               <div className="flex gap-2 justify-end">
                                 <Button size="sm" variant="outline" onClick={() => setEditingJournalId(null)}>Annuler</Button>
                                 <Button size="sm" className="bg-[#002FA7] hover:bg-[#00248a]" onClick={() => saveJournalEdit(row.id)}>Enregistrer</Button>
@@ -2546,16 +2811,36 @@ export default function ClientDetail() {
                             </div>
                           ) : (
                             <>
-                              <p className="text-sm font-medium">{row.libelle}</p>
+                              <p className={`text-sm font-medium ${treated ? "line-through text-muted-foreground" : ""}`}>{row.libelle}</p>
                               {row.note ? (
                                 <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{row.note}</p>
                               ) : null}
                             </>
                           )}
+                          {assigned && !isEditing && (
+                            <label className="mt-2 flex items-center gap-2 w-fit">
+                              <Checkbox
+                                checked={treated}
+                                disabled={!canTreat || treatingJournalId === row.id}
+                                onCheckedChange={(checked) => toggleJournalTreated(row, checked === true)}
+                                data-testid={`journal-treated-${row.id}`}
+                              />
+                              <span className="text-xs text-foreground">
+                                Action traitée
+                                {canTreat
+                                  ? ""
+                                  : treated
+                                    ? ` — cochée par ${row.treated_by_name || row.assignee_name}`
+                                    : ` — à cocher par ${row.assignee_name || "le collaborateur désigné"}`}
+                              </span>
+                            </label>
+                          )}
                           <div className="flex items-center justify-between mt-2 gap-2">
                             <p className="text-xs text-muted-foreground">
                               {formatJournalDate(row.date)}
                               {row.author ? ` · ${row.author}` : ""}
+                              {row.assignee_name ? ` · Attribué à ${row.assignee_name}` : ""}
+                              {treated && row.treated_at ? ` · Traitée le ${formatJournalDate(row.treated_at)}` : ""}
                             </p>
                             {canEditClient && !isEditing && (
                               <div className="flex items-center gap-3">
@@ -3059,6 +3344,24 @@ export default function ClientDetail() {
                                     </div>
                                     {block && <p className="text-xs text-muted-foreground whitespace-pre-line mt-0.5">{block}</p>}
                                     {ref && <p className="text-xs text-muted-foreground">Réf. {ref}</p>}
+                                    {!person && (
+                                      <div className="flex flex-wrap items-center gap-2 mt-2" data-testid={`lpp-person-choice-${index}`}>
+                                        <span className="text-xs text-amber-800">Leo n&apos;a pas reconnu Madame ou Monsieur.</span>
+                                        {["Madame", "Monsieur"].map((choice) => (
+                                          <Button
+                                            key={choice}
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={assigningLppKey === (fund?.source_doc_id || fundTrackKey(fund))}
+                                            onClick={() => assignLppPerson(fund, choice)}
+                                            data-testid={`lpp-choose-${choice.toLowerCase()}-${index}`}
+                                          >
+                                            {choice}
+                                          </Button>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                                 <div className="flex flex-col gap-2 shrink-0 lg:items-end lg:pl-2">
@@ -3132,10 +3435,115 @@ export default function ClientDetail() {
                 <div>
                   <p className="text-sm font-semibold text-[#002FA7] mb-1">Demande AVS</p>
                   <p className="text-xs text-muted-foreground mb-4">Génère le formulaire rente future et la lettre d&apos;accompagnement — préremplis et enregistrés dans le CRM. Cliquez pour prévisualiser (même viewer PDF) ; téléchargez la lettre en Word au besoin.</p>
+                  <div
+                    className="mb-4 rounded-md border border-[#002FA7]/20 bg-slate-50 p-4 space-y-2"
+                    data-testid="avs-caisse-box"
+                  >
+                    <p className="text-sm font-semibold text-[#002FA7]">Caisse AVS destinataire</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      LeoSoft lit l&apos;adresse de la fiche et propose automatiquement la caisse cantonale correspondante
+                      (Genève, Vaud, Valais, Jura, Neuchâtel, Fribourg, Berne, etc.). Vous pouvez toujours choisir une autre caisse
+                      ou la CSC si l&apos;affiliation de l&apos;assuré est différente.
+                    </p>
+                    {avsCaisseLoading && !avsCaisseInfo ? (
+                      <p className="text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Détection du canton…
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-sm">
+                          <span className="text-muted-foreground">Canton détecté :</span>{" "}
+                          {avsCaisseInfo?.detection?.canton
+                            ? `${avsCaisseInfo.detection.canton} – ${avsCaisseInfo.detection.canton_label || ""}`
+                            : avsCaisseInfo?.detection?.source === "foreign"
+                              ? "Étranger (CSC proposée)"
+                              : "Non identifiable"}
+                        </p>
+                        <p className="text-sm">
+                          <span className="text-muted-foreground">Caisse sélectionnée :</span>{" "}
+                          {avsCaisseInfo?.caisse?.name || "—"}
+                        </p>
+                        <p className="text-sm">
+                          <span className="text-muted-foreground">Adresse :</span>{" "}
+                          {avsCaisseInfo?.caisse?.address_short
+                            || (avsCaisseInfo?.caisse?.address_lines || []).slice(-2).join(", ")
+                            || "—"}
+                        </p>
+                        {avsCaisseInfo?.detection?.message ? (
+                          <p className="text-xs text-amber-800">{avsCaisseInfo.detection.message}</p>
+                        ) : null}
+                        {avsCaisseInfo?.manual ? (
+                          <p className="text-xs text-muted-foreground">Choix manuel enregistré pour ce dossier.</p>
+                        ) : null}
+                        {!avsCaisseEditOpen ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-1"
+                            onClick={() => {
+                              setAvsCaisseDraftId(avsCaisseInfo?.caisse?.id || "");
+                              setAvsCaisseEditOpen(true);
+                            }}
+                            data-testid="avs-caisse-modifier"
+                          >
+                            Modifier la caisse
+                          </Button>
+                        ) : (
+                          <div className="space-y-2 pt-1" data-testid="avs-caisse-edit">
+                            <Label className="text-xs text-muted-foreground">Choisir une caisse</Label>
+                            <Select
+                              value={avsCaisseDraftId || undefined}
+                              onValueChange={setAvsCaisseDraftId}
+                            >
+                              <SelectTrigger data-testid="avs-caisse-select">
+                                <SelectValue placeholder="Sélectionner…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(avsCaisseInfo?.options || []).map((opt) => (
+                                  <SelectItem key={opt.id} value={opt.id}>
+                                    {opt.canton
+                                      ? `${opt.canton} — ${opt.name}`
+                                      : `${opt.name}`}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="bg-[#002FA7] hover:bg-[#00248a]"
+                                disabled={avsCaisseLoading || !avsCaisseDraftId}
+                                onClick={() => saveAvsCaisseSelection(avsCaisseDraftId)}
+                              >
+                                Enregistrer
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setAvsCaisseEditOpen(false);
+                                  setAvsCaisseDraftId(avsCaisseInfo?.caisse?.id || "");
+                                }}
+                              >
+                                Annuler
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                   <Button
                     data-testid="demande-avs"
                     onClick={() => generateDemand("demande_avs")}
-                    disabled={generatingDemand === "demande_avs"}
+                    disabled={
+                      generatingDemand === "demande_avs"
+                      || avsCaisseLoading
+                      || (!avsCaisseInfo?.caisse?.id && !avsCaisseDraftId)
+                    }
                     className="bg-[#002FA7] hover:bg-[#00248a] gap-1.5"
                   >
                     {generatingDemand === "demande_avs" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -3475,6 +3883,22 @@ export default function ClientDetail() {
                               Ajouter un document
                             </Button>
                           )}
+                          <span className="text-muted-foreground">|</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 gap-1.5 text-xs text-[#002FA7] hover:text-[#002FA7]"
+                            disabled={downloadingRachatLetterId === line.id}
+                            onClick={() => downloadLettreRachat(line)}
+                            data-testid={`rachat-3p-lettre-${line.id}`}
+                          >
+                            {downloadingRachatLetterId === line.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Download className="h-3.5 w-3.5" />
+                            )}
+                            Envoyer lettre de rachat
+                          </Button>
                         </div>
                       );
                     })}
@@ -3539,6 +3963,12 @@ export default function ClientDetail() {
                 })}
               </Card>
             </TabsContent>
+
+            {hasPerm("analyses.view") && (
+              <TabsContent value="planification">
+                <PlanificationClientTab client={client} />
+              </TabsContent>
+            )}
 
             <TabsContent value="offres">
               {(canViewOffres || canEditOffres) && (

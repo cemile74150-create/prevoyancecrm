@@ -65,6 +65,20 @@ describe("âge de retrait LPP", () => {
     );
   });
 
+  it("l'âge professionnel du profil prime sur l'âge du dossier", () => {
+    assert.equal(
+      effectiveLppWithdrawalAge({ ageRetraiteSouhaite: 62 }, 65),
+      62,
+    );
+    assert.equal(
+      effectiveLppWithdrawalAge(
+        { ageRetraitLppSouhaite: 60, ageRetraiteSouhaite: 62 },
+        65,
+      ),
+      60,
+    );
+  });
+
   it("reprend l'âge du dossier tant qu'il n'est pas personnalisé", () => {
     assert.equal(effectiveLppWithdrawalAge({ ageRetraitLppSouhaite: null }, 65), 65);
     assert.equal(effectiveLppWithdrawalAge({}, 64), 64);

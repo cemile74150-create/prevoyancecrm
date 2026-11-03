@@ -181,14 +181,23 @@ def test_generate_letters_pdf_contains_correct_names():
         assert PdfReader(io.BytesIO(mr_pdf)).pages
 
 
-def test_missing_person_rejected():
+def test_missing_person_keeps_standard_letter():
     client, spouse = _dossier_madame_titulaire()
-    with pytest.raises(ValueError, match="personne"):
-        generate_decompte_letters(
-            client,
-            [{"name": "Caisse X", "address": "1 rue", "person": ""}],
-            spouse=spouse,
-        )
+    results = generate_decompte_letters(
+        client,
+        [{"name": "Caisse X", "address": "1 rue", "person": ""}],
+        spouse=spouse,
+    )
+    assert len(results) == 1
+    pdf_bytes, meta = results[0]
+    assert meta["lpp_person"] == ""
+    assert "Mme" not in meta["original_filename"]
+    assert "Mr_" not in meta["original_filename"]
+    assert meta["assure_prenom"] == "Agnès"
+    import pymupdf
+    page = pymupdf.open(stream=pdf_bytes, filetype="pdf")[0]
+    hits = page.search_for("Madame, Monsieur")
+    assert len(hits) == 2
 
 
 def test_missing_spouse_identity_rejected_for_monsieur_caisse():

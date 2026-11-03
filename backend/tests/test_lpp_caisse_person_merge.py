@@ -10,7 +10,10 @@ from demande_envoi_relances import (
     enrich_lpp_tracking_list,
     source_key_lpp,
 )
+import pytest
+
 from pdf_generator import (
+    assign_unknown_lpp_person,
     infer_lpp_person_from_filename,
     merge_lpp_detected_funds,
     resolve_lpp_person,
@@ -41,6 +44,54 @@ def test_merge_funds_keeps_monsieur_and_madame():
     assert ("Monsieur", "Caisse A") in keys
     assert ("Madame", "Caisse B") in keys
     assert ("Monsieur", "Caisse C") in keys
+
+
+def test_assign_unknown_person_covers_the_whole_response():
+    funds = [
+        {"name": "Groupe Mutuel", "person": "", "source_doc_id": "doc-a"},
+        {"name": "AXA", "person": "", "source_doc_id": "doc-a"},
+        {"name": "UBS", "person": "Monsieur", "source_doc_id": "doc-b"},
+    ]
+    tracking = [
+        {"id": "t1", "name": "Groupe Mutuel", "person": "", "source_doc_id": "doc-a", "sent": True, "received": False},
+        {"id": "t2", "name": "AXA", "person": "", "source_doc_id": "doc-a", "sent": False, "received": False},
+        {"id": "t3", "name": "UBS", "person": "Monsieur", "source_doc_id": "doc-b", "sent": False, "received": False},
+    ]
+    new_funds, new_tracking, source_ids = assign_unknown_lpp_person(
+        funds, tracking, person="Madame", name="Groupe Mutuel", source_doc_id="doc-a",
+    )
+    by_name = {f["name"]: f["person"] for f in new_funds}
+    assert by_name == {"Groupe Mutuel": "Madame", "AXA": "Madame", "UBS": "Monsieur"}
+    assert source_ids == ["doc-a"]
+    groupe = next(t for t in new_tracking if t["id"] == "t1")
+    assert groupe["person"] == "Madame"
+    assert groupe["sent"] is True
+    assert next(t for t in new_tracking if t["id"] == "t3")["person"] == "Monsieur"
+
+
+def test_assign_does_not_touch_another_unknown_response():
+    funds = [
+        {"name": "Caisse A", "person": "", "source_doc_id": "doc-a"},
+        {"name": "Caisse B", "person": "", "source_doc_id": "doc-b"},
+    ]
+    new_funds, _, source_ids = assign_unknown_lpp_person(
+        funds, [], person="Monsieur", name="Caisse B", source_doc_id="doc-b",
+    )
+    by_name = {f["name"]: f["person"] for f in new_funds}
+    assert by_name["Caisse A"] == ""
+    assert by_name["Caisse B"] == "Monsieur"
+    assert source_ids == ["doc-b"]
+
+
+def test_assign_refuses_caisse_that_already_has_a_person():
+    with pytest.raises(ValueError, match="déjà"):
+        assign_unknown_lpp_person(
+            [{"name": "AXA", "person": "Madame", "source_doc_id": "doc-a"}],
+            [],
+            person="Monsieur",
+            name="AXA",
+            source_doc_id="doc-a",
+        )
 
 
 def test_tag_and_resolve_person():

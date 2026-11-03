@@ -1,13 +1,16 @@
 """Tests réponses multi-compagnies / multi-documents demandes d'offres."""
 from demandes_offres_3p import (
     STATUT_COMPAGNIE_EN_ATTENTE,
+    STATUT_COMPAGNIE_INCOMPLETE,
     STATUT_COMPAGNIE_RECUE,
     STATUT_ENVOYEE,
     STATUT_OFFRE_RECUE,
     STATUT_OFFRE_SIGNEE,
     all_solicited_companies_have_offer,
     append_documents_to_offre,
+    apply_restore_company_incomplete,
     build_reponses_compagnies,
+    capture_statut_avant_incomplet,
     normalize_offre_documents,
     normalize_offres_list,
     offer_has_received_payload,
@@ -174,3 +177,62 @@ def test_legacy_retenue_normalizes_to_offre_recue():
     assert out["offre_retenue"] is None
     assert out["offre_choisie_id"] is None
     assert out["reponses_compagnies"][0]["statut"] == STATUT_COMPAGNIE_RECUE
+
+
+def test_annuler_incomplet_restaure_le_statut_precedent_sans_effacer_offre():
+    waiting = {"id": "h1", "compagnie": "Helvetia", "statut": "En attente", "documents": []}
+    capture_statut_avant_incomplet(waiting)
+    waiting["statut"] = STATUT_COMPAGNIE_INCOMPLETE
+    capture_statut_avant_incomplet(waiting)
+    assert waiting["statut_avant_incomplet"] == STATUT_COMPAGNIE_EN_ATTENTE
+    apply_restore_company_incomplete(waiting)
+    assert waiting["statut"] == STATUT_COMPAGNIE_EN_ATTENTE
+
+    received = {
+        "id": "a1",
+        "compagnie": "AXA",
+        "statut": "Offre reçue",
+        "date_reception": "2026-03-01",
+        "reference": "REF-9",
+        "montant_prime": 1200,
+        "documents": [{"id": "doc-1", "original_filename": "offre.pdf"}],
+    }
+    capture_statut_avant_incomplet(received)
+    received["statut"] = STATUT_COMPAGNIE_INCOMPLETE
+    received["incomplete_comment"] = "Manque la signature"
+    stored = upsert_company_offre([], received)
+    restored = dict(stored[0])
+    apply_restore_company_incomplete(restored)
+    stored = upsert_company_offre(stored, restored)
+    cards = build_reponses_compagnies({
+        "statut": STATUT_ENVOYEE,
+        "compagnies": ["AXA"],
+        "offres": stored,
+    })
+    assert cards[0]["statut"] == STATUT_COMPAGNIE_RECUE
+    assert cards[0]["has_offre"] is True
+    assert cards[0]["documents"][0]["id"] == "doc-1"
+    assert cards[0]["reference"] == "REF-9"
+    assert stored[0]["incomplete_comment"] == "Manque la signature"
+    assert stored[0]["montant_prime"] == 1200
+
+
+def test_annuler_incomplet_sans_historique_suit_les_donnees():
+    bare = {"id": "v1", "compagnie": "Vaudoise", "statut": "Incomplète", "documents": []}
+    assert apply_restore_company_incomplete(dict(bare)) == STATUT_COMPAGNIE_EN_ATTENTE
+    with_offer = {
+        "id": "v2",
+        "compagnie": "Vaudoise",
+        "statut": "Incomplète",
+        "date_reception": "2026-04-02",
+        "documents": [{"id": "d2", "original_filename": "a.pdf"}],
+    }
+    assert apply_restore_company_incomplete(dict(with_offer)) == STATUT_COMPAGNIE_RECUE
+    contradicted = {
+        "statut": "Incomplète",
+        "statut_avant_incomplet": "En attente",
+        "date_reception": "2026-05-01",
+        "documents": [{"id": "d3", "original_filename": "b.pdf"}],
+    }
+    assert apply_restore_company_incomplete(contradicted) == STATUT_COMPAGNIE_RECUE
+    assert contradicted["documents"][0]["id"] == "d3"

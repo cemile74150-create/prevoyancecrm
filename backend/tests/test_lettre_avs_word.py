@@ -48,8 +48,10 @@ def test_lettre_avs_docx_replaces_name_and_date_keeps_layout():
     assert "word/media/image2.png" in names
     assert "NOM Prénom" not in xml
     assert "Jean DUPONT" in xml
-    assert "Caisse suisse de compensation CSC" in xml
-    assert "Avenue Edmond Vaucher 18" in xml
+    # Domicile Genève → caisse cantonale, plus la CSC figée du modèle
+    assert "Caisse genevoise de compensation" in xml
+    assert "Rue des Gares 12" in xml
+    assert "Caisse suisse de compensation CSC" not in xml
     assert "Transmission de la procuration" in xml
     assert "Agence Mendes" in xml
     assert "Sàrl" in xml

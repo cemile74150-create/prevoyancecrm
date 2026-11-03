@@ -28,6 +28,17 @@ from access_control import (
     PERM_DEMANDES_OFFRES_PROCESS,
     PERM_USERS_MANAGE,
 )
+from complements_offres import (
+    CATEGORY_COMPLEMENT,
+    REPLY_ERROR_HTTP,
+    creator_account_ids,
+    new_complement,
+    normalize_complement_type,
+    reply_claim_filter,
+    reply_document_ids,
+    user_can_answer_complement,
+    validate_reply,
+)
 from demandes_offres_3p import *
 
 try:
@@ -134,6 +145,8 @@ class DemandeOffreUpdate(BaseModel):
     date_prochain_rdv: Optional[str] = None
     langue_offre: Optional[str] = None
     mandat_gestion: Optional[bool] = None
+    mandat_debut: Optional[str] = None
+    mandat_fin: Optional[str] = None
     form_type: Optional[str] = None
     form_payload: Optional[dict[str, Any]] = None
     client_id: Optional[str] = None
@@ -185,6 +198,8 @@ class InternalNoteRequest(BaseModel):
 class ExternalNoteRequest(BaseModel):
     """Note visible dans LeoSoft et envoyée par e-mail au conseiller créateur."""
     note: str = Field(min_length=1)
+    attendre_reponse: bool = False
+    type_complement: Optional[str] = None
 
 
 class OffresCompletesRequest(BaseModel):
@@ -416,6 +431,7 @@ def attach_demandes_offres_routes(
         user: User,
         *,
         category: str,
+        extra: Optional[dict] = None,
     ) -> dict:
         data = await upload.read()
         if not data:
@@ -471,6 +487,9 @@ def attach_demandes_offres_routes(
             "uploaded_by": user.account_id,
             "uploaded_by_name": actor_name(user),
         }
+        for key, value in (extra or {}).items():
+            if key not in {"id", "user_id", "demande_id", "storage_path", "storage_path_legacy"}:
+                record[key] = value
         await db[COLLECTION_DOCS].insert_one(record)
         return public_doc(record)
 
@@ -631,6 +650,8 @@ def attach_demandes_offres_routes(
                 MAIL_TYPE_OFFRES_COMPLETES,
                 MAIL_TYPE_OFFRE_SIGNEE,
                 MAIL_TYPE_NOTE_EXTERNE,
+                MAIL_TYPE_COMPLEMENT_DEMANDE,
+                MAIL_TYPE_COMPLEMENT_REPONSE,
                 format_demande_incomplete_email,
                 format_demande_offre_email,
                 format_demande_offre_recap_conseiller_email,
@@ -638,6 +659,8 @@ def attach_demandes_offres_routes(
                 format_offre_recue_email,
                 format_offres_completes_email,
                 format_note_externe_email,
+                format_complement_demande_email,
+                format_complement_reponse_email,
                 format_offre_signee_email,
                 normalize_message_id,
                 office_email_to,
@@ -698,6 +721,30 @@ def attach_demandes_offres_routes(
             mail_type = MAIL_TYPE_OFFRE_MODIFIEE
             subject, body_text, body_html = format_offre_modifiee_email(
                 doc, changes=changes, note=note
+            )
+            to_addr = to_override or offres_email_to()
+        elif event_key in {"complement_demande", "complement-demande"}:
+            mail_type = MAIL_TYPE_COMPLEMENT_DEMANDE
+            subject, body_text, body_html = format_complement_demande_email(
+                doc,
+                note=note,
+                complement_type=doc.get("complement_type"),
+                complement_id=doc.get("complement_id"),
+            )
+            to_addr = to_override or await resolve_demande_creator_email(doc)
+            if not to_addr:
+                return False, "E-mail du créateur introuvable sur la demande"
+        elif event_key in {"complement_reponse", "complement-reponse"}:
+            mail_type = MAIL_TYPE_COMPLEMENT_REPONSE
+            names = doc.get("complement_document_names")
+            subject, body_text, body_html = format_complement_reponse_email(
+                doc,
+                note=note or doc.get("complement_request_note"),
+                reply_text=doc.get("complement_reply_text"),
+                author=doc.get("complement_reply_author"),
+                complement_type=doc.get("complement_type"),
+                complement_id=doc.get("complement_id"),
+                document_names=names if isinstance(names, list) else None,
             )
             to_addr = to_override or offres_email_to()
         elif event_key in {"note_externe", "note-externe", "external_note"}:
@@ -874,6 +921,7 @@ def attach_demandes_offres_routes(
         message: str,
         audience: str,
         account_ids: Optional[list] = None,
+        complement_id: Optional[str] = None,
     ) -> None:
         """Historique notifications CRM (cloche / audit offres)."""
         try:
@@ -891,6 +939,8 @@ def attach_demandes_offres_routes(
                 "read_by": [],
                 "created_at": now_iso(),
             }
+            if complement_id:
+                row["complement_id"] = complement_id
             await db.offre_notifications.insert_one(row)
         except Exception:
             logger.exception("Failed to write offre_notifications event=%s", event)
@@ -1781,7 +1831,7 @@ def attach_demandes_offres_routes(
                 "form_payload": doc.get("form_payload") or {},
             }},
         )
-        missing = missing_required(doc)
+        missing = missing_required(doc, docs=await docs_for(demande_id))
         if missing:
             raise HTTPException(
                 status_code=422,
@@ -1828,7 +1878,7 @@ def attach_demandes_offres_routes(
                 "form_payload": doc.get("form_payload") or {},
             }},
         )
-        missing = missing_required(doc)
+        missing = missing_required(doc, docs=await docs_for(demande_id))
         if missing:
             raise HTTPException(
                 status_code=422,
@@ -1973,7 +2023,6 @@ def attach_demandes_offres_routes(
                 target = {
                     "id": str(uuid.uuid4()),
                     "compagnie": compagnie_cible,
-                    "statut": STATUT_COMPAGNIE_INCOMPLETE,
                     "documents": [],
                     "retenue": False,
                     "incomplete_comment": comment,
@@ -1983,9 +2032,10 @@ def attach_demandes_offres_routes(
                 }
             else:
                 target = dict(target)
-                target["statut"] = STATUT_COMPAGNIE_INCOMPLETE
                 target["incomplete_comment"] = comment
                 target["incomplete_at"] = at
+            capture_statut_avant_incomplet(target)
+            target["statut"] = STATUT_COMPAGNIE_INCOMPLETE
             offres = upsert_company_offre(offres, target)
             extra["offres"] = offres
             extra["offre"] = target
@@ -2080,6 +2130,7 @@ def attach_demandes_offres_routes(
                 "retenue": False,
             }
         target = dict(target)
+        capture_statut_avant_incomplet(target)
         target["statut"] = STATUT_COMPAGNIE_INCOMPLETE
         target["incomplete_comment"] = comment
         target["incomplete_at"] = at
@@ -2094,13 +2145,42 @@ def attach_demandes_offres_routes(
             meta={"compagnie": compagnie},
         )
 
+    @api_router.post("/demandes-offres/{demande_id}/compagnie-incomplete-annuler")
+    async def cancel_company_incomplete_status(
+        demande_id: str,
+        payload: MarkCompanyIncompleteRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        """Rend le statut d'avant Incomplète. N'envoie pas d'e-mail et ne supprime rien."""
+        require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        doc = await require_demande(demande_id, user)
+        compagnie = payload.compagnie.strip()
+        if not compagnie:
+            raise HTTPException(status_code=422, detail="Compagnie obligatoire")
+        offres = normalize_offres_list(doc)
+        target = find_offre_for_compagnie(offres, compagnie)
+        if not target or normalize_company_offer_statut(target.get("statut")) != STATUT_COMPAGNIE_INCOMPLETE:
+            raise HTTPException(status_code=422, detail="Cette compagnie n'est pas incomplète")
+        target = dict(target)
+        restored = apply_restore_company_incomplete(target)
+        offres = upsert_company_offre(offres, target)
+        return await save_status(
+            demande_id,
+            user,
+            statut=normalize_statut(doc.get("statut")),
+            action="Statut incomplet annulé",
+            detail=f"{compagnie} — {restored}",
+            extra={"offres": offres, "offre": target},
+            meta={"compagnie": compagnie, "statut_compagnie": restored},
+        )
+
     @api_router.post("/demandes-offres/{demande_id}/completer-renvoyer")
     async def complete_and_resend_demande(
         demande_id: str,
         user: User = Depends(current_user_dependency),
     ):
         doc = await require_demande(demande_id, user)
-        missing = missing_required(doc)
+        missing = missing_required(doc, docs=await docs_for(demande_id))
         if missing:
             raise HTTPException(
                 status_code=422,
@@ -2601,39 +2681,82 @@ def attach_demandes_offres_routes(
         note = payload.note.strip()
         if not note:
             raise HTTPException(status_code=422, detail="La note est obligatoire")
+        attendre = bool(payload.attendre_reponse)
+        complement_type = normalize_complement_type(payload.type_complement) if attendre else None
+        if attendre and not complement_type:
+            raise HTTPException(
+                status_code=422,
+                detail="Choisissez le type de complément : document ou information",
+            )
         author = actor_name(user)
+        entry_id = str(uuid.uuid4())
         to_addr = await resolve_demande_creator_email(doc)
         sent = False
         email_error = None
         if to_addr:
-            mail_doc = {**doc, "note_externe_author": author}
-            sent, email_error = await try_send_email(
-                mail_doc,
-                event="note_externe",
-                note=note,
-                to_override=to_addr,
-            )
+            mail_doc = {
+                **doc,
+                "note_externe_author": author,
+                "complement_type": complement_type,
+                "complement_id": entry_id if attendre else None,
+            }
+            if attendre:
+                sent, email_error = await try_send_email(
+                    mail_doc,
+                    event="complement_demande",
+                    note=note,
+                    to_override=to_addr,
+                )
+            else:
+                sent, email_error = await try_send_email(
+                    mail_doc,
+                    event="note_externe",
+                    note=note,
+                    to_override=to_addr,
+                )
         else:
             email_error = "E-mail du créateur introuvable sur la demande"
+        at = now_iso()
         entry = {
-            "id": str(uuid.uuid4()),
-            "at": now_iso(),
+            "id": entry_id,
+            "at": at,
             "by_name": author,
             "by_id": user.account_id,
             "note": note,
             "email_to": to_addr,
             "email_sent": bool(sent),
             "email_error": email_error,
+            "reply_expected": attendre,
         }
-        notes = list(doc.get("notes_externes") or [])
-        notes.append(entry)
+        if attendre:
+            entry["complement"] = new_complement(complement_type=complement_type, at=at)
+        notes_field = doc.get("notes_externes")
+        if notes_field is None:
+            await db[COLLECTION].update_one(
+                {"id": demande_id, "user_id": TENANT_USER_ID, "notes_externes": None},
+                {"$set": {"notes_externes": []}},
+            )
+        action = "Demande de complément" if attendre else "Note externe"
         await db[COLLECTION].update_one(
             {"id": demande_id, "user_id": TENANT_USER_ID},
             {
-                "$set": {"notes_externes": notes, "updated_at": now_iso()},
-                "$push": {"historique": history("Note externe", user, note)},
+                "$push": {
+                    "notes_externes": entry,
+                    "historique": history(action, user, note),
+                },
+                "$set": {"updated_at": now_iso()},
             },
         )
+        if attendre:
+            await write_offre_notification(
+                doc=doc,
+                event="complement_demande",
+                title=f"Action requise — {doc.get('numero') or 'offre'}".strip(),
+                message="Une demande de complément nécessite votre intervention.",
+                audience="conseiller",
+                account_ids=creator_account_ids(doc),
+                complement_id=entry_id,
+            )
         fresh = await require_demande(demande_id, user)
         result = serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
         if isinstance(result, dict):
@@ -2641,6 +2764,198 @@ def attach_demandes_offres_routes(
             result["note_email_error"] = email_error
             result["notify_email"] = to_addr
         return result
+
+    async def discard_complement_uploads(doc_ids: list[str], user: User) -> None:
+        ids = [str(item) for item in doc_ids if item]
+        if not ids:
+            return
+        await db[COLLECTION_DOCS].update_many(
+            {"id": {"$in": ids}, "user_id": TENANT_USER_ID},
+            {
+                "$set": {
+                    "is_deleted": True,
+                    "deleted_at": now_iso(),
+                    "deleted_by": user.account_id,
+                }
+            },
+        )
+
+    async def reply_uploads(request: Request) -> list[UploadFile]:
+        """Garde chaque fichier nommé, y compris deux pièces au même nom."""
+        form = await request.form()
+        uploads: list[UploadFile] = []
+        for field in ("files", "documents", "file"):
+            for item in form.getlist(field):
+                if not isinstance(item, (UploadFile, StarletteUploadFile)):
+                    continue
+                if not (getattr(item, "filename", None) or "").strip():
+                    continue
+                uploads.append(item)
+        return uploads
+
+    def public_reply_document(stored: dict) -> dict:
+        return {
+            "id": stored.get("id"),
+            "original_filename": stored.get("original_filename") or "Document",
+            "content_type": stored.get("content_type") or "application/octet-stream",
+            "size": stored.get("size"),
+            "category": stored.get("category") or CATEGORY_COMPLEMENT,
+            "created_at": stored.get("created_at"),
+        }
+
+    @api_router.post("/demandes-offres/{demande_id}/complements/{complement_id}/reponse")
+    async def reply_to_complement(
+        request: Request,
+        demande_id: str,
+        complement_id: str,
+        commentaire: str = Form(""),
+        user: User = Depends(current_user_dependency),
+    ):
+        """
+        Une seule réponse pour cette demande de complément.
+        Le filtre Mongo refuse un second envoi, même depuis un autre onglet.
+        """
+        doc = await require_demande(demande_id, user)
+        if not user_can_answer_complement(user, doc):
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        note = next(
+            (
+                item for item in (doc.get("notes_externes") or [])
+                if str(item.get("id") or "") == str(complement_id)
+            ),
+            None,
+        )
+        uploads = await reply_uploads(request)
+        error_code = validate_reply(note, commentaire, len(uploads))
+        if error_code:
+            status, detail = REPLY_ERROR_HTTP.get(error_code, (422, "Réponse impossible"))
+            raise HTTPException(status_code=status, detail=detail)
+
+        stored = []
+        try:
+            for upload in uploads:
+                stored.append(
+                    await store_doc(
+                        demande_id,
+                        upload,
+                        user,
+                        category=CATEGORY_COMPLEMENT,
+                        extra={"complement_id": complement_id},
+                    )
+                )
+        except Exception:
+            await discard_complement_uploads([item.get("id") for item in stored], user)
+            raise
+
+        reply = {
+            "text": (commentaire or "").strip(),
+            "at": now_iso(),
+            "by_name": actor_name(user),
+            "by_id": user.account_id,
+            "documents": [public_reply_document(item) for item in stored],
+        }
+        result = await db[COLLECTION].update_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID},
+            {
+                "$set": {
+                    "notes_externes.$[n].complement.status": "reponse_recue",
+                    "notes_externes.$[n].complement.reply": reply,
+                    "updated_at": now_iso(),
+                },
+                "$push": {
+                    "historique": history(
+                        "Réponse au complément",
+                        user,
+                        reply["text"],
+                        meta={"complement_id": complement_id},
+                    )
+                },
+            },
+            array_filters=[reply_claim_filter(complement_id)],
+        )
+        if getattr(result, "matched_count", 0) != 1:
+            await discard_complement_uploads([item.get("id") for item in stored], user)
+            raise HTTPException(
+                status_code=409,
+                detail="Une réponse a déjà été transmise pour cette demande",
+            )
+
+        fresh = await require_demande(demande_id, user)
+        sent = False
+        email_error = None
+        try:
+            mail_doc = {
+                **fresh,
+                "complement_type": (note.get("complement") or {}).get("type"),
+                "complement_id": complement_id,
+                "complement_reply_text": reply["text"],
+                "complement_reply_author": reply["by_name"],
+                "complement_request_note": note.get("note"),
+                "complement_document_names": [
+                    item.get("original_filename") for item in reply["documents"]
+                ],
+            }
+            sent, email_error = await try_send_email(
+                mail_doc,
+                event="complement_reponse",
+                note=note.get("note"),
+            )
+        except Exception:
+            logger.exception("Complement reply email failed demande=%s", demande_id)
+            sent, email_error = False, "Notification e-mail indisponible"
+        await write_offre_notification(
+            doc=fresh,
+            event="complement_reponse",
+            title=f"Réponse reçue — {fresh.get('numero') or 'offre'}".strip(),
+            message=f"{reply['by_name']} a répondu à une demande de complément.",
+            audience="gestionnaires",
+            account_ids=await manager_account_ids(),
+            complement_id=complement_id,
+        )
+        payload_out = serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
+        if isinstance(payload_out, dict):
+            payload_out["complement_email_sent"] = bool(sent)
+            payload_out["complement_email_error"] = email_error
+        return payload_out
+
+    @api_router.post("/demandes-offres/{demande_id}/complements/{complement_id}/cloturer")
+    async def close_complement(
+        demande_id: str,
+        complement_id: str,
+        user: User = Depends(current_user_dependency),
+    ):
+        """Ferme un droit de réponse encore ouvert, sans enregistrer de réponse."""
+        require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        await require_demande(demande_id, user)
+        at = now_iso()
+        result = await db[COLLECTION].update_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID},
+            {
+                "$set": {
+                    "notes_externes.$[n].complement.status": "cloturee",
+                    "notes_externes.$[n].complement.closed_at": at,
+                    "notes_externes.$[n].complement.closed_by": actor_name(user),
+                    "notes_externes.$[n].complement.closed_by_id": user.account_id,
+                    "updated_at": at,
+                },
+                "$push": {
+                    "historique": history(
+                        "Complément clôturé",
+                        user,
+                        "",
+                        meta={"complement_id": complement_id},
+                    )
+                },
+            },
+            array_filters=[reply_claim_filter(complement_id)],
+        )
+        if getattr(result, "matched_count", 0) != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Cette demande ne peut plus être clôturée",
+            )
+        fresh = await require_demande(demande_id, user)
+        return serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
 
     @api_router.get("/notifications/offres")
     async def list_offre_notifications(
@@ -3400,7 +3715,12 @@ def attach_demandes_offres_routes(
         )
         if not record:
             raise HTTPException(status_code=404, detail="Document introuvable")
-        await require_demande(record.get("demande_id") or "", user)
+        demande = await require_demande(record.get("demande_id") or "", user)
+        if str(doc_id) in reply_document_ids(demande.get("notes_externes")):
+            raise HTTPException(
+                status_code=409,
+                detail="Ce document fait partie d'une réponse transmise et ne peut plus être supprimé",
+            )
         await db[COLLECTION_DOCS].update_one(
             {"id": doc_id, "user_id": TENANT_USER_ID},
             {
@@ -3434,19 +3754,25 @@ def attach_demandes_offres_routes(
                 detail="Réservé aux gestionnaires d'offres",
             )
         normalized_category = category.strip() or "Pièce jointe"
-        if normalized_category.lower() not in {
+        from mandat_gestion_offre import normalize_mandat_upload_category
+
+        mandat_category = normalize_mandat_upload_category(normalized_category)
+        allowed = {
             "pièce jointe",
             "piece jointe",
             "pièces jointes",
             "pieces jointes",
             "mandat",
-        }:
+            "mandat de gestion",
+            "mandat_gestion",
+        }
+        if normalized_category.lower() not in allowed:
             raise HTTPException(status_code=422, detail="Catégorie de document invalide")
         stored = await store_doc(
             demande_id,
             file,
             user,
-            category="Mandat" if normalized_category.lower() == "mandat" else "Pièce jointe",
+            category=mandat_category or "Pièce jointe",
         )
         await db[COLLECTION].update_one(
             {"id": demande_id, "user_id": TENANT_USER_ID},

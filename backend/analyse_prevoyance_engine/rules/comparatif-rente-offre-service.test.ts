@@ -38,9 +38,12 @@ describe("calcul comparatif — appels ESTV isolés", () => {
 
     const result = await service.build(input);
     const col = result.columns[0];
-    assert.equal(col.partImposable, 1219.4);
+    assert.equal(col.partImposable, 1742);
     assert.equal(col.revenuEncaisse, 7743);
-    assert.equal(col.impotRevenu, 121.94);
+    assert.equal(col.impotRevenu, 174.2);
+    assert.equal(col.revenuNet, 7568.8);
+    assert.equal(col.gainNet, 21_376);
+    assert.equal(col.impotFortuneSiNonAffecte, 26_000);
     assert.equal(col.fortuneAnnees?.length, 20);
     assert.equal(col.fortuneAnnees?.[0].fortune, 130_000);
     assert.equal(col.fortuneAnnees?.[1].fortune, 123_999);
@@ -57,7 +60,7 @@ describe("calcul comparatif — appels ESTV isolés", () => {
 
     const income = calls.filter((call) => call.revenue1 > 0);
     assert.equal(income.length, 1);
-    assert.equal(income[0].revenue1, 1219.4);
+    assert.equal(income[0].revenue1, 1742);
     assert.equal(income[0].fortune, 0);
     assert.equal(income[0].revenue2, 0);
     assert.ok(calls.every((call) => call.revenue1 !== 50_115));
@@ -91,11 +94,102 @@ describe("calcul comparatif — appels ESTV isolés", () => {
       }),
     ];
     const result = await service.build(input);
-    assert.equal(result.columns[0].partImposable, 1_400);
+    assert.equal(result.columns[0].partImposable, 1_100);
+    assert.equal(result.columns[0].dureeAnnees, null);
     assert.equal(result.columns[0].fortuneAnnees, null);
+    assert.equal(result.columns[0].gainNet, null);
     assert.equal(result.columns[0].totalImpotFortune, null);
+    assert.equal(result.columns[0].impotFortuneSiNonAffecte, null);
     assert.equal(result.anneesAffichees, 0);
     assert.ok(calls.every((call) => call.fortune === 0));
     assert.equal(calls.length, 1);
+  });
+
+  it("rente certaine sans durée : gain et impôts fortune vides", async () => {
+    const calls: DetailedTaxParams[] = [];
+    const service = new ComparatifRenteOffreService({
+      async calculateDetailedTaxes(params) {
+        calls.push(params);
+        return { impotRevenuTotal: 80 };
+      },
+    });
+    const input = emptyAnalyseInput();
+    input.taxLocationId = 7;
+    input.renteHypotheses = [
+      offre({
+        dureeAnnees: null,
+        renteGarantieAnnuelle: 5_000,
+        participationExcedentsAnnuelle: 1_000,
+      }),
+    ];
+    const result = await service.build(input);
+    assert.equal(result.columns[0].impotRevenu, 80);
+    assert.equal(result.columns[0].gainNet, null);
+    assert.equal(result.columns[0].totalImpotFortune, null);
+    assert.equal(result.columns[0].impotFortuneSiNonAffecte, null);
+    assert.ok(calls.every((call) => call.fortune === 0));
+    assert.equal(calls.length, 1);
+  });
+
+  it("au-delà de 40 ans, le gain et la fortune constante gardent la durée saisie", async () => {
+    const service = new ComparatifRenteOffreService({
+      async calculateDetailedTaxes(params) {
+        const amount = params.revenue1 > 0 ? params.revenue1 * 0.1 : params.fortune * 0.01;
+        return { impotRevenuTotal: Math.round(amount * 100) / 100 };
+      },
+    });
+    const input = emptyAnalyseInput();
+    input.taxLocationId = 7;
+    input.ageRetraiteSouhaite = 65;
+    input.renteHypotheses = [
+      offre({
+        capitalPlace: 10_000,
+        dureeAnnees: 41,
+        renteGarantieAnnuelle: 0,
+        participationExcedentsAnnuelle: 1_000,
+      }),
+    ];
+    const result = await service.build(input);
+    const col = result.columns[0];
+    assert.equal(col.dureeFortune, 40);
+    assert.equal(col.fortuneAnnees?.length, 40);
+    assert.equal(col.revenuNet, 900);
+    assert.equal(col.gainNet, 900 * 41 - 10_000);
+    assert.equal(col.totalImpotFortune, 4_000);
+    assert.equal(col.impotFortuneSiNonAffecte, 4_100);
+    assert.match(result.avertissement || "", /41 ans/);
+  });
+
+  it("ajoute AVS, rente LPP et autre revenu à l'impôt, pas la fortune ni l'AVS du dossier", async () => {
+    const calls: DetailedTaxParams[] = [];
+    const service = new ComparatifRenteOffreService({
+      async calculateDetailedTaxes(params) {
+        calls.push(params);
+        const amount = params.revenue1 > 0 ? params.revenue1 * 0.1 : params.fortune * 0.01;
+        return { impotRevenuTotal: Math.round(amount * 100) / 100 };
+      },
+    });
+    const input = emptyAnalyseInput();
+    input.taxLocationId = 42;
+    input.taxYear = 2026;
+    input.client1.avsAnnuel = 50_115;
+    input.fortune = 900_000;
+    input.revenusAjoutesImpot = [
+      { id: "avs", kind: "avs", montant: 24_570 },
+      { id: "lpp", kind: "lpp", montant: 10_000 },
+      { id: "autre", kind: "autre", libelle: "Location", montant: 1_000 },
+      { id: "vide", kind: "autre", libelle: "Vide", montant: 0 },
+    ];
+    input.renteHypotheses = [offre({ participationExcedentsAnnuelle: 1742 })];
+    const result = await service.build(input);
+    assert.deepEqual(
+      result.revenusAjoutes.map((row) => row.libelle),
+      ["AVS", "Rente LPP", "Location"],
+    );
+    const income = calls.find((call) => call.revenue1 > 0 && call.fortune === 0);
+    assert.equal(income?.revenue1, 1742 + 24_570 + 10_000 + 1_000);
+    assert.ok(calls.every((call) => call.revenue1 !== 50_115));
+    assert.ok(calls.every((call) => call.fortune !== 900_000));
+    assert.equal(result.columns[0].impotRevenu, Math.round((1742 + 35_570) * 0.1 * 100) / 100);
   });
 });

@@ -22,6 +22,31 @@ import {
 import { formatChf } from "@/analyse-prevoyance/lib/mappers";
 import { formatDateCh, lppWithdrawalDate } from "@/analyse-prevoyance/lib/avsAge";
 
+function ligneRemplie(row) {
+  if (!row) return false;
+  return (
+    (row.capital || 0) > 0 ||
+    (row.rente || 0) > 0 ||
+    (row.renteReduite || 0) > 0 ||
+    (row.capitalSaisi || 0) > 0 ||
+    (row.renteConserveeSaisie || 0) > 0
+  );
+}
+
+function avertissementLigne(rows, age) {
+  if (age == null || age === "" || !Number.isFinite(Number(age))) return null;
+  const n = Number(age);
+  if (!(RETIREMENT_AGES as readonly number[]).includes(n)) {
+    return `L'âge ${n} ans n'a pas de ligne. Le montant d'un autre âge n'est pas repris.`;
+  }
+  const row = (rows || []).find((item) => item.age === n);
+  const autre = (rows || []).some((item) => item.age !== n && ligneRemplie(item));
+  if (!ligneRemplie(row) && autre) {
+    return `Les montants saisis ne sont pas ceux de ${n} ans. Complétez cette ligne.`;
+  }
+  return null;
+}
+
 function pontRows(person: PersonInput): RentePontInput[] {
   if (person.rentePonts?.length) return person.rentePonts;
   if ((person.rentePont || 0) > 0) {
@@ -338,8 +363,13 @@ export function LppFields({
         <p className="text-xs text-muted-foreground">
           {personalized
             ? "Valeur propre à cet assuré. Elle reste en place si l'âge du dossier change."
-            : "Reprend l'âge de retraite souhaité de l'onglet Client. Modifiez-le ici pour le personnaliser."}
+            : "Reprend l'âge de départ professionnel du profil. Modifiez-le ici pour le personnaliser."}
         </p>
+        {avertissementLigne(person.lpp, ageShown) && (
+          <p className="text-sm text-orange-800" data-testid={`lpp-age-avertissement-${title}`}>
+            {avertissementLigne(person.lpp, ageShown)}
+          </p>
+        )}
         {lppDateLabel(person.dateNaissance, ageShown) && (
           <p className="text-sm font-medium tabular-nums">
             {lppDateLabel(person.dateNaissance, ageShown)}
@@ -635,6 +665,11 @@ function ExtraLppCard({
           {lppDateLabel(dateNaissance, avoir.ageRetrait) && (
             <p className="text-xs font-medium tabular-nums">
               {lppDateLabel(dateNaissance, avoir.ageRetrait)}
+            </p>
+          )}
+          {avertissementLigne(avoir.rows, avoir.ageRetrait ?? ageShown) && (
+            <p className="max-w-[220px] text-xs text-orange-800">
+              {avertissementLigne(avoir.rows, avoir.ageRetrait ?? ageShown)}
             </p>
           )}
         </div>

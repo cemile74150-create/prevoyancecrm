@@ -6,6 +6,10 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/yarn.lock ./
 RUN yarn install --frozen-lockfile || yarn install
 COPY frontend/ ./
+# L'écran importe le moteur AVS. Ces fichiers n'ont pas d'autre dépendance locale.
+COPY backend/analyse_prevoyance_engine/rules/avs-age.ts /app/backend/analyse_prevoyance_engine/rules/avs-age.ts
+COPY backend/analyse_prevoyance_engine/rules/comparatif-avs.ts /app/backend/analyse_prevoyance_engine/rules/comparatif-avs.ts
+COPY backend/analyse_prevoyance_engine/rules/analyse-avs-depart.ts /app/backend/analyse_prevoyance_engine/rules/analyse-avs-depart.ts
 ENV CI=true
 RUN yarn build
 

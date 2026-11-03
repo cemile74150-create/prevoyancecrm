@@ -15,6 +15,10 @@ import {
   type RenteHypothesisInput,
 } from "../types.ts";
 import {
+  anneesDiffere,
+  compagnieEstPax,
+  mentionDiffere,
+  NOTE_PAX_DIFFERE,
   revenuBrutEncaisse,
   revenuFiscalImposable,
   revenuFiscalRenteLpp,
@@ -26,6 +30,36 @@ const base = {
   renteGarantie: 20_000,
   participationExcedents: 1_000,
 };
+
+describe("différé de rente", () => {
+  it("vide ou 0 : pas de différé, un nombre positif est conservé", () => {
+    assert.equal(anneesDiffere(null), null);
+    assert.equal(anneesDiffere(undefined), null);
+    assert.equal(anneesDiffere(0), null);
+    assert.equal(anneesDiffere(3), 3);
+    assert.equal(mentionDiffere(3), "Différé : 3 ans");
+    assert.equal(mentionDiffere(0), null);
+    assert.equal(mentionDiffere(null), null);
+    assert.equal(compagnieEstPax("Pax"), true);
+    assert.equal(compagnieEstPax("PAX Assurances"), true);
+    assert.equal(compagnieEstPax("Rentes Genevoises"), false);
+    assert.equal(
+      NOTE_PAX_DIFFERE,
+      "Pour les contrats PAX, un différé d’un an s’applique systématiquement avant le premier versement de la rente.",
+    );
+  });
+
+  it("ne change pas l'assiette fiscale certaine ni viagère", () => {
+    assert.equal(
+      revenuFiscalImposable({ type: "certaine", ...base }),
+      30_000 + 1_000,
+    );
+    assert.equal(
+      revenuFiscalImposable({ type: "viagere", ...base }),
+      30_000 + 800 + 700,
+    );
+  });
+});
 
 describe("rente certaine — revenu fiscal", () => {
   it("Vaudoise : 100 % des excédents une seule fois, rente garantie hors assiette", () => {
@@ -69,10 +103,19 @@ describe("rente certaine — revenu fiscal", () => {
 });
 
 describe("rente viagère — revenu fiscal", () => {
-  it("AVS + 4 % de la rente garantie + 100 % des participations", () => {
+  it("AVS + 4 % de la rente garantie + 70 % des participations", () => {
     assert.equal(
       revenuFiscalImposable({ type: "viagere", ...base }),
-      30_000 + 800 + 1_000,
+      30_000 + 800 + 700,
+    );
+    assert.equal(
+      revenuFiscalImposable({
+        type: "viagere",
+        renteAvs: 0,
+        renteGarantie: 10_000,
+        participationExcedents: 1_000,
+      }),
+      400 + 700,
     );
   });
 
@@ -136,7 +179,7 @@ describe("rente LPP résiduelle dans les offres", () => {
     );
   });
 
-  it("viagère : résiduelle à 100 %, plus 4 % de la garantie et 100 % des excédents", () => {
+  it("viagère : résiduelle à 100 %, plus 4 % de la garantie et 70 % des excédents", () => {
     const fiscal = revenuFiscalImposable({
       type: "viagere",
       renteAvs: avs,
@@ -144,7 +187,7 @@ describe("rente LPP résiduelle dans les offres", () => {
       participationExcedents: participation,
       renteLppResiduelle: residuelle,
     });
-    assert.equal(fiscal, avs + residuelle + garantie * 0.04 + participation);
+    assert.equal(fiscal, avs + residuelle + garantie * 0.04 + participation * 0.7);
   });
 
   it("100 % déblocable : la résiduelle nulle ne change pas l'assiette", () => {

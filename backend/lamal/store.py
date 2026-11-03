@@ -12,6 +12,7 @@ COLLECTIONS = {
     "profiles": "lamal_client_profiles",
     "comparisons": "lamal_comparisons",
     "campaigns": "lamal_campaigns",
+    "contacts": "lamal_campaign_contacts",
     "emails": "lamal_email_logs",
     "audit": "lamal_audit_logs",
 }
@@ -39,6 +40,7 @@ async def ensure_indexes(db) -> None:
     await db[COLLECTIONS["profiles"]].create_index([("client_id", 1)], unique=True)
     await db[COLLECTIONS["comparisons"]].create_index([("client_id", 1), ("created_at", -1)])
     await db[COLLECTIONS["campaigns"]].create_index([("year", 1), ("created_at", -1)])
+    await db[COLLECTIONS["contacts"]].create_index([("campaign_id", 1)])
     await db[COLLECTIONS["emails"]].create_index([("campaign_id", 1), ("client_id", 1)], unique=True)
     await db[COLLECTIONS["audit"]].create_index([("created_at", -1)])
 
