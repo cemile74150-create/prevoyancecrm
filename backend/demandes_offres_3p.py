@@ -1560,6 +1560,7 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "mandat_debut": doc.get("mandat_debut") or "",
         "mandat_fin": doc.get("mandat_fin") or "",
         "requires_mandat_gestion": False,
+        "is_professionnelle_offre": False,
         "mandat_gestion_info": "",
         "incomplete_comment": doc.get("incomplete_comment") or "",
         "incomplete_at": doc.get("incomplete_at"),
@@ -1622,9 +1623,14 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         ),
     }
     try:
-        from mandat_gestion_offre import MANDAT_INFO_MESSAGE, is_professionnelle_demande
+        from mandat_gestion_offre import (
+            MANDAT_INFO_MESSAGE,
+            demande_requires_mandat_gestion,
+            is_professionnelle_demande,
+        )
 
-        if is_professionnelle_demande(doc):
+        out["is_professionnelle_offre"] = bool(is_professionnelle_demande(doc))
+        if demande_requires_mandat_gestion(doc):
             out["requires_mandat_gestion"] = True
             out["mandat_gestion_info"] = MANDAT_INFO_MESSAGE
     except Exception:

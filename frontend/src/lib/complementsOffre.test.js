@@ -7,18 +7,18 @@ import {
   withoutFileAt,
 } from "./complementsOffre";
 
-describe("demandes de complément", () => {
-  const documentNote = {
+describe("notes externes / compléments", () => {
+  const awaiting = {
     id: "d1",
     can_reply: true,
     reply_expected: true,
-    complement: { type: "document", status: "en_attente" },
+    complement: { type: "reponse", status: "en_attente" },
   };
-  const infoNote = {
-    id: "i1",
+  const legacyDocument = {
+    id: "legacy",
     can_reply: true,
     reply_expected: true,
-    complement: { type: "information", status: "en_attente" },
+    complement: { type: "document", status: "en_attente" },
   };
 
   test("une note informative n'ouvre pas de réponse", () => {
@@ -27,11 +27,12 @@ describe("demandes de complément", () => {
     );
   });
 
-  test("un document est obligatoire seulement pour une demande de document", () => {
-    expect(replyBlockReason(documentNote, "", [])).toBe("Ajoutez au moins un document");
-    expect(replyBlockReason(documentNote, "", [{ name: "mandat.pdf" }])).toBe("");
-    expect(replyBlockReason(infoNote, "12.03.1980", [])).toBe("");
-    expect(replyBlockReason(infoNote, "", [])).toBe("Saisissez une réponse ou joignez un document");
+  test("texte seul, documents seuls ou les deux sont acceptés", () => {
+    expect(replyBlockReason(awaiting, "", [])).toBe("Saisissez une réponse ou joignez un document");
+    expect(replyBlockReason(awaiting, "Voici ma réponse", [])).toBe("");
+    expect(replyBlockReason(awaiting, "", [{ name: "rempli.pdf" }])).toBe("");
+    expect(replyBlockReason(awaiting, "Ci-joint", [{ name: "rempli.pdf" }])).toBe("");
+    expect(replyBlockReason(legacyDocument, "Sans fichier", [])).toBe("");
   });
 
   test("les fichiers sélectionnés peuvent être retirés ou remplacés avant l'envoi", () => {
@@ -42,7 +43,7 @@ describe("demandes de complément", () => {
     expect(appendFiles(first, [{ name: "d.pdf" }])).toHaveLength(3);
   });
 
-  test("le lien de notification ouvre la demande de complément", () => {
+  test("le lien de notification ouvre la note concernée", () => {
     expect(offreNotificationPath({ demande_id: "off-1", complement_id: "c1" })).toBe(
       "/demandes-offres/off-1?complement=c1",
     );
@@ -51,8 +52,8 @@ describe("demandes de complément", () => {
     );
   });
 
-  test("le compteur d'attente vient de la demande et reste indépendant après relecture", () => {
-    const demande = { nb_complements_en_attente: 1, notes_externes: [documentNote, infoNote] };
+  test("le compteur d'attente vient de la demande", () => {
+    const demande = { nb_complements_en_attente: 1, notes_externes: [awaiting, legacyDocument] };
     expect(pendingComplementCount(demande)).toBe(1);
     expect(pendingComplementCount({ ...demande, nb_complements_en_attente: 0 })).toBe(0);
   });

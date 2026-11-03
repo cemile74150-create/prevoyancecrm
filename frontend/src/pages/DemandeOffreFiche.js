@@ -23,7 +23,7 @@ import {
   isDemandeAnnuleeStatut, isOffreNonSigneeStatut, isHorsCours, statutLabel, isDemandeAnnuleeFlag,
   AUTRE_COMPAGNIE_VALUE, compagniesAffichees, compagniesEnregistrementOffre, resolveCompagnieSaisie,
   MANDAT_GESTION_DOC_CATEGORY, MANDAT_GESTION_INFO, mandatGestionMissing, hasMandatGestionDocument,
-  isMandatGestionCategory,
+  isMandatGestionCategory, demandeRequiresMandatGestion,
 } from "@/lib/demandesOffres";
 import OffreSchemaForm, { SchemaReadOnlySummary, isFieldVisible } from "@/components/OffreSchemaForm";
 import NotesConseiller from "@/components/NotesConseiller";
@@ -131,7 +131,7 @@ export default function DemandeOffreFiche() {
   const [externalNoteOpen, setExternalNoteOpen] = useState(false);
   const [externalNoteText, setExternalNoteText] = useState("");
   const [externalAwaitReply, setExternalAwaitReply] = useState(false);
-  const [externalComplementType, setExternalComplementType] = useState("document");
+  const [externalNoteFiles, setExternalNoteFiles] = useState([]);
   const [offresCompletesOpen, setOffresCompletesOpen] = useState(false);
   const [offresCompletesNote, setOffresCompletesNote] = useState("");
   const [erreursOpen, setErreursOpen] = useState(false);
@@ -330,7 +330,7 @@ export default function DemandeOffreFiche() {
             agent_finma: agentOverride?.agent_finma ?? form.agent_finma ?? "",
           }
         : {};
-      const mandatFields = demande?.requires_mandat_gestion
+      const mandatFields = demandeRequiresMandatGestion(demande, formPayload)
         ? {
             mandat_debut: toIsoDate(form.mandat_debut) || form.mandat_debut || "",
             mandat_fin: toIsoDate(form.mandat_fin) || form.mandat_fin || "",
@@ -462,7 +462,7 @@ export default function DemandeOffreFiche() {
     if (finmaWarning && !values.includes(finmaWarning)) {
       values = [...values, finmaWarning];
     }
-    for (const msg of mandatGestionMissing(demande, form)) {
+    for (const msg of mandatGestionMissing(demande, form, formPayload)) {
       if (!values.includes(msg)) values.push(msg);
     }
     return values;
@@ -697,22 +697,22 @@ export default function DemandeOffreFiche() {
     if (!externalNoteText.trim()) return toast.error("La note est obligatoire");
     setActionBusy(true);
     try {
-      const res = await api.post(`/demandes-offres/${demandeId}/notes-externes`, {
-        note: externalNoteText.trim(),
-        attendre_reponse: externalAwaitReply,
-        type_complement: externalAwaitReply ? externalComplementType : null,
-      });
+      const body = new FormData();
+      body.append("note", externalNoteText.trim());
+      body.append("attendre_reponse", externalAwaitReply ? "true" : "false");
+      externalNoteFiles.forEach((file) => body.append("files", file));
+      const res = await api.post(`/demandes-offres/${demandeId}/notes-externes`, body);
       applyDemande(res.data);
       const addr = (res.data?.notify_email || "").trim();
       const sentLabel = externalAwaitReply
-        ? "Demande de complément envoyée au conseiller"
+        ? "Note envoyée — réponse attendue du conseiller"
         : "Note envoyée au conseiller";
       if (res.data?.note_email_sent) {
         toast.success(addr ? `${sentLabel} (${addr})` : sentLabel);
       } else {
         toast.warning(
           externalAwaitReply
-            ? "Demande enregistrée, mais l'e-mail n'a pas été envoyé"
+            ? "Note enregistrée, mais l'e-mail n'a pas été envoyé"
             : "Note enregistrée, mais l'e-mail n'a pas été envoyé",
           {
             description: String(res.data?.note_email_error || "E-mail du conseiller introuvable").slice(0, 200),
@@ -722,7 +722,7 @@ export default function DemandeOffreFiche() {
       setExternalNoteOpen(false);
       setExternalNoteText("");
       setExternalAwaitReply(false);
-      setExternalComplementType("document");
+      setExternalNoteFiles([]);
     } catch (e) {
       toast.error(errorMessage(e, "Envoi de la note impossible"));
     } finally {
@@ -1129,7 +1129,7 @@ export default function DemandeOffreFiche() {
         {Number(demande.nb_complements_en_attente) > 0 && (
           <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950" data-testid="complements-pending-banner">
             <span className="font-semibold">Action requise.</span>{" "}
-            {demande.nb_complements_en_attente} demande{demande.nb_complements_en_attente > 1 ? "s" : ""} de complément en attente de réponse.
+            {demande.nb_complements_en_attente} note{demande.nb_complements_en_attente > 1 ? "s" : ""} externe{demande.nb_complements_en_attente > 1 ? "s" : ""} en attente de votre réponse.
           </div>
         )}
 
@@ -1242,11 +1242,12 @@ export default function DemandeOffreFiche() {
                     )}
                   </div>
                 ) : null}
-                {demande.requires_mandat_gestion ? (
+                {demandeRequiresMandatGestion(demande, formPayload) ? (
                   <MandatGestionSection
                     form={form}
                     setValue={setValue}
                     demande={demande}
+                    formPayload={formPayload}
                     canEdit={canEdit}
                     uploading={uploadingMandat}
                     fileRef={mandatFileRef}
@@ -1427,12 +1428,13 @@ export default function DemandeOffreFiche() {
                   </p>
                 </Card>
               )}
-              {demande.requires_mandat_gestion ? (
+              {demandeRequiresMandatGestion(demande, formPayload) ? (
                 <Card className="p-5">
                   <MandatGestionSection
                     form={form}
                     setValue={setValue}
                     demande={demande}
+                    formPayload={formPayload}
                     canEdit={false}
                     uploading={false}
                     fileRef={mandatFileRef}
@@ -1584,7 +1586,7 @@ export default function DemandeOffreFiche() {
           setExternalNoteOpen(open);
           if (!open) {
             setExternalAwaitReply(false);
-            setExternalComplementType("document");
+            setExternalNoteFiles([]);
           }
         }}
       >
@@ -1592,7 +1594,7 @@ export default function DemandeOffreFiche() {
           <DialogHeader><DialogTitle>Note externe</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">
             Cette note sera enregistrée dans LeoSoft et envoyée par e-mail à {conseillerCible}, le conseiller qui a créé la demande.
-            Elle n&apos;est pas une note interne.
+            Vous pouvez joindre des documents (formulaire à remplir, modèle, etc.).
           </p>
           <Field label="Note pour le conseiller" required>
             <Textarea
@@ -1603,6 +1605,41 @@ export default function DemandeOffreFiche() {
               data-testid="note-externe-text"
             />
           </Field>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Pièces jointes (facultatif)</p>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm">
+              <Paperclip className="h-4 w-4" />
+              Ajouter des fichiers
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                data-testid="note-externe-files"
+                onChange={(e) => {
+                  const incoming = Array.from(e.target.files || []);
+                  if (!incoming.length) return;
+                  setExternalNoteFiles((prev) => [...prev, ...incoming].slice(0, 15));
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {externalNoteFiles.length > 0 && (
+              <ul className="space-y-1">
+                {externalNoteFiles.map((file, index) => (
+                  <li key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-sm">
+                    <span className="min-w-0 truncate">{file.name}</span>
+                    <button
+                      type="button"
+                      className="text-rose-700 shrink-0"
+                      onClick={() => setExternalNoteFiles((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      Retirer
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <label className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"
@@ -1613,22 +1650,11 @@ export default function DemandeOffreFiche() {
             />
             <span>Attendre une réponse du conseiller</span>
           </label>
-          {externalAwaitReply && (
-            <Field label="Type de complément attendu" required>
-              <select
-                className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                value={externalComplementType}
-                onChange={(e) => setExternalComplementType(e.target.value)}
-                data-testid="note-externe-type"
-              >
-                <option value="document">Document</option>
-                <option value="information">Information</option>
-              </select>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Le conseiller pourra transmettre une seule réponse. Un document joint est obligatoire si vous demandez un document.
-              </p>
-            </Field>
-          )}
+          {externalAwaitReply ? (
+            <p className="text-xs text-muted-foreground">
+              Le conseiller pourra répondre une seule fois, avec un texte et/ou des documents.
+            </p>
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setExternalNoteOpen(false)}>Annuler</Button>
             <Button onClick={addExternalNote} disabled={actionBusy || !externalNoteText.trim()} data-testid="note-externe-confirm">
@@ -2529,12 +2555,12 @@ function PilierStep({ form, setValue, meta }) {
 }
 
 function MandatGestionSection({
-  form, setValue, demande, canEdit, uploading, fileRef, upload, remove, infoMessage,
+  form, setValue, demande, formPayload, canEdit, uploading, fileRef, upload, remove, infoMessage,
 }) {
   const mandatDocs = (demande?.documents || []).filter(
     (doc) => doc && !doc.is_deleted && isMandatGestionCategory(doc.category),
   );
-  const errors = mandatGestionMissing(demande, form);
+  const errors = mandatGestionMissing(demande, form, formPayload);
   return (
     <div className="mt-6 space-y-4 border-t pt-5" data-testid="offre-mandat-gestion-section">
       <SectionTitle

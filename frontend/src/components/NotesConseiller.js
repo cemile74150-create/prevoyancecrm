@@ -25,37 +25,43 @@ function errorDetail(error, fallback) {
   return fallback;
 }
 
-function DocumentLinks({ documents }) {
+function DocumentLinks({ documents, title }) {
   if (!documents?.length) return null;
   return (
-    <ul className="mt-2 space-y-1">
-      {documents.map((doc) => (
-        <li key={doc.id} className="flex items-center justify-between gap-2 rounded-md border bg-white px-2 py-1.5">
-          <span className="min-w-0 truncate text-sm">{doc.original_filename || "Document"}</span>
-          <span className="flex shrink-0 gap-1">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => openAuthenticatedBlob(`/demandes-offres/documents/${doc.id}/download`)}
-            >
-              Ouvrir
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => downloadAuthenticatedBlob(
-                `/demandes-offres/documents/${doc.id}/download`,
-                doc.original_filename,
-              )}
-            >
-              Télécharger
-            </Button>
-          </span>
-        </li>
-      ))}
-    </ul>
+    <div className="mt-2">
+      {title ? <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p> : null}
+      <ul className={`${title ? "mt-1" : ""} space-y-1`}>
+        {documents.map((doc) => (
+          <li key={doc.id} className="flex items-center justify-between gap-2 rounded-md border bg-white px-2 py-1.5">
+            <span className="min-w-0 truncate text-sm flex items-center gap-1.5">
+              <Paperclip className="h-3.5 w-3.5 shrink-0 text-[#002FA7]" />
+              {doc.original_filename || "Document"}
+            </span>
+            <span className="flex shrink-0 gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => openAuthenticatedBlob(`/demandes-offres/documents/${doc.id}/download`)}
+              >
+                Ouvrir
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => downloadAuthenticatedBlob(
+                  `/demandes-offres/documents/${doc.id}/download`,
+                  doc.original_filename,
+                )}
+              >
+                Télécharger
+              </Button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -65,7 +71,6 @@ function ReplyForm({ note, demandeId, onUpdated, onCancel }) {
   const [submitting, setSubmitting] = useState(false);
   const lock = useRef(false);
   const reason = replyBlockReason(note, text, files);
-  const documentRequired = note?.complement?.type === "document";
 
   const submit = async () => {
     if (lock.current) return;
@@ -117,12 +122,12 @@ function ReplyForm({ note, demandeId, onUpdated, onCancel }) {
         rows={4}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder={documentRequired ? "Commentaire facultatif…" : "Votre réponse…"}
+        placeholder="Votre réponse (texte et/ou documents)…"
         disabled={submitting}
         data-testid="complement-reply-text"
       />
       <div>
-        <p className="text-sm font-medium">Ajouter des documents{documentRequired ? " (obligatoire)" : ""}</p>
+        <p className="text-sm font-medium">Joindre des documents (facultatif)</p>
         <label className="mt-1 inline-flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm">
           <Paperclip className="h-4 w-4" />
           Choisir des fichiers
@@ -196,7 +201,7 @@ export function PendingComplementBadge({ count }) {
       className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-950"
       data-testid="complements-pending-badge"
     >
-      {n} complément{n > 1 ? "s" : ""} en attente
+      {n} réponse{n > 1 ? "s" : ""} en attente
     </span>
   );
 }
@@ -237,7 +242,7 @@ export default function NotesConseiller({ demandeId, notes, canProcess, focusId,
       </h2>
       <p className="text-xs text-muted-foreground">
         Conservées dans LeoSoft et transmises par e-mail au conseiller créateur.
-        Une demande de complément n&apos;autorise qu&apos;une seule réponse.
+        Une note avec réponse attendue n&apos;autorise qu&apos;une seule réponse (texte et/ou documents).
       </p>
       <ul className="space-y-3">
         {items.map((note) => {
@@ -254,11 +259,15 @@ export default function NotesConseiller({ demandeId, notes, canProcess, focusId,
             >
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-                  {note.reply_expected ? (complement?.type_label || "Complément") : "Note informative"}
+                  {note.by_name || "Service Offres"}
                 </span>
-                {note.reply_expected && (
+                {note.reply_expected ? (
                   <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[complement?.status] || STATUS_STYLE.en_attente}`}>
-                    {complement?.status_label || "En attente de réponse"}
+                    {complement?.status_label || "Réponse attendue"}
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                    Note informative
                   </span>
                 )}
                 {note.can_reply && (
@@ -266,6 +275,7 @@ export default function NotesConseiller({ demandeId, notes, canProcess, focusId,
                 )}
               </div>
               <p className="whitespace-pre-wrap">{note.note}</p>
+              <DocumentLinks documents={note.documents} title="Pièces jointes" />
               <p className="mt-1 text-xs text-muted-foreground">
                 {formatDateTimeFr(note.at)}
                 {note.by_name ? ` · ${note.by_name}` : ""}
@@ -274,13 +284,13 @@ export default function NotesConseiller({ demandeId, notes, canProcess, focusId,
               </p>
               {answered && complement?.reply && (
                 <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50/70 px-3 py-2" data-testid="complement-reply-readonly">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Réponse transmise</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Réponse du conseiller</p>
                   {complement.reply.text ? (
                     <p className="mt-1 whitespace-pre-wrap">{complement.reply.text}</p>
                   ) : (
-                    <p className="mt-1 text-muted-foreground">Aucun commentaire.</p>
+                    <p className="mt-1 text-muted-foreground">Aucun commentaire — documents uniquement.</p>
                   )}
-                  <DocumentLinks documents={complement.reply.documents} />
+                  <DocumentLinks documents={complement.reply.documents} title="Documents joints" />
                   <p className="mt-1 text-xs text-muted-foreground">
                     {formatDateTimeFr(complement.reply.at)}
                     {complement.reply.by_name ? ` · ${complement.reply.by_name}` : ""}
@@ -300,7 +310,7 @@ export default function NotesConseiller({ demandeId, notes, canProcess, focusId,
                   onClick={() => setOpenId(note.id)}
                   data-testid="complement-reply-open"
                 >
-                  Répondre à la demande
+                  Répondre
                 </Button>
               )}
               {note.can_reply && openId === note.id && (

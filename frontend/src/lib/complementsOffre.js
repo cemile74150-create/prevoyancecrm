@@ -1,4 +1,4 @@
-/** Règles d'affichage des demandes de complément. Le serveur reste la source de vérité. */
+/** Règles d'affichage des notes externes / compléments. Le serveur reste la source de vérité. */
 
 export const MAX_COMPLEMENT_FILES = 15;
 
@@ -16,10 +16,7 @@ export function replyBlockReason(note, text, files) {
   const count = Array.isArray(files) ? files.length : 0;
   if (comment.length > 8000) return "La réponse est trop longue";
   if (count > MAX_COMPLEMENT_FILES) return `Maximum ${MAX_COMPLEMENT_FILES} documents`;
-  if (note.complement?.type === "document" && count < 1) {
-    return "Ajoutez au moins un document";
-  }
-  if (note.complement?.type === "information" && !comment && count < 1) {
+  if (!comment && count < 1) {
     return "Saisissez une réponse ou joignez un document";
   }
   return "";

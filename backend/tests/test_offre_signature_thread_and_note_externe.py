@@ -249,9 +249,12 @@ def test_signature_and_external_note_routes_keep_their_recipients():
     assert "notes_externes" in handler
 
 
-def test_external_note_requires_text():
-    from demandes_offres_routes import ExternalNoteRequest
-
-    with pytest.raises(Exception):
-        ExternalNoteRequest(note="")
-    assert ExternalNoteRequest(note="Bonjour").note == "Bonjour"
+def test_external_note_route_requires_text_and_supports_attachments():
+    routes = Path(__file__).resolve().parents[1].joinpath("demandes_offres_routes.py").read_text(
+        encoding="utf-8"
+    )
+    handler = routes.split("async def add_external_note", 1)[1].split("@api_router.", 1)[0]
+    assert 'detail="La note est obligatoire"' in handler
+    assert "attendre_reponse" in handler
+    assert "CATEGORY_NOTE_EXTERNE" in handler
+    assert "reply_uploads(request)" in handler

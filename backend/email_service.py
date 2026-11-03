@@ -1642,32 +1642,31 @@ def format_complement_demande_email(
     note: Optional[str] = None,
     complement_type: Optional[str] = None,
     complement_id: Optional[str] = None,
+    document_names: Optional[list] = None,
 ) -> Tuple[str, str, str]:
     """
-    Complément avec réponse attendue, envoyé au conseiller créateur.
+    Note externe avec réponse attendue, envoyée au conseiller créateur.
     Objet et bouton distincts d'une simple note informative.
     """
     client = _offre_client_name(doc)
     numero = (doc.get("numero") or "").strip() or "—"
     subject = f"LeoSoft — Action requise : complément demandé pour l'offre {numero}"
     note_text = (note or "").strip() or "—"
-    kind = {"document": "Document", "information": "Information"}.get(
-        (complement_type or "").strip().lower(),
-        "Complément",
-    )
+    names = [str(name).strip() for name in (document_names or doc.get("complement_document_names") or []) if str(name).strip()]
+    docs_line = ", ".join(names) if names else "Aucun"
     url = _complement_offre_url(doc.get("id"), complement_id)
     button = "Répondre à la demande sur LeoSoft"
     text_lines = [
         "Bonjour,",
         "",
-        "Une demande de complément nécessite votre intervention concernant le dossier suivant :",
+        "Une note du service des offres nécessite votre réponse concernant le dossier suivant :",
         "",
         f"- Client : {client}",
         f"- Référence : {numero}",
-        f"- Type : {kind}",
-        f"- Demande du gestionnaire : {note_text}",
+        f"- Message : {note_text}",
+        f"- Pièces jointes : {docs_line}",
         "",
-        "Merci de vous connecter à LeoSoft afin de répondre à cette demande et, si nécessaire, de transmettre les documents demandés.",
+        "Merci de vous connecter à LeoSoft pour répondre (texte et/ou documents).",
     ]
     if url:
         text_lines.extend(["", f"{button} :", url])
@@ -1676,16 +1675,16 @@ def format_complement_demande_email(
     html_parts = [
         '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.5;">',
         "<p>Bonjour,</p>",
-        "<p>Une demande de complément nécessite votre intervention concernant le dossier suivant :</p>",
+        "<p>Une note du service des offres nécessite votre réponse concernant le dossier suivant :</p>",
         "<ul>",
         f"<li><strong>Client</strong> : {html.escape(client)}</li>",
         f"<li><strong>Référence</strong> : {html.escape(numero)}</li>",
-        f"<li><strong>Type</strong> : {html.escape(kind)}</li>",
-        "<li><strong>Demande du gestionnaire</strong> : "
+        "<li><strong>Message</strong> : "
         + html.escape(note_text).replace("\n", "<br/>")
         + "</li>",
+        f"<li><strong>Pièces jointes</strong> : {html.escape(docs_line)}</li>",
         "</ul>",
-        "<p>Merci de vous connecter à LeoSoft afin de répondre à cette demande et, si nécessaire, de transmettre les documents demandés.</p>",
+        "<p>Merci de vous connecter à LeoSoft pour répondre (texte et/ou documents).</p>",
     ]
     if url:
         html_parts.append(_html_button(url, button))
@@ -1707,10 +1706,6 @@ def format_complement_reponse_email(
     client = _offre_client_name(doc)
     numero = (doc.get("numero") or "").strip() or "—"
     subject = f"LeoSoft — Réponse reçue : complément pour l'offre {numero}"
-    kind = {"document": "Document", "information": "Information"}.get(
-        (complement_type or "").strip().lower(),
-        "Complément",
-    )
     request_text = (note or "").strip() or "—"
     answer = (reply_text or "").strip() or "—"
     who = (author or "").strip() or "Le conseiller"
@@ -1721,11 +1716,10 @@ def format_complement_reponse_email(
     text_lines = [
         "Bonjour,",
         "",
-        "Une réponse a été transmise à une demande de complément.",
+        "Une réponse a été transmise à une note externe.",
         "",
         f"- Client : {client}",
         f"- Référence : {numero}",
-        f"- Type : {kind}",
         f"- Demande : {request_text}",
         f"- Réponse de {who} : {answer}",
         f"- Documents : {docs_line}",
@@ -1739,11 +1733,10 @@ def format_complement_reponse_email(
     html_parts = [
         '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.5;">',
         "<p>Bonjour,</p>",
-        "<p>Une réponse a été transmise à une demande de complément.</p>",
+        "<p>Une réponse a été transmise à une note externe.</p>",
         "<ul>",
         f"<li><strong>Client</strong> : {html.escape(client)}</li>",
         f"<li><strong>Référence</strong> : {html.escape(numero)}</li>",
-        f"<li><strong>Type</strong> : {html.escape(kind)}</li>",
         "<li><strong>Demande</strong> : " + html.escape(request_text).replace("\n", "<br/>") + "</li>",
         f"<li><strong>Réponse de {html.escape(who)}</strong> : " + html.escape(answer).replace("\n", "<br/>") + "</li>",
         f"<li><strong>Documents</strong> : {html.escape(docs_line)}</li>",

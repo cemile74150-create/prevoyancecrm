@@ -729,7 +729,7 @@ export function buildDemandeResume(demande, options = {}) {
   add("Adresse", adresse);
   add("Type d'offre", demande.form_type_label || (isSchemaForm ? null : demande.type_pilier));
 
-  if (demande.requires_mandat_gestion) {
+  if (demandeRequiresMandatGestion(demande, demande.form_payload)) {
     add("Mandat — début", formatDateFr(demande.mandat_debut) !== "—" ? formatDateFr(demande.mandat_debut) : null);
     add("Mandat — fin", formatDateFr(demande.mandat_fin) !== "—" ? formatDateFr(demande.mandat_fin) : null);
   }
@@ -892,7 +892,7 @@ export function buildModificationChanges(snapshot, current, fields = MODIFICATIO
 
 export const MANDAT_GESTION_DOC_CATEGORY = "Mandat de gestion";
 export const MANDAT_GESTION_INFO =
-  "Pour toute demande d'offre professionnelle, un mandat de gestion d'une durée minimale de 1 an est obligatoire. Merci de joindre ce document avant de transmettre votre demande au service Offres.";
+  "Pour toute demande d'offre professionnelle adressée à Allianz ou Vaudoise, un mandat de gestion d'une durée minimale de 1 an est obligatoire. Merci de joindre ce document avant de transmettre votre demande au service Offres.";
 
 export function isMandatGestionCategory(category) {
   const key = String(category || "").trim().toLowerCase();
@@ -903,6 +903,47 @@ export function hasMandatGestionDocument(demande) {
   return (demande?.documents || []).some(
     (doc) => doc && !doc.is_deleted && isMandatGestionCategory(doc.category),
   );
+}
+
+export function isMandatRequiredCompany(name) {
+  const key = String(name || "").trim().toLowerCase();
+  return key.includes("allianz") || key.includes("vaudoise");
+}
+
+function collectCompanyNames(demande, formPayload) {
+  const names = [];
+  for (const raw of demande?.compagnies || []) {
+    if (raw) names.push(String(raw));
+  }
+  const payload = formPayload || demande?.form_payload || {};
+  for (const value of Object.values(payload)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === "string" && item.trim()) names.push(item);
+      }
+    } else if (typeof value === "string" && value.trim()) {
+      names.push(value);
+    }
+  }
+  return names;
+}
+
+/** Professionnel + Allianz/Vaudoise sollicitées (réactif à la saisie locale). */
+export function demandeRequiresMandatGestion(demande, formPayload) {
+  if (!demande) return false;
+  if (demande.is_professionnelle_offre === false) return false;
+  const formType = String(demande.form_type || "");
+  const category = String(demande.form_category || "").toLowerCase();
+  const isPro =
+    demande.is_professionnelle_offre === true
+    || category.includes("professionnelle")
+    || category === "entreprise"
+    || formType === "formulaire_complet"
+    || formType === "rc_entreprise"
+    || formType.startsWith("entreprise")
+    || formType.startsWith("protection_juridique_entreprise");
+  if (!isPro) return false;
+  return collectCompanyNames(demande, formPayload).some(isMandatRequiredCompany);
 }
 
 function parseMandatDateLocal(value) {
@@ -922,9 +963,11 @@ function anniversaryPlusOneYear(start) {
   return next;
 }
 
-/** Erreurs mandat pro (alignées backend). Vide si pas de mandat obligatoire. */
-export function mandatGestionMissing(demande, form = {}) {
-  if (!demande?.requires_mandat_gestion) return [];
+/** Erreurs mandat pro Allianz/Vaudoise (alignées backend). */
+export function mandatGestionMissing(demande, form = {}, formPayload) {
+  if (!demandeRequiresMandatGestion(demande, formPayload ?? form?.form_payload ?? demande?.form_payload)) {
+    return [];
+  }
 
   const missing = [];
   if (!hasMandatGestionDocument(demande)) {

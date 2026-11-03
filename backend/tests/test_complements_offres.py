@@ -1,4 +1,4 @@
-"""Demandes de complément : une réponse, puis le droit se ferme."""
+"""Notes externes / compléments : une réponse libre (texte et/ou docs)."""
 from __future__ import annotations
 
 import sys
@@ -20,8 +20,10 @@ from access_control import (  # noqa: E402
     user_from_doc,
 )
 from complements_offres import (  # noqa: E402
+    TYPE_REPONSE,
     claim_reply,
     count_pending_complements,
+    enrich_external_notes,
     new_complement,
     reply_claim_filter,
     reply_document_ids,
@@ -47,7 +49,7 @@ def _user(role, **kwargs):
     return user_from_doc(doc)
 
 
-def _open(note_id, kind, text):
+def _open(note_id, kind, text, documents=None):
     return {
         "id": note_id,
         "at": "2026-11-03T08:00:00+00:00",
@@ -55,6 +57,7 @@ def _open(note_id, kind, text):
         "by_id": "gest-1",
         "note": text,
         "reply_expected": True,
+        "documents": documents or [],
         "complement": new_complement(complement_type=kind, at="2026-11-03T08:00:00+00:00"),
     }
 
@@ -79,15 +82,19 @@ def test_informative_note_has_no_reply_right():
     assert "complement" not in updated[0]
 
 
-def test_document_reply_requires_a_file_and_information_accepts_text():
+def test_reply_accepts_text_only_docs_only_or_both_even_for_legacy_document_type():
     document = _open("d1", "document", "Mandat de gestion signé manquant")
     information = _open("i1", "information", "Quelle est la date de naissance du client ?")
-    assert validate_reply(document, "", 0) == "document_required"
+    reponse = _open("r1", TYPE_REPONSE, "Merci de compléter le formulaire joint")
+    assert validate_reply(document, "", 0) == "text_required"
+    assert validate_reply(document, "Voici le mandat scanné demain", 0) is None
     assert validate_reply(document, "", 1) is None
     assert validate_reply(document, "Voici le mandat", 2) is None
     assert validate_reply(information, "", 0) == "text_required"
     assert validate_reply(information, "12.03.1980", 0) is None
     assert validate_reply(information, "", 1) is None
+    assert validate_reply(reponse, "Ok", 0) is None
+    assert validate_reply(reponse, "", 1) is None
 
 
 def test_one_reply_closes_only_that_request():
@@ -99,7 +106,7 @@ def test_one_reply_closes_only_that_request():
     updated, claimed = claim_reply(
         notes,
         "d1",
-        _reply(docs=[{"id": "doc-1", "original_filename": "Mandat signé.pdf"}]),
+        _reply(text="Ci-joint", docs=[{"id": "doc-1", "original_filename": "Mandat signé.pdf"}]),
     )
     assert claimed is True
     assert validate_reply(updated[1], "encore", 1) == "already"
@@ -146,7 +153,7 @@ def test_other_agent_and_offer_manager_cannot_answer():
     assert user_can_answer_complement(manager, demande) is False
 
 
-def test_serialize_keeps_old_notes_and_shows_one_open_reply_after_reload():
+def test_serialize_keeps_old_notes_and_manager_attachments():
     stored = {
         "id": "d1",
         "statut": "Demande envoyée",
@@ -155,20 +162,28 @@ def test_serialize_keeps_old_notes_and_shows_one_open_reply_after_reload():
         "notes_internes": [{"note": "secret"}],
         "notes_externes": [
             {"id": "old", "note": "Note déjà envoyée", "email_to": "camille@test.ch"},
-            _open("d1", "document", "Mandat manquant"),
+            _open(
+                "d1",
+                "document",
+                "Merci de remplir le formulaire",
+                documents=[{"id": "form-1", "original_filename": "formulaire.pdf", "category": "Note externe"}],
+            ),
             _open("i1", "information", "Date de naissance ?"),
         ],
     }
     answered, _claimed = claim_reply(
         stored["notes_externes"],
         "d1",
-        _reply(docs=[{"id": "doc-1", "original_filename": "Mandat signé.pdf"}]),
+        _reply(text="Formulaire rempli", docs=[{"id": "doc-1", "original_filename": "rempli.pdf"}]),
     )
     stored = {**stored, "notes_externes": answered}
     owner = _user(ROLE_CONSEILLER, user_id="agent-1")
     out = serialize_demande(
         stored,
-        docs=[{"id": "doc-1", "original_filename": "Mandat signé.pdf", "category": "Complément conseiller"}],
+        docs=[
+            {"id": "form-1", "original_filename": "formulaire.pdf", "category": "Note externe"},
+            {"id": "doc-1", "original_filename": "rempli.pdf", "category": "Complément conseiller"},
+        ],
         viewer=owner,
     )
     assert out["statut"] == "Demande envoyée"
@@ -179,30 +194,29 @@ def test_serialize_keeps_old_notes_and_shows_one_open_reply_after_reload():
     document = out["notes_externes"][1]
     assert document["can_reply"] is False
     assert document["complement"]["status_label"] == "Réponse reçue"
-    assert document["complement"]["reply"]["documents"][0]["original_filename"] == "Mandat signé.pdf"
-    assert document["complement"]["reply"]["by_name"] == "Camille Durand"
+    assert document["documents"][0]["original_filename"] == "formulaire.pdf"
+    assert document["complement"]["reply"]["documents"][0]["original_filename"] == "rempli.pdf"
     information = out["notes_externes"][2]
     assert information["can_reply"] is True
-    assert information["complement"]["status_label"] == "En attente de réponse"
+    assert information["complement"]["status_label"] == "Réponse attendue"
     assert out["nb_complements_en_attente"] == 1
-    assert out["documents"][0]["locked"] is True
-    again = serialize_demande(stored, docs=out["documents"], viewer=owner)
-    assert again["notes_externes"][1]["can_reply"] is False
-    assert again["notes_externes"][2]["can_reply"] is True
+    locked = {d["id"] for d in out["documents"] if d.get("locked")}
+    assert "doc-1" in locked
+    assert "form-1" in locked
 
-    manager = _user(
-        ROLE_GESTIONNAIRE_OFFRES,
-        user_id="gest-1",
-        email="lea@test.ch",
-        prenom="Lea",
-        nom="Gestion",
-        name="Lea Gestion",
-        conseiller="Lea Gestion",
-    )
-    seen = serialize_demande(stored, viewer=manager)
-    assert seen["notes_externes"][1]["complement"]["reply"]["text"]
-    assert seen["notes_externes"][2]["can_reply"] is False
-    assert seen["nb_complements_en_attente"] == 1
+
+def test_enrich_shows_note_attachments_without_reply():
+    notes = [
+        {
+            "id": "n1",
+            "note": "Voici le modèle",
+            "reply_expected": False,
+            "documents": [{"id": "a1", "original_filename": "modele.pdf"}],
+        }
+    ]
+    out = enrich_external_notes(notes, can_answer=False)
+    assert out[0]["documents"][0]["original_filename"] == "modele.pdf"
+    assert out[0]["can_reply"] is False
 
 
 def test_claim_filter_rejects_a_second_write():
@@ -221,6 +235,9 @@ def test_claim_filter_rejects_a_second_write():
             },
         }
     ])
+    assert "att-1" in reply_document_ids([
+        {**note, "documents": [{"id": "att-1", "original_filename": "pj.pdf"}]}
+    ])
 
 
 def test_complement_email_goes_to_the_creator_with_a_direct_link(monkeypatch):
@@ -230,22 +247,22 @@ def test_complement_email_goes_to_the_creator_with_a_direct_link(monkeypatch):
         "numero": "OFF-2026-0042",
         "prenom": "Jean",
         "nom": "Dupont",
+        "complement_document_names": ["formulaire.pdf"],
     }
     subject, text, html = es.format_complement_demande_email(
         doc,
-        note="Mandat de gestion signé manquant",
-        complement_type="document",
+        note="Pouvez-vous remplir le formulaire ci-joint ?",
+        complement_type="reponse",
         complement_id="comp-1",
     )
     assert subject == "LeoSoft — Action requise : complément demandé pour l'offre OFF-2026-0042"
     assert "Client : Jean Dupont" in text
     assert "Référence : OFF-2026-0042" in text
-    assert "Type : Document" in text
-    assert "Mandat de gestion signé manquant" in text
+    assert "Type :" not in text
+    assert "formulaire.pdf" in text
+    assert "Pouvez-vous remplir le formulaire ci-joint ?" in text
     assert "https://leosoft.example/demandes-offres/demande-1?complement=comp-1" in text
     assert "Répondre à la demande sur LeoSoft" in html
-    assert "complement=comp-1" in html
-    assert "offres@" not in text
     assert es.offre_notify_role("complement_demande") == "createur"
     assert es.offre_notify_role("note_externe") == "createur"
 
@@ -266,6 +283,7 @@ def test_reply_email_uses_the_existing_offres_route_once(monkeypatch):
     assert "OFF-2026-0042" in subject
     assert "Mandat signé.pdf" in text
     assert "Camille Durand" in text
+    assert "Type :" not in text
     assert "complement=comp-1" in html
     assert es.offre_notify_role("complement_reponse") == "offres_mailbox"
 
@@ -305,3 +323,7 @@ def test_external_note_route_still_targets_the_creator_for_informative_notes():
     assert "resolve_demande_creator_email(doc)" in handler
     assert handler.count("write_offre_notification(") == 1
     assert '"Note externe"' in handler
+    assert "CATEGORY_NOTE_EXTERNE" in handler
+    assert "attendre_reponse" in handler
+    assert "type_complement" not in handler
+    assert "Choisissez le type de complément" not in handler

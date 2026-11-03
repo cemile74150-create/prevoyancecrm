@@ -30,10 +30,12 @@ from access_control import (
 )
 from complements_offres import (
     CATEGORY_COMPLEMENT,
+    CATEGORY_NOTE_EXTERNE,
+    MAX_NOTE_FILES,
     REPLY_ERROR_HTTP,
     creator_account_ids,
     new_complement,
-    normalize_complement_type,
+    public_document_refs,
     reply_claim_filter,
     reply_document_ids,
     user_can_answer_complement,
@@ -193,13 +195,6 @@ class CompleteOfferRequest(BaseModel):
 
 class InternalNoteRequest(BaseModel):
     note: str = Field(min_length=1)
-
-
-class ExternalNoteRequest(BaseModel):
-    """Note visible dans LeoSoft et envoyée par e-mail au conseiller créateur."""
-    note: str = Field(min_length=1)
-    attendre_reponse: bool = False
-    type_complement: Optional[str] = None
 
 
 class OffresCompletesRequest(BaseModel):
@@ -2666,52 +2661,90 @@ def attach_demandes_offres_routes(
         fresh = await require_demande(demande_id, user)
         return serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
 
+    def _form_bool(value) -> bool:
+        return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
     @api_router.post("/demandes-offres/{demande_id}/notes-externes")
     async def add_external_note(
+        request: Request,
         demande_id: str,
-        payload: ExternalNoteRequest,
+        note: str = Form(...),
+        attendre_reponse: str = Form("false"),
         user: User = Depends(current_user_dependency),
     ):
         """
         Note destinée au conseiller créateur : historique LeoSoft + e-mail.
-        Le destinataire est le créateur de la demande, pas le gestionnaire connecté.
+        Pièces jointes optionnelles (gestionnaire). Case « Attendre une réponse »
+        ouvre une seule réponse conseiller (texte et/ou documents).
         """
         require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
         doc = await require_demande(demande_id, user)
-        note = payload.note.strip()
-        if not note:
+        note_text = (note or "").strip()
+        if not note_text:
             raise HTTPException(status_code=422, detail="La note est obligatoire")
-        attendre = bool(payload.attendre_reponse)
-        complement_type = normalize_complement_type(payload.type_complement) if attendre else None
-        if attendre and not complement_type:
+        attendre = _form_bool(attendre_reponse)
+        uploads = await reply_uploads(request)
+        if len(uploads) > MAX_NOTE_FILES:
             raise HTTPException(
                 status_code=422,
-                detail="Choisissez le type de complément : document ou information",
+                detail=f"Maximum {MAX_NOTE_FILES} documents",
             )
         author = actor_name(user)
         entry_id = str(uuid.uuid4())
+        stored = []
+        try:
+            for upload in uploads:
+                stored.append(
+                    await store_doc(
+                        demande_id,
+                        upload,
+                        user,
+                        category=CATEGORY_NOTE_EXTERNE,
+                        extra={"note_externe_id": entry_id},
+                    )
+                )
+        except Exception:
+            await discard_complement_uploads([item.get("id") for item in stored], user)
+            raise
+
+        attachment_refs = public_document_refs(
+            [
+                {
+                    "id": item.get("id"),
+                    "original_filename": item.get("original_filename"),
+                    "content_type": item.get("content_type"),
+                    "size": item.get("size"),
+                    "category": CATEGORY_NOTE_EXTERNE,
+                    "created_at": item.get("created_at"),
+                }
+                for item in stored
+            ]
+        )
         to_addr = await resolve_demande_creator_email(doc)
         sent = False
         email_error = None
+        doc_names = [ref.get("original_filename") for ref in attachment_refs if ref.get("original_filename")]
         if to_addr:
             mail_doc = {
                 **doc,
                 "note_externe_author": author,
-                "complement_type": complement_type,
+                "complement_type": "reponse" if attendre else None,
                 "complement_id": entry_id if attendre else None,
+                "complement_document_names": doc_names,
+                "note_externe_document_names": doc_names,
             }
             if attendre:
                 sent, email_error = await try_send_email(
                     mail_doc,
                     event="complement_demande",
-                    note=note,
+                    note=note_text,
                     to_override=to_addr,
                 )
             else:
                 sent, email_error = await try_send_email(
                     mail_doc,
                     event="note_externe",
-                    note=note,
+                    note=note_text,
                     to_override=to_addr,
                 )
         else:
@@ -2722,14 +2755,15 @@ def attach_demandes_offres_routes(
             "at": at,
             "by_name": author,
             "by_id": user.account_id,
-            "note": note,
+            "note": note_text,
             "email_to": to_addr,
             "email_sent": bool(sent),
             "email_error": email_error,
             "reply_expected": attendre,
+            "documents": attachment_refs,
         }
         if attendre:
-            entry["complement"] = new_complement(complement_type=complement_type, at=at)
+            entry["complement"] = new_complement(at=at)
         notes_field = doc.get("notes_externes")
         if notes_field is None:
             await db[COLLECTION].update_one(
@@ -2737,12 +2771,15 @@ def attach_demandes_offres_routes(
                 {"$set": {"notes_externes": []}},
             )
         action = "Demande de complément" if attendre else "Note externe"
+        hist_detail = note_text
+        if attachment_refs:
+            hist_detail = f"{note_text} · {len(attachment_refs)} pièce(s)"
         await db[COLLECTION].update_one(
             {"id": demande_id, "user_id": TENANT_USER_ID},
             {
                 "$push": {
                     "notes_externes": entry,
-                    "historique": history(action, user, note),
+                    "historique": history(action, user, hist_detail),
                 },
                 "$set": {"updated_at": now_iso()},
             },
@@ -2752,7 +2789,7 @@ def attach_demandes_offres_routes(
                 doc=doc,
                 event="complement_demande",
                 title=f"Action requise — {doc.get('numero') or 'offre'}".strip(),
-                message="Une demande de complément nécessite votre intervention.",
+                message="Une note externe nécessite votre réponse.",
                 audience="conseiller",
                 account_ids=creator_account_ids(doc),
                 complement_id=entry_id,
