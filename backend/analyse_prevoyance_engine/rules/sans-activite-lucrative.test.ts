@@ -105,6 +105,12 @@ describe("sans activité lucrative — bilan PDF", () => {
     assert.ok(prev.includes("AVS estimée"));
     assert.ok(prev.includes("3e pilier"));
     assert.ok(prev.includes("Libre passage"));
+
+    const full = renderPrintableReportHtml(payload);
+    assert.equal(
+      full.includes("Comparaison des options de retraite : rente ou capital"),
+      false,
+    );
   });
 
   it("une LPP renseignée fait réapparaître les trois lignes", async () => {
@@ -126,6 +132,9 @@ describe("sans activité lucrative — bilan PDF", () => {
     assert.ok(prev.includes("% LPP disponible"));
     assert.ok(prev.includes("Capital LPP disponible"));
     assert.ok(prev.includes("Libre passage"));
+    assert.ok(
+      html.includes("Comparaison des options de retraite : rente ou capital"),
+    );
   });
 
   it("couple : fin d'activité masquée seulement pour l'assuré sans activité", async () => {

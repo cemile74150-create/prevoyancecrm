@@ -286,7 +286,13 @@ export function buildReportPayload(record: AnalyseRecord): ReportPayload {
   const analysesAvs = analysesAvsDuDossier(input.client1, input.conjoint, isCouple);
 
   // Pages : 1 cover, 2 agency, 3 bilan, puis une page AVS par assuré
-  let pageCount = 4 + analysesAvs.length;
+  let pageCount = 3 + analysesAvs.length;
+  const hasLppSaisie =
+    personHasLppSaisie(input.client1) ||
+    (isCouple && personHasLppSaisie(input.conjoint));
+  if (hasLppSaisie) {
+    pageCount += 1; // comparaison rente ou capital
+  }
   if (resumePrestationsLpp?.showResume && resumePrestationsLpp.tables.length > 0) {
     pageCount += 1;
   }

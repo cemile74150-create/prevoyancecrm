@@ -63,10 +63,13 @@ export function buildReportPages(payload: ReportPayload): ReportPageSpec[] {
       });
     }
   }
-  pages.push({
-    kind: "portrait",
-    html: pageCompareRenteCapital(payload, next(), total),
-  });
+  // Sans LPP saisie : le tableau rente/capital n'a pas de sens (même avec libre passage).
+  if (payload.client1.hasLppSaisie || Boolean(payload.conjoint?.hasLppSaisie)) {
+    pages.push({
+      kind: "portrait",
+      html: pageCompareRenteCapital(payload, next(), total),
+    });
+  }
 
   if (payload.flags.hasThirdPillar) {
     for (const html of thirdPillarPages(payload, next, total)) {
