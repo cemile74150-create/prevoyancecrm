@@ -97,6 +97,56 @@ def test_map_calcul_rente_never_invents_frontalier_checkbox():
     assert all(not str(k).lower().startswith("frontal") for k in mapping)
 
 
+def test_calcul_rente_future_auto_checks_vieillesse_and_page9():
+    """
+    Cases fixes dessinées (pas des champs AcroForm) :
+    p.1 rente de vieillesse ; p.9 §8.1 oui/standard/100 % ; §8.2 non/non.
+    """
+    import fitz
+
+    file_bytes, meta = generate_document_pdf(
+        "calcul_rente_future", SAMPLE_CLIENT, agent_name="Agent"
+    )
+    assert meta["template_id"] == "calcul_rente_future"
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    try:
+        assert doc.page_count >= 9
+        page1 = doc[0]
+        # Zone de la case « rente de vieillesse » : pixels sombres = X
+        clip1 = fitz.Rect(41.0, 239.0, 49.0, 247.0)
+        pix1 = page1.get_pixmap(matrix=fitz.Matrix(4, 4), clip=clip1, alpha=False)
+        dark1 = sum(
+            1
+            for i in range(0, len(pix1.samples), 3)
+            if pix1.samples[i] < 80 and pix1.samples[i + 1] < 80 and pix1.samples[i + 2] < 80
+        )
+        assert dark1 > 20, "X manquant sur rente de vieillesse"
+
+        page9 = doc[8]
+        clips = [
+            fitz.Rect(34.0, 125.0, 47.0, 140.0),   # 8.1 oui
+            fitz.Rect(36.0, 162.0, 49.0, 176.0),   # 8.1 calcul standard
+            fitz.Rect(34.0, 403.0, 47.0, 418.0),   # 8.1 oui 100 %
+            fitz.Rect(60.0, 520.0, 73.0, 535.0),   # 8.2 non ajournement
+            fitz.Rect(60.0, 689.0, 73.0, 704.0),   # 8.2 non 100 %
+        ]
+        for clip in clips:
+            pix = page9.get_pixmap(matrix=fitz.Matrix(4, 4), clip=clip, alpha=False)
+            dark = sum(
+                1
+                for i in range(0, len(pix.samples), 3)
+                if pix.samples[i] < 80 and pix.samples[i + 1] < 80 and pix.samples[i + 2] < 80
+            )
+            assert dark > 15, f"X manquant dans {clip}"
+
+        # Préremplissage identité conservé
+        text1 = page1.get_text()
+        assert "DUPONT" in text1 or "Dupont" in text1
+        assert "Jean" in text1
+    finally:
+        doc.close()
+
+
 def test_generate_all_builtin_templates_smoke():
     from unittest.mock import patch
 

@@ -86,13 +86,13 @@ describe("PDF comparatif d'offres — même mise en page, une ligne fortune", ()
     assert.equal(html.includes(">AVS<"), false);
     assert.equal(analyseReportHasFortuneLine(), false);
     assert.equal(analyseReportHasOffreResultatLines(), false);
-    assert.ok(
-      html.includes(
-        "0 % de la rente garantie + 100 % de la participation aux excédents",
-      ),
+    assert.equal(html.includes('class="revenu-fiscal-note"'), false);
+    assert.equal(html.includes('class="fiscal-note"'), false);
+    assert.equal(
+      html.includes("0 % de la rente garantie + 100 % de la participation aux excédents"),
+      false,
     );
-    assert.ok(html.includes("La rente garantie est encaissée, elle n'entre pas dans le revenu imposable"));
-    assert.equal(html.includes("70 % de la participation aux excédents"), false);
+    assert.equal(html.includes("L'impôt de la rente est annuel"), false);
   });
 
   it("rente viagère : impôt annuel, gain et impôts fortune vides, sans durée inventée", () => {
@@ -125,9 +125,11 @@ describe("PDF comparatif d'offres — même mise en page, une ligne fortune", ()
     assert.equal(html.includes(formatChf(26_000)), false);
     assert.equal(html.includes(formatChf((6001 - IMPOT_ANNUEL) * 20 - 130_000)), false);
     assert.match(html, /Total impôt fortune</);
-    assert.ok(
+    assert.equal(html.includes('class="revenu-fiscal-note"'), false);
+    assert.equal(html.includes('class="fiscal-note"'), false);
+    assert.equal(
       html.includes("4 % de la rente garantie + 70 % de la participation aux excédents"),
+      false,
     );
-    assert.equal(html.includes("4 % de la rente garantie + 100 % de la participation"), false);
   });
 });

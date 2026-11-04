@@ -5,7 +5,7 @@
  * Sous le revenu net : total d'impôt fortune sur la durée,
  * impôt fortune si le capital n'est pas affecté. Pas de ligne Gain net.
  * Les revenus ajoutés (AVS, rente LPP, autre) entrent dans l'impôt sur le revenu.
- * Pas de calendrier année par année.
+ * Pas de calendrier année par année. Pas de notes sous le tableau.
  * Le rapport d'analyse n'est pas modifié et ne reçoit pas ces lignes.
  */
 import { readFileSync } from "fs";
@@ -16,7 +16,7 @@ import {
   LIBELLE_IMPOT_RENTE_ANNUEL,
   type OffreRenteType,
 } from "../rules/comparatif-rente-offre";
-import { compagnieEstPax, NOTE_PAX_DIFFERE } from "../rules/rente-hypotheses";
+import { compagnieEstPax } from "../rules/rente-hypotheses";
 import type {
   ComparatifOffreColumn,
   ComparatifRenteOffreResult,
@@ -93,17 +93,6 @@ export function renderComparatifOffreHtml(
         ? "Total impôt fortune"
         : "Total impôt fortune sur la durée";
 
-  const hasCertaine = cols.some((col) => col.type === "certaine");
-  const hasViagere = cols.some((col) => col.type === "viagere");
-  const notes = [
-    hasCertaine
-      ? "Rente certaine. Revenu fiscal de l'offre = 0 % de la rente garantie + 100 % de la participation aux excédents. La rente garantie est encaissée, elle n'entre pas dans le revenu imposable. AVS, rente LPP ou autre revenu seulement s'ils sont ajoutés."
-      : "",
-    hasViagere
-      ? "Rente viagère. Revenu fiscal de l'offre = 4 % de la rente garantie + 70 % de la participation aux excédents. AVS, rente LPP ou autre revenu seulement s'ils sont ajoutés. L'impôt reste annuel : aucune durée n'est inventée."
-      : "",
-  ].filter(Boolean);
-
   const who = clientLabel.trim()
     ? `<p class="note">${esc(clientLabel.trim())}</p>`
     : "";
@@ -115,7 +104,6 @@ export function renderComparatifOffreHtml(
   </div>
   <div class="page-title">COMPARATIF DES RENTES</div>
   ${who}
-  <div class="keep-with-note">
   <table class="data compare">
     ${colgroup}
     <tr><th class="lab"></th>${head}</tr>
@@ -164,11 +152,7 @@ export function renderComparatifOffreHtml(
         col.impotFortuneSiNonAffecte == null ? "—" : esc(money(col.impotFortuneSiNonAffecte)),
       ),
     )}
-  </table>
-  ${notes.map((note) => `<p class="revenu-fiscal-note">${esc(note)}</p>`).join("")}
-  ${cols.some((col) => compagnieEstPax(col.compagnie || col.label)) ? `<p class="note">${esc(NOTE_PAX_DIFFERE)}</p>` : ""}
-  <p class="fiscal-note">* L'impôt de la rente est annuel : il n'est pas multiplié par la durée. Les revenus ajoutés (AVS, rente LPP, autre) entrent dans cet impôt lorsqu'ils sont saisis. Le total d'impôt sur la fortune est la somme des impôts sur le capital qui diminue chaque année de la rente garantie. La dernière ligne est l'impôt sur ce même capital s'il n'est pas affecté à la rente (fortune constante × durée). Sans durée, les deux impôts sur la fortune restent vides.</p>
-  </div>`;
+  </table>`;
 
   return `<!DOCTYPE html>
 <html lang="fr">

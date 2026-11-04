@@ -2446,6 +2446,9 @@ def _fill_acroform(
         pdf_bytes = _overlay_lettre_lpp_name_sentence(pdf_bytes, values, style=fill_style)
     elif template_id == "lettre_avs":
         pdf_bytes = _overlay_lettre_avs_names(pdf_bytes, values, style=fill_style)
+    elif template_id == "calcul_rente_future":
+        # Cases non présentes en AcroForm dans ce modèle : X dessinés aux emplacements officiels.
+        pdf_bytes = _overlay_calcul_rente_future_checks(pdf_bytes)
 
     # Une seule écriture de l'adresse destinataire (haut droite).
     if template_id == "lettre_decompte_lpp" and decompte_adresse_text:
@@ -2477,6 +2480,143 @@ def _fill_acroform(
                 min_font=max(PDF_FILL_ABS_MIN_FONT, base - 4.0),
             )
     return pdf_bytes
+
+
+def _draw_pdf_checkbox_x(page, rect, *, width: float = 1.35) -> None:
+    """Trace un X dans une case / un cercle radio (origine haut-gauche PyMuPDF)."""
+    import fitz
+
+    box = fitz.Rect(rect)
+    if box.is_empty or box.width < 2 or box.height < 2:
+        return
+    pad = max(0.8, min(box.width, box.height) * 0.18)
+    p1 = fitz.Point(box.x0 + pad, box.y0 + pad)
+    p2 = fitz.Point(box.x1 - pad, box.y1 - pad)
+    p3 = fitz.Point(box.x0 + pad, box.y1 - pad)
+    p4 = fitz.Point(box.x1 - pad, box.y0 + pad)
+    page.draw_line(p1, p2, color=(0, 0, 0), width=width, stroke_opacity=1)
+    page.draw_line(p3, p4, color=(0, 0, 0), width=width, stroke_opacity=1)
+
+
+def _find_pdf_word(page, word: str, *, y_approx: float, tol: float = 10.0):
+    """Retrouve un mot exact près d'une ordonnée (coordonnées PyMuPDF)."""
+    import fitz
+
+    best = None
+    best_dist = None
+    for entry in page.get_text("words") or []:
+        x0, y0, x1, y1, text = entry[:5]
+        if str(text) != word:
+            continue
+        dist = abs(float(y0) - float(y_approx))
+        if dist > tol:
+            continue
+        if best_dist is None or dist < best_dist:
+            best_dist = dist
+            best = fitz.Rect(x0, y0, x1, y1)
+    return best
+
+
+def _radio_mark_rect_left_of(word_rect, *, gap: float = 4.0, size: float = 10.5):
+    """Case circulaire juste à gauche du libellé oui/non."""
+    import fitz
+
+    x1 = float(word_rect.x0) - gap
+    x0 = x1 - size
+    mid_y = (float(word_rect.y0) + float(word_rect.y1)) / 2.0
+    y0 = mid_y - size / 2.0
+    y1 = mid_y + size / 2.0
+    return fitz.Rect(x0, y0, x1, y1)
+
+
+def _radio_mark_rect_between(left_word, right_word, *, size: float = 9.5):
+    """
+    Cercle radio entre deux libellés (ex. oui | ● non).
+    Centre horizontal au milieu de l'espace séparant les deux mots.
+    """
+    import fitz
+
+    gap_left = float(left_word.x1)
+    gap_right = float(right_word.x0)
+    mid_x = (gap_left + gap_right) / 2.0
+    mid_y = (
+        (float(left_word.y0) + float(left_word.y1) + float(right_word.y0) + float(right_word.y1))
+        / 4.0
+    )
+    half = size / 2.0
+    return fitz.Rect(mid_x - half, mid_y - half, mid_x + half, mid_y + half)
+
+
+def _overlay_calcul_rente_future_checks(pdf_bytes: bytes) -> bytes:
+    """
+    Coche les cases fixes du formulaire « Demande de calcul d'une rente future » :
+    - p.1 rente de vieillesse
+    - p.9 §8.1 anticipation (oui + calcul standard + 100 %)
+    - p.9 §8.2 ajournement (non + non 100 %)
+    Ne touche pas aux champs AcroForm déjà préremplis.
+    """
+    import fitz
+
+    pdf_bytes = _ensure_pdf_bytes(pdf_bytes, label="calcul_rente_future_checks")
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        if doc.page_count < 9:
+            return pdf_bytes
+
+        # --- Page 1 : ☑ rente de vieillesse ---
+        page1 = doc[0]
+        vieillesse = None
+        for hit in page1.search_for("rente de vieillesse") or []:
+            if 220 <= float(hit.y0) <= 260:
+                vieillesse = hit
+                break
+        if vieillesse is not None:
+            # Carré imprimé à gauche du libellé (mesuré sur le modèle officiel).
+            box = fitz.Rect(41.6, float(vieillesse.y0) + 1.4, 48.3, float(vieillesse.y0) + 8.1)
+            _draw_pdf_checkbox_x(page1, box, width=1.25)
+
+        # --- Page 9 : anticipation / ajournement ---
+        page9 = doc[8]
+
+        oui_anticip = _find_pdf_word(page9, "oui", y_approx=128.2)
+        if oui_anticip is not None:
+            _draw_pdf_checkbox_x(page9, _radio_mark_rect_left_of(oui_anticip), width=1.25)
+
+        std_hits = page9.search_for("Un calcul standard") or []
+        if std_hits:
+            # Premier = §8.1 (le second est §8.2, non coché).
+            std = std_hits[0]
+            box = fitz.Rect(36.5, float(std.y0) - 0.5, 47.8, float(std.y1) + 0.5)
+            _draw_pdf_checkbox_x(page9, box, width=1.25)
+
+        oui_100 = _find_pdf_word(page9, "oui", y_approx=406.6)
+        if oui_100 is not None:
+            _draw_pdf_checkbox_x(page9, _radio_mark_rect_left_of(oui_100), width=1.25)
+
+        # « non » : croix dans le cercle entre oui et non (évite de chevaucher le texte)
+        oui_ajourn = _find_pdf_word(page9, "oui", y_approx=522.8)
+        non_ajourn = _find_pdf_word(page9, "non", y_approx=522.8)
+        if oui_ajourn is not None and non_ajourn is not None and float(non_ajourn.x0) > 70:
+            _draw_pdf_checkbox_x(
+                page9,
+                _radio_mark_rect_between(oui_ajourn, non_ajourn, size=9.2),
+                width=1.25,
+            )
+
+        oui_tot = _find_pdf_word(page9, "oui", y_approx=691.8)
+        non_100 = _find_pdf_word(page9, "non", y_approx=691.8)
+        if oui_tot is not None and non_100 is not None and float(non_100.x0) > 70:
+            _draw_pdf_checkbox_x(
+                page9,
+                _radio_mark_rect_between(oui_tot, non_100, size=9.2),
+                width=1.25,
+            )
+
+        out = io.BytesIO()
+        doc.save(out, deflate=True, garbage=3)
+        return out.getvalue()
+    finally:
+        doc.close()
 
 
 def _overlay_fitted_text(
