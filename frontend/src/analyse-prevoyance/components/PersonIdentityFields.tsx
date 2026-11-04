@@ -31,6 +31,8 @@ export function PersonIdentityFields({
     onChange({ ...person, ...partial });
   }
 
+  const sansActivite = Boolean(person.sansActiviteLucrative);
+
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <div className="space-y-2">
@@ -83,14 +85,18 @@ export function PersonIdentityFields({
       <div className="space-y-2">
         <Label>Âge de départ à la retraite professionnelle / perception LPP</Label>
         <p className="text-xs text-muted-foreground">
-          Fin de l'activité et début de la LPP. Indépendant de l'âge légal AVS.
+          {sansActivite
+            ? "Sans activité lucrative : la fin d'activité n'est pas requise."
+            : "Fin de l'activité et début de la LPP. Indépendant de l'âge légal AVS."}
         </p>
         <select
-          className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
+          className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
           value={desiredAge == null ? "" : String(desiredAge)}
+          disabled={sansActivite}
           onChange={(e) =>
             onDesiredAge(e.target.value === "" ? null : Number(e.target.value))
           }
+          data-testid="age-retraite-professionnelle"
         >
           <option value="">Âge applicable au dossier</option>
           {desiredRetirementAgeOptions(

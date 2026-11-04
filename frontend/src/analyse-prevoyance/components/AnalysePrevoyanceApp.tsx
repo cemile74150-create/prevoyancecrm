@@ -462,7 +462,13 @@ export function AnalysePrevoyanceApp({
             <PersonIdentityFields
               person={input.client1}
               onChange={(p) => patchInput({ client1: p })}
-              desiredAge={input.client1.ageRetraiteSouhaite ?? input.ageRetraiteSouhaite ?? null}
+              desiredAge={
+                input.client1.sansActiviteLucrative
+                  ? null
+                  : input.client1.ageRetraiteSouhaite ??
+                    input.ageRetraiteSouhaite ??
+                    null
+              }
               onDesiredAge={(age) =>
                 patchInput({
                   ageRetraiteSouhaite: age,
@@ -523,18 +529,40 @@ export function AnalysePrevoyanceApp({
                 )}
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 items-end">
               <div className="space-y-2">
                 <Label>Salaire brut annuel (CHF)</Label>
                 <Input
                   type="number"
                   min={0}
+                  disabled={Boolean(input.client1.sansActiviteLucrative)}
                   value={input.salaireClient1 || ""}
                   onChange={(e) =>
                     patchInput({ salaireClient1: Number(e.target.value) || 0 })
                   }
+                  data-testid="salaire-client1"
                 />
               </div>
+              <label className="flex items-center gap-2 text-sm pb-2">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 shrink-0"
+                  checked={Boolean(input.client1.sansActiviteLucrative)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    patchInput({
+                      salaireClient1: checked ? 0 : input.salaireClient1,
+                      client1: {
+                        ...input.client1,
+                        sansActiviteLucrative: checked,
+                        ...(checked ? { ageRetraiteSouhaite: null } : {}),
+                      },
+                    });
+                  }}
+                  data-testid="sans-activite-client1"
+                />
+                <span>Sans activité lucrative</span>
+              </label>
             </div>
           </Section>
         );
@@ -550,7 +578,11 @@ export function AnalysePrevoyanceApp({
                   person={input.conjoint}
                   onChange={(p) => patchInput({ conjoint: p })}
                   desiredAge={
-                    input.conjoint.ageRetraiteSouhaite ?? input.ageRetraiteSouhaite ?? null
+                    input.conjoint.sansActiviteLucrative
+                      ? null
+                      : input.conjoint.ageRetraiteSouhaite ??
+                        input.ageRetraiteSouhaite ??
+                        null
                   }
                   onDesiredAge={(age) =>
                     patchInput({
@@ -558,18 +590,42 @@ export function AnalysePrevoyanceApp({
                     })
                   }
                 />
-                <div className="max-w-sm space-y-2">
-                  <Label>Salaire brut annuel de l'assuré 2 (CHF)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={input.salaireConjoint || ""}
-                    onChange={(e) =>
-                      patchInput({
-                        salaireConjoint: Number(e.target.value) || 0,
-                      })
-                    }
-                  />
+                <div className="grid gap-4 sm:grid-cols-2 items-end">
+                  <div className="space-y-2">
+                    <Label>Salaire brut annuel de l'assuré 2 (CHF)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      disabled={Boolean(input.conjoint.sansActiviteLucrative)}
+                      value={input.salaireConjoint || ""}
+                      onChange={(e) =>
+                        patchInput({
+                          salaireConjoint: Number(e.target.value) || 0,
+                        })
+                      }
+                      data-testid="salaire-conjoint"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm pb-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 shrink-0"
+                      checked={Boolean(input.conjoint.sansActiviteLucrative)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        patchInput({
+                          salaireConjoint: checked ? 0 : input.salaireConjoint,
+                          conjoint: {
+                            ...input.conjoint,
+                            sansActiviteLucrative: checked,
+                            ...(checked ? { ageRetraiteSouhaite: null } : {}),
+                          },
+                        });
+                      }}
+                      data-testid="sans-activite-conjoint"
+                    />
+                    <span>Sans activité lucrative</span>
+                  </label>
                 </div>
               </>
             ) : (

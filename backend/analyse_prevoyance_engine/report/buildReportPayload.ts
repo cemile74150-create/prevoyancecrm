@@ -1,5 +1,6 @@
 import { formatDateFr } from "../rules/avs-age";
 import { analysesAvsDuDossier } from "../rules/analyse-avs-depart";
+import { personHasLppSaisie } from "../rules/lpp-saisie";
 import {
   applyResumeCapitalTax,
   buildResumePrestationsLpp,
@@ -491,6 +492,8 @@ function buildPersonBlock(
       ? formatDateFr(person.dateNaissance)
       : "—",
     salaire,
+    sansActiviteLucrative: Boolean(person.sansActiviteLucrative),
+    hasLppSaisie: personHasLppSaisie(person),
     ageLegalLabel: computed.ageLegalLabel,
     dateDepart: computed.dateDepart,
     dateDepartLabel: formatDateFr(computed.dateDepart),

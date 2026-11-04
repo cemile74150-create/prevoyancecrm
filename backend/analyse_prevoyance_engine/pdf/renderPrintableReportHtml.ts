@@ -703,11 +703,32 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
       <th class="val">${esc(p.client1.displayName)}</th>
       <th class="val">${c2 ? esc(c2.displayName) : ""}</th>
     </tr>
-    <tr>
+    ${
+      !p.client1.sansActiviteLucrative ||
+      (c2 != null && !c2.sansActiviteLucrative)
+        ? `<tr>
       <td class="lab">Fin de l'activité lucrative</td>
-      <td class="val">${when(p.client1.dateFinActiviteLabel || p.client1.dateDepartLabel, p.client1.ageFinActiviteLabel || p.client1.ageLegalLabel)}</td>
-      ${spouse(c2 ? when(c2.dateFinActiviteLabel || c2.dateDepartLabel, c2.ageFinActiviteLabel || c2.ageLegalLabel) : "")}
-    </tr>
+      <td class="val">${
+        p.client1.sansActiviteLucrative
+          ? "—"
+          : when(
+              p.client1.dateFinActiviteLabel || p.client1.dateDepartLabel,
+              p.client1.ageFinActiviteLabel || p.client1.ageLegalLabel,
+            )
+      }</td>
+      ${spouse(
+        c2
+          ? c2.sansActiviteLucrative
+            ? "—"
+            : when(
+                c2.dateFinActiviteLabel || c2.dateDepartLabel,
+                c2.ageFinActiviteLabel || c2.ageLegalLabel,
+              )
+          : "",
+      )}
+    </tr>`
+        : ""
+    }
     <tr>
       <td class="lab">Début de perception AVS</td>
       <td class="val">${when(p.client1.datePerceptionAvsLabel || p.client1.dateDepartLabel, p.client1.agePerceptionAvsLabel || p.client1.ageLegalLabel)}</td>
@@ -728,21 +749,25 @@ function pageBilan(p: ReportPayload, n: number, total: number): string {
       <td class="val">${formatChf(p.client1.avsAnnuel)} /an</td>
       ${spouse(c2 ? `${formatChf(c2.avsAnnuel)} /an` : "")}
     </tr>
-    <tr>
+    ${
+      p.client1.hasLppSaisie || Boolean(c2?.hasLppSaisie)
+        ? `<tr>
       <td class="lab">Avoir LPP total</td>
-      <td class="val">${formatChf(p.client1.capitalLpp65)}</td>
-      ${spouse(c2 ? formatChf(c2.capitalLpp65) : "")}
+      <td class="val">${p.client1.hasLppSaisie ? formatChf(p.client1.capitalLpp65) : "—"}</td>
+      ${spouse(c2 ? (c2.hasLppSaisie ? formatChf(c2.capitalLpp65) : "—") : "")}
     </tr>
     <tr>
       <td class="lab">% LPP disponible</td>
-      <td class="val">${lppPctDisponibleLabel(p.client1)}</td>
-      ${spouse(c2 ? lppPctDisponibleLabel(c2) : "")}
+      <td class="val">${p.client1.hasLppSaisie ? lppPctDisponibleLabel(p.client1) : "—"}</td>
+      ${spouse(c2 ? (c2.hasLppSaisie ? lppPctDisponibleLabel(c2) : "—") : "")}
     </tr>
     <tr>
       <td class="lab">Capital LPP disponible</td>
-      <td class="val">${formatChf(p.client1.capitalLppRetire65)}</td>
-      ${spouse(c2 ? formatChf(c2.capitalLppRetire65) : "")}
-    </tr>
+      <td class="val">${p.client1.hasLppSaisie ? formatChf(p.client1.capitalLppRetire65) : "—"}</td>
+      ${spouse(c2 ? (c2.hasLppSaisie ? formatChf(c2.capitalLppRetire65) : "—") : "")}
+    </tr>`
+        : ""
+    }
     <tr>
       <td class="lab">3e pilier</td>
       <td class="val">${formatChf(p.client1.total3ePilier)}</td>

@@ -305,6 +305,11 @@ export interface PersonInput {
   anticipationAvsAnnees?: 0 | 1 | 2;
   /** La rente AVS est déjà versée. La date et le montant mensuel font foi. */
   avsDejaActive?: boolean;
+  /**
+   * Assuré sans activité lucrative : salaire à 0, pas de fin d'activité au bilan.
+   * Indépendant par assuré (client / conjoint).
+   */
+  sansActiviteLucrative?: boolean;
   /** Date réelle de début de perception, ISO. Indépendante de la fin d'activité. */
   dateDebutRenteAvs?: string | null;
   /** Montant mensuel effectivement perçu. L'annuel = ce montant × 13, une fois. */

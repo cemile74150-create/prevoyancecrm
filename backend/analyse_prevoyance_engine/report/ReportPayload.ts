@@ -19,6 +19,10 @@ export interface ReportPersonBlock {
   dateNaissance: string | null;
   dateNaissanceLabel: string;
   salaire: number;
+  /** Sans activité lucrative : pas de ligne « Fin de l'activité lucrative » pour cet assuré. */
+  sansActiviteLucrative: boolean;
+  /** Au moins une caisse / ligne LPP avec capital ou rente saisis. */
+  hasLppSaisie: boolean;
   ageLegalLabel: string;
   dateDepart: string;
   dateDepartLabel: string;
