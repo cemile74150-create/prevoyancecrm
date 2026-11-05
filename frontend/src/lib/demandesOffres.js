@@ -312,6 +312,61 @@ export function demandeOrigineShort(origine) {
   return DEMANDE_ORIGINE_SHORT[demandeOrigineKey(origine)] || DEMANDE_ORIGINE_SHORT.conseiller;
 }
 
+export const AVANCEMENT_BADGE_STYLE = {
+  brouillon: "bg-slate-100 text-slate-600",
+  en_attente: "bg-slate-100 text-slate-700",
+  en_cours: "bg-sky-50 text-sky-900",
+  attente_compagnie: "bg-amber-50 text-amber-950",
+  offre_transmise: "bg-violet-50 text-violet-900",
+  envoyee_client: "bg-indigo-50 text-indigo-900",
+  signee: "bg-emerald-50 text-emerald-900",
+  annulee: "bg-zinc-100 text-zinc-600",
+  refusee: "bg-rose-50 text-rose-800",
+  non_signee: "bg-rose-50 text-rose-800",
+};
+
+export function avancementCode(row) {
+  if (!row || row.statut === "Brouillon") return "brouillon";
+  return row.etape_suivi || "en_attente";
+}
+
+export function avancementLabel(row) {
+  if (!row || row.statut === "Brouillon") return "Brouillon";
+  return row.etape_suivi_label || "En attente";
+}
+
+export function zurichTodayIso(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Zurich",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+export function addIsoDays(iso, days) {
+  const [year, month, day] = String(iso || "").split("-").map(Number);
+  if (!year || !month || !day) return "";
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
+
+export function rdvProximite(date, today = zurichTodayIso()) {
+  const day = String(date || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !today) return "";
+  if (day === today) return "aujourdhui";
+  if (day === addIsoDays(today, 1)) return "demain";
+  if (day > today && day <= addIsoDays(today, 3)) return "proche";
+  if (day < today) return "passe";
+  return "";
+}
+
+export function formatHeureRdv(value) {
+  const match = String(value || "").trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return "";
+  return `${match[1].padStart(2, "0")}h${match[2]}`;
+}
+
 export function isDemandeAttribuee(row) {
   return demandeOrigineKey(row?.demande_origine ?? row) === DEMANDE_ORIGINE.attribuee;
 }

@@ -16,6 +16,7 @@ import {
   TYPES_CLIENT, demandeOrigineKey, demandeOrigineLabel, demandeOrigineShort,
   formatChf, formatDateFr, formatVariantesSummary, periodeLabel, compagniesAffichees,
   isDemandeAnnuleeStatut, isHorsCours, statutLabel,
+  AVANCEMENT_BADGE_STYLE, avancementCode, avancementLabel,
 } from "@/lib/demandesOffres";
 import { uniqueConseillerNames } from "@/lib/conseillers";
 import { PendingComplementBadge } from "@/components/NotesConseiller";
@@ -222,8 +223,23 @@ function StatutBadge({ statut }) {
   );
 }
 
+function AvancementBadge({ row }) {
+  const code = avancementCode(row);
+  const label = avancementLabel(row);
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${AVANCEMENT_BADGE_STYLE[code] || AVANCEMENT_BADGE_STYLE.en_attente}`}
+      data-testid="avancement-badge"
+      title={row?.statut ? statutLabel(row.statut) : undefined}
+    >
+      {label}
+    </span>
+  );
+}
+
 function OrigineBadge({ origine }) {
   const key = demandeOrigineKey(origine);
+  if (key !== "attribuee") return null;
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${DEMANDE_ORIGINE_STYLE[key]}`}
@@ -1033,7 +1049,7 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                                   {r.urgente ? (
                                     <span className="rounded-md bg-rose-700 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Urgent</span>
                                   ) : null}
-                                  <StatutBadge statut={r.statut} />
+                                  <AvancementBadge row={r} />
                                   <PendingComplementBadge count={r.nb_complements_en_attente} />
                                   {isAdmin && r.statut === "Demande envoyée" && (
                                     <button
@@ -1117,6 +1133,7 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                               <p className="text-sm font-medium" style={{ color: RED }}>{r.client_label}</p>
                               <p className="text-xs text-muted-foreground mt-0.5">{typeLabel(r)}</p>
                               <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                <AvancementBadge row={r} />
                                 <OrigineBadge origine={r.demande_origine} />
                                 <PendingComplementBadge count={r.nb_complements_en_attente} />
                               </div>

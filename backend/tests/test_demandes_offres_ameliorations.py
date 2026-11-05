@@ -1,3 +1,6 @@
+import asyncio
+from datetime import datetime, timedelta, timezone
+
 from demandes_offres_ameliorations import (
     count_urgences_agent,
     enregistrer_suivi,
@@ -11,6 +14,8 @@ from demandes_offres_ameliorations import (
     sort_demandes,
     validate_urgence_for_send,
 )
+from demandes_offres_relance_agent import process_relances_agent_21j, relance_agent_decision
+from email_service import format_relance_agent_21j_email
 from demandes_offres_3p import (
     STATUT_BROUILLON,
     STATUT_ENVOYEE,
@@ -51,10 +56,18 @@ def test_tri_rdv_place_les_dates_vides_a_la_fin():
         {"id": "a", "date_prochain_rdv": "", "created_at": "2026-01-02"},
         {"id": "c", "date_prochain_rdv": "2026-11-10", "heure_rdv": "09:00", "created_at": "2026-01-03"},
     ]
-    ordered = [r["id"] for r in sort_demandes(rows, "rdv_asc")]
+    ordered = [r["id"] for r in sort_demandes(rows, "rdv_asc", today="2026-11-01")]
     assert ordered == ["c", "b", "a"]
-    desc = [r["id"] for r in sort_demandes(rows, "rdv_desc")]
+    desc = [r["id"] for r in sort_demandes(rows, "rdv_desc", today="2026-11-01")]
     assert desc[0] == "b" and desc[-1] == "a"
+    mixed = [
+        {"id": "past", "date_prochain_rdv": "2026-10-01"},
+        {"id": "soon", "date_prochain_rdv": "2026-11-06"},
+        {"id": "later", "date_prochain_rdv": "2026-11-20"},
+        {"id": "none", "date_prochain_rdv": ""},
+    ]
+    assert [r["id"] for r in sort_demandes(mixed, "rdv_asc", today="2026-11-05")] == ["soon", "later", "past", "none"]
+    assert [r["id"] for r in sort_demandes(mixed, "rdv_desc", today="2026-11-05")] == ["later", "soon", "past", "none"]
     upcoming = filter_rdv_a_venir(rows, True, today="2026-11-15")
     assert [r["id"] for r in upcoming] == ["b"]
 
@@ -139,3 +152,138 @@ def test_offres_completes_ne_renvoie_pas_le_mail_deja_envoye():
     assert should_send_offres_completes_email({"offre_recue_email_sent": True}, "") is False
     assert should_send_offres_completes_email({"offre_recue_email_sent": True}, "Merci de comparer") is True
     assert should_send_offres_completes_email({}, "") is True
+
+
+def _transmis(days_ago, **extra):
+    now = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
+    doc = {
+        "statut": "Offre reçue",
+        "suivi_etape": "offre_transmise",
+        "offre_transmise_agent_at": (now - timedelta(days=days_ago)).isoformat(),
+    }
+    doc.update(extra)
+    return doc, now
+
+
+def test_relance_agent_21_jours_selon_lavancement():
+    fresh, now = _transmis(10)
+    assert relance_agent_decision(fresh, now) == "wait"
+    due, now = _transmis(21)
+    assert relance_agent_decision(due, now) == "send"
+    sent_client, now = _transmis(30, statut=STATUT_OFFRE_ENVOYEE_CLIENT, suivi_etape="offre_transmise")
+    assert relance_agent_decision(sent_client, now) == "skip"
+    signed, now = _transmis(40, statut=STATUT_OFFRE_SIGNEE)
+    assert relance_agent_decision(signed, now) == "skip"
+    refused, now = _transmis(40, statut=STATUT_OFFRE_REFUSEE)
+    assert relance_agent_decision(refused, now) == "skip"
+    cancelled, now = _transmis(40, statut="Demande annulée")
+    assert relance_agent_decision(cancelled, now) == "skip"
+    already, now = _transmis(30, relance_agent_21j_sent_at="2026-11-01T08:00:00+00:00")
+    assert relance_agent_decision(already, now) == "skip"
+    old = {"statut": "Offre reçue", "date_envoi": "2020-01-01T00:00:00+00:00"}
+    assert relance_agent_decision(old, now) == "skip"
+    failed, now = _transmis(21, relance_agent_21j_last_error="SMTP")
+    assert relance_agent_decision(failed, now) == "retry"
+    waiting_company, now = _transmis(21, suivi_etape="attente_compagnie")
+    assert relance_agent_decision(waiting_company, now) == "send"
+
+
+def test_email_relance_agent_reprend_le_texte_demande():
+    subject, text, html = format_relance_agent_21j_email({
+        "id": "d1",
+        "numero": "OFF-2026-0042",
+        "prenom": "Jean",
+        "nom": "Dupont",
+        "agent_prenom": "Ines",
+    })
+    assert subject == "LeoSoft – Rappel de mise à jour du statut de votre offre OFF-2026-0042"
+    assert "Bonjour Ines," in text
+    assert "Jean Dupont" in text
+    assert "OFF-2026-0042" in text
+    assert "Offre envoyée au client" in text
+    assert "Offre signée" in text
+    assert "Le service des Offres" in text
+    assert "Consulter la demande dans LeoSoft" in html
+
+
+class _Result:
+    def __init__(self, count):
+        self.modified_count = count
+
+
+class _Cursor:
+    def __init__(self, rows):
+        self.rows = rows
+
+    async def to_list(self, limit):
+        return list(self.rows)[:limit]
+
+
+class _Memory:
+    def __init__(self, docs):
+        self.docs = {doc["id"]: doc for doc in docs}
+
+    def find(self, query, projection=None):
+        rows = [
+            doc for doc in self.docs.values()
+            if doc.get("offre_transmise_agent_at") and not doc.get("relance_agent_21j_sent_at")
+        ]
+        return _Cursor(rows)
+
+    async def find_one(self, query, projection=None):
+        return None
+
+    async def update_one(self, filt, update):
+        doc = self.docs.get(filt.get("id"))
+        if not doc or doc.get("relance_agent_21j_sent_at"):
+            return _Result(0)
+        if "$set" in update:
+            doc.update(update["$set"])
+        if "$push" in update and "historique" in update["$push"]:
+            doc.setdefault("historique", []).append(update["$push"]["historique"])
+        return _Result(1)
+
+
+class _Db:
+    def __init__(self, docs):
+        self.demandes = _Memory(docs)
+        self.users = _Memory([])
+
+    def __getitem__(self, name):
+        return self.demandes
+
+
+def test_echec_denvoi_puis_nouvel_essai_sans_doublon(monkeypatch):
+    calls = {"n": 0}
+
+    async def fake_send(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return False, "SMTP indisponible"
+        return True, ""
+
+    monkeypatch.setattr("email_service.offres_email_enabled", lambda: True)
+    monkeypatch.setattr("email_service.send_email_async", fake_send)
+    now = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
+    doc = {
+        "id": "d-21",
+        "numero": "OFF-2026-0021",
+        "statut": "Offre reçue",
+        "suivi_etape": "offre_transmise",
+        "agent_email": "ines.agent@example.com",
+        "agent_prenom": "Ines",
+        "prenom": "Nadia",
+        "nom": "Blanc",
+        "offre_transmise_agent_at": (now - timedelta(days=21)).isoformat(),
+    }
+    db = _Db([doc])
+    first = asyncio.run(process_relances_agent_21j(db, now=now))
+    assert first["failed"] == 1
+    assert not db.demandes.docs["d-21"].get("relance_agent_21j_sent_at")
+    second = asyncio.run(process_relances_agent_21j(db, now=now))
+    assert second["sent"] == 1
+    assert db.demandes.docs["d-21"]["relance_agent_21j_sent_at"]
+    assert any("Relance automatique envoyée" in item["action"] for item in db.demandes.docs["d-21"]["historique"])
+    third = asyncio.run(process_relances_agent_21j(db, now=now))
+    assert third["sent"] == 0
+    assert calls["n"] == 2

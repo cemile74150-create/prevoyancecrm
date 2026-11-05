@@ -224,7 +224,16 @@ def _rdv_key(row: dict) -> str:
     return f"{date}T{heure}" if heure else date
 
 
-def sort_demandes(rows: list, tri: Optional[str]) -> list:
+def _zurich_today(now: Optional[datetime] = None) -> str:
+    from zoneinfo import ZoneInfo
+
+    moment = now or datetime.now(ZoneInfo("Europe/Zurich"))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(ZoneInfo("Europe/Zurich")).date().isoformat()
+
+
+def sort_demandes(rows: list, tri: Optional[str], *, today: Optional[str] = None) -> list:
     mode = (tri or "").strip().lower()
     if mode in {"", "maj"}:
         return rows
@@ -236,26 +245,27 @@ def sort_demandes(rows: list, tri: Optional[str]) -> list:
         return sorted(rows, key=submission)
     if mode == "soumission_desc":
         return sorted(rows, key=submission, reverse=True)
-    if mode in {"rdv_asc", "rdv_desc", "urgentes"}:
-        reverse = mode == "rdv_desc"
-
-        def rdv_sort(row: dict):
+    if mode == "urgentes":
+        return sorted(rows, key=lambda r: (0 if r.get("urgente") else 1, _rdv_key(r) or "9999", submission(r)))
+    if mode in {"rdv_asc", "rdv_desc"}:
+        day = (today or _zurich_today())[:10]
+        future: list = []
+        past: list = []
+        missing: list = []
+        for row in rows:
             key = _rdv_key(row)
-            missing = 1 if not key else 0
-            urgent = 0 if (mode == "urgentes" and row.get("urgente")) else 1
-            return (urgent, missing, key if not reverse else "")
-
-        if mode == "rdv_desc":
-            with_date = [r for r in rows if _rdv_key(r)]
-            without = [r for r in rows if not _rdv_key(r)]
-            with_date.sort(key=_rdv_key, reverse=True)
-            return with_date + without
-        if mode == "urgentes":
-            return sorted(rows, key=lambda r: (0 if r.get("urgente") else 1, _rdv_key(r) or "9999", submission(r)))
-        with_date = [r for r in rows if _rdv_key(r)]
-        without = [r for r in rows if not _rdv_key(r)]
-        with_date.sort(key=_rdv_key)
-        return with_date + without
+            date = key[:10]
+            if not date:
+                missing.append(row)
+            elif date >= day:
+                future.append((key, row))
+            else:
+                past.append((key, row))
+        # Plus proche : prochains rendez-vous d'abord, puis les passés, jamais mélangés.
+        # Plus éloigné : l'ordre inverse dans chaque groupe.
+        future.sort(key=lambda item: item[0], reverse=mode == "rdv_desc")
+        past.sort(key=lambda item: item[0], reverse=mode == "rdv_asc")
+        return [row for _, row in future] + [row for _, row in past] + missing
     return rows
 
 

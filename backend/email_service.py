@@ -146,6 +146,7 @@ MAIL_TYPE_COMPLEMENT_DEMANDE = "complement_demande"
 MAIL_TYPE_COMPLEMENT_REPONSE = "complement_reponse"
 MAIL_TYPE_DOSSIER_PRESENTE = "dossier_presente"
 MAIL_TYPE_RDV_SUIVI_RELANCE = "rdv_suivi_relance"
+MAIL_TYPE_RELANCE_AGENT_21J = "relance_agent_21j"
 MAIL_TYPE_TEST = "smtp_test"
 MAIL_TYPE_NOTIFICATION = "notification"
 
@@ -1348,6 +1349,60 @@ def format_demande_offre_recap_conseiller_email(doc: dict) -> Tuple[str, str, st
         highlight_rows=None,
     )
     return subject, body_text, body_html
+
+
+def format_relance_agent_21j_email(doc: dict) -> Tuple[str, str, str]:
+    """Rappel unique : l'agent n'a pas mis à jour l'offre 21 jours après sa transmission."""
+    client = _offre_client_name(doc)
+    numero = (doc.get("numero") or "").strip() or "—"
+    prenom = _agent_greeting_prenom(doc) or ""
+    subject = f"LeoSoft – Rappel de mise à jour du statut de votre offre {numero}"
+    greeting = f"Bonjour {prenom}," if prenom else "Bonjour,"
+    url = _demande_offre_url(doc.get("id"))
+    lines = [
+        greeting,
+        "",
+        (
+            f"Nous constatons que le statut de l'offre concernant le dossier {client}, "
+            f"référence {numero}, n'a pas été mis à jour depuis sa transmission il y a 21 jours."
+        ),
+        "",
+        "Nous vous remercions de bien vouloir vous connecter à LeoSoft afin de renseigner l'avancement de cette offre :",
+        "",
+        "- Offre envoyée au client ;",
+        "- Offre signée, si le client a accepté et signé l'offre.",
+        "",
+        "Vous pouvez accéder directement au dossier en cliquant sur le lien ci-dessous :",
+        "",
+        f"Consulter la demande dans LeoSoft : {url}" if url else "Consulter la demande dans LeoSoft",
+        "",
+        "Merci d'avance pour votre retour.",
+        "",
+        "Belle journée,",
+        "",
+        "Le service des Offres",
+    ]
+    safe_client = html.escape(client)
+    safe_numero = html.escape(numero)
+    button = _html_button(url, "Consulter la demande dans LeoSoft") if url else ""
+    body_html = (
+        '<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.5;">'
+        f"<p>{html.escape(greeting)}</p>"
+        "<p>Nous constatons que le statut de l'offre concernant le dossier "
+        f"<strong>{safe_client}</strong>, référence <strong>{safe_numero}</strong>, "
+        "n'a pas été mis à jour depuis sa transmission il y a 21 jours.</p>"
+        "<p>Nous vous remercions de bien vouloir vous connecter à LeoSoft afin de renseigner "
+        "l'avancement de cette offre :</p>"
+        "<ul><li>Offre envoyée au client ;</li>"
+        "<li>Offre signée, si le client a accepté et signé l'offre.</li></ul>"
+        "<p>Vous pouvez accéder directement au dossier en cliquant sur le lien ci-dessous :</p>"
+        f"{button or '<p>Consulter la demande dans LeoSoft</p>'}"
+        "<p>Merci d'avance pour votre retour.</p>"
+        "<p>Belle journée,</p>"
+        "<p><strong>Le service des Offres</strong></p>"
+        "</div>"
+    )
+    return subject, "\n".join(lines), body_html
 
 
 def format_offre_recue_email(doc: dict, offer: Optional[dict] = None) -> Tuple[str, str, str]:

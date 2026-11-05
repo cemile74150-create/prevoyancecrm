@@ -19,7 +19,6 @@ import {
   COMPAGNIES_DEFAUT,
   compagniesAffichees,
   PERIODE_FILTERS,
-  STATUT_STYLE,
   statutLabel,
   DEMANDE_ORIGINE_LABELS,
   DEMANDE_ORIGINE_STYLE,
@@ -28,6 +27,11 @@ import {
   demandeOrigineLabel,
   soumisCompagnieLabel,
   isSoumisCompagnie,
+  AVANCEMENT_BADGE_STYLE,
+  avancementCode,
+  avancementLabel,
+  formatHeureRdv,
+  rdvProximite,
 } from "@/lib/demandesOffres";
 import { uniqueConseillerNames } from "@/lib/conseillers";
 import { PendingComplementBadge } from "@/components/NotesConseiller";
@@ -75,12 +79,42 @@ function sortQueue(rows) {
   });
 }
 
-function StatutBadge({ statut }) {
-  const label = statutLabel(statut);
-  const cls = STATUT_STYLE[statut] || STATUT_STYLE[label] || STATUT_STYLE.Brouillon;
+const RDV_PROXIMITE = {
+  aujourdhui: { label: "RDV aujourd'hui", className: "bg-amber-100 text-amber-950" },
+  demain: { label: "RDV demain", className: "bg-sky-100 text-sky-900" },
+  proche: { label: "RDV sous 3 jours", className: "bg-indigo-50 text-indigo-900" },
+  passe: { label: "RDV dépassé", className: "bg-slate-100 text-slate-600" },
+};
+
+function RdvClient({ row }) {
+  const date = String(row?.date_prochain_rdv || "").slice(0, 10);
+  const heure = formatHeureRdv(row?.heure_rdv);
+  if (!date) {
+    return <span className="block text-[11px] text-slate-400 mt-1">Aucun RDV renseigné</span>;
+  }
+  const chip = RDV_PROXIMITE[rdvProximite(date)];
   return (
-    <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ${cls}`}>
-      {label}
+    <span className="block mt-1" data-testid={`rdv-client-${row.id || "row"}`}>
+      <span className="block text-[11px] font-semibold text-[#002FA7]">
+        RDV client : {formatDateFr(date)}{heure ? ` à ${heure}` : ""}
+      </span>
+      {chip ? (
+        <span className={`inline-flex mt-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${chip.className}`}>
+          {chip.label}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function AvancementBadge({ row }) {
+  const code = avancementCode(row);
+  return (
+    <span
+      className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ${AVANCEMENT_BADGE_STYLE[code] || AVANCEMENT_BADGE_STYLE.en_attente}`}
+      title={statutLabel(row?.statut)}
+    >
+      {avancementLabel(row)}
     </span>
   );
 }
@@ -119,6 +153,7 @@ export default function GestionReponsesOffres() {
   const [enRetard, setEnRetard] = useState(false);
   const [dayAction, setDayAction] = useState(null);
   const [origine, setOrigine] = useState("all");
+  const [tri, setTri] = useState("maj");
   const [erreurStats, setErreurStats] = useState(null);
   const [erreursAgentStats, setErreursAgentStats] = useState(null);
 
@@ -166,6 +201,7 @@ export default function GestionReponsesOffres() {
       if (priorite !== "all") params.priorite = priorite;
       if (periode && periode !== "all") params.periode = periode;
       if (origine !== "all") params.demande_origine = origine;
+      if (tri && tri !== "maj") params.tri = tri;
 
       const cat = categorie;
       if (cat && cat !== "en_retard") params.categorie = cat;
@@ -204,7 +240,7 @@ export default function GestionReponsesOffres() {
     } finally {
       setLoading(false);
     }
-  }, [qDebounced, conseiller, compagnie, formType, priorite, periode, categorie, enRetard, dayAction, origine, loadNotifs]);
+  }, [qDebounced, conseiller, compagnie, formType, priorite, periode, categorie, enRetard, dayAction, origine, tri, loadNotifs]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -269,8 +305,8 @@ export default function GestionReponsesOffres() {
         return (st === "Demande envoyée" || st === "Demande validée") && j <= 1;
       });
     }
-    return sortQueue(list);
-  }, [rows, qDebounced, dayAction]);
+    return tri && tri !== "maj" ? list : sortQueue(list);
+  }, [rows, qDebounced, dayAction, tri]);
 
   const conseillers = useMemo(() => {
     const fromStats = (stats?.by_agent || []).map((a) => a.agent).filter(Boolean);
@@ -464,6 +500,19 @@ export default function GestionReponsesOffres() {
                 className="pl-8 h-9"
               />
             </div>
+            <label className="flex items-center gap-2 text-xs text-slate-600">
+              Trier les demandes par
+              <Select value={tri} onValueChange={setTri}>
+                <SelectTrigger className="h-9 w-[280px]" data-testid="tri-demandes"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="maj">Tri actuel</SelectItem>
+                  <SelectItem value="soumission_desc">Date de soumission — plus récentes</SelectItem>
+                  <SelectItem value="soumission_asc">Date de soumission — plus anciennes</SelectItem>
+                  <SelectItem value="rdv_asc">Date de rendez-vous — plus proche</SelectItem>
+                  <SelectItem value="rdv_desc">Date de rendez-vous — plus éloignée</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
             <Select value={conseiller} onValueChange={setConseiller}>
               <SelectTrigger className="h-9 w-[160px]"><SelectValue placeholder="Conseiller" /></SelectTrigger>
               <SelectContent>
@@ -544,6 +593,7 @@ export default function GestionReponsesOffres() {
                   setCategorie(null);
                   setEnRetard(false);
                   setDayAction(null);
+                  setTri("maj");
                 }}
               >
                 Réinitialiser
@@ -626,12 +676,18 @@ export default function GestionReponsesOffres() {
                           <td className="px-3 py-2 font-medium text-slate-900 whitespace-nowrap">
                             {clientLabel(r)}
                             {r.numero && <span className="block text-[10px] text-slate-400 font-normal">{r.numero}</span>}
-                            <span
-                              className={`inline-flex mt-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${DEMANDE_ORIGINE_STYLE[demandeOrigineKey(r.demande_origine)]}`}
-                              title={demandeOrigineLabel(r.demande_origine)}
-                            >
-                              {demandeOrigineShort(r.demande_origine)}
+                            <span className="block text-[11px] text-slate-500 font-normal mt-0.5">
+                              Soumission : {formatDateFr(r.date_envoi || r.created_at)}
                             </span>
+                            <RdvClient row={r} />
+                            {demandeOrigineKey(r.demande_origine) === "attribuee" && (
+                              <span
+                                className={`inline-flex mt-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${DEMANDE_ORIGINE_STYLE.attribuee}`}
+                                title={demandeOrigineLabel(r.demande_origine)}
+                              >
+                                {demandeOrigineShort(r.demande_origine)}
+                              </span>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.agent_label || "—"}</td>
                           <td className="px-3 py-2 text-slate-600 max-w-[140px] truncate" title={typeLabel(r)}>{typeLabel(r)}</td>
@@ -641,7 +697,7 @@ export default function GestionReponsesOffres() {
                             {formatVariantesSummary(r) || compsShort(r)}
                           </td>
                           <td className="px-3 py-2">
-                            <StatutBadge statut={r.statut} />
+                            <AvancementBadge row={r} />
                             {Number(r.nb_complements_en_attente) > 0 && (
                               <span className="mt-1 block">
                                 <PendingComplementBadge count={r.nb_complements_en_attente} />
@@ -736,11 +792,13 @@ export default function GestionReponsesOffres() {
                         >
                           <p className="text-sm font-semibold text-slate-900 truncate">{clientLabel(r)}</p>
                           <p className="text-[11px] text-slate-500 truncate mt-0.5">{r.agent_label || "—"}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Soumission : {formatDateFr(r.date_envoi || r.created_at)}</p>
+                          <RdvClient row={r} />
                           <p className="text-[11px] text-slate-600 truncate mt-1">{typeLabel(r)}</p>
                           <p className="text-[10px] text-slate-400 mt-0.5 truncate">{compsShort(r)}</p>
                           <div className="flex items-center justify-between gap-1 mt-2">
                             <span className="flex flex-wrap items-center gap-1">
-                              <StatutBadge statut={r.statut} />
+                              <AvancementBadge row={r} />
                               <PendingComplementBadge count={r.nb_complements_en_attente} />
                             </span>
                             <PrioriteBadge niveau={r.priorite} />

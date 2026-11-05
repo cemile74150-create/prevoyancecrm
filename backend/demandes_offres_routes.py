@@ -1651,6 +1651,12 @@ def attach_demandes_offres_routes(
         event = patch["dernier_evenement"]
         previous = event.get("etape_precedente_label") or "—"
         parts = [f"{previous} → {event.get('label') or ''}"]
+        suivi_set = {
+            "suivi_etape": patch["suivi_etape"],
+            "updated_at": now_iso(),
+        }
+        if (event.get("etape") == "offre_transmise") and not (doc.get("offre_transmise_agent_at") or ""):
+            suivi_set["offre_transmise_agent_at"] = event.get("at") or now_iso()
         if event.get("compagnie"):
             parts.append(event["compagnie"])
         if event.get("commentaire"):
@@ -1658,10 +1664,7 @@ def attach_demandes_offres_routes(
         await db[COLLECTION].update_one(
             {"id": doc.get("id"), "user_id": TENANT_USER_ID},
             {
-                "$set": {
-                    "suivi_etape": patch["suivi_etape"],
-                    "updated_at": now_iso(),
-                },
+                "$set": suivi_set,
                 "$push": {
                     "suivi_evenements": event,
                     "historique": history(
