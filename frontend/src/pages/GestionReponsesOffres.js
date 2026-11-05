@@ -54,6 +54,11 @@ const DAY_ACTIONS = [
 
 const TERMINAL = new Set(["Offre signée", "Offre refusée", "Demande annulée", "demande_annulee", "offre_non_signee", "Offre non signée", "Brouillon"]);
 
+const FILE_HEADERS = [
+  "Client", "Conseiller", "Type", "Date création", "Date envoi", "RDV client",
+  "Compagnies", "Statut", "Soumis cie.", "Dernière action", "Jours", "Priorité", "Action",
+];
+
 function prioRank(p) {
   if (p === "urgent") return 0;
   if (p === "surveiller") return 1;
@@ -88,17 +93,27 @@ const RDV_PROXIMITE = {
   passe: { label: "RDV dépassé", className: "bg-slate-100 text-slate-600" },
 };
 
-function RdvClient({ row }) {
+function isOffreTransmiseAgent(row) {
+  return avancementCode(row) === "offre_transmise" || row?.etape_affichee === "offre_transmise";
+}
+
+function RdvClient({ row, variant = "inline" }) {
   const date = String(row?.date_prochain_rdv || "").slice(0, 10);
   const heure = formatHeureRdv(row?.heure_rdv);
+  const cell = variant === "cell";
   if (!date) {
-    return <span className="block text-[11px] text-slate-400 mt-1">Aucun RDV renseigné</span>;
+    return (
+      <span className={cell ? "text-xs text-slate-400 whitespace-nowrap" : "block text-[11px] text-slate-400 mt-1"}>
+        Aucun RDV renseigné
+      </span>
+    );
   }
   const chip = RDV_PROXIMITE[rdvProximite(date)];
+  const when = `${formatDateFr(date)}${heure ? ` à ${heure}` : ""}`;
   return (
-    <span className="block mt-1" data-testid={`rdv-client-${row.id || "row"}`}>
-      <span className="block text-[11px] font-semibold text-[#002FA7]">
-        RDV client : {formatDateFr(date)}{heure ? ` à ${heure}` : ""}
+    <span className={cell ? "block whitespace-nowrap" : "block mt-1"} data-testid={`rdv-client-${row.id || "row"}`}>
+      <span className={cell ? "block text-sm font-medium text-slate-800" : "block text-[11px] font-semibold text-[#002FA7]"}>
+        {cell ? when : `RDV client : ${when}`}
       </span>
       {chip ? (
         <span className={`inline-flex mt-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${chip.className}`}>
@@ -309,6 +324,22 @@ export default function GestionReponsesOffres() {
     }
     return tri && tri !== "maj" ? list : sortQueue(list);
   }, [rows, qDebounced, dayAction, tri]);
+
+  const fileRechercheActive = Boolean(
+    qDebounced
+    || conseiller !== "all"
+    || compagnie !== "all"
+    || formType !== "all"
+    || priorite !== "all"
+    || (periode && periode !== "all")
+    || origine !== "all"
+    || (tri && tri !== "maj")
+  );
+
+  const fileRows = useMemo(() => {
+    if (fileRechercheActive) return visibleRows;
+    return visibleRows.filter((row) => !isOffreTransmiseAgent(row));
+  }, [visibleRows, fileRechercheActive]);
 
   const conseillers = useMemo(() => {
     const fromStats = (stats?.by_agent || []).map((a) => a.agent).filter(Boolean);
@@ -626,7 +657,7 @@ export default function GestionReponsesOffres() {
             </button>
           ))}
           <span className="ml-auto self-center text-xs text-slate-400 tabular-nums">
-            {loading ? "…" : `${visibleRows.length} dossier${visibleRows.length !== 1 ? "s" : ""}`}
+            {loading ? "…" : `${(tab === "file" ? fileRows : visibleRows).length} dossier${(tab === "file" ? fileRows : visibleRows).length !== 1 ? "s" : ""}`}
           </span>
         </div>
 
@@ -637,7 +668,7 @@ export default function GestionReponsesOffres() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50/80 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                    {["Client", "Conseiller", "Type", "Date création", "Date envoi", "Compagnies", "Statut", "Soumis cie.", "Dernière action", "Jours", "Priorité", "Action"].map((h) => (
+                    {FILE_HEADERS.map((h) => (
                       <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -645,18 +676,18 @@ export default function GestionReponsesOffres() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={12} className="px-3 py-12 text-center text-slate-400">
+                      <td colSpan={FILE_HEADERS.length} className="px-3 py-12 text-center text-slate-400">
                         <Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Chargement…
                       </td>
                     </tr>
-                  ) : visibleRows.length === 0 ? (
+                  ) : fileRows.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="px-3 py-12 text-center text-slate-400">
+                      <td colSpan={FILE_HEADERS.length} className="px-3 py-12 text-center text-slate-400">
                         Aucune demande dans la file.
                       </td>
                     </tr>
                   ) : (
-                    visibleRows.map((r) => {
+                    fileRows.map((r) => {
                       const hi = rowHighlight(r);
                       const actionLabel = TERMINAL.has(r.statut) ? "Voir" : "Traiter";
                       const soumis = isSoumisCompagnie(r.soumis_compagnie);
@@ -687,7 +718,6 @@ export default function GestionReponsesOffres() {
                             <span className="block text-[11px] text-slate-500 font-normal mt-0.5">
                               Soumission : {r.date_envoi ? formatDateFr(r.date_envoi) : "—"}
                             </span>
-                            <RdvClient row={r} />
                             {demandeOrigineKey(r.demande_origine) === "attribuee" && (
                               <span
                                 className={`inline-flex mt-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${DEMANDE_ORIGINE_STYLE.attribuee}`}
@@ -701,6 +731,9 @@ export default function GestionReponsesOffres() {
                           <td className="px-3 py-2 text-slate-600 max-w-[140px] truncate" title={typeLabel(r)}>{typeLabel(r)}</td>
                           <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{formatDateFr(r.created_at)}</td>
                           <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{formatDateFr(r.date_envoi)}</td>
+                          <td className="px-3 py-2">
+                            <RdvClient row={r} variant="cell" />
+                          </td>
                           <td className="px-3 py-2 text-slate-600 text-xs max-w-[140px]">
                             {formatVariantesSummary(r) || compsShort(r)}
                           </td>

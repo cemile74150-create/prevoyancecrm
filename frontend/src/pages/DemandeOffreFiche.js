@@ -31,7 +31,9 @@ import ClientSuggestInput from "@/components/ClientSuggestInput";
 import {
   resolveAgentIdentity,
   missingFinmaMessage,
+  viewerIsDemandeCreator,
 } from "@/lib/offreAgentIdentity";
+import { normalizeConseillerKey } from "@/lib/conseillers";
 import {
   AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronLeft, ChevronRight,
   Download, ExternalLink, FileText, Loader2, Mail, Paperclip, Pencil, Plus,
@@ -1593,6 +1595,7 @@ export default function DemandeOffreFiche() {
             </div>
             <ActionPanel
               demande={demande}
+              user={user}
               canEdit={canEdit}
               canProcess={canProcess}
               canFollowSignature={canFollowSignature}
@@ -3185,8 +3188,28 @@ function ReadOnlyData({ data }) {
       <div key={label}><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt><dd className="text-sm mt-0.5 whitespace-pre-wrap">{value || "—"}</dd></div>)}</dl></Card>)}</div>;
 }
 
+function viewerIsCreatingAgent(demande, user, { canFollowSignature, isAdmin }) {
+  if (!demande || !user) return false;
+  if (viewerIsDemandeCreator(demande, user)) return true;
+  // can_follow_signature est forcé à vrai pour tout admin. On ne s'en sert
+  // que pour un conseiller ou un gestionnaire qui est vraiment le créateur.
+  if (isAdmin) {
+    const email = String(user.email || "").trim().toLowerCase();
+    const agentEmail = String(demande.agent_email || demande.conseiller_email || "").trim().toLowerCase();
+    if (email && agentEmail && email === agentEmail) return true;
+    const viewerLabels = [user.name, user.conseiller, `${user.prenom || ""} ${user.nom || ""}`]
+      .map((value) => normalizeConseillerKey(value))
+      .filter(Boolean);
+    const demandeLabels = [demande.agent_label, demande.created_by_name]
+      .map((value) => normalizeConseillerKey(value))
+      .filter(Boolean);
+    return viewerLabels.some((label) => demandeLabels.includes(label));
+  }
+  return Boolean(canFollowSignature);
+}
+
 function ActionPanel({
-  demande, canEdit, canProcess, canFollowSignature, isAdmin, busy, hasOffers, hasIncompleteCompany,
+  demande, user, canEdit, canProcess, canFollowSignature, isAdmin, busy, hasOffers, hasIncompleteCompany,
   onIncomplete, onOffer, onErreurs, onNote, onExternalNote, onDoc, onConclusion, onSendClient,
   onSignature, onSoumisCompagnie, onDemandeAnnulee, onCancel, onRestore, onDelete, onSuivi,
 }) {
@@ -3194,11 +3217,11 @@ function ActionPanel({
   const canSendClient = hasOffers || demande.offre;
   const signatureReady = ["Offre envoyée au client", "Offre reçue", "Offres complètes", "Offre complète", "Offre choisie", "En conclusion", "Demande envoyée"].includes(demande.statut)
     || (hasOffers && demande.statut !== "Brouillon" && !isHorsCours(demande.statut) && demande.statut !== "Offre refusée");
-  // Admin : voit tout. Gestionnaire : Traitement. Conseiller créateur : suivi (envoyé client / signée / non signée).
+  // Traitement : gestionnaire et admin. Envoyé client / signée / non signée : conseiller créateur seulement.
   const showProcess = Boolean(canProcess) || Boolean(isAdmin);
-  const showConseillerFollowup = Boolean(canFollowSignature) || Boolean(isAdmin);
+  const showConseillerFollowup = viewerIsCreatingAgent(demande, user, { canFollowSignature, isAdmin });
   const showSignature = showConseillerFollowup && signatureReady && demande.statut !== "Offre signée";
-  const canMarkNonSignee = (showProcess || Boolean(canFollowSignature)) && !isOffreNonSigneeStatut(demande.statut) && !isDemandeAnnuleeStatut(demande.statut) && demande.statut !== "Offre signée";
+  const canMarkNonSignee = showConseillerFollowup && !isOffreNonSigneeStatut(demande.statut) && !isDemandeAnnuleeStatut(demande.statut) && demande.statut !== "Offre signée";
   const canRestore = (canEdit || canProcess || canFollowSignature || isAdmin) && isDemandeAnnuleeStatut(demande.statut);
   const canDeleteHard = (canEdit || canProcess || isAdmin) && (demande.statut === "Brouillon" || isDemandeAnnuleeStatut(demande.statut));
   const soumis = isSoumisCompagnie(demande.soumis_compagnie);
