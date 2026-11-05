@@ -343,6 +343,10 @@ export default function DemandeOffreFiche() {
             type_client: form.type_client || formPayload.type_client || "",
             client_id: form.client_id || null,
             commentaires: form.commentaires || "",
+            date_prochain_rdv: form.date_prochain_rdv || "",
+            heure_rdv: form.heure_rdv || "",
+            urgente: Boolean(form.urgente),
+            urgence_motif: form.urgence_motif || "",
             ...mandatFields,
             ...adminAgent,
           };
@@ -892,22 +896,54 @@ export default function DemandeOffreFiche() {
     }
   };
 
-  const uploadDocument = async (event) => {
-    const file = event.target.files?.[0];
+  const docMetaRef = useRef({ piece_kind: "Autre document", retour_obligatoire: false });
+  const uploadOneFile = async (file) => {
     if (!file) return;
     setUploading(true);
     try {
+      const meta = docMetaRef.current || {};
       const fd = new FormData();
-      fd.append("file", file); fd.append("category", "Pièce jointe");
+      fd.append("file", file);
+      fd.append("category", meta.piece_kind || "Pièce jointe");
+      if (meta.piece_kind) fd.append("piece_kind", meta.piece_kind);
+      if (meta.retour_obligatoire) fd.append("retour_obligatoire", "true");
+      if (meta.parent_document_id) fd.append("parent_document_id", meta.parent_document_id);
       await api.post(`/demandes-offres/${demandeId}/documents`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success("Document ajouté");
+      toast.success(meta.parent_document_id ? "Version complétée déposée" : "Document ajouté");
       await load();
     } catch (e) {
       toast.error(errorMessage(e, "Ajout du document impossible"));
     } finally {
       setUploading(false);
+      docMetaRef.current = { ...(docMetaRef.current || {}), parent_document_id: "" };
       if (fileRef.current) fileRef.current.value = "";
     }
+  };
+  const uploadReturn = async (file, parentId) => {
+    if (!file || !parentId) return;
+    docMetaRef.current = {
+      ...(docMetaRef.current || {}),
+      piece_kind: "Autre document",
+      retour_obligatoire: false,
+      parent_document_id: parentId,
+    };
+    await uploadOneFile(file);
+  };
+  const confirmRetour = async (docId) => {
+    setUploading(true);
+    try {
+      await api.post(`/demandes-offres/${demandeId}/documents/${docId}/confirmer-retour`);
+      toast.success("Réception confirmée");
+      await load();
+    } catch (e) {
+      toast.error(errorMessage(e, "Confirmation impossible"));
+    } finally {
+      setUploading(false);
+    }
+  };
+  const uploadDocument = async (event) => {
+    const file = event.target.files?.[0];
+    await uploadOneFile(file);
   };
 
   const uploadMandatDocument = async (event) => {
@@ -1053,6 +1089,8 @@ export default function DemandeOffreFiche() {
               Conseiller : {demande.agent_label || "—"}
               {demande.date_envoi ? ` · Envoyée le ${formatDateFr(demande.date_envoi)}` : ""}
               {demande.created_at ? ` · Créée le ${formatDateFr(demande.created_at)}` : ""}
+              {demande.date_prochain_rdv ? ` · RDV client ${formatDateFr(demande.date_prochain_rdv)}${demande.heure_rdv ? ` ${demande.heure_rdv}` : ""}` : ""}
+              {demande.urgente ? " · URGENT" : ""}
               {demande.signature?.signee && (demande.signature.signed_by || demande.signature.recorded_by)
                 ? ` · Signée par ${demande.signature.signed_by || demande.signature.recorded_by}`
                 : ""}
@@ -1076,6 +1114,9 @@ export default function DemandeOffreFiche() {
             ) : null}
           </div>
         </div>
+
+        {(canProcess || isAdmin) && <AgentStatsCard demandeId={demandeId} />}
+        <SuiviAvancement demande={demande} canProcess={canProcess || isAdmin} canFollow={canFollowSignature || isAdmin} onUpdated={(data) => { setDemande(data); }} />
 
         {isAdmin ? (
           <AgentDemandeurSelect
@@ -1156,7 +1197,20 @@ export default function DemandeOffreFiche() {
                 )}
                 {step === 2 && <SituationStep form={form} setValue={setValue} toggle={(v) => toggleArray("activites_risque_liste", v)} meta={meta} />}
                 {step === 3 && <PilierStep form={form} setValue={setValue} meta={meta} />}
-                {step === 4 && <Documents demande={demande} canEdit={canEdit} uploading={uploading} fileRef={fileRef} upload={uploadDocument} remove={deleteDocument} />}
+                {step === 4 && (
+                  <Documents
+                    demande={demande}
+                    canEdit={canEdit}
+                    canReturn={canEdit || canFollowSignature}
+                    canConfirmRetour={canProcess || isAdmin}
+                    uploading={uploading}
+                    fileRef={fileRef}
+                    upload={uploadDocument}
+                    uploadReturn={uploadReturn}
+                    confirmRetour={confirmRetour}
+                    remove={deleteDocument}
+                  />
+                )}
                 {step === 5 && <Verification form={form} missing={missing} demande={demande} />}
               </Card>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1278,7 +1332,18 @@ export default function DemandeOffreFiche() {
                   </div>
                 )}
               </Card>
-              <Documents demande={demande} canEdit={canEdit} uploading={uploading} fileRef={fileRef} upload={uploadDocument} remove={deleteDocument} />
+              <Documents
+                demande={demande}
+                canEdit={canEdit}
+                canReturn={canEdit || canFollowSignature}
+                canConfirmRetour={canProcess || isAdmin}
+                uploading={uploading}
+                fileRef={fileRef}
+                upload={uploadDocument}
+                uploadReturn={uploadReturn}
+                confirmRetour={confirmRetour}
+                remove={deleteDocument}
+              />
               <NotesConseiller
                 demandeId={demandeId}
                 notes={notesExternes}
@@ -1444,7 +1509,20 @@ export default function DemandeOffreFiche() {
                   />
                 </Card>
               ) : null}
-              <Documents demande={demande} canEdit={canProcess || isAdmin} uploading={uploading} fileRef={fileRef} upload={uploadDocument} remove={deleteDocument} />
+              <Documents
+                demande={demande}
+                canEdit={canProcess || isAdmin}
+                canReturn={canFollowSignature || canEdit || canProcess || isAdmin}
+                canConfirmRetour={canProcess || isAdmin}
+                uploading={uploading}
+                fileRef={fileRef}
+                upload={uploadDocument}
+                uploadFile={uploadOneFile}
+                uploadReturn={uploadReturn}
+                confirmRetour={confirmRetour}
+                docMetaRef={docMetaRef}
+                remove={deleteDocument}
+              />
               <History entries={demande.historique || []} />
             </div>
             <ActionPanel
@@ -2543,7 +2621,19 @@ function PilierStep({ form, setValue, meta }) {
       <Field label="Adaptation automatique des primes"><Choice value={form.adaptation_auto_primes} onChange={(v) => setValue("adaptation_auto_primes", v)} options={OUI_NON} /></Field>
       <Field label="Risque pur"><Choice value={form.risque_pur} onChange={(v) => setValue("risque_pur", v)} options={OUI_NON} /></Field>
       <Field label="Langue de l'offre" required><Choice value={form.langue_offre} onChange={(v) => setValue("langue_offre", v)} options={meta.langues || LANGUES} /></Field>
-      <Field label="Prochain rendez-vous"><Input type="date" value={form.date_prochain_rdv} onChange={(e) => setValue("date_prochain_rdv", e.target.value)} /></Field>
+      <Field label="Prochain rendez-vous"><Input type="date" value={form.date_prochain_rdv || ""} onChange={(e) => setValue("date_prochain_rdv", e.target.value)} /></Field>
+      <Field label="Heure du rendez-vous"><Input type="time" value={form.heure_rdv || ""} onChange={(e) => setValue("heure_rdv", e.target.value)} /></Field>
+      <div className="sm:col-span-2 space-y-2 rounded-md border p-3">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" checked={Boolean(form.urgente)} onChange={(e) => setValue("urgente", e.target.checked)} />
+          Demande urgente
+        </label>
+        {form.urgente ? (
+          <Field label="Motif de l'urgence">
+            <Input value={form.urgence_motif || ""} onChange={(e) => setValue("urgence_motif", e.target.value)} placeholder="Obligatoire avant l'envoi" />
+          </Field>
+        ) : null}
+      </div>
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <label className="flex items-center gap-3 border rounded-md p-3"><input type="checkbox" checked={form.inclure_cga} onChange={(e) => setValue("inclure_cga", e.target.checked)} className="accent-[#002FA7]" /><span className="text-sm">Inclure les CGA</span></label>
@@ -2663,32 +2753,254 @@ function MandatGestionSection({
   );
 }
 
-function Documents({ demande, canEdit, uploading, fileRef, upload, remove }) {
+function AgentStatsCard({ demandeId }) {
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    let cancel = false;
+    api.get(`/demandes-offres/${demandeId}/stats-agent`).then((res) => {
+      if (!cancel) setStats(res.data);
+    }).catch(() => {});
+    return () => { cancel = true; };
+  }, [demandeId]);
+  if (!stats) return null;
+  return (
+    <Card className="p-4" data-testid="agent-stats-fiche">
+      <p className="text-sm font-semibold">Agent : {stats.agent}</p>
+      <p className="text-sm text-slate-600 mt-1">
+        Demandes d&apos;offres : <strong>{stats.nb_demandes}</strong>
+        {" · "}Offres signées : <strong>{stats.offres_signees}</strong>
+        {" · "}Taux de signature : <strong>{stats.offres_envoyees ? `${stats.taux_signature} %` : "—"}</strong>
+      </p>
+      <p className="text-[11px] text-muted-foreground mt-1">
+        Taux de signature = offres signées / dossiers déjà transmis au client
+        (envoyée au client, en conclusion, signée ou refusée). Même formule que Gestion réponses offres.
+        Les compteurs Demandes et Offres signées sont ceux du tableau par agent. Hors brouillons et demandes annulées.
+        {stats.offres_envoyees ? ` Dénominateur : ${stats.offres_envoyees}.` : " Aucun dossier transmis au client pour l'instant."}
+      </p>
+    </Card>
+  );
+}
+
+const SUIVI_STEPS = [
+  { id: "en_attente", label: "En attente" },
+  { id: "en_cours", label: "En cours de traitement" },
+  { id: "attente_compagnie", label: "En attente de la compagnie" },
+  { id: "relance", label: "Relance effectuée auprès de la compagnie", event: true },
+  { id: "offre_transmise", label: "Offre transmise à l'agent" },
+  { id: "envoyee_client", label: "Offre envoyée au client" },
+  { id: "signee", label: "Offre signée" },
+];
+const SUIVI_ORDER = SUIVI_STEPS.filter((step) => !step.event).map((step) => step.id);
+
+function suiviCurrentId(demande) {
+  const code = demande?.etape_suivi;
+  if (["annulee", "refusee", "non_signee"].includes(code)) return "";
+  if (SUIVI_ORDER.includes(code)) return code;
+  const statut = demande?.statut || "";
+  if (statut === "Offre signée") return "signee";
+  if (statut === "Offre envoyée au client" || statut === "En conclusion") return "envoyee_client";
+  if (["Offre reçue", "Offres complètes", "Offre complète", "Offre choisie"].includes(statut)) return "offre_transmise";
+  if (statut === "Demande incomplète" || statut === "En attente d'informations") return "en_cours";
+  if (["Offre refusée", "Demande annulée", "Offre non signée", "offre_non_signee", "demande_annulee"].includes(statut)) return "";
+  return "en_attente";
+}
+
+function SuiviAvancement({ demande, canProcess, onUpdated }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [compagnie, setCompagnie] = useState("");
+  const post = async (code) => {
+    setBusy(true);
+    try {
+      const res = await api.post(`/demandes-offres/${demande.id}/suivi`, {
+        etape: code,
+        commentaire: note,
+        compagnie,
+      });
+      onUpdated(res.data);
+      setNote("");
+      toast.success("Suivi mis à jour");
+    } catch (e) {
+      toast.error(errorMessage(e, "Suivi impossible"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const events = Array.isArray(demande.suivi_evenements) ? demande.suivi_evenements : [];
+  const relances = events.filter((ev) => ev.etape === "relance");
+  const current = suiviCurrentId(demande);
+  const currentIndex = SUIVI_ORDER.indexOf(current);
+  const horsEtapes = ["Offre refusée", "Demande annulée", "Offre non signée", "offre_non_signee", "demande_annulee"].includes(demande.statut);
+  return (
+    <Card className="p-4 space-y-3" data-testid="suivi-avancement">
+      <p className="text-sm font-semibold">Avancement du dossier</p>
+      <p className="text-[11px] text-muted-foreground">
+        Statut d&apos;offre : {demande.statut}. Une relance reste un événement : l&apos;étape « En attente de la compagnie » reste affichée.
+      </p>
+      {horsEtapes && (
+        <p className="text-xs rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950">
+          Ce dossier est au statut « {demande.statut} ». Les sept étapes restent visibles pour l&apos;historique.
+        </p>
+      )}
+      <ol className="grid gap-2 sm:grid-cols-2" data-testid="suivi-etapes">
+        {SUIVI_STEPS.map((step) => {
+          const reached = step.event ? relances.length > 0 : SUIVI_ORDER.indexOf(step.id) <= currentIndex;
+          const active = !step.event && step.id === current;
+          return (
+            <li
+              key={step.id}
+              data-testid={`suivi-etape-${step.id}`}
+              className={`rounded-md border px-3 py-2 text-sm ${
+                active
+                  ? "border-[#002FA7] bg-[#002FA7]/5 font-semibold text-[#002FA7]"
+                  : reached
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                    : "border-border text-muted-foreground"
+              }`}
+            >
+              <span>{step.label}</span>
+              {step.event && relances.length > 0 && (
+                <span className="block text-[11px] font-normal mt-1">
+                  {relances.length} relance{relances.length > 1 ? "s" : ""}
+                  {relances[relances.length - 1]?.compagnie ? ` · ${relances[relances.length - 1].compagnie}` : ""}
+                  {" · "}{formatDateTimeFr(relances[relances.length - 1]?.at)}
+                  {relances[relances.length - 1]?.auteur ? ` · ${relances[relances.length - 1].auteur}` : ""}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      {canProcess && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => post("en_cours")}>Prise en charge</Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => post("attente_compagnie")}>Transmis à la compagnie</Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => post("relance")}>Relance</Button>
+        </div>
+      )}
+      {canProcess && (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Input value={compagnie} onChange={(e) => setCompagnie(e.target.value)} placeholder="Compagnie (si pertinent)" />
+          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Commentaire" />
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function retourState(doc) {
+  if (!doc?.retour_obligatoire) return "";
+  if (doc.retour_confirme_at || doc.retour_recu_at) return "Réception confirmée";
+  if (doc.retour_depose_at || doc.retour_document_id) return "Version déposée — en attente de confirmation";
+  return "Document à retourner";
+}
+
+function Documents({ demande, canEdit, canReturn, canConfirmRetour, uploading, fileRef, upload, uploadFile, uploadReturn, confirmRetour, docMetaRef, remove }) {
   const docs = documentsForGeneralList(demande);
-  return <div className="space-y-4">
+  const pendingReturns = docs.filter((doc) => doc.retour_obligatoire && retourState(doc) !== "Réception confirmée");
+  const [pieceKind, setPieceKind] = useState("Autre document");
+  const [retourObligatoire, setRetourObligatoire] = useState(false);
+  const applyMeta = () => {
+    if (docMetaRef) docMetaRef.current = { piece_kind: pieceKind, retour_obligatoire: retourObligatoire };
+  };
+  const onDrop = (event) => {
+    event.preventDefault();
+    applyMeta();
+    const file = event.dataTransfer?.files?.[0];
+    if (file && uploadFile) uploadFile(file);
+  };
+  const onPaste = (event) => {
+    const item = [...(event.clipboardData?.items || [])].find((it) => it.type.startsWith("image/"));
+    if (!item || !uploadFile) return;
+    const file = item.getAsFile();
+    if (!file) return;
+    event.preventDefault();
+    applyMeta();
+    const named = new File([file], `capture-${Date.now()}.png`, { type: file.type || "image/png" });
+    uploadFile(named);
+  };
+  return <div className="space-y-4" onPaste={canEdit ? onPaste : undefined}>
     <div className="flex items-start justify-between gap-3">
       <SectionTitle title="Documents" subtitle="Pièces jointes, mandats et offres liés à cette demande." />
-      {canEdit && <><input ref={fileRef} type="file" className="hidden" onChange={upload} />
-        <Button size="sm" onClick={() => fileRef.current?.click()} disabled={uploading} className="bg-[#002FA7] hover:bg-[#00248a]">
+      {canEdit && <><input ref={fileRef} type="file" className="hidden" multiple onChange={upload} />
+        <Button size="sm" onClick={() => { applyMeta(); fileRef.current?.click(); }} disabled={uploading} className="bg-[#002FA7] hover:bg-[#00248a]">
           {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />} Ajouter
         </Button></>}
     </div>
+    {canEdit && (
+      <div
+        className="rounded-md border border-dashed p-4 text-sm text-muted-foreground space-y-2"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={onDrop}
+      >
+        <p>Glisser-déposer un fichier, ou coller une capture (Ctrl+V) dans cette zone.</p>
+        <div className="flex flex-wrap gap-3 items-center">
+          <label className="text-xs">Catégorie
+            <select className="ml-2 border rounded px-2 py-1" value={pieceKind} onChange={(e) => setPieceKind(e.target.value)}>
+              <option>Offre</option>
+              <option>CGA</option>
+              <option>Autre document</option>
+            </select>
+          </label>
+          <label className="text-xs flex items-center gap-2">
+            <input type="checkbox" checked={retourObligatoire} onChange={(e) => setRetourObligatoire(e.target.checked)} />
+            Retour du document obligatoire
+          </label>
+        </div>
+      </div>
+    )}
+    {pendingReturns.length > 0 && (
+      <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950" data-testid="documents-a-retourner">
+        <p className="font-semibold">Document attendu en retour</p>
+        <ul className="mt-1 space-y-1">
+          {pendingReturns.map((doc) => (
+            <li key={doc.id}>{doc.original_filename || "Document"} — {retourState(doc)}</li>
+          ))}
+        </ul>
+      </div>
+    )}
     {!docs.length ? <p className="border border-dashed rounded-md p-8 text-center text-sm text-muted-foreground">Aucun document ajouté.</p> :
       <div className="space-y-2">{docs.map((doc) => {
         const isMandat = isMandatGestionCategory(doc.category);
         const categoryLabel = isMandat ? MANDAT_GESTION_DOC_CATEGORY : doc.category;
+        const parent = doc.parent_document_id ? docs.find((item) => item.id === doc.parent_document_id) : null;
+        const state = retourState(doc);
+        const awaitingDeposit = doc.retour_obligatoire && state === "Document à retourner";
+        const awaitingConfirm = doc.retour_obligatoire && state.startsWith("Version déposée");
         return (
-          <div key={doc.id} className={`flex items-center justify-between gap-3 border rounded-md p-3 ${isMandat ? "border-[#002FA7]/30 bg-[#002FA7]/5" : ""}`}>
+          <div key={doc.id} className={`flex items-center justify-between gap-3 border rounded-md p-3 ${isMandat ? "border-[#002FA7]/30 bg-[#002FA7]/5" : awaitingDeposit ? "border-amber-300 bg-amber-50/60" : ""}`}>
             <div className="flex items-center gap-3 min-w-0">
               <FileText className="h-5 w-5 text-[#002FA7] shrink-0" />
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{doc.original_filename}</p>
                 <p className={`text-xs ${isMandat ? "text-[#002FA7] font-semibold" : "text-muted-foreground"}`}>
-                  {categoryLabel} · {formatDateFr(doc.created_at)}
+                  {doc.piece_kind || categoryLabel} · {formatDateFr(doc.created_at)}
+                  {state ? ` · ${state}` : ""}
+                  {parent ? ` · Réponse à ${parent.original_filename || "document"}` : ""}
                 </p>
               </div>
             </div>
-            <div className="flex gap-1 shrink-0">
+            <div className="flex gap-1 shrink-0 items-center">
+              {awaitingDeposit && canReturn && (
+                <label className="text-xs">
+                  <input
+                    type="file"
+                    className="hidden"
+                    data-testid={`retour-upload-${doc.id}`}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file && uploadReturn) uploadReturn(file, doc.id);
+                      event.target.value = "";
+                    }}
+                  />
+                  <span className="inline-flex cursor-pointer rounded-md border px-2 py-1 hover:bg-white">Déposer la version complétée</span>
+                </label>
+              )}
+              {awaitingConfirm && canConfirmRetour && (
+                <Button size="sm" variant="outline" disabled={uploading} onClick={() => confirmRetour?.(doc.id)}>
+                  Confirmer la réception
+                </Button>
+              )}
               <Button size="icon" variant="ghost" title="Ouvrir" onClick={() => openAuthenticatedBlob(`/demandes-offres/documents/${doc.id}/download`)}><ExternalLink className="h-4 w-4" /></Button>
               <Button size="icon" variant="ghost" title="Télécharger" onClick={() => downloadAuthenticatedBlob(`/demandes-offres/documents/${doc.id}/download`, doc.original_filename)}><Download className="h-4 w-4" /></Button>
               {canEdit && !doc.locked && <Button size="icon" variant="ghost" className="text-rose-600" title="Supprimer" onClick={() => remove(doc)}><Trash2 className="h-4 w-4" /></Button>}
@@ -2812,7 +3124,7 @@ function ActionPanel({
         </Button>
       </div>
     )}
-    {showProcess && !terminal && <Button className="w-full justify-start bg-violet-700 hover:bg-violet-800" onClick={onOffer} disabled={busy}><Paperclip className="h-4 w-4 mr-2" /> Offre reçue</Button>}
+    {showProcess && !terminal && <Button className="w-full justify-start bg-violet-700 hover:bg-violet-800" onClick={onOffer} disabled={busy}><Paperclip className="h-4 w-4 mr-2" /> Transmettre une offre</Button>}
     {showProcess && !terminal && (
       <Button
         className={`w-full justify-start ${offresCompletes ? "bg-emerald-800 ring-2 ring-emerald-300 ring-offset-1" : "bg-emerald-600 hover:bg-emerald-700"}`}
@@ -2915,9 +3227,11 @@ function ActionPanel({
 }
 
 function History({ entries }) {
-  return <Card className="p-5"><h2 className="font-display font-bold mb-4">Historique</h2>
-    {!entries.length ? <p className="text-sm text-muted-foreground">Aucun événement.</p> :
-      <ol className="space-y-0">{[...entries].reverse().map((entry, index) => <li key={entry.id || index} className="relative pl-6 pb-5 last:pb-0 border-l border-border last:border-transparent">
+  const ordered = [...(entries || [])].sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+  return <Card className="p-5" data-testid="historique-demande"><h2 className="font-display font-bold mb-1">Historique</h2>
+    <p className="text-xs text-muted-foreground mb-4">Changements dans l&apos;ordre chronologique, avec la date, l&apos;heure et l&apos;auteur.</p>
+    {!ordered.length ? <p className="text-sm text-muted-foreground">Aucun événement.</p> :
+      <ol className="space-y-0">{ordered.map((entry, index) => <li key={entry.id || index} className="relative pl-6 pb-5 last:pb-0 border-l border-border last:border-transparent">
         <span className="absolute -left-1.5 top-1 h-3 w-3 rounded-full bg-[#002FA7] ring-4 ring-background" />
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm font-medium">{entry.action}</p>
@@ -2939,7 +3253,7 @@ function History({ entries }) {
             {entry.document_filename || entry.document?.original_filename || entry.document || `Document ${entry.document_id}`}
           </p>
         )}
-        <p className="text-xs text-muted-foreground mt-1">{formatDateFr(entry.at)}{entry.by_name ? ` · ${entry.by_name}` : ""}</p>
+        <p className="text-xs text-muted-foreground mt-1">{formatDateTimeFr(entry.at)}{entry.by_name ? ` · ${entry.by_name}` : ""}</p>
       </li>)}</ol>}
   </Card>;
 }

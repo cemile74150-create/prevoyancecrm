@@ -343,6 +343,9 @@ export default function DemandesOffres({ mode = "conseiller" }) {
   const [origine, setOrigine] = useState("all");
   const [dateDe, setDateDe] = useState("");
   const [dateA, setDateA] = useState("");
+  const [tri, setTri] = useState("maj");
+  const [seulementUrgentes, setSeulementUrgentes] = useState(false);
+  const [rdvAVenir, setRdvAVenir] = useState(false);
   const [expandedAgent, setExpandedAgent] = useState(null);
   const [createTypeOpen, setCreateTypeOpen] = useState(false);
   const [pendingCreate, setPendingCreate] = useState(null);
@@ -414,6 +417,9 @@ export default function DemandesOffres({ mode = "conseiller" }) {
       if (formTypeFilter !== "all") params.form_type = formTypeFilter;
       if (compagnie !== "all") params.compagnie = compagnie;
       if (origine !== "all") params.demande_origine = origine;
+      if (tri && tri !== "maj") params.tri = tri;
+      if (seulementUrgentes) params.urgente = true;
+      if (rdvAVenir) params.rdv_a_venir = true;
       if (periode && periode !== "all") {
         params.periode = periode;
         if (periode === "custom") {
@@ -442,7 +448,7 @@ export default function DemandesOffres({ mode = "conseiller" }) {
     } finally {
       setLoading(false);
     }
-  }, [qDebounced, statut, kpiFilter, conseiller, formTypeFilter, compagnie, origine, periode, dateDe, dateA, isGlobal]);
+  }, [qDebounced, statut, kpiFilter, conseiller, formTypeFilter, compagnie, origine, periode, dateDe, dateA, isGlobal, tri, seulementUrgentes, rdvAVenir]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -927,6 +933,27 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                 </SelectContent>
               </Select>
               <FilterSelect value={compagnie} onChange={setCompagnie} placeholder="Compagnie" options={compagniesFiltre} />
+              <Select value={tri} onValueChange={setTri}>
+                <SelectTrigger className="h-11"><SelectValue placeholder="Tri" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="maj">Dernière mise à jour</SelectItem>
+                  <SelectItem value="soumission_asc">Soumission : plus ancienne</SelectItem>
+                  <SelectItem value="soumission_desc">Soumission : plus récente</SelectItem>
+                  <SelectItem value="rdv_asc">RDV : plus proche</SelectItem>
+                  <SelectItem value="rdv_desc">RDV : plus éloigné</SelectItem>
+                  <SelectItem value="urgentes">Urgences en premier</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={seulementUrgentes} onChange={(e) => setSeulementUrgentes(e.target.checked)} />
+                Urgences seulement
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={rdvAVenir} onChange={(e) => setRdvAVenir(e.target.checked)} />
+                Rendez-vous à venir
+              </label>
             </div>
             {(filterActive || activeKpiLabel) && (
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -977,16 +1004,21 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                                     {r.client_label !== "—" ? r.client_label : "Nouvelle demande"}
                                     <span className="font-normal text-slate-400"> · {r.numero}</span>
                                   </span>
-                                  <span className="block text-sm text-slate-500 mt-1">
+                                  <span className="block text-sm font-medium text-slate-800 mt-1">
+                                    Agent : {r.agent_label || "—"}
+                                  </span>
+                                  <span className="block text-sm text-slate-500 mt-0.5">
                                     {typeLabel(r)}
                                     {compagniesAffichees(r).length
                                       ? ` · ${compagniesAffichees(r).slice(0, 3).join(", ")}${compagniesAffichees(r).length > 3 ? "…" : ""}`
                                       : ""}
                                     {r.montant_prime != null && r.montant_prime !== "" ? ` · ${formatChf(r.montant_prime)}` : ""}
-                                    {r.agent_label ? ` · ${r.agent_label}` : ""}
                                     {r.date_envoi
                                       ? ` · Envoyée le ${formatDateFr(r.date_envoi)}`
                                       : ` · ${formatDateFr(r.updated_at)}`}
+                                    {r.date_prochain_rdv
+                                      ? ` · RDV client ${formatDateFr(r.date_prochain_rdv)}${r.heure_rdv ? ` ${r.heure_rdv}` : ""}`
+                                      : ""}
                                   </span>
                                   {r.commentaires ? (
                                     <span className="block text-xs text-slate-400 mt-0.5 line-clamp-1">
@@ -998,6 +1030,9 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                               <span className="flex flex-col items-end shrink-0 gap-1 pt-2">
                                 <OrigineBadge origine={r.demande_origine} />
                                 <span className="flex items-center gap-1.5 flex-wrap justify-end">
+                                  {r.urgente ? (
+                                    <span className="rounded-md bg-rose-700 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Urgent</span>
+                                  ) : null}
                                   <StatutBadge statut={r.statut} />
                                   <PendingComplementBadge count={r.nb_complements_en_attente} />
                                   {isAdmin && r.statut === "Demande envoyée" && (

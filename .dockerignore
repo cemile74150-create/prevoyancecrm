@@ -13,5 +13,6 @@ frontend/src.zip
 **/.env
 .env
 *.md
+backend/generated
 .cursor
 debug-*.log

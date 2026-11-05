@@ -368,8 +368,14 @@ export default function OffresDashboardPanel({
     setPipelineFilter(null);
   };
 
-  const taux = kpiCounts.envoyees
-    ? Math.round((kpiCounts.signees / kpiCounts.envoyees) * 1000) / 10
+  const parcoursSignature = baseRows.filter((row) => [
+    "Offre envoyée au client",
+    "En conclusion",
+    "Offre signée",
+    "Offre refusée",
+  ].includes(row.statut || "")).length;
+  const taux = parcoursSignature
+    ? Math.round((kpiCounts.signees / parcoursSignature) * 1000) / 10
     : 0;
 
   return (
@@ -470,7 +476,11 @@ export default function OffresDashboardPanel({
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-muted-foreground font-medium">Taux de signature</p>
-              <p className="font-display font-black text-3xl tracking-tight mt-2 tabular-nums">{taux}%</p>
+              <p className="font-display font-black text-3xl tracking-tight mt-2 tabular-nums">{parcoursSignature ? `${taux}%` : "—"}</p>
+              <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+                Signées / dossiers transmis au client (envoyée au client, en conclusion, signée ou refusée), sur la période affichée.
+                Même définition que Gestion réponses offres. Le compteur « envoyées client » ne compte que le statut encore chez le client.
+              </p>
             </div>
             <div className="h-9 w-9 rounded-md flex items-center justify-center bg-green-100 text-green-700">
               <TrendingUp className="h-4 w-4" strokeWidth={1.75} />

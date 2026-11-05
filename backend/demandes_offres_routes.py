@@ -145,6 +145,10 @@ class DemandeOffreUpdate(BaseModel):
     commentaires: Optional[str] = None
     inclure_cga: Optional[bool] = None
     date_prochain_rdv: Optional[str] = None
+    heure_rdv: Optional[str] = None
+    urgente: Optional[bool] = None
+    urgence_motif: Optional[str] = None
+    urgence_exception: Optional[bool] = None
     langue_offre: Optional[str] = None
     mandat_gestion: Optional[bool] = None
     mandat_debut: Optional[str] = None
@@ -155,6 +159,22 @@ class DemandeOffreUpdate(BaseModel):
     type_client: Optional[str] = None
     demande_origine: Optional[str] = None
     note_service_offre: Optional[str] = None
+
+
+class SuiviDemandeRequest(BaseModel):
+    etape: str
+    commentaire: Optional[str] = None
+    compagnie: Optional[str] = None
+
+
+class UrgenceSettingsRequest(BaseModel):
+    quota_actif: bool = False
+    max_par_agent: int = 5
+    periode: str = "mois"
+
+
+class UrgenceExceptionRequest(BaseModel):
+    agent_label: str
 
 
 class CreateDemandeOffreRequest(BaseModel):
@@ -1439,6 +1459,9 @@ def attach_demandes_offres_routes(
         priorite: Optional[str] = Query(None),
         en_retard: Optional[bool] = Query(None),
         demande_origine: Optional[str] = Query(None),
+        tri: Optional[str] = Query(None),
+        urgente: Optional[bool] = Query(None),
+        rdv_a_venir: Optional[bool] = Query(None),
         limit: int = Query(200, ge=1, le=1000),
         user: User = Depends(current_user_dependency),
     ):
@@ -1507,8 +1530,156 @@ def attach_demandes_offres_routes(
                     continue
                 filtered.append(row)
             rows = filtered
+        from demandes_offres_ameliorations import filter_rdv_a_venir, filter_urgente, sort_demandes
+
+        if urgente is True:
+            rows = filter_urgente(rows, True)
+        if rdv_a_venir is True:
+            rows = filter_rdv_a_venir(rows, True)
+        rows = sort_demandes(rows, tri)
         rows = rows[:limit]
         return [serialize_demande(row, viewer=user) for row in rows]
+
+    @api_router.get("/demandes-offres/parametres-urgence")
+    async def get_urgence_settings(user: User = Depends(current_user_dependency)):
+        require_admin(user)
+        from demandes_offres_ameliorations import DEFAULT_URGENCE_SETTINGS, usages_urgences
+
+        stored = await db["crm_settings"].find_one({"id": "offres_urgence"}, {"_id": 0}) or {}
+        settings = {
+            **DEFAULT_URGENCE_SETTINGS,
+            "quota_actif": bool(stored.get("quota_actif", DEFAULT_URGENCE_SETTINGS["quota_actif"])),
+            "max_par_agent": int(stored.get("max_par_agent", DEFAULT_URGENCE_SETTINGS["max_par_agent"])),
+            "periode": stored.get("periode") if stored.get("periode") in {"mois", "annee"} else "mois",
+            "bonus_par_agent": stored.get("bonus_par_agent") or [],
+            "updated_at": stored.get("updated_at"),
+            "updated_by": stored.get("updated_by") or "",
+        }
+        rows = await db[COLLECTION].find(
+            {"user_id": TENANT_USER_ID, "is_deleted": {"$ne": True}},
+            {
+                "_id": 0, "agent_label": 1, "urgente": 1, "statut": 1,
+                "urgence_at": 1, "date_envoi": 1, "created_at": 1, "is_deleted": 1,
+            },
+        ).to_list(8000)
+        settings["usages"] = usages_urgences(rows, settings)
+        return settings
+
+    @api_router.put("/demandes-offres/parametres-urgence")
+    async def put_urgence_settings(
+        payload: UrgenceSettingsRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        require_admin(user)
+        periode = payload.periode if payload.periode in {"mois", "annee"} else "mois"
+        await db["crm_settings"].update_one(
+            {"id": "offres_urgence"},
+            {"$set": {
+                "id": "offres_urgence",
+                "quota_actif": bool(payload.quota_actif),
+                "max_par_agent": max(0, int(payload.max_par_agent)),
+                "periode": periode,
+                "updated_at": now_iso(),
+                "updated_by": actor_name(user),
+            }},
+            upsert=True,
+        )
+        return await get_urgence_settings(user)
+
+    @api_router.post("/demandes-offres/parametres-urgence/exception")
+    async def grant_urgence_exception(
+        payload: UrgenceExceptionRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        require_admin(user)
+        from demandes_offres_ameliorations import grant_agent_bonus
+
+        stored = await db["crm_settings"].find_one({"id": "offres_urgence"}, {"_id": 0}) or {}
+        try:
+            bonus = grant_agent_bonus(stored, payload.agent_label)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await db["crm_settings"].update_one(
+            {"id": "offres_urgence"},
+            {"$set": {
+                "id": "offres_urgence",
+                "bonus_par_agent": bonus,
+                "updated_at": now_iso(),
+                "updated_by": actor_name(user),
+            }},
+            upsert=True,
+        )
+        return await get_urgence_settings(user)
+
+    @api_router.get("/demandes-offres/{demande_id}/stats-agent")
+    async def demande_agent_stats(demande_id: str, user: User = Depends(current_user_dependency)):
+        require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        doc = await require_demande(demande_id, user)
+        from demandes_offres_ameliorations import fiche_stats_agent
+
+        label = doc.get("agent_label") or ""
+        rows = await db[COLLECTION].find(
+            {"user_id": TENANT_USER_ID, "is_deleted": {"$ne": True}},
+            {"_id": 0, "statut": 1, "agent_label": 1, "is_deleted": 1, "compagnies": 1, "offres": 1, "form_type": 1, "form_category": 1},
+        ).to_list(8000)
+        same = [
+            row for row in rows
+            if str(row.get("agent_label") or "").strip().casefold() == str(label).strip().casefold()
+        ]
+        return fiche_stats_agent(same, label)
+
+    @api_router.post("/demandes-offres/{demande_id}/suivi")
+    async def post_suivi_demande(
+        demande_id: str,
+        payload: SuiviDemandeRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        from demandes_offres_ameliorations import SUIVI_AGENT, SUIVI_PROCESS, enregistrer_suivi
+
+        doc = await require_demande(demande_id, user)
+        etape = (payload.etape or "").strip()
+        if etape in SUIVI_PROCESS:
+            require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        elif etape in SUIVI_AGENT:
+            if not (can_process_offres(user) or is_global_viewer(user)):
+                creator = str(doc.get("created_by_account_id") or doc.get("agent_account_id") or "")
+                if creator and creator != str(user.account_id):
+                    raise HTTPException(status_code=403, detail="Réservé à l'agent de la demande")
+        else:
+            raise HTTPException(status_code=422, detail="Étape de suivi non autorisée")
+        try:
+            patch = enregistrer_suivi(
+                doc,
+                etape,
+                auteur=actor_name(user),
+                auteur_id=str(user.account_id or ""),
+                commentaire=payload.commentaire or "",
+                compagnie=payload.compagnie or "",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        event = patch["dernier_evenement"]
+        await db[COLLECTION].update_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID},
+            {
+                "$set": {
+                    "suivi_etape": patch["suivi_etape"],
+                    "updated_at": now_iso(),
+                },
+                "$push": {
+                    "suivi_evenements": event,
+                    "historique": history(
+                        event["label"],
+                        user,
+                        event.get("commentaire") or event.get("compagnie") or "",
+                        statut=doc.get("statut"),
+                        meta={"etape": etape, "compagnie": event.get("compagnie") or ""},
+                    ),
+                },
+            },
+        )
+        fresh = await require_demande(demande_id, user)
+        return serialize_demande(fresh, viewer=user, docs=await docs_for(demande_id))
 
     @api_router.post("/demandes-offres")
     async def create_demande_offre(
@@ -1743,6 +1914,23 @@ def attach_demandes_offres_routes(
             updates["agent_label"] = normalized.get("agent_label")
         if "form_payload" in raw_updates or isinstance(normalized.get("form_payload"), dict):
             updates["form_payload"] = normalized.get("form_payload")
+        if "urgente" in raw_updates or "urgence_motif" in raw_updates or "urgence_exception" in raw_updates:
+            updates["urgente"] = bool(normalized.get("urgente"))
+            updates["urgence_motif"] = str(normalized.get("urgence_motif") or "").strip()
+            if "urgence_exception" in raw_updates:
+                if not (has_perm(user, PERM_USERS_MANAGE) or is_global_viewer(user)):
+                    raise HTTPException(status_code=403, detail="Exception d'urgence réservée à un administrateur")
+                updates["urgence_exception"] = bool(normalized.get("urgence_exception"))
+                updates["urgence_exception_by"] = actor_name(user)
+                updates["urgence_exception_at"] = now_iso()
+            if updates["urgente"] and not current.get("urgente"):
+                updates["urgence_at"] = now_iso()
+                updates["urgence_by"] = actor_name(user)
+                updates["urgence_by_id"] = user.account_id
+        if "heure_rdv" in raw_updates:
+            updates["heure_rdv"] = normalized.get("heure_rdv") or ""
+        if "date_prochain_rdv" in raw_updates:
+            updates["date_prochain_rdv"] = normalized.get("date_prochain_rdv") or ""
         updates["updated_at"] = now_iso()
 
         # Lier / créer le client hub + synchroniser l'identité
@@ -1873,6 +2061,32 @@ def attach_demandes_offres_routes(
                 "form_payload": doc.get("form_payload") or {},
             }},
         )
+        from demandes_offres_ameliorations import (
+            count_urgences_agent,
+            period_start_iso,
+            quota_block_message,
+            validate_urgence_for_send,
+        )
+
+        urgence_error = validate_urgence_for_send(doc)
+        if urgence_error:
+            raise HTTPException(status_code=422, detail=urgence_error)
+        if doc.get("urgente") and not doc.get("urgence_exception"):
+            settings = await db["crm_settings"].find_one({"id": "offres_urgence"}, {"_id": 0}) or {}
+            if settings.get("quota_actif"):
+                since = period_start_iso(str(settings.get("periode") or "mois"))
+                peers = await db[COLLECTION].find(
+                    {"user_id": TENANT_USER_ID, "is_deleted": {"$ne": True}, "urgente": True},
+                    {
+                        "_id": 0, "agent_label": 1, "urgente": 1, "statut": 1,
+                        "urgence_at": 1, "date_envoi": 1, "created_at": 1, "id": 1, "is_deleted": 1,
+                    },
+                ).to_list(5000)
+                peers = [row for row in peers if row.get("id") != demande_id]
+                used = count_urgences_agent(peers, doc.get("agent_label") or "", since_iso=since)
+                blocked = quota_block_message(settings, used + 1, doc.get("agent_label") or "")
+                if blocked:
+                    raise HTTPException(status_code=422, detail=blocked)
         missing = missing_required(doc, docs=await docs_for(demande_id))
         if missing:
             raise HTTPException(
@@ -2295,6 +2509,11 @@ def attach_demandes_offres_routes(
             "offre": offer,
         }
         sent, email_error = await try_send_email(mail_doc, event="recue", offer=offer)
+        if sent:
+            await db[COLLECTION].update_one(
+                {"id": demande_id, "user_id": TENANT_USER_ID},
+                {"$set": {"offre_recue_email_sent": True, "updated_at": now_iso()}},
+            )
         if isinstance(result, dict):
             result["email_sent"] = sent
             result["email_error"] = email_error
@@ -2414,12 +2633,19 @@ def attach_demandes_offres_routes(
             "statut": STATUT_OFFRE_COMPLETE,
             "message_conseiller": note_agent or doc.get("message_conseiller"),
         }
-        sent, email_error = await try_send_email(
-            mail_doc, event="offres_completes", note=note_agent
-        )
+        from demandes_offres_ameliorations import should_send_offres_completes_email
+
+        if should_send_offres_completes_email(doc, note_agent):
+            sent, email_error = await try_send_email(
+                mail_doc, event="offres_completes", note=note_agent
+            )
+        else:
+            sent, email_error = False, None
         if isinstance(result, dict):
             result["email_sent"] = sent
             result["email_error"] = email_error
+            if not sent and not should_send_offres_completes_email(doc, note_agent):
+                result["email_skipped"] = "deja_notifie_par_transmission"
             if sent:
                 await db[COLLECTION].update_one(
                     {"id": demande_id, "user_id": TENANT_USER_ID},
@@ -3775,16 +4001,36 @@ def attach_demandes_offres_routes(
         demande_id: str,
         file: UploadFile = File(...),
         category: str = Form("Pièce jointe"),
+        piece_kind: str = Form(""),
+        retour_obligatoire: str = Form(""),
+        parent_document_id: str = Form(""),
         user: User = Depends(current_user_dependency),
     ):
-        await require_demande(demande_id, user)
-        doc = await db[COLLECTION].find_one(
-            {"id": demande_id, "user_id": TENANT_USER_ID, "is_deleted": {"$ne": True}},
-            {"_id": 0, "statut": 1},
-        )
-        statut = normalize_statut((doc or {}).get("statut"))
+        demande = await require_demande(demande_id, user)
+        statut = normalize_statut(demande.get("statut"))
         editable = {STATUT_BROUILLON, STATUT_ATTENTE_INFOS, STATUT_INCOMPLETE}
-        if statut not in editable:
+        parent_id = parent_document_id.strip()
+        parent = None
+        if parent_id:
+            parent = await db[COLLECTION_DOCS].find_one(
+                {
+                    "id": parent_id,
+                    "demande_id": demande_id,
+                    "user_id": TENANT_USER_ID,
+                    "is_deleted": {"$ne": True},
+                },
+                {"_id": 0},
+            )
+            if not parent or not parent.get("retour_obligatoire"):
+                raise HTTPException(status_code=422, detail="Ce document n'attend pas de retour")
+            if parent.get("retour_confirme_at") or parent.get("retour_recu_at"):
+                raise HTTPException(status_code=409, detail="Le retour de ce document est déjà confirmé")
+            allowed_return = has_perm(user, PERM_DEMANDES_OFFRES_PROCESS) or (
+                str(user.account_id) in creator_account_ids(demande)
+            )
+            if not allowed_return:
+                raise HTTPException(status_code=403, detail="Seul l'agent de la demande peut déposer ce retour")
+        elif statut not in editable:
             require_perm(
                 user,
                 PERM_DEMANDES_OFFRES_PROCESS,
@@ -3794,6 +4040,9 @@ def attach_demandes_offres_routes(
         from mandat_gestion_offre import normalize_mandat_upload_category
 
         mandat_category = normalize_mandat_upload_category(normalized_category)
+        from demandes_offres_ameliorations import normalize_piece_kind, parse_bool
+
+        kind = normalize_piece_kind(piece_kind)
         allowed = {
             "pièce jointe",
             "piece jointe",
@@ -3802,26 +4051,102 @@ def attach_demandes_offres_routes(
             "mandat",
             "mandat de gestion",
             "mandat_gestion",
+            "offre",
+            "cga",
+            "autre document",
         }
-        if normalized_category.lower() not in allowed:
+        if normalized_category.lower() not in allowed and not kind:
             raise HTTPException(status_code=422, detail="Catégorie de document invalide")
+        stored_category = kind or mandat_category or "Pièce jointe"
+        extra = {}
+        if kind:
+            extra["piece_kind"] = kind
+        if parse_bool(retour_obligatoire):
+            extra["retour_obligatoire"] = True
+        if parent_document_id.strip():
+            extra["parent_document_id"] = parent_document_id.strip()
         stored = await store_doc(
             demande_id,
             file,
             user,
-            category=mandat_category or "Pièce jointe",
+            category=stored_category,
+            extra=extra or None,
         )
+        hist_action = "Document ajouté"
+        hist_detail = stored.get("original_filename") or ""
+        if parent:
+            await db[COLLECTION_DOCS].update_one(
+                {"id": parent_id, "demande_id": demande_id},
+                {"$set": {
+                    "retour_depose_at": now_iso(),
+                    "retour_document_id": stored.get("id"),
+                    "retour_depose_by": actor_name(user),
+                }},
+            )
+            hist_action = "Retour déposé"
+            hist_detail = (
+                f"{stored.get('original_filename') or 'document'} "
+                f"en réponse à {parent.get('original_filename') or parent_id}"
+            )
         await db[COLLECTION].update_one(
             {"id": demande_id, "user_id": TENANT_USER_ID},
             {
                 "$set": {"updated_at": now_iso()},
                 "$push": {
-                    "historique": history(
-                        "Document ajouté",
-                        user,
-                        stored.get("original_filename") or "",
-                    )
+                    "historique": history(hist_action, user, hist_detail)
                 },
             },
         )
         return stored
+
+    @api_router.post("/demandes-offres/{demande_id}/documents/{doc_id}/confirmer-retour")
+    async def confirmer_retour_document(
+        demande_id: str,
+        doc_id: str,
+        user: User = Depends(current_user_dependency),
+    ):
+        require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        await require_demande(demande_id, user)
+        parent = await db[COLLECTION_DOCS].find_one(
+            {
+                "id": doc_id,
+                "demande_id": demande_id,
+                "user_id": TENANT_USER_ID,
+                "is_deleted": {"$ne": True},
+            },
+            {"_id": 0},
+        )
+        if not parent or not parent.get("retour_obligatoire"):
+            raise HTTPException(status_code=404, detail="Document à retourner introuvable")
+        if not parent.get("retour_document_id"):
+            raise HTTPException(status_code=422, detail="L'agent n'a pas encore déposé le document complété")
+        if parent.get("retour_confirme_at"):
+            return public_doc(parent)
+        stamp = now_iso()
+        await db[COLLECTION_DOCS].update_one(
+            {"id": doc_id, "demande_id": demande_id},
+            {"$set": {
+                "retour_confirme_at": stamp,
+                "retour_confirme_by": actor_name(user),
+                "retour_recu_at": stamp,
+                "retour_recu_by": actor_name(user),
+            }},
+        )
+        await db[COLLECTION].update_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID},
+            {
+                "$set": {"updated_at": stamp},
+                "$push": {
+                    "historique": history(
+                        "Retour confirmé",
+                        user,
+                        parent.get("original_filename") or "",
+                    )
+                },
+            },
+        )
+        fresh = await db[COLLECTION_DOCS].find_one(
+            {"id": doc_id, "demande_id": demande_id},
+            {"_id": 0, "storage_path": 0, "storage_path_legacy": 0},
+        )
+        return public_doc(fresh or parent)

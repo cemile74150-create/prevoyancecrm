@@ -86,6 +86,14 @@ def test_process_routes_require_process_perm():
     assert permission_for_request("POST", "/api/demandes-offres/abc/restaurer") == PERM_DEMANDES_OFFRES_EDIT
     assert permission_for_request("POST", "/api/demandes-offres/abc/renvoyer") == PERM_USERS_MANAGE
     assert permission_for_request("GET", "/api/demandes-offres") == PERM_DEMANDES_OFFRES_VIEW
+    assert permission_for_request("GET", "/api/demandes-offres/parametres-urgence") == PERM_USERS_MANAGE
+    assert permission_for_request("PUT", "/api/demandes-offres/parametres-urgence") == PERM_USERS_MANAGE
+    assert permission_for_request("POST", "/api/demandes-offres/parametres-urgence/exception") == PERM_USERS_MANAGE
+    assert permission_for_request("POST", "/api/demandes-offres/abc/documents/doc1/confirmer-retour") == PERM_DEMANDES_OFFRES_PROCESS
+    assert permission_for_request("POST", "/api/demandes-offres/abc/suivi") == (
+        PERM_DEMANDES_OFFRES_EDIT,
+        PERM_DEMANDES_OFFRES_PROCESS,
+    )
 
 
 def test_offre_non_signee_creator_allowed_unrelated_denied():

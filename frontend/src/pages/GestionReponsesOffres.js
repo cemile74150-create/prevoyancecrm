@@ -95,7 +95,7 @@ function PrioriteBadge({ niveau }) {
 
 export default function GestionReponsesOffres() {
   const navigate = useNavigate();
-  const { hasPerm } = useAuth();
+  const { hasPerm, isAdmin } = useAuth();
   const canProcess = hasPerm("demandes_offres.process");
 
   const [rows, setRows] = useState([]);
@@ -303,7 +303,7 @@ export default function GestionReponsesOffres() {
     return c.length <= 2 ? c.join(", ") : `${c.slice(0, 2).join(", ")} +${c.length - 2}`;
   };
 
-  if (!canProcess) {
+  if (!canProcess && !isAdmin) {
     return (
       <Layout>
         <div className="p-6">
@@ -321,6 +321,8 @@ export default function GestionReponsesOffres() {
   return (
     <Layout>
       <div className="p-6 space-y-6" data-testid="gestion-reponses-offres-page">
+        {isAdmin && <UrgenceQuotaPanel />}
+        {!canProcess ? null : (<>
         {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -751,6 +753,11 @@ export default function GestionReponsesOffres() {
         {/* Activité conseillers */}
         {tab === "agents" && (
           <Card className="border-slate-200 overflow-hidden">
+            <p className="px-3 pt-3 text-xs text-slate-500">
+              Compteurs par agent : demandes hors brouillon et annulées, et nombre d&apos;offres signées.
+              Le taux de signature n&apos;est pas recalculé ici. Il se lit sur la fiche :
+              signées / dossiers transmis au client (envoyée au client, en conclusion, signée ou refusée).
+            </p>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -895,7 +902,144 @@ export default function GestionReponsesOffres() {
           </Card>
         )}
 
+      </>)}
       </div>
     </Layout>
+  );
+}
+
+function UrgenceQuotaPanel() {
+  const [settings, setSettings] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [agent, setAgent] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api.get("/demandes-offres/parametres-urgence");
+      setSettings(res.data);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Paramètres d'urgence indisponibles");
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    if (!settings) return;
+    setBusy(true);
+    try {
+      const res = await api.put("/demandes-offres/parametres-urgence", {
+        quota_actif: Boolean(settings.quota_actif),
+        max_par_agent: Number(settings.max_par_agent) || 0,
+        periode: settings.periode === "annee" ? "annee" : "mois",
+      });
+      setSettings(res.data);
+      toast.success("Quotas d'urgence enregistrés");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Enregistrement impossible");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const grant = async (label) => {
+    const name = (label || "").trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      const res = await api.post("/demandes-offres/parametres-urgence/exception", { agent_label: name });
+      setSettings(res.data);
+      setAgent("");
+      toast.success(`Urgence supplémentaire accordée à ${name}`);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Exception impossible");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!settings) return null;
+  const usages = Array.isArray(settings.usages) ? settings.usages : [];
+  return (
+    <Card className="p-4 border-slate-200 space-y-4" data-testid="urgence-quota-panel">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-900">Quotas d&apos;urgence</h2>
+        <p className="text-sm text-slate-500 mt-1">
+          Réservé aux administrateurs. La limite est désactivée tant qu&apos;elle n&apos;est pas cochée.
+          Une exception ajoute une urgence au plafond de l&apos;agent pour la période en cours.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-end gap-4">
+        <label className="text-sm flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={Boolean(settings.quota_actif)}
+            onChange={(e) => setSettings({ ...settings, quota_actif: e.target.checked })}
+          />
+          Limite active
+        </label>
+        <label className="text-sm">
+          Maximum par agent
+          <Input
+            type="number"
+            min="0"
+            className="mt-1 w-28"
+            value={settings.max_par_agent}
+            onChange={(e) => setSettings({ ...settings, max_par_agent: e.target.value })}
+          />
+        </label>
+        <label className="text-sm">
+          Période
+          <select
+            className="mt-1 block h-9 rounded-md border px-2"
+            value={settings.periode === "annee" ? "annee" : "mois"}
+            onChange={(e) => setSettings({ ...settings, periode: e.target.value })}
+          >
+            <option value="mois">Mensuelle</option>
+            <option value="annee">Annuelle</option>
+          </select>
+        </label>
+        <Button size="sm" onClick={save} disabled={busy} className="bg-[#002FA7] hover:bg-[#00248a]">Enregistrer</Button>
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-sm">
+          Accorder une urgence à
+          <Input className="mt-1 w-56" value={agent} onChange={(e) => setAgent(e.target.value)} placeholder="Nom de l'agent" />
+        </label>
+        <Button size="sm" variant="outline" disabled={busy || !agent.trim()} onClick={() => grant(agent)}>
+          Accorder une urgence supplémentaire
+        </Button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500">
+              <th className="py-2 pr-3">Agent</th>
+              <th className="py-2 pr-3">Urgences utilisées</th>
+              <th className="py-2 pr-3">Plafond</th>
+              <th className="py-2 pr-3">Exceptions</th>
+              <th className="py-2">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {usages.length === 0 ? (
+              <tr><td colSpan={5} className="py-4 text-slate-400">Aucune urgence enregistrée sur la période.</td></tr>
+            ) : usages.map((row) => (
+              <tr key={row.agent} className="border-t border-slate-100">
+                <td className="py-2 pr-3">{row.agent}</td>
+                <td className="py-2 pr-3 tabular-nums">{row.utilisees}</td>
+                <td className="py-2 pr-3 tabular-nums">{settings.quota_actif ? row.plafond : "Illimité"}</td>
+                <td className="py-2 pr-3 tabular-nums">{row.exceptions}</td>
+                <td className="py-2">
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => grant(row.agent)}>
+                    +1 urgence
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }

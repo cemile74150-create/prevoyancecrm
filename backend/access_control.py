@@ -819,6 +819,12 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("PATCH",), r"^/suivi-3p", PERM_SUIVI_3P_EDIT),
     (("DELETE",), r"^/suivi-3p", PERM_SUIVI_3P_EDIT),
     (("GET",), r"^/emails", PERM_USERS_MANAGE),
+    # Quotas d'urgence : administrateur uniquement, avant le GET/PUT générique.
+    (("GET",), r"^/demandes-offres/parametres-urgence$", PERM_USERS_MANAGE),
+    (("PUT",), r"^/demandes-offres/parametres-urgence$", PERM_USERS_MANAGE),
+    (("POST",), r"^/demandes-offres/parametres-urgence/exception$", PERM_USERS_MANAGE),
+    (("POST",), r"^/demandes-offres/[^/]+/documents/[^/]+/confirmer-retour$", PERM_DEMANDES_OFFRES_PROCESS),
+    (("POST",), r"^/demandes-offres/[^/]+/suivi$", (PERM_DEMANDES_OFFRES_EDIT, PERM_DEMANDES_OFFRES_PROCESS)),
     # Checklist erreurs : avant le GET générique demandes-offres (sinon view gagne)
     (("GET",), r"^/demandes-offres/[^/]+/erreurs-checklist$", PERM_DEMANDES_OFFRES_PROCESS),
     (("GET",), r"^/demandes-offres/stats/erreurs-agent$", PERM_DEMANDES_OFFRES_VIEW),

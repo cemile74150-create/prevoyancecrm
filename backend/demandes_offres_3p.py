@@ -923,6 +923,9 @@ def empty_form_defaults(user=None, *, form_type: Optional[str] = None) -> dict:
         "commentaires": "",
         "inclure_cga": False,
         "date_prochain_rdv": "",
+        "heure_rdv": "",
+        "urgente": False,
+        "urgence_motif": "",
         "langue_offre": "Français",
         "mandat_gestion": False,
     }
@@ -1555,6 +1558,16 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "commentaires": doc.get("commentaires") or "",
         "inclure_cga": bool(doc.get("inclure_cga")),
         "date_prochain_rdv": doc.get("date_prochain_rdv") or "",
+        "heure_rdv": doc.get("heure_rdv") or "",
+        "urgente": bool(doc.get("urgente")),
+        "urgence_motif": doc.get("urgence_motif") or "",
+        "urgence_at": doc.get("urgence_at"),
+        "urgence_by": doc.get("urgence_by") or "",
+        "urgence_exception": bool(doc.get("urgence_exception")),
+        "suivi_etape": doc.get("suivi_etape") or "",
+        "suivi_evenements": list(doc.get("suivi_evenements") or []),
+        "etape_suivi": "",
+        "etape_suivi_label": "",
         "langue_offre": doc.get("langue_offre") or "",
         "mandat_gestion": bool(doc.get("mandat_gestion")),
         "mandat_debut": doc.get("mandat_debut") or "",
@@ -1633,6 +1646,14 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         if demande_requires_mandat_gestion(doc):
             out["requires_mandat_gestion"] = True
             out["mandat_gestion_info"] = MANDAT_INFO_MESSAGE
+    except Exception:
+        pass
+    try:
+        from demandes_offres_ameliorations import SUIVI_LABELS, etape_affichee
+
+        code = etape_affichee(doc)
+        out["etape_suivi"] = code
+        out["etape_suivi_label"] = SUIVI_LABELS.get(code, code)
     except Exception:
         pass
     enrich_gestion_fields(doc, out)
@@ -2893,6 +2914,16 @@ def apply_form_fields(target: dict, data: dict) -> None:
         target["demande_origine"] = normalize_demande_origine(data.get("demande_origine"))
     if "note_service_offre" in data:
         target["note_service_offre"] = (str(data.get("note_service_offre") or "").strip()) or None
+    if "heure_rdv" in data:
+        target["heure_rdv"] = (str(data.get("heure_rdv") or "").strip())[:5]
+    if "date_prochain_rdv" in data:
+        target["date_prochain_rdv"] = (str(data.get("date_prochain_rdv") or "").strip())[:10]
+    if "urgente" in data:
+        target["urgente"] = bool(data.get("urgente"))
+    if "urgence_motif" in data:
+        target["urgence_motif"] = str(data.get("urgence_motif") or "").strip()
+    if "urgence_exception" in data:
+        target["urgence_exception"] = bool(data.get("urgence_exception"))
     if "client_id" in data:
         cid = data.get("client_id")
         target["client_id"] = (str(cid).strip() if cid else None) or None
