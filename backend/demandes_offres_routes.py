@@ -1628,39 +1628,35 @@ def attach_demandes_offres_routes(
         ]
         return fiche_stats_agent(same, label)
 
-    @api_router.post("/demandes-offres/{demande_id}/suivi")
-    async def post_suivi_demande(
-        demande_id: str,
-        payload: SuiviDemandeRequest,
-        user: User = Depends(current_user_dependency),
-    ):
-        from demandes_offres_ameliorations import SUIVI_AGENT, SUIVI_PROCESS, enregistrer_suivi
+    async def persist_suivi(
+        doc: dict,
+        etape: str,
+        user: User,
+        commentaire: str = "",
+        compagnie: str = "",
+    ) -> None:
+        from demandes_offres_ameliorations import enregistrer_suivi
 
-        doc = await require_demande(demande_id, user)
-        etape = (payload.etape or "").strip()
-        if etape in SUIVI_PROCESS:
-            require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
-        elif etape in SUIVI_AGENT:
-            if not (can_process_offres(user) or is_global_viewer(user)):
-                creator = str(doc.get("created_by_account_id") or doc.get("agent_account_id") or "")
-                if creator and creator != str(user.account_id):
-                    raise HTTPException(status_code=403, detail="Réservé à l'agent de la demande")
-        else:
-            raise HTTPException(status_code=422, detail="Étape de suivi non autorisée")
         try:
             patch = enregistrer_suivi(
                 doc,
                 etape,
                 auteur=actor_name(user),
                 auteur_id=str(user.account_id or ""),
-                commentaire=payload.commentaire or "",
-                compagnie=payload.compagnie or "",
+                commentaire=commentaire,
+                compagnie=compagnie,
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         event = patch["dernier_evenement"]
+        previous = event.get("etape_precedente_label") or "—"
+        parts = [f"{previous} → {event.get('label') or ''}"]
+        if event.get("compagnie"):
+            parts.append(event["compagnie"])
+        if event.get("commentaire"):
+            parts.append(event["commentaire"])
         await db[COLLECTION].update_one(
-            {"id": demande_id, "user_id": TENANT_USER_ID},
+            {"id": doc.get("id"), "user_id": TENANT_USER_ID},
             {
                 "$set": {
                     "suivi_etape": patch["suivi_etape"],
@@ -1671,12 +1667,39 @@ def attach_demandes_offres_routes(
                     "historique": history(
                         event["label"],
                         user,
-                        event.get("commentaire") or event.get("compagnie") or "",
+                        " · ".join(parts),
                         statut=doc.get("statut"),
-                        meta={"etape": etape, "compagnie": event.get("compagnie") or ""},
+                        meta={
+                            "suivi": True,
+                            "etape": event.get("etape") or "",
+                            "etape_precedente": event.get("etape_precedente") or "",
+                            "etape_precedente_label": previous,
+                            "compagnie": event.get("compagnie") or "",
+                        },
                     ),
                 },
             },
+        )
+
+    @api_router.post("/demandes-offres/{demande_id}/suivi")
+    async def post_suivi_demande(
+        demande_id: str,
+        payload: SuiviDemandeRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        from demandes_offres_ameliorations import SUIVI_PROCESS
+
+        doc = await require_demande(demande_id, user)
+        etape = (payload.etape or "").strip()
+        if etape not in SUIVI_PROCESS:
+            raise HTTPException(status_code=422, detail="Étape de suivi non autorisée")
+        require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        await persist_suivi(
+            doc,
+            etape,
+            user,
+            commentaire=payload.commentaire or "",
+            compagnie=payload.compagnie or "",
         )
         fresh = await require_demande(demande_id, user)
         return serialize_demande(fresh, viewer=user, docs=await docs_for(demande_id))
@@ -2514,6 +2537,18 @@ def attach_demandes_offres_routes(
                 {"id": demande_id, "user_id": TENANT_USER_ID},
                 {"$set": {"offre_recue_email_sent": True, "updated_at": now_iso()}},
             )
+        from demandes_offres_ameliorations import etape_affichee
+
+        fresh_after_offer = await require_demande(demande_id, user)
+        if etape_affichee(fresh_after_offer) != "offre_transmise":
+            await persist_suivi(
+                fresh_after_offer,
+                "offre_transmise",
+                user,
+                compagnie=compagnie_name,
+            )
+            fresh_after_offer = await require_demande(demande_id, user)
+        result = serialize_demande(fresh_after_offer, docs=await docs_for(demande_id), viewer=user)
         if isinstance(result, dict):
             result["email_sent"] = sent
             result["email_error"] = email_error

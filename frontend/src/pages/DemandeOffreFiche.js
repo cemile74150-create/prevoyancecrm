@@ -1036,6 +1036,15 @@ export default function DemandeOffreFiche() {
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge statut={demande.statut} />
+                {!(canProcess || isAdmin) && demande.statut !== "Brouillon" && (
+                  <span
+                    data-testid="statut-ma-demande"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#002FA7]/25 bg-[#002FA7]/5 px-2.5 py-1 text-xs"
+                  >
+                    <span className="text-slate-500">Statut de ma demande</span>
+                    <span className="font-semibold text-[#002FA7]">{demande.etape_suivi_label || "En attente"}</span>
+                  </span>
+                )}
                 <span
                   className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${DEMANDE_ORIGINE_STYLE[demandeOrigineKey(demande.demande_origine)]}`}
                   title={demandeOrigineLabel(demande.demande_origine)}
@@ -1116,7 +1125,6 @@ export default function DemandeOffreFiche() {
         </div>
 
         {(canProcess || isAdmin) && <AgentStatsCard demandeId={demandeId} />}
-        <SuiviAvancement demande={demande} canProcess={canProcess || isAdmin} canFollow={canFollowSignature || isAdmin} onUpdated={(data) => { setDemande(data); }} />
 
         {isAdmin ? (
           <AgentDemandeurSelect
@@ -1549,6 +1557,11 @@ export default function DemandeOffreFiche() {
               onCancel={() => setCancelOpen(true)}
               onRestore={restoreDemande}
               onDelete={deleteDemande}
+              onSuivi={(etape, extra) => runAction("suivi", {
+                etape,
+                commentaire: extra?.commentaire || "",
+                compagnie: extra?.compagnie || "",
+              }, "Avancement enregistré")}
             />
           </div>
         )}
@@ -2781,110 +2794,93 @@ function AgentStatsCard({ demandeId }) {
   );
 }
 
-const SUIVI_STEPS = [
+const SUIVI_MENU = [
   { id: "en_attente", label: "En attente" },
   { id: "en_cours", label: "En cours de traitement" },
   { id: "attente_compagnie", label: "En attente de la compagnie" },
-  { id: "relance", label: "Relance effectuée auprès de la compagnie", event: true },
+  { id: "relance", label: "Relance effectuée auprès de la compagnie" },
   { id: "offre_transmise", label: "Offre transmise à l'agent" },
-  { id: "envoyee_client", label: "Offre envoyée au client" },
-  { id: "signee", label: "Offre signée" },
 ];
-const SUIVI_ORDER = SUIVI_STEPS.filter((step) => !step.event).map((step) => step.id);
+const SUIVI_VERROUILLE = ["envoyee_client", "signee", "annulee", "refusee", "non_signee"];
 
-function suiviCurrentId(demande) {
-  const code = demande?.etape_suivi;
-  if (["annulee", "refusee", "non_signee"].includes(code)) return "";
-  if (SUIVI_ORDER.includes(code)) return code;
-  const statut = demande?.statut || "";
-  if (statut === "Offre signée") return "signee";
-  if (statut === "Offre envoyée au client" || statut === "En conclusion") return "envoyee_client";
-  if (["Offre reçue", "Offres complètes", "Offre complète", "Offre choisie"].includes(statut)) return "offre_transmise";
-  if (statut === "Demande incomplète" || statut === "En attente d'informations") return "en_cours";
-  if (["Offre refusée", "Demande annulée", "Offre non signée", "offre_non_signee", "demande_annulee"].includes(statut)) return "";
-  return "en_attente";
-}
-
-function SuiviAvancement({ demande, canProcess, onUpdated }) {
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState("");
+function SuiviTraitement({ demande, busy, onSuivi }) {
+  const current = demande?.etape_suivi || "en_attente";
+  const label = demande?.etape_suivi_label || "En attente";
+  const locked = SUIVI_VERROUILLE.includes(current);
+  const [pending, setPending] = useState("");
   const [compagnie, setCompagnie] = useState("");
-  const post = async (code) => {
-    setBusy(true);
-    try {
-      const res = await api.post(`/demandes-offres/${demande.id}/suivi`, {
-        etape: code,
-        commentaire: note,
-        compagnie,
-      });
-      onUpdated(res.data);
+  const [note, setNote] = useState("");
+  const relances = (Array.isArray(demande?.suivi_evenements) ? demande.suivi_evenements : []).filter((ev) => ev.etape === "relance");
+  const lastRelance = relances[relances.length - 1];
+  const needsDetail = ["attente_compagnie", "relance", "offre_transmise"].includes(pending);
+  const selectValue = pending || (SUIVI_MENU.some((item) => item.id === current) ? current : "en_attente");
+
+  const choose = (code) => {
+    if (!code) return;
+    if (code === "en_attente" || code === "en_cours") {
+      setPending("");
+      if (code !== current) onSuivi(code, {});
+      return;
+    }
+    setPending(code);
+  };
+
+  const saveDetail = async () => {
+    const ok = await onSuivi(pending, { compagnie, commentaire: note });
+    if (ok) {
+      setPending("");
+      setCompagnie("");
       setNote("");
-      toast.success("Suivi mis à jour");
-    } catch (e) {
-      toast.error(errorMessage(e, "Suivi impossible"));
-    } finally {
-      setBusy(false);
     }
   };
-  const events = Array.isArray(demande.suivi_evenements) ? demande.suivi_evenements : [];
-  const relances = events.filter((ev) => ev.etape === "relance");
-  const current = suiviCurrentId(demande);
-  const currentIndex = SUIVI_ORDER.indexOf(current);
-  const horsEtapes = ["Offre refusée", "Demande annulée", "Offre non signée", "offre_non_signee", "demande_annulee"].includes(demande.statut);
+
   return (
-    <Card className="p-4 space-y-3" data-testid="suivi-avancement">
-      <p className="text-sm font-semibold">Avancement du dossier</p>
-      <p className="text-[11px] text-muted-foreground">
-        Statut d&apos;offre : {demande.statut}. Une relance reste un événement : l&apos;étape « En attente de la compagnie » reste affichée.
-      </p>
-      {horsEtapes && (
-        <p className="text-xs rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950">
-          Ce dossier est au statut « {demande.statut} ». Les sept étapes restent visibles pour l&apos;historique.
+    <div className="space-y-2 rounded-md border border-slate-200 p-3" data-testid="suivi-traitement">
+      <p className="text-[11px] uppercase tracking-wide text-slate-500">Avancement du traitement</p>
+      <p className="text-sm font-semibold text-[#002FA7]" data-testid="suivi-traitement-label">{label}</p>
+      {lastRelance && (
+        <p className="text-[11px] text-slate-500">
+          Relance effectuée
+          {lastRelance.compagnie ? ` · ${lastRelance.compagnie}` : ""}
+          {lastRelance.at ? ` · ${formatDateTimeFr(lastRelance.at)}` : ""}
+          {lastRelance.auteur ? ` · ${lastRelance.auteur}` : ""}
         </p>
       )}
-      <ol className="grid gap-2 sm:grid-cols-2" data-testid="suivi-etapes">
-        {SUIVI_STEPS.map((step) => {
-          const reached = step.event ? relances.length > 0 : SUIVI_ORDER.indexOf(step.id) <= currentIndex;
-          const active = !step.event && step.id === current;
-          return (
-            <li
-              key={step.id}
-              data-testid={`suivi-etape-${step.id}`}
-              className={`rounded-md border px-3 py-2 text-sm ${
-                active
-                  ? "border-[#002FA7] bg-[#002FA7]/5 font-semibold text-[#002FA7]"
-                  : reached
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                    : "border-border text-muted-foreground"
-              }`}
-            >
-              <span>{step.label}</span>
-              {step.event && relances.length > 0 && (
-                <span className="block text-[11px] font-normal mt-1">
-                  {relances.length} relance{relances.length > 1 ? "s" : ""}
-                  {relances[relances.length - 1]?.compagnie ? ` · ${relances[relances.length - 1].compagnie}` : ""}
-                  {" · "}{formatDateTimeFr(relances[relances.length - 1]?.at)}
-                  {relances[relances.length - 1]?.auteur ? ` · ${relances[relances.length - 1].auteur}` : ""}
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-      {canProcess && (
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => post("en_cours")}>Prise en charge</Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => post("attente_compagnie")}>Transmis à la compagnie</Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => post("relance")}>Relance</Button>
-        </div>
+      {!locked && (
+        <>
+          <select
+            className="w-full h-9 rounded-md border bg-white px-2 text-sm"
+            value={selectValue}
+            onChange={(e) => choose(e.target.value)}
+            disabled={busy}
+            data-testid="suivi-traitement-select"
+          >
+            {SUIVI_MENU.map((item) => (
+              <option key={item.id} value={item.id}>{item.label}</option>
+            ))}
+          </select>
+          {needsDetail && (
+            <div className="space-y-2">
+              <Input
+                value={compagnie}
+                onChange={(e) => setCompagnie(e.target.value)}
+                placeholder="Compagnie concernée"
+                data-testid="suivi-compagnie"
+              />
+              <Input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Commentaire"
+                data-testid="suivi-commentaire"
+              />
+              <Button size="sm" className="w-full bg-[#002FA7] hover:bg-[#00248a]" disabled={busy} onClick={saveDetail}>
+                Enregistrer
+              </Button>
+            </div>
+          )}
+        </>
       )}
-      {canProcess && (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Input value={compagnie} onChange={(e) => setCompagnie(e.target.value)} placeholder="Compagnie (si pertinent)" />
-          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Commentaire" />
-        </div>
-      )}
-    </Card>
+    </div>
   );
 }
 
@@ -3092,7 +3088,7 @@ function ReadOnlyData({ data }) {
 function ActionPanel({
   demande, canEdit, canProcess, canFollowSignature, isAdmin, busy, hasOffers, hasIncompleteCompany,
   onIncomplete, onOffer, onOffresCompletes, onErreurs, onNote, onExternalNote, onDoc, onConclusion, onSendClient,
-  onSignature, onSoumisCompagnie, onDemandeAnnulee, onCancel, onRestore, onDelete,
+  onSignature, onSoumisCompagnie, onDemandeAnnulee, onCancel, onRestore, onDelete, onSuivi,
 }) {
   const terminal = ["Offre signée", "Offre refusée"].includes(demande.statut) || isHorsCours(demande.statut);
   const canSendClient = hasOffers || demande.offre;
@@ -3112,6 +3108,7 @@ function ActionPanel({
   if (!showProcess && !showConseillerFollowup && !canRestore && !canDeleteHard) return null;
   return <Card className="p-5 space-y-3 sticky top-20">
     <h2 className="font-display font-bold flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-[#002FA7]" /> {panelTitle}</h2>
+    {showProcess && <SuiviTraitement demande={demande} busy={busy} onSuivi={onSuivi} />}
     {canRestore && (
       <div className="rounded-md border border-amber-200 bg-amber-50/80 p-3 space-y-2">
         <p className="text-sm text-amber-950 font-medium">Demande annulée</p>

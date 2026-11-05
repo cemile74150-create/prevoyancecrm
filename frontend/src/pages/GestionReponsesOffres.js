@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   GESTION_KPI_CARDS,
@@ -321,8 +322,13 @@ export default function GestionReponsesOffres() {
   return (
     <Layout>
       <div className="p-6 space-y-6" data-testid="gestion-reponses-offres-page">
-        {isAdmin && <UrgenceQuotaPanel />}
-        {!canProcess ? null : (<>
+        {!canProcess ? (
+          isAdmin ? (
+            <div className="flex justify-end">
+              <UrgenceQuotaButton />
+            </div>
+          ) : null
+        ) : (<>
         {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -335,16 +341,19 @@ export default function GestionReponsesOffres() {
               compléter les offres et suivre l&apos;activité.
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => load()}
-            disabled={loading}
-            className="gap-1.5"
-          >
-            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            Actualiser
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && <UrgenceQuotaButton />}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => load()}
+              disabled={loading}
+              className="gap-1.5"
+            >
+              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Actualiser
+            </Button>
+          </div>
         </div>
 
         {/* Mes actions du jour */}
@@ -908,7 +917,8 @@ export default function GestionReponsesOffres() {
   );
 }
 
-function UrgenceQuotaPanel() {
+function UrgenceQuotaButton() {
+  const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState(null);
   const [busy, setBusy] = useState(false);
   const [agent, setAgent] = useState("");
@@ -922,7 +932,9 @@ function UrgenceQuotaPanel() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (open) load();
+  }, [open, load]);
 
   const save = async () => {
     if (!settings) return;
@@ -958,17 +970,31 @@ function UrgenceQuotaPanel() {
     }
   };
 
-  if (!settings) return null;
-  const usages = Array.isArray(settings.usages) ? settings.usages : [];
+  const usages = Array.isArray(settings?.usages) ? settings.usages : [];
   return (
-    <Card className="p-4 border-slate-200 space-y-4" data-testid="urgence-quota-panel">
-      <div>
-        <h2 className="text-lg font-semibold text-slate-900">Quotas d&apos;urgence</h2>
-        <p className="text-sm text-slate-500 mt-1">
-          Réservé aux administrateurs. La limite est désactivée tant qu&apos;elle n&apos;est pas cochée.
-          Une exception ajoute une urgence au plafond de l&apos;agent pour la période en cours.
-        </p>
-      </div>
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+        data-testid="urgence-quota-button"
+      >
+        Quotas d&apos;urgence
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto" data-testid="urgence-quota-panel">
+          <DialogHeader>
+            <DialogTitle>Quotas d&apos;urgence</DialogTitle>
+            <DialogDescription>
+              La limite est désactivée tant qu&apos;elle n&apos;est pas cochée.
+              Une exception ajoute une urgence au plafond de l&apos;agent pour la période en cours.
+            </DialogDescription>
+          </DialogHeader>
+          {!settings ? (
+            <p className="text-sm text-slate-500">Chargement…</p>
+          ) : (
+          <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-4">
         <label className="text-sm flex items-center gap-2">
           <input
@@ -1040,6 +1066,10 @@ function UrgenceQuotaPanel() {
           </tbody>
         </table>
       </div>
-    </Card>
+          </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

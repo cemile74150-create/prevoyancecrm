@@ -25,6 +25,7 @@ from demandes_offres_3p import (
     compute_agent_stats,
     is_demande_annulee_statut,
     is_hors_cours,
+    is_offre_non_signee_statut,
     normalize_statut,
 )
 
@@ -380,6 +381,8 @@ def etape_depuis_statut(statut: Any) -> str:
     st = normalize_statut(statut or STATUT_BROUILLON)
     if is_demande_annulee_statut(st) or st == STATUT_ANNULEE:
         return "annulee"
+    if is_offre_non_signee_statut(st):
+        return "non_signee"
     if st == STATUT_OFFRE_SIGNEE:
         return "signee"
     if st == STATUT_OFFRE_REFUSEE:
@@ -396,12 +399,20 @@ def etape_depuis_statut(statut: Any) -> str:
 
 
 def etape_affichee(doc: dict) -> str:
-    """Le statut métier prime sur une étape de suivi devenue incohérente."""
+    """L'étape choisie par le gestionnaire est affichée.
+
+    Les issues du workflow officiel (envoyée au client, signée, refusée,
+    annulée, non signée) restent prioritaires. Sans étape enregistrée,
+    un ancien dossier est lu depuis son statut. Une relance n'est jamais
+    l'étape affichée.
+    """
     from_statut = etape_depuis_statut(doc.get("statut"))
-    if from_statut in {"signee", "annulee", "refusee", "envoyee_client", "offre_transmise"}:
+    if from_statut in {"signee", "annulee", "refusee", "envoyee_client", "non_signee"}:
         return from_statut
     explicit = str(doc.get("suivi_etape") or "").strip()
-    if explicit in SUIVI_LABELS:
+    if explicit == "relance":
+        explicit = "attente_compagnie"
+    if explicit in {"en_attente", "en_cours", "attente_compagnie", "offre_transmise"}:
         return explicit
     return from_statut
 
@@ -431,6 +442,7 @@ def enregistrer_suivi(
         "etape": code,
         "label": SUIVI_LABELS[code],
         "etape_precedente": previous,
+        "etape_precedente_label": SUIVI_LABELS.get(previous, previous or "—"),
         "auteur": auteur,
         "auteur_id": auteur_id,
         "commentaire": (commentaire or "").strip(),

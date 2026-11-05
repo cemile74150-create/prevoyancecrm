@@ -15,6 +15,7 @@ from demandes_offres_3p import (
     STATUT_BROUILLON,
     STATUT_ENVOYEE,
     STATUT_OFFRE_ENVOYEE_CLIENT,
+    STATUT_OFFRE_RECUE,
     STATUT_OFFRE_REFUSEE,
     STATUT_OFFRE_SIGNEE,
 )
@@ -101,6 +102,17 @@ def test_suivi_relance_ne_quitte_pas_l_attente_compagnie_et_signature_bloquee():
     assert by_id["relance"]["reached"] is True
     assert by_id["relance"]["current"] is False
     assert by_id["relance"]["kind"] == "evenement"
+    assert out["dernier_evenement"]["etape_precedente"] == "attente_compagnie"
+    assert out["dernier_evenement"]["etape_precedente_label"] == "En attente de la compagnie"
+
+
+def test_etape_choisie_par_le_gestionnaire_reste_visible():
+    assert etape_affichee({"statut": STATUT_ENVOYEE, "suivi_etape": "en_cours"}) == "en_cours"
+    assert etape_affichee({"statut": STATUT_OFFRE_RECUE, "suivi_etape": "attente_compagnie"}) == "attente_compagnie"
+    assert etape_affichee({"statut": STATUT_OFFRE_RECUE}) == "offre_transmise"
+    assert etape_affichee({"statut": STATUT_OFFRE_ENVOYEE_CLIENT, "suivi_etape": "en_cours"}) == "envoyee_client"
+    assert etape_affichee({"statut": "Offre non signée", "suivi_etape": "en_cours"}) == "non_signee"
+    assert etape_affichee({"statut": STATUT_ENVOYEE, "suivi_etape": "relance"}) == "attente_compagnie"
 
 
 def test_quota_exception_releve_le_plafond_de_l_agent():

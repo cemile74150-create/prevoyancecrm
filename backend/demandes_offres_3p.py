@@ -1677,13 +1677,18 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
     else:
         out["notes_internes"] = []
         out["erreurs_agent"] = []
+        out["suivi_evenements"] = []
         # Filtrer l'historique : masquer les événements purement internes
+        # et le journal de traitement réservé au service des offres.
         hist = []
         for entry in list(out.get("historique") or []):
             action = str((entry or {}).get("action") or "").casefold()
+            meta = (entry or {}).get("meta") if isinstance((entry or {}).get("meta"), dict) else {}
             if action.startswith("note interne"):
                 continue
             if "erreur" in action:
+                continue
+            if meta.get("suivi") or meta.get("etape"):
                 continue
             hist.append(entry)
         out["historique"] = hist
