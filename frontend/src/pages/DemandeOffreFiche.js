@@ -3187,12 +3187,11 @@ function ReadOnlyData({ data }) {
 
 function ActionPanel({
   demande, canEdit, canProcess, canFollowSignature, isAdmin, busy, hasOffers, hasIncompleteCompany,
-  onIncomplete, onOffer, onOffresCompletes, onErreurs, onNote, onExternalNote, onDoc, onConclusion, onSendClient,
+  onIncomplete, onOffer, onErreurs, onNote, onExternalNote, onDoc, onConclusion, onSendClient,
   onSignature, onSoumisCompagnie, onDemandeAnnulee, onCancel, onRestore, onDelete, onSuivi,
 }) {
   const terminal = ["Offre signée", "Offre refusée"].includes(demande.statut) || isHorsCours(demande.statut);
   const canSendClient = hasOffers || demande.offre;
-  const offresCompletes = ["Offres complètes", "Offre complète"].includes(demande.statut);
   const signatureReady = ["Offre envoyée au client", "Offre reçue", "Offres complètes", "Offre complète", "Offre choisie", "En conclusion", "Demande envoyée"].includes(demande.statut)
     || (hasOffers && demande.statut !== "Brouillon" && !isHorsCours(demande.statut) && demande.statut !== "Offre refusée");
   // Admin : voit tout. Gestionnaire : Traitement. Conseiller créateur : suivi (envoyé client / signée / non signée).
@@ -3222,17 +3221,6 @@ function ActionPanel({
       </div>
     )}
     {showProcess && !terminal && <Button className="w-full justify-start bg-violet-700 hover:bg-violet-800" onClick={onOffer} disabled={busy}><Paperclip className="h-4 w-4 mr-2" /> Transmettre une offre</Button>}
-    {showProcess && !terminal && (
-      <Button
-        className={`w-full justify-start ${offresCompletes ? "bg-emerald-800 ring-2 ring-emerald-300 ring-offset-1" : "bg-emerald-600 hover:bg-emerald-700"}`}
-        onClick={onOffresCompletes}
-        disabled={busy || offresCompletes}
-        data-testid="offres-completes-btn"
-      >
-        <CheckCircle2 className="h-4 w-4 mr-2" />
-        {offresCompletes ? "Offres complètes ✓" : "Offres complètes"}
-      </Button>
-    )}
     {showProcess && hasIncompleteCompany && !terminal && (
       <Button variant="outline" className="w-full justify-start border-rose-300 text-rose-800" onClick={onIncomplete} disabled={busy}>
         <AlertTriangle className="h-4 w-4 mr-2" /> Notifier l&apos;offre incomplète

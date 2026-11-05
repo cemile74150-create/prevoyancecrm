@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
+  GESTION_KPI_CARDS,
   GESTION_KANBAN_FALLBACK,
   PRIORITE_STYLE,
   prioriteLabel,
@@ -80,14 +81,6 @@ function sortQueue(rows) {
   });
 }
 
-const INDICATEURS = [
-  { id: "nouvelles", label: "Nouvelles demandes" },
-  { id: "en_cours", label: "En cours de traitement" },
-  { id: "attente_compagnie", label: "En attente de la compagnie" },
-  { id: "relances", label: "Relances effectuées" },
-  { id: "offre_transmise", label: "Offres transmises à l'agent" },
-];
-
 const RDV_PROXIMITE = {
   aujourdhui: { label: "RDV aujourd'hui", className: "bg-amber-100 text-amber-950" },
   demain: { label: "RDV demain", className: "bg-sky-100 text-sky-900" },
@@ -95,18 +88,11 @@ const RDV_PROXIMITE = {
   passe: { label: "RDV dépassé", className: "bg-slate-100 text-slate-600" },
 };
 
-function RdvClient({ row, compact = false }) {
+function RdvClient({ row }) {
   const date = String(row?.date_prochain_rdv || "").slice(0, 10);
   const heure = formatHeureRdv(row?.heure_rdv);
   if (!date) {
-    return <span className={compact ? "text-sm text-slate-500" : "block text-[11px] text-slate-400 mt-1"}>Aucun RDV renseigné</span>;
-  }
-  if (compact) {
-    return (
-      <span className="text-sm text-slate-800 whitespace-nowrap" data-testid={`rdv-client-${row.id || "row"}`}>
-        {formatDateFr(date)}{heure ? ` à ${heure}` : ""}
-      </span>
-    );
+    return <span className="block text-[11px] text-slate-400 mt-1">Aucun RDV renseigné</span>;
   }
   const chip = RDV_PROXIMITE[rdvProximite(date)];
   return (
@@ -170,7 +156,6 @@ export default function GestionReponsesOffres() {
   const [dayAction, setDayAction] = useState(null);
   const [origine, setOrigine] = useState("all");
   const [tri, setTri] = useState("maj");
-  const [fileFilter, setFileFilter] = useState("nouvelles");
   const [erreurStats, setErreurStats] = useState(null);
   const [erreursAgentStats, setErreursAgentStats] = useState(null);
 
@@ -225,6 +210,12 @@ export default function GestionReponsesOffres() {
       if (enRetard || cat === "en_retard") params.en_retard = true;
 
       // Day-action shortcuts that map to API filters
+      if (dayAction === "urgentes") params.priorite = "urgent";
+      if (dayAction === "a_surveiller") params.priorite = "surveiller";
+      if (dayAction === "incompletes") params.categorie = "incompletes";
+      if (dayAction === "offres_recues") params.categorie = "offres_recues";
+      if (dayAction === "nouvelles") params.categorie = "envoyees";
+
       const statsParams = { periode: periode && periode !== "all" ? periode : undefined };
       if (conseiller !== "all") statsParams.conseiller = conseiller;
 
@@ -251,7 +242,7 @@ export default function GestionReponsesOffres() {
     } finally {
       setLoading(false);
     }
-  }, [qDebounced, conseiller, compagnie, formType, priorite, periode, categorie, enRetard, origine, tri, loadNotifs]);
+  }, [qDebounced, conseiller, compagnie, formType, priorite, periode, categorie, enRetard, dayAction, origine, tri, loadNotifs]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -306,21 +297,18 @@ export default function GestionReponsesOffres() {
     setTab("file");
   };
 
-  const queueRows = useMemo(() => {
+  const visibleRows = useMemo(() => {
     let list = rows;
     if (!qDebounced) list = list.filter((r) => r.statut !== "Brouillon");
+    if (dayAction === "nouvelles") {
+      list = list.filter((r) => {
+        const st = r.statut;
+        const j = Number(r.jours_depuis ?? 99);
+        return (st === "Demande envoyée" || st === "Demande validée") && j <= 1;
+      });
+    }
     return tri && tri !== "maj" ? list : sortQueue(list);
-  }, [rows, qDebounced, tri]);
-
-  const visibleRows = useMemo(() => {
-    const active = qDebounced ? "toutes" : fileFilter;
-    if (active === "nouvelles") return queueRows.filter((r) => r.est_nouvelle);
-    if (active === "relances") return queueRows.filter((r) => r.relance_en_cours);
-    if (active === "en_cours") return queueRows.filter((r) => !r.est_nouvelle && !r.relance_en_cours && r.etape_suivi === "en_cours");
-    if (active === "attente_compagnie") return queueRows.filter((r) => !r.est_nouvelle && !r.relance_en_cours && r.etape_suivi === "attente_compagnie");
-    if (active === "offre_transmise") return queueRows.filter((r) => r.etape_suivi === "offre_transmise");
-    return queueRows;
-  }, [queueRows, qDebounced, fileFilter]);
+  }, [rows, qDebounced, dayAction, tri]);
 
   const conseillers = useMemo(() => {
     const fromStats = (stats?.by_agent || []).map((a) => a.agent).filter(Boolean);
@@ -335,7 +323,7 @@ export default function GestionReponsesOffres() {
     const placed = new Set();
     return kanbanCols.map((col) => {
       const set = new Set(col.statuts || []);
-      const cards = queueRows.filter((r) => {
+      const cards = visibleRows.filter((r) => {
         if (placed.has(r.id)) return false;
         if (set.has(r.statut)) {
           placed.add(r.id);
@@ -345,7 +333,7 @@ export default function GestionReponsesOffres() {
       });
       return { ...col, cards };
     });
-  }, [kanbanCols, queueRows]);
+  }, [kanbanCols, visibleRows]);
 
   const typeLabel = (r) => r.form_type_label || r.type_pilier || "—";
   const compsShort = (r) => {
@@ -406,38 +394,99 @@ export default function GestionReponsesOffres() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3" data-testid="indicateurs-avancement">
-          {INDICATEURS.map((item) => {
-            const n = stats?.avancement?.[item.id] ?? 0;
-            const active = fileFilter === item.id && !q;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setFileFilter(item.id);
-                  setQ("");
-                  setTab("file");
-                }}
-                className={`rounded-xl border bg-white px-4 py-4 text-left transition ${
-                  active ? "border-[#002FA7] ring-2 ring-[#002FA7]/20" : "border-slate-200 hover:border-slate-300"
-                }`}
-                data-testid={`indicateur-${item.id}`}
-              >
-                <div className="text-3xl font-semibold tabular-nums text-slate-900">{n}</div>
-                <div className="mt-1 text-sm text-slate-600">{item.label}</div>
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex justify-end">
-          <button
-            type="button"
-            className={`text-sm ${fileFilter === "toutes" || q ? "text-[#002FA7] font-medium" : "text-slate-500 hover:text-slate-800"}`}
-            onClick={() => setFileFilter("toutes")}
-          >
-            Toutes les demandes
-          </button>
+        {/* Mes actions du jour */}
+        <Card className="p-3 border-slate-200">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <ClipboardList className="h-4 w-4" style={{ color: ACCENT }} />
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Mes actions du jour</p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            {DAY_ACTIONS.map(({ id, label, icon: Icon, tone }) => {
+              const n = gestion[id] ?? 0;
+              const active = dayAction === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => applyDayAction(id)}
+                  className={`rounded-lg border px-3 py-2.5 text-left transition ${tone} ${
+                    active ? "ring-2 ring-[#002FA7] ring-offset-1" : "hover:opacity-90"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[11px] font-medium opacity-80 flex items-center gap-1">
+                      <Icon className="h-3 w-3" /> {label}
+                    </span>
+                    <span className="text-lg font-bold tabular-nums">{n}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* Notifications + KPI */}
+        <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-4">
+          <Card className="p-3 border-slate-200 flex flex-col max-h-64">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 flex items-center gap-1.5">
+                <Bell className="h-3.5 w-3.5" style={{ color: ACCENT }} />
+                Notifications
+              </p>
+              {notifCount > 0 && (
+                <span
+                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-white"
+                  style={{ background: ACCENT }}
+                >
+                  {notifCount}
+                </span>
+              )}
+            </div>
+            <div className="overflow-y-auto space-y-1 flex-1 min-h-0">
+              {notifs.filter((n) => !n.read).length === 0 ? (
+                <p className="text-xs text-slate-400 py-4 text-center">Aucune non lue</p>
+              ) : (
+                notifs.filter((n) => !n.read).map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => onNotifClick(n)}
+                    className="w-full text-left rounded-md px-2 py-1.5 text-xs hover:bg-slate-50 border border-transparent hover:border-slate-100"
+                  >
+                    <span className="font-medium text-slate-800 line-clamp-2">{n.titre || n.title || "Notification"}</span>
+                    {n.created_at && (
+                      <span className="block text-[10px] text-slate-400 mt-0.5">{formatDateFr(n.created_at)}</span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {GESTION_KPI_CARDS.map((card) => {
+              const n = gestion[card.id] ?? 0;
+              const active = categorie === card.id;
+              return (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() => applyKpi(card.id)}
+                  className={`rounded-2xl border px-4 py-4 text-left transition ${card.color} ${
+                    active ? "ring-2 ring-[#002FA7] ring-offset-1 shadow-sm" : "hover:shadow-sm"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold leading-snug">{card.label}</div>
+                      <div className="text-3xl font-bold tabular-nums mt-2">{n}</div>
+                    </div>
+                    <div className="text-2xl leading-none shrink-0">{card.emoji}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Filters */}
@@ -546,7 +595,6 @@ export default function GestionReponsesOffres() {
                   setCategorie(null);
                   setEnRetard(false);
                   setDayAction(null);
-                  setFileFilter("nouvelles");
                   setTri("maj");
                 }}
               >
@@ -589,7 +637,7 @@ export default function GestionReponsesOffres() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50/80 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                    {["Client", "Numéro OFF", "Conseiller", "Type d'assurance", "Date de réception", "RDV client", "Avancement du traitement", "Action"].map((h) => (
+                    {["Client", "Conseiller", "Type", "Date création", "Date envoi", "Compagnies", "Statut", "Soumis cie.", "Dernière action", "Jours", "Priorité", "Action"].map((h) => (
                       <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -597,58 +645,114 @@ export default function GestionReponsesOffres() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="px-3 py-12 text-center text-slate-400">
+                      <td colSpan={12} className="px-3 py-12 text-center text-slate-400">
                         <Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Chargement…
                       </td>
                     </tr>
                   ) : visibleRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-3 py-12 text-center text-slate-400">
-                        Aucune demande dans cette vue.
+                      <td colSpan={12} className="px-3 py-12 text-center text-slate-400">
+                        Aucune demande dans la file.
                       </td>
                     </tr>
                   ) : (
                     visibleRows.map((r) => {
-                      const actionLabel = "Traiter";
+                      const hi = rowHighlight(r);
+                      const actionLabel = TERMINAL.has(r.statut) ? "Voir" : "Traiter";
+                      const soumis = isSoumisCompagnie(r.soumis_compagnie);
                       return (
                         <tr
                           key={r.id}
-                          className={`border-t border-slate-100 hover:bg-slate-50 ${
-                            r.est_nouvelle ? "bg-sky-50/70" : r.urgente ? "bg-rose-50/40" : ""
+                          className={`border-t border-slate-100 hover:bg-slate-50/60 ${
+                            r.priorite === "urgent"
+                              ? "bg-red-50/40"
+                              : isOffreAModifier(r)
+                                ? "bg-amber-50/70"
+                                : hi
+                                  ? r.priorite === "surveiller" || r.statut === "Demande incomplète"
+                                    ? "bg-amber-50/40"
+                                    : "bg-violet-50/30"
+                                  : ""
                           }`}
                         >
-                          <td className="px-3 py-3 font-medium text-slate-900 whitespace-nowrap">
+                          <td className="px-3 py-2 font-medium text-slate-900 whitespace-nowrap">
                             {clientLabel(r)}
                             {r.urgente && (
-                              <span className="ml-2 inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                URGENT
+                              <span className="ml-2 inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-semibold text-white">URGENT</span>
+                            )}
+                            {r.numero && <span className="block text-[10px] text-slate-400 font-normal">{r.numero}</span>}
+                            {r.urgente && r.urgence_motif ? (
+                              <span className="mt-1 block max-w-[220px] whitespace-normal text-[11px] font-normal text-rose-800">{r.urgence_motif}</span>
+                            ) : null}
+                            <span className="block text-[11px] text-slate-500 font-normal mt-0.5">
+                              Soumission : {r.date_envoi ? formatDateFr(r.date_envoi) : "—"}
+                            </span>
+                            <RdvClient row={r} />
+                            {demandeOrigineKey(r.demande_origine) === "attribuee" && (
+                              <span
+                                className={`inline-flex mt-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${DEMANDE_ORIGINE_STYLE.attribuee}`}
+                                title={demandeOrigineLabel(r.demande_origine)}
+                              >
+                                {demandeOrigineShort(r.demande_origine)}
                               </span>
                             )}
-                            {r.urgente && r.urgence_motif ? (
-                              <span className="mt-1 block text-[11px] font-normal text-rose-800 max-w-[220px] whitespace-normal">{r.urgence_motif}</span>
-                            ) : null}
-                            {r.est_nouvelle && (
-                              <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-[#002FA7]">Nouvelle</span>
-                            )}
                           </td>
-                          <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{r.numero || "—"}</td>
-                          <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{r.agent_label || "—"}</td>
-                          <td className="px-3 py-3 text-slate-600 max-w-[180px] truncate" title={typeLabel(r)}>{typeLabel(r)}</td>
-                          <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{r.date_envoi ? formatDateFr(r.date_envoi) : "—"}</td>
-                          <td className="px-3 py-3"><RdvClient row={r} compact /></td>
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.agent_label || "—"}</td>
+                          <td className="px-3 py-2 text-slate-600 max-w-[140px] truncate" title={typeLabel(r)}>{typeLabel(r)}</td>
+                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{formatDateFr(r.created_at)}</td>
+                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{formatDateFr(r.date_envoi)}</td>
+                          <td className="px-3 py-2 text-slate-600 text-xs max-w-[140px]">
+                            {formatVariantesSummary(r) || compsShort(r)}
+                          </td>
+                          <td className="px-3 py-2">
                             <AvancementBadge row={r} />
-                            {r.relance_en_cours && (
-                              <span className="mt-1 block text-[11px] text-slate-500">Relance effectuée auprès de la compagnie</span>
+                            {Number(r.nb_complements_en_attente) > 0 && (
+                              <span className="mt-1 block">
+                                <PendingComplementBadge count={r.nb_complements_en_attente} />
+                              </span>
+                            )}
+                            {r.statut === "Offre modifiée" && (
+                              <span className="mt-1 block text-[10px] font-semibold text-amber-950">Offre à modifier</span>
                             )}
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-2">
+                            {canProcess ? (
+                              <label
+                                className="inline-flex items-center gap-1.5 text-xs cursor-pointer"
+                                title={soumisCompagnieLabel(r.soumis_compagnie)}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="accent-[#002FA7]"
+                                  checked={soumis}
+                                  data-testid={`soumis-compagnie-row-${r.id}`}
+                                  onChange={(e) => toggleSoumis(r, e.target.checked, e)}
+                                />
+                                <span className={soumis ? "text-emerald-800" : "text-slate-500"}>
+                                  {soumis ? "🟢" : "⚪"}
+                                </span>
+                              </label>
+                            ) : (
+                              <span className="text-xs text-slate-500" title={soumisCompagnieLabel(r.soumis_compagnie)}>
+                                {soumis ? "🟢" : "⚪"}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-slate-500 max-w-[120px] truncate" title={r.derniere_action || ""}>
+                            {r.derniere_action || "—"}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums text-slate-700 font-medium">{r.jours_depuis ?? "—"}</td>
+                          <td className="px-3 py-2"><PrioriteBadge niveau={r.priorite} /></td>
+                          <td className="px-3 py-2">
                             <Button
                               size="sm"
-                              className="h-8 text-xs"
-                              style={{ background: ACCENT }}
+                              variant={actionLabel === "Traiter" ? "default" : "outline"}
+                              className="h-7 text-xs gap-1"
+                              style={actionLabel === "Traiter" ? { background: ACCENT } : undefined}
                               onClick={() => openFiche(r.id)}
                             >
+                              {actionLabel === "Voir" ? <Eye className="h-3 w-3" /> : null}
                               {actionLabel}
                             </Button>
                           </td>
@@ -696,7 +800,7 @@ export default function GestionReponsesOffres() {
                         >
                           <p className="text-sm font-semibold text-slate-900 truncate">{clientLabel(r)}</p>
                           <p className="text-[11px] text-slate-500 truncate mt-0.5">{r.agent_label || "—"}</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5">Soumission : {formatDateFr(r.date_envoi || r.created_at)}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Soumission : {r.date_envoi ? formatDateFr(r.date_envoi) : "—"}</p>
                           <RdvClient row={r} />
                           <p className="text-[11px] text-slate-600 truncate mt-1">{typeLabel(r)}</p>
                           <p className="text-[10px] text-slate-400 mt-0.5 truncate">{compsShort(r)}</p>
@@ -751,7 +855,6 @@ export default function GestionReponsesOffres() {
                         onClick={() => {
                           setConseiller(a.agent);
                           setTab("file");
-                          setFileFilter("toutes");
                           setDayAction(null);
                           setCategorie(null);
                         }}
