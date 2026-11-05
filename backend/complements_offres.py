@@ -137,7 +137,10 @@ def validate_reply(note: Optional[dict], text: Optional[str], file_count: int) -
         return "too_many_files"
     if count < 0:
         return "text_required"
-    # Texte seul, documents seuls, ou les deux — jamais d'obligation de pièce.
+    # Texte seul, documents seuls, ou les deux.
+    # Une pièce n'est exigée que si le gestionnaire a coché le retour de document.
+    if note.get("retour_document") and count < 1:
+        return "document_required"
     if not comment and count < 1:
         return "text_required"
     kind = comp.get("type")

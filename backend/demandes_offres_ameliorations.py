@@ -427,6 +427,63 @@ def etape_affichee(doc: dict) -> str:
     return from_statut
 
 
+def est_nouvelle_demande(doc: dict) -> bool:
+    """Vrai seulement pour un envoi qui a posé gestion_vue=False et n'a pas été ouvert.
+
+    L'absence du champ, sur un dossier ancien, ne signifie pas qu'il est nouveau.
+    Charger la liste ne consulte pas le dossier.
+    """
+    if doc.get("gestion_vue") is not False:
+        return False
+    if str(doc.get("gestion_consultee_at") or "").strip():
+        return False
+    if str(doc.get("statut") or "").strip() in {"Brouillon", ""}:
+        return False
+    explicit = str(doc.get("suivi_etape") or "").strip()
+    if explicit and explicit not in {"en_attente"}:
+        return False
+    return etape_affichee(doc) == "en_attente"
+
+
+def relance_en_cours(doc: dict) -> bool:
+    """La dernière action est une relance, sans avoir quitté l'attente compagnie."""
+    if etape_affichee(doc) != "attente_compagnie":
+        return False
+    events = [event for event in (doc.get("suivi_evenements") or []) if isinstance(event, dict)]
+    return bool(events) and events[-1].get("etape") == "relance"
+
+
+def compteurs_avancement(rows: list) -> dict:
+    counts = {
+        "nouvelles": 0,
+        "en_cours": 0,
+        "attente_compagnie": 0,
+        "relances": 0,
+        "offre_transmise": 0,
+    }
+    for row in rows or []:
+        if row.get("is_deleted"):
+            continue
+        if str(row.get("statut") or "") == "Brouillon":
+            continue
+        if est_nouvelle_demande(row):
+            counts["nouvelles"] += 1
+            continue
+        if relance_en_cours(row):
+            counts["relances"] += 1
+            continue
+        step = etape_affichee(row)
+        if step in counts:
+            counts[step] += 1
+    return counts
+
+
+def urgentes_en_tete(rows: list) -> list:
+    urgent = [row for row in rows if row.get("urgente")]
+    autres = [row for row in rows if not row.get("urgente")]
+    return urgent + autres
+
+
 def enregistrer_suivi(
     doc: dict,
     etape: str,

@@ -1723,6 +1723,8 @@ def format_complement_demande_email(
         "",
         "Merci de vous connecter à LeoSoft pour répondre (texte et/ou documents).",
     ]
+    if doc.get("retour_document"):
+        text_lines.append("Un document est à compléter et à retourner.")
     if url:
         text_lines.extend(["", f"{button} :", url])
     text_lines.extend(["", "Cordialement,", "Le service des offres"])
@@ -1741,6 +1743,8 @@ def format_complement_demande_email(
         "</ul>",
         "<p>Merci de vous connecter à LeoSoft pour répondre (texte et/ou documents).</p>",
     ]
+    if doc.get("retour_document"):
+        html_parts.append("<p>Un document est à compléter et à retourner.</p>")
     if url:
         html_parts.append(_html_button(url, button))
     html_parts.append("<p>Cordialement,<br/>Le service des offres</p></div>")
@@ -1760,12 +1764,41 @@ def format_complement_reponse_email(
     """Réponse du conseiller, routée vers la boîte offres déjà configurée."""
     client = _offre_client_name(doc)
     numero = (doc.get("numero") or "").strip() or "—"
+    names = [str(name).strip() for name in (document_names or []) if str(name).strip()]
+    if names:
+        subject = f"Retour de document — {numero} — {client}"
+        url = _complement_offre_url(doc.get("id"), complement_id)
+        button = "Accéder à la demande d'offre"
+        text_lines = [
+            "Bonjour,",
+            "",
+            f"Le conseiller a répondu à votre demande de document concernant le dossier {numero} — {client}.",
+            "",
+            "Le document complété a été déposé sur LeoSoft et est disponible dans le dossier.",
+            "",
+            "Vous pouvez le consulter en cliquant sur le lien ci-dessous :",
+        ]
+        if url:
+            text_lines.extend(["", url])
+        text_lines.extend(["", "Notification automatique LeoSoft."])
+        body_text = "\n".join(text_lines)
+        button_html = _html_button(url, button) if url else ""
+        body_html = (
+            '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.5;">'
+            "<p>Bonjour,</p>"
+            f"<p>Le conseiller a répondu à votre demande de document concernant le dossier "
+            f"<strong>{html.escape(numero)}</strong> — <strong>{html.escape(client)}</strong>.</p>"
+            "<p>Le document complété a été déposé sur LeoSoft et est disponible dans le dossier.</p>"
+            "<p>Vous pouvez le consulter en cliquant sur le lien ci-dessous :</p>"
+            f"{button_html}"
+            "<p>Notification automatique LeoSoft.</p></div>"
+        )
+        return subject, body_text, body_html
     subject = f"LeoSoft — Réponse reçue : complément pour l'offre {numero}"
     request_text = (note or "").strip() or "—"
     answer = (reply_text or "").strip() or "—"
     who = (author or "").strip() or "Le conseiller"
-    names = [str(name).strip() for name in (document_names or []) if str(name).strip()]
-    docs_line = ", ".join(names) if names else "Aucun document"
+    docs_line = "Aucun document"
     url = _complement_offre_url(doc.get("id"), complement_id)
     button = "Voir la réponse dans LeoSoft"
     text_lines = [

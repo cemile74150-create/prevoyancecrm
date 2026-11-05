@@ -16,6 +16,9 @@ export function replyBlockReason(note, text, files) {
   const count = Array.isArray(files) ? files.length : 0;
   if (comment.length > 8000) return "La réponse est trop longue";
   if (count > MAX_COMPLEMENT_FILES) return `Maximum ${MAX_COMPLEMENT_FILES} documents`;
+  if (note?.retour_document && count < 1) {
+    return "Déposez le document complété avant de le soumettre";
+  }
   if (!comment && count < 1) {
     return "Saisissez une réponse ou joignez un document";
   }

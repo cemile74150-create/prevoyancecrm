@@ -217,6 +217,11 @@ class InternalNoteRequest(BaseModel):
     note: str = Field(min_length=1)
 
 
+class UrgenceRequest(BaseModel):
+    urgente: bool = False
+    motif: str = ""
+
+
 class OffresCompletesRequest(BaseModel):
     """Note optionnelle destinée à l'agent (e-mail Offres complètes)."""
     message_conseiller: Optional[str] = None
@@ -1530,13 +1535,18 @@ def attach_demandes_offres_routes(
                     continue
                 filtered.append(row)
             rows = filtered
-        from demandes_offres_ameliorations import filter_rdv_a_venir, filter_urgente, sort_demandes
+        from demandes_offres_ameliorations import (
+            filter_rdv_a_venir,
+            filter_urgente,
+            sort_demandes,
+            urgentes_en_tete,
+        )
 
         if urgente is True:
             rows = filter_urgente(rows, True)
         if rdv_a_venir is True:
             rows = filter_rdv_a_venir(rows, True)
-        rows = sort_demandes(rows, tri)
+        rows = urgentes_en_tete(sort_demandes(rows, tri))
         rows = rows[:limit]
         return [serialize_demande(row, viewer=user) for row in rows]
 
@@ -1836,6 +1846,43 @@ def attach_demandes_offres_routes(
         user: User = Depends(current_user_dependency),
     ):
         doc = await require_demande(demande_id, user)
+        from access_control import can_process_offres
+        from offre_agent_identity import viewer_is_demande_creator as _viewer_is_creator
+
+        deja_consultee = bool(str(doc.get("gestion_consultee_at") or "").strip())
+        brouillon = str(doc.get("statut") or "").strip() == "Brouillon"
+        if can_process_offres(user) and not _viewer_is_creator(doc, user) and not deja_consultee and not brouillon:
+            stamp = now_iso()
+            claimed = await db[COLLECTION].update_one(
+                    {
+                        "id": demande_id,
+                        "user_id": TENANT_USER_ID,
+                        "$or": [
+                            {"gestion_consultee_at": {"$exists": False}},
+                            {"gestion_consultee_at": None},
+                            {"gestion_consultee_at": ""},
+                        ],
+                    },
+                    {
+                        "$set": {
+                            "gestion_vue": True,
+                            "gestion_consultee_at": stamp,
+                            "gestion_consultee_par": actor_name(user),
+                        },
+                        "$push": {
+                            "historique": history(
+                                "Première consultation du dossier",
+                                user,
+                                "",
+                                statut=doc.get("statut"),
+                            ),
+                        },
+                },
+            )
+            if getattr(claimed, "modified_count", 0) == 1:
+                doc["gestion_vue"] = True
+                doc["gestion_consultee_at"] = stamp
+                doc.setdefault("historique", []).append({"action": "Première consultation du dossier", "at": stamp})
         # Backfill objet permanent pour offres déjà envoyées
         if not (doc.get("email_subject") or "").strip() and (doc.get("date_envoi") or doc.get("numero")):
             try:
@@ -2069,6 +2116,89 @@ def attach_demandes_offres_routes(
             action=ACTION_VALIDEE,
         )
 
+    @api_router.post("/demandes-offres/{demande_id}/urgence")
+    async def set_demande_urgence(
+        demande_id: str,
+        payload: UrgenceRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        """Marque ou retire l'urgence. Le motif est obligatoire à la pose."""
+        from access_control import can_process_offres
+        from offre_agent_identity import viewer_is_demande_creator
+
+        doc = await require_demande(demande_id, user)
+        owner = viewer_is_demande_creator(doc, user)
+        manager = can_process_offres(user)
+        if not owner and not manager:
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        want = bool(payload.urgente)
+        motif = (payload.motif or "").strip()
+        if want:
+            if not motif:
+                raise HTTPException(status_code=422, detail="Le motif de l'urgence est obligatoire")
+            if not doc.get("urgente"):
+                from demandes_offres_ameliorations import (
+                    count_urgences_agent,
+                    period_start_iso,
+                    quota_block_message,
+                )
+
+                settings = await db["crm_settings"].find_one({"id": "offres_urgence"}, {"_id": 0}) or {}
+                if settings.get("quota_actif") and not doc.get("urgence_exception"):
+                    since = period_start_iso(str(settings.get("periode") or "mois"))
+                    peers = await db[COLLECTION].find(
+                        {"user_id": TENANT_USER_ID, "is_deleted": {"$ne": True}, "urgente": True},
+                        {"_id": 0, "agent_label": 1, "urgente": 1, "statut": 1, "urgence_at": 1, "date_envoi": 1, "created_at": 1, "id": 1},
+                    ).to_list(5000)
+                    peers = [row for row in peers if row.get("id") != demande_id]
+                    used = count_urgences_agent(peers, doc.get("agent_label") or "", since_iso=since)
+                    blocked = quota_block_message(settings, used + 1, doc.get("agent_label") or "")
+                    if blocked:
+                        raise HTTPException(status_code=422, detail=blocked)
+            stamp = now_iso()
+            await db[COLLECTION].update_one(
+                {"id": demande_id, "user_id": TENANT_USER_ID},
+                {
+                    "$set": {
+                        "urgente": True,
+                        "urgence_motif": motif,
+                        "urgence_at": stamp,
+                        "urgence_by": actor_name(user),
+                        "urgence_by_id": user.account_id,
+                        "updated_at": stamp,
+                    },
+                    "$push": {
+                        "historique": history("Demande marquée urgente", user, motif, statut=doc.get("statut")),
+                    },
+                },
+            )
+        else:
+            if not doc.get("urgente"):
+                return serialize_demande(doc, docs=await docs_for(demande_id), viewer=user)
+            stamp = now_iso()
+            previous = (doc.get("urgence_motif") or "").strip()
+            await db[COLLECTION].update_one(
+                {"id": demande_id, "user_id": TENANT_USER_ID},
+                {
+                    "$set": {
+                        "urgente": False,
+                        "urgence_retiree_at": stamp,
+                        "urgence_retiree_par": actor_name(user),
+                        "updated_at": stamp,
+                    },
+                    "$push": {
+                        "historique": history(
+                            "Caractère urgent retiré",
+                            user,
+                            previous,
+                            statut=doc.get("statut"),
+                        ),
+                    },
+                },
+            )
+        fresh = await require_demande(demande_id, user)
+        return serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
+
     @api_router.post("/demandes-offres/{demande_id}/envoyer")
     async def send_demande_offre(
         demande_id: str,
@@ -2131,6 +2261,7 @@ def attach_demandes_offres_routes(
             detail=detail,
             extra={
                 "date_envoi": now_iso(),
+                **({} if already_sent else {"gestion_vue": False}),
                 "email_sent": sent,
                 "email_error": email_error,
                 "incomplete_comment": None,
@@ -2934,6 +3065,7 @@ def attach_demandes_offres_routes(
         demande_id: str,
         note: str = Form(...),
         attendre_reponse: str = Form("false"),
+        retour_document: str = Form("false"),
         user: User = Depends(current_user_dependency),
     ):
         """
@@ -2947,7 +3079,13 @@ def attach_demandes_offres_routes(
         if not note_text:
             raise HTTPException(status_code=422, detail="La note est obligatoire")
         attendre = _form_bool(attendre_reponse)
+        retour = _form_bool(retour_document) and attendre
         uploads = await reply_uploads(request)
+        if retour and not uploads:
+            raise HTTPException(
+                status_code=422,
+                detail="Joignez le document que le conseiller doit compléter",
+            )
         if len(uploads) > MAX_NOTE_FILES:
             raise HTTPException(
                 status_code=422,
@@ -2996,6 +3134,7 @@ def attach_demandes_offres_routes(
                 "complement_id": entry_id if attendre else None,
                 "complement_document_names": doc_names,
                 "note_externe_document_names": doc_names,
+                "retour_document": bool(retour),
             }
             if attendre:
                 sent, email_error = await try_send_email(
@@ -3024,6 +3163,7 @@ def attach_demandes_offres_routes(
             "email_sent": bool(sent),
             "email_error": email_error,
             "reply_expected": attendre,
+            "retour_document": bool(retour),
             "documents": attachment_refs,
         }
         if attendre:

@@ -131,6 +131,9 @@ export default function DemandeOffreFiche() {
   const [externalNoteOpen, setExternalNoteOpen] = useState(false);
   const [externalNoteText, setExternalNoteText] = useState("");
   const [externalAwaitReply, setExternalAwaitReply] = useState(false);
+  const [externalRetourDocument, setExternalRetourDocument] = useState(false);
+  const [urgenceOpen, setUrgenceOpen] = useState(false);
+  const [urgenceMotif, setUrgenceMotif] = useState("");
   const [externalNoteFiles, setExternalNoteFiles] = useState([]);
   const [offresCompletesOpen, setOffresCompletesOpen] = useState(false);
   const [offresCompletesNote, setOffresCompletesNote] = useState("");
@@ -689,6 +692,26 @@ export default function DemandeOffreFiche() {
     setOfferOpen(true);
   };
 
+  const saveUrgence = async (urgente) => {
+    const motif = urgenceMotif.trim();
+    if (urgente && !motif) {
+      toast.error("Le motif de l'urgence est obligatoire");
+      return;
+    }
+    setActionBusy(true);
+    try {
+      const res = await api.post(`/demandes-offres/${demandeId}/urgence`, { urgente, motif });
+      applyDemande(res.data);
+      setUrgenceOpen(false);
+      setUrgenceMotif("");
+      toast.success(urgente ? "Demande marquée urgente" : "Caractère urgent retiré");
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Enregistrement impossible");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   const addInternalNote = async () => {
     if (!noteText.trim()) return toast.error("La note est obligatoire");
     if (await runAction("notes-internes", { note: noteText.trim() }, "Note interne enregistrée")) {
@@ -704,6 +727,7 @@ export default function DemandeOffreFiche() {
       const body = new FormData();
       body.append("note", externalNoteText.trim());
       body.append("attendre_reponse", externalAwaitReply ? "true" : "false");
+      body.append("retour_document", externalAwaitReply && externalRetourDocument ? "true" : "false");
       externalNoteFiles.forEach((file) => body.append("files", file));
       const res = await api.post(`/demandes-offres/${demandeId}/notes-externes`, body);
       applyDemande(res.data);
@@ -726,6 +750,7 @@ export default function DemandeOffreFiche() {
       setExternalNoteOpen(false);
       setExternalNoteText("");
       setExternalAwaitReply(false);
+      setExternalRetourDocument(false);
       setExternalNoteFiles([]);
     } catch (e) {
       toast.error(errorMessage(e, "Envoi de la note impossible"));
@@ -1056,6 +1081,15 @@ export default function DemandeOffreFiche() {
                     {typeClientLabel(demande.type_client)}
                   </span>
                 )}
+                {demande.urgente && (
+                  <span
+                    className="inline-flex rounded-full bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white"
+                    title={demande.urgence_motif || ""}
+                    data-testid="badge-urgent"
+                  >
+                    URGENT
+                  </span>
+                )}
                 {demande.priorite && (
                   <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${PRIORITE_STYLE[demande.priorite] || ""}`}>
                     {prioriteLabel(demande.priorite)}
@@ -1099,13 +1133,37 @@ export default function DemandeOffreFiche() {
               {demande.date_envoi ? ` · Envoyée le ${formatDateFr(demande.date_envoi)}` : ""}
               {demande.created_at ? ` · Créée le ${formatDateFr(demande.created_at)}` : ""}
               {demande.date_prochain_rdv ? ` · RDV client ${formatDateFr(demande.date_prochain_rdv)}${demande.heure_rdv ? ` ${demande.heure_rdv}` : ""}` : ""}
-              {demande.urgente ? " · URGENT" : ""}
+              {demande.urgente ? ` · URGENT${demande.urgence_motif ? ` — ${demande.urgence_motif}` : ""}` : ""}
               {demande.signature?.signee && (demande.signature.signed_by || demande.signature.recorded_by)
                 ? ` · Signée par ${demande.signature.signed_by || demande.signature.recorded_by}`
                 : ""}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {(canEdit || canProcess) && (
+              demande.urgente ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-rose-300 text-rose-800"
+                  onClick={() => saveUrgence(false)}
+                  disabled={actionBusy}
+                  data-testid="urgence-retirer"
+                >
+                  Retirer l&apos;urgence
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  className="bg-rose-700 hover:bg-rose-800"
+                  onClick={() => setUrgenceOpen(true)}
+                  disabled={actionBusy}
+                  data-testid="urgence-ouvrir"
+                >
+                  🚨 Demande urgente
+                </Button>
+              )
+            )}
             {canDeleteDraft && (
               <Button
                 variant="outline"
@@ -1658,6 +1716,35 @@ export default function DemandeOffreFiche() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={urgenceOpen} onOpenChange={setUrgenceOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Demande urgente</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            La demande restera urgente jusqu&apos;à ce que ce caractère soit retiré. Le motif est obligatoire.
+          </p>
+          <Field label="Motif de l'urgence" required>
+            <Textarea
+              rows={4}
+              value={urgenceMotif}
+              onChange={(e) => setUrgenceMotif(e.target.value)}
+              placeholder="Pourquoi cette demande doit être traitée en priorité ?"
+              data-testid="urgence-motif"
+            />
+          </Field>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUrgenceOpen(false)}>Annuler</Button>
+            <Button
+              className="bg-rose-700 hover:bg-rose-800"
+              onClick={() => saveUrgence(true)}
+              disabled={actionBusy || !urgenceMotif.trim()}
+              data-testid="urgence-confirmer"
+            >
+              Marquer urgente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Note interne</DialogTitle></DialogHeader>
@@ -1677,6 +1764,7 @@ export default function DemandeOffreFiche() {
           setExternalNoteOpen(open);
           if (!open) {
             setExternalAwaitReply(false);
+            setExternalRetourDocument(false);
             setExternalNoteFiles([]);
           }
         }}
@@ -1745,6 +1833,18 @@ export default function DemandeOffreFiche() {
             <p className="text-xs text-muted-foreground">
               Le conseiller pourra répondre une seule fois, avec un texte et/ou des documents.
             </p>
+          ) : null}
+          {externalAwaitReply && externalNoteFiles.length > 0 ? (
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-[#002FA7]"
+                checked={externalRetourDocument}
+                onChange={(e) => setExternalRetourDocument(e.target.checked)}
+                data-testid="note-externe-retour-document"
+              />
+              <span>Le conseiller doit retourner le document complété</span>
+            </label>
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setExternalNoteOpen(false)}>Annuler</Button>

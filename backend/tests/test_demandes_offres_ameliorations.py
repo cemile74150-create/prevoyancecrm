@@ -2,6 +2,10 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 from demandes_offres_ameliorations import (
+    compteurs_avancement,
+    est_nouvelle_demande,
+    relance_en_cours,
+    urgentes_en_tete,
     count_urgences_agent,
     enregistrer_suivi,
     etape_affichee,
@@ -287,3 +291,46 @@ def test_echec_denvoi_puis_nouvel_essai_sans_doublon(monkeypatch):
     third = asyncio.run(process_relances_agent_21j(db, now=now))
     assert third["sent"] == 0
     assert calls["n"] == 2
+
+
+def test_nouvelle_demande_exige_un_marquage_explicite():
+    sent = {"statut": "Demande envoyée", "gestion_vue": False}
+    assert est_nouvelle_demande(sent) is True
+    assert est_nouvelle_demande({"statut": "Demande envoyée"}) is False
+    assert est_nouvelle_demande({**sent, "gestion_consultee_at": "2026-11-05T10:00:00+00:00"}) is False
+    assert est_nouvelle_demande({**sent, "suivi_etape": "en_cours"}) is False
+    assert est_nouvelle_demande({"statut": "Offre reçue"}) is False
+
+
+def test_compteurs_separent_la_relance_de_l_attente():
+    rows = [
+        {"statut": "Demande envoyée", "gestion_vue": False},
+        {"statut": "Demande envoyée", "suivi_etape": "en_cours"},
+        {"statut": "Demande envoyée", "suivi_etape": "attente_compagnie"},
+        {
+            "statut": "Demande envoyée",
+            "suivi_etape": "attente_compagnie",
+            "suivi_evenements": [{"etape": "relance"}],
+        },
+        {"statut": "Offre reçue", "suivi_etape": "offre_transmise"},
+    ]
+    counts = compteurs_avancement(rows)
+    assert counts == {
+        "nouvelles": 1,
+        "en_cours": 1,
+        "attente_compagnie": 1,
+        "relances": 1,
+        "offre_transmise": 1,
+    }
+    assert relance_en_cours(rows[3]) is True
+    assert relance_en_cours(rows[2]) is False
+
+
+def test_les_urgences_restent_devant_le_tri():
+    rows = [
+        {"id": "a", "urgente": False, "date_envoi": "2026-11-05"},
+        {"id": "b", "urgente": True, "date_envoi": "2026-11-01"},
+        {"id": "c", "urgente": False, "date_envoi": "2026-11-03"},
+    ]
+    ordered = [row["id"] for row in urgentes_en_tete(sort_demandes(rows, "soumission_desc", today="2026-11-05"))]
+    assert ordered[0] == "b"

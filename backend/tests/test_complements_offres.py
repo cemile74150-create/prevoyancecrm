@@ -95,6 +95,9 @@ def test_reply_accepts_text_only_docs_only_or_both_even_for_legacy_document_type
     assert validate_reply(information, "", 1) is None
     assert validate_reply(reponse, "Ok", 0) is None
     assert validate_reply(reponse, "", 1) is None
+    retour = {**reponse, "retour_document": True}
+    assert validate_reply(retour, "Je réponds par écrit", 0) == "document_required"
+    assert validate_reply(retour, "", 1) is None
 
 
 def test_one_reply_closes_only_that_request():
@@ -262,7 +265,16 @@ def test_complement_email_goes_to_the_creator_with_a_direct_link(monkeypatch):
     assert "formulaire.pdf" in text
     assert "Pouvez-vous remplir le formulaire ci-joint ?" in text
     assert "https://leosoft.example/demandes-offres/demande-1?complement=comp-1" in text
+    assert "Un document est à compléter et à retourner." not in text
     assert "Répondre à la demande sur LeoSoft" in html
+    doc["retour_document"] = True
+    _, retour_text, retour_html = es.format_complement_demande_email(
+        doc,
+        note="Pouvez-vous remplir le formulaire ci-joint ?",
+        complement_id="comp-1",
+    )
+    assert "Un document est à compléter et à retourner." in retour_text
+    assert "Un document est à compléter et à retourner." in retour_html
     assert es.offre_notify_role("complement_demande") == "createur"
     assert es.offre_notify_role("note_externe") == "createur"
 
@@ -279,10 +291,11 @@ def test_reply_email_uses_the_existing_offres_route_once(monkeypatch):
         complement_id="comp-1",
         document_names=["Mandat signé.pdf"],
     )
-    assert subject.startswith("LeoSoft — Réponse reçue")
+    assert subject == "Retour de document — OFF-2026-0042 — Jean Dupont"
+    assert "Le document complété a été déposé sur LeoSoft" in text
+    assert "Notification automatique LeoSoft." in text
     assert "OFF-2026-0042" in subject
-    assert "Mandat signé.pdf" in text
-    assert "Camille Durand" in text
+    assert "Accéder à la demande" in html
     assert "Type :" not in text
     assert "complement=comp-1" in html
     assert es.offre_notify_role("complement_reponse") == "offres_mailbox"

@@ -1649,11 +1649,19 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
     except Exception:
         pass
     try:
-        from demandes_offres_ameliorations import SUIVI_LABELS, etape_affichee
+        from demandes_offres_ameliorations import (
+            SUIVI_LABELS,
+            est_nouvelle_demande,
+            etape_affichee,
+            relance_en_cours,
+        )
 
         code = etape_affichee(doc)
         out["etape_suivi"] = code
         out["etape_suivi_label"] = SUIVI_LABELS.get(code, code)
+        out["est_nouvelle"] = est_nouvelle_demande(doc)
+        out["relance_en_cours"] = relance_en_cours(doc)
+        out["gestion_consultee_at"] = doc.get("gestion_consultee_at") or ""
     except Exception:
         pass
     enrich_gestion_fields(doc, out)
@@ -2820,6 +2828,9 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
 
     agent_block = compute_agent_stats(rows)
     gestion = compute_gestion_kpis(rows)
+    from demandes_offres_ameliorations import compteurs_avancement
+
+    avancement = compteurs_avancement(rows)
     result = {
         "total": total,
         "nb_demandes": nb_demandes,
@@ -2857,6 +2868,7 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
             for cid, conf in GESTION_CATEGORIES.items()
         },
         "gestion_kanban": GESTION_KANBAN_COLUMNS,
+        "avancement": avancement,
         "delai_surveiller_jours": OFFRES_DELAI_SURVEILLER_JOURS,
         "delai_urgent_jours": OFFRES_DELAI_URGENT_JOURS,
         **agent_block,

@@ -25,7 +25,7 @@ function errorDetail(error, fallback) {
   return fallback;
 }
 
-function DocumentLinks({ documents, title }) {
+function DocumentLinks({ documents, title, downloadLabel = "Télécharger" }) {
   if (!documents?.length) return null;
   return (
     <div className="mt-2">
@@ -55,7 +55,7 @@ function DocumentLinks({ documents, title }) {
                   doc.original_filename,
                 )}
               >
-                Télécharger
+                {downloadLabel}
               </Button>
             </span>
           </li>
@@ -117,7 +117,9 @@ function ReplyForm({ note, demandeId, onUpdated, onCancel }) {
 
   return (
     <div className="mt-3 space-y-3 rounded-md border border-[#002FA7]/20 bg-[#002FA7]/5 p-3" data-testid="complement-reply-form">
-      <p className="text-sm font-medium text-[#002FA7]">Votre réponse</p>
+      <p className="text-sm font-medium text-[#002FA7]">
+        {note?.retour_document ? "Déposer le document complété" : "Votre réponse"}
+      </p>
       <Textarea
         rows={4}
         value={text}
@@ -127,7 +129,9 @@ function ReplyForm({ note, demandeId, onUpdated, onCancel }) {
         data-testid="complement-reply-text"
       />
       <div>
-        <p className="text-sm font-medium">Joindre des documents (facultatif)</p>
+        <p className="text-sm font-medium">
+          {note?.retour_document ? "Déposer le document complété" : "Joindre des documents (facultatif)"}
+        </p>
         <label className="mt-1 inline-flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm">
           <Paperclip className="h-4 w-4" />
           Choisir des fichiers
@@ -186,7 +190,7 @@ function ReplyForm({ note, demandeId, onUpdated, onCancel }) {
           data-testid="complement-reply-submit"
         >
           {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-          Transmettre ma réponse
+          {note?.retour_document ? "Soumettre le document" : "Transmettre ma réponse"}
         </Button>
       </div>
     </div>
@@ -274,8 +278,18 @@ export default function NotesConseiller({ demandeId, notes, canProcess, focusId,
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">Action requise</span>
                 )}
               </div>
-              <p className="whitespace-pre-wrap">{note.note}</p>
-              <DocumentLinks documents={note.documents} title="Pièces jointes" />
+              {note.retour_document ? (
+                <div className="rounded-md border border-[#002FA7]/30 bg-[#002FA7]/5 p-3" data-testid="document-a-retourner">
+                  <p className="text-sm font-semibold text-[#002FA7]">📎 DOCUMENT À RETOURNER</p>
+                  <p className="mt-1 whitespace-pre-wrap">{note.note}</p>
+                  <DocumentLinks documents={note.documents} title="Documents à compléter" downloadLabel="Télécharger le document" />
+                </div>
+              ) : (
+                <>
+                  <p className="whitespace-pre-wrap">{note.note}</p>
+                  <DocumentLinks documents={note.documents} title="Pièces jointes" downloadLabel="Télécharger le document" />
+                </>
+              )}
               <p className="mt-1 text-xs text-muted-foreground">
                 {formatDateTimeFr(note.at)}
                 {note.by_name ? ` · ${note.by_name}` : ""}
@@ -310,9 +324,14 @@ export default function NotesConseiller({ demandeId, notes, canProcess, focusId,
                   onClick={() => setOpenId(note.id)}
                   data-testid="complement-reply-open"
                 >
-                  Répondre
+                  {note.retour_document ? "Déposer le document complété" : "Répondre"}
                 </Button>
               )}
+              {canProcess && answered ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  Pour demander une correction, envoyez une nouvelle note externe. Le document reçu reste attaché à cette demande.
+                </p>
+              ) : null}
               {note.can_reply && openId === note.id && (
                 <ReplyForm
                   note={note}
