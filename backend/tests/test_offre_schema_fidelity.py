@@ -163,6 +163,52 @@ def test_animaux_mapped_to_gf47_not_batiment():
     assert bat["gravity_form_id"] == 11
 
 
+def test_animaux_chat_interieur_exterieur_requis_seulement_si_chat():
+    """Intérieur / extérieur obligatoire seulement si l'espèce est Chat.
+
+    Chien, ou un retour de Chat vers Chien, ne doit pas laisser ce champ bloquer l'envoi.
+    """
+    from offre_form_types import missing_schema_required
+
+    data = _load("animaux.json")
+    by_name = {f["name"]: f for f in data["fields"]}
+    espece = by_name["input_13"]
+    chat = by_name["input_38"]
+    label = "Le chat est un chat :"
+    assert espece["label"] == "Espèce"
+    assert espece["required"] is True
+    assert espece["options"] == ["Chien", "Chat"]
+    assert chat["label"] == label
+    assert chat["type"] == "radio"
+    assert chat["required"] is True
+    assert chat["options"] == ["D'intérieur", "D'extérieur"]
+    assert chat["show_when"] == {
+        "logic": "all",
+        "rules": [{"field": "input_13", "op": "is", "value": "Chat"}],
+    }
+
+    assert label not in missing_schema_required("animaux", {"input_13": "Chien"})
+    assert label not in missing_schema_required(
+        "animaux", {"input_13": "Chien", "input_38": ""}
+    )
+    # Valeur résiduelle (saisie puis espèce repassée à Chien) : plus d'erreur.
+    assert label not in missing_schema_required(
+        "animaux", {"input_13": "Chien", "input_38": "D'intérieur"}
+    )
+    assert label not in missing_schema_required("animaux", {})
+
+    assert label in missing_schema_required("animaux", {"input_13": "Chat"})
+    assert label in missing_schema_required(
+        "animaux", {"input_13": "Chat", "input_38": ""}
+    )
+    assert label not in missing_schema_required(
+        "animaux", {"input_13": "Chat", "input_38": "D'extérieur"}
+    )
+    assert label not in missing_schema_required(
+        "animaux", {"input_13": "Chat", "input_38": "D'intérieur"}
+    )
+
+
 def test_html_field_count_close_to_schema(schema_file="menage_rc.json"):
     gid, _, html_path = FORMS[schema_file]
     if not html_path.exists():

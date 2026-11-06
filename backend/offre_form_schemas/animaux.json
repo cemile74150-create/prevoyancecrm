@@ -255,7 +255,17 @@
         "D'extérieur"
       ],
       "page": 1,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_13",
+            "op": "is",
+            "value": "Chat"
+          }
+        ]
+      }
     },
     {
       "id": "47_17",
