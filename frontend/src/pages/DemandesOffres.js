@@ -16,7 +16,7 @@ import {
   TYPES_CLIENT, demandeOrigineKey, demandeOrigineLabel, demandeOrigineShort,
   formatChf, formatDateFr, formatVariantesSummary, periodeLabel, compagniesAffichees,
   isDemandeAnnuleeStatut, isHorsCours, statutLabel,
-  AVANCEMENT_BADGE_STYLE, avancementCode, avancementLabel,
+  AVANCEMENT_BADGE_STYLE, avancementCode, avancementLabel, rdvClientAffiche,
 } from "@/lib/demandesOffres";
 import { uniqueConseillerNames } from "@/lib/conseillers";
 import { PendingComplementBadge } from "@/components/NotesConseiller";
@@ -1007,7 +1007,9 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                           <span className="ml-2 text-xs font-normal text-slate-400">({list.length})</span>
                         </SectionTitle>
                         <ul className="space-y-0.5">
-                          {list.map((r) => (
+                          {list.map((r) => {
+                            const rdv = rdvClientAffiche(r);
+                            return (
                             <li key={r.id} className="flex items-start gap-1 group/row">
                               <button
                                 type="button"
@@ -1032,8 +1034,8 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                                     {r.date_envoi
                                       ? ` · Envoyée le ${formatDateFr(r.date_envoi)}`
                                       : ` · ${formatDateFr(r.updated_at)}`}
-                                    {r.date_prochain_rdv
-                                      ? ` · RDV client ${formatDateFr(r.date_prochain_rdv)}${r.heure_rdv ? ` ${r.heure_rdv}` : ""}`
+                                    {rdv.date
+                                      ? ` · RDV client ${formatDateFr(rdv.date)}${rdv.heure ? ` ${rdv.heure}` : ""}`
                                       : ""}
                                   </span>
                                   {r.commentaires ? (
@@ -1099,7 +1101,8 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                                 </span>
                               </span>
                             </li>
-                          ))}
+                            );
+                          })}
                         </ul>
                       </div>
                     ))}

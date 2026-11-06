@@ -924,3 +924,230 @@ def sync_crm_fields_from_payload(target: dict, form_type_id: str, payload: dict[
             target["civilite"] = val
         elif "langue" in lab and "offre" in lab:
             target["langue_offre"] = val
+
+
+_RDV_SKIP_TYPES = {
+    "section", "html", "file", "checkbox", "radio", "select", "list",
+    "number", "email", "tel", "hidden", "honeypot", "captcha", "consent",
+    "name", "address",
+}
+_EMPTY_RDV_MARKERS = {"", "—", "-", "–", "aucun", "none", "null"}
+
+
+def _rdv_label_key(label: str) -> str:
+    """Libellé plié : accents, ponctuation et espaces ignorés."""
+    return re.sub(r"[^a-z0-9]+", " ", _fold_label(label or "")).strip()
+
+
+def _is_rdv_client_label(label: str) -> bool:
+    key = _rdv_label_key(label)
+    return bool(key) and "client" in key.split() and "rendez vous" in key
+
+
+def _is_date_rdv_field(field: dict) -> bool:
+    if not isinstance(field, dict):
+        return False
+    if (field.get("type") or "text") in _RDV_SKIP_TYPES:
+        return False
+    return _is_rdv_client_label(field.get("label") or "")
+
+
+def _is_heure_rdv_field(field: dict) -> bool:
+    if not isinstance(field, dict):
+        return False
+    if (field.get("type") or "text") in _RDV_SKIP_TYPES:
+        return False
+    key = _rdv_label_key(field.get("label") or "")
+    if "heure" not in key.split():
+        return False
+    return "rendez vous" in key or "rdv" in key.split() or "client" in key.split()
+
+
+def _payload_blank(value: Any) -> bool:
+    if value is None or value is False:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in _EMPTY_RDV_MARKERS
+    if isinstance(value, (list, tuple)):
+        return all(_payload_blank(item) for item in value)
+    if isinstance(value, dict):
+        return all(_payload_blank(item) for item in value.values())
+    return False
+
+
+def _field_keys(field: dict) -> list[str]:
+    keys: list[str] = []
+    for raw in (field.get("name"), field.get("id")):
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if text and text not in keys:
+            keys.append(text)
+    gf = field.get("gf_field_id")
+    if gf is not None and str(gf).strip():
+        alias = f"input_{str(gf).strip()}"
+        if alias not in keys:
+            keys.append(alias)
+    label = str(field.get("label") or "").strip()
+    if label and label not in keys:
+        keys.append(label)
+    return keys
+
+
+def _lookup_field_value(payload: dict, field: dict) -> Any:
+    keys = _field_keys(field)
+    for key in keys:
+        if key in payload and not _payload_blank(payload.get(key)):
+            return payload.get(key)
+    targets = {key for key in (_rdv_label_key(item) for item in keys) if key}
+    if targets:
+        for key, val in payload.items():
+            if _payload_blank(val):
+                continue
+            if _rdv_label_key(str(key)) in targets:
+                return val
+    name = str(field.get("name") or field.get("id") or "").strip()
+    if not name:
+        return None
+    parts: list[str] = []
+    found_sub = False
+    for index in (1, 2, 3):
+        piece = ""
+        for sep in (".", "_"):
+            raw = payload.get(f"{name}{sep}{index}")
+            if not _payload_blank(raw):
+                piece = str(raw).strip()
+                found_sub = True
+                break
+        parts.append(piece)
+    return parts if found_sub else None
+
+
+def _normalize_heure(value: Any) -> str:
+    match = re.search(r"(\d{1,2})\s*[:hH]\s*(\d{2})", str(value or ""))
+    if not match:
+        return ""
+    hour, minute = int(match.group(1)), int(match.group(2))
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return ""
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _iso_ymd(year: Any, month: Any, day: Any) -> str:
+    from datetime import datetime
+
+    from swiss_dates import expand_short_year
+
+    try:
+        y_text = expand_short_year(str(year).strip())
+        y, m, d = int(y_text), int(str(month).strip()), int(str(day).strip())
+        datetime(y, m, d)
+    except (TypeError, ValueError):
+        return ""
+    if not (1000 <= y <= 9999):
+        return ""
+    return f"{y:04d}-{m:02d}-{d:02d}"
+
+
+def _iso_from_text(text: str) -> str:
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    iso = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", raw)
+    if iso:
+        return _iso_ymd(iso.group(1), iso.group(2), iso.group(3))
+    ymd = re.match(r"^(\d{4})[./](\d{1,2})[./](\d{1,2})$", raw)
+    if ymd:
+        return _iso_ymd(ymd.group(1), ymd.group(2), ymd.group(3))
+    dmy = re.match(r"^(\d{1,2})[./-](\d{1,2})[./-](\d{2,6})$", raw)
+    if dmy:
+        return _iso_ymd(dmy.group(3), dmy.group(2), dmy.group(1))
+    return ""
+
+
+def _split_date_heure(value: Any) -> tuple[str, str]:
+    """Date ISO + heure, sans interpréter une date de création ou d'envoi."""
+    if value is None or isinstance(value, bool):
+        return "", ""
+    if isinstance(value, dict):
+        year = value.get("year") or value.get("annee") or value.get("Y")
+        month = value.get("month") or value.get("mois") or value.get("m")
+        day = value.get("day") or value.get("jour") or value.get("d")
+        heure = _normalize_heure(value.get("heure") or value.get("time") or "")
+        if year and month and day:
+            return _iso_ymd(year, month, day), heure
+        for key in ("date", "value"):
+            if not _payload_blank(value.get(key)):
+                iso, embedded = _split_date_heure(value.get(key))
+                return iso, heure or embedded
+        return "", ""
+    if isinstance(value, (list, tuple)):
+        parts = [str(item).strip() for item in value if str(item).strip()]
+        if len(parts) >= 3 and all(re.fullmatch(r"\d{1,6}", part) for part in parts[:3]):
+            first, second, third = parts[:3]
+            heure = _normalize_heure(" ".join(parts[3:]))
+            if len(first) == 4:
+                return _iso_ymd(first, second, third), heure
+            return _iso_ymd(third, second, first), heure
+        return _split_date_heure(" ".join(parts))
+    text = str(value).strip()
+    if text.lower() in _EMPTY_RDV_MARKERS:
+        return "", ""
+    heure = ""
+    match = re.search(r"(?:T|\s+)(\d{1,2})\s*[:hH]\s*(\d{2})", text)
+    if match:
+        heure = _normalize_heure(match.group(0))
+        text = text[: match.start()].strip()
+    iso = _iso_from_text(text)
+    return (iso, heure) if iso else ("", "")
+
+
+def rdv_client_depuis_formulaire(
+    form_type_id: Optional[str],
+    payload: Optional[dict],
+) -> tuple[str, str]:
+    """Date (ISO) et heure du rendez-vous client saisies dans le formulaire.
+
+    Les schémas ne partagent pas la même clé (`input_35`, `input_60`, …).
+    Le libellé « rendez-vous avec le client » est la source, pas la date
+    d'envoi ni la date de création.
+    """
+    data = payload if isinstance(payload, dict) else {}
+    if not data:
+        return "", ""
+    schema = load_form_schema((form_type_id or "").strip()) or {}
+    date_iso, heure = "", ""
+    for field in schema.get("fields") or []:
+        if not _is_date_rdv_field(field):
+            continue
+        iso, embedded = _split_date_heure(_lookup_field_value(data, field))
+        if iso:
+            date_iso, heure = iso, embedded
+            break
+    if date_iso and not heure:
+        for field in schema.get("fields") or []:
+            if not _is_heure_rdv_field(field):
+                continue
+            found = _normalize_heure(_lookup_field_value(data, field))
+            if found:
+                heure = found
+                break
+    if date_iso:
+        return date_iso, heure
+    for key, val in data.items():
+        if not _is_rdv_client_label(str(key)):
+            continue
+        iso, embedded = _split_date_heure(val)
+        if iso:
+            return iso, embedded
+    return "", ""
+
+
+def rdv_client_effectif(doc: Optional[dict]) -> tuple[str, str]:
+    """Date affichée : `date_prochain_rdv` si elle est déjà la source, sinon le formulaire."""
+    data = doc if isinstance(doc, dict) else {}
+    stored_iso, stored_embedded = _split_date_heure(data.get("date_prochain_rdv"))
+    if stored_iso:
+        heure = _normalize_heure(data.get("heure_rdv")) or stored_embedded
+        return stored_iso, heure
+    return rdv_client_depuis_formulaire(data.get("form_type"), data.get("form_payload"))

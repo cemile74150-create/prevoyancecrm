@@ -217,8 +217,14 @@ def usages_urgences(rows: list, settings: dict, *, now: Optional[datetime] = Non
 
 
 def _rdv_key(row: dict) -> str:
-    date = str(row.get("date_prochain_rdv") or "").strip()[:10]
-    heure = str(row.get("heure_rdv") or "").strip()
+    """Même date que la colonne RDV client : formulaire si date_prochain_rdv est vide."""
+    try:
+        from offre_form_types import rdv_client_effectif
+
+        date, heure = rdv_client_effectif(row)
+    except Exception:
+        date = str(row.get("date_prochain_rdv") or "").strip()[:10]
+        heure = str(row.get("heure_rdv") or "").strip()
     if not date:
         return ""
     return f"{date}T{heure}" if heure else date
@@ -281,7 +287,7 @@ def filter_rdv_a_venir(rows: list, only: bool, today: Optional[str] = None) -> l
     day = today or datetime.now(timezone.utc).date().isoformat()
     out = []
     for row in rows:
-        key = str(row.get("date_prochain_rdv") or "").strip()[:10]
+        key = _rdv_key(row)[:10]
         if key and key >= day:
             out.append(row)
     return out

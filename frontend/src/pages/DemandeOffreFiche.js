@@ -14,7 +14,7 @@ import {
   ACTIVITES_RISQUE, CIVILITES, COMPAGNIES_DEFAUT, ERREURS_INCOMPLETE_CATALOG, ERREURS_CHAMPS_CATALOG,
   EXONERATIONS, LANGUES, OUI_NON, PERIODICITES, SEXES, SITUATIONS, STATUTS_PRO,
   STATUT_STYLE, STEPS, TYPES_CLIENT, TYPES_PAIEMENT, TYPES_PILIER, emptyForm,
-  formatChf, formatDateFr, demandeOrigineLabel, demandeOrigineKey, toIsoDate, toSwissDate,
+  formatChf, formatDateFr, demandeOrigineLabel, demandeOrigineKey, toIsoDate, toSwissDate, rdvClientAffiche,
   DEMANDE_ORIGINE_STYLE, typeClientLabel, buildDemandeResume, documentsForGeneralList,
   showsExistingClientSearch, clientIdAfterTypeChange,
   preneurIdentityFieldNames, applyNouveauPreneurNames,
@@ -819,6 +819,23 @@ export default function DemandeOffreFiche() {
     }
   };
 
+  const retirerErreur = async (err) => {
+    if (!(canProcess || isAdmin) || actionBusy) return;
+    const label = err.field_label || erreurChampLabel(err.field);
+    const ref = err.id || err.field;
+    if (!ref) return;
+    if (!window.confirm(`Retirer l'erreur « ${label} » ? Elle ne comptera plus dans le scoring.`)) return;
+    setActionBusy(true);
+    try {
+      const res = await api.delete(`/demandes-offres/${demandeId}/erreurs/${encodeURIComponent(ref)}`);
+      refreshFromAction(res.data, "Erreur retirée");
+    } catch (e) {
+      toast.error(errorMessage(e, "Retrait impossible"));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   const confirmCancel = async () => {
     if (actionBusy) return;
     const motif = cancelComment.trim();
@@ -1134,7 +1151,10 @@ export default function DemandeOffreFiche() {
               Conseiller : {demande.agent_label || "—"}
               {demande.date_envoi ? ` · Envoyée le ${formatDateFr(demande.date_envoi)}` : ""}
               {demande.created_at ? ` · Créée le ${formatDateFr(demande.created_at)}` : ""}
-              {demande.date_prochain_rdv ? ` · RDV client ${formatDateFr(demande.date_prochain_rdv)}${demande.heure_rdv ? ` ${demande.heure_rdv}` : ""}` : ""}
+              {(() => {
+                const rdv = rdvClientAffiche(demande);
+                return rdv.date ? ` · RDV client ${formatDateFr(rdv.date)}${rdv.heure ? ` ${rdv.heure}` : ""}` : "";
+              })()}
               {demande.urgente ? ` · URGENT${demande.urgence_motif ? ` — ${demande.urgence_motif}` : ""}` : ""}
               {demande.signature?.signee && (demande.signature.signed_by || demande.signature.recorded_by)
                 ? ` · Signée par ${demande.signature.signed_by || demande.signature.recorded_by}`
@@ -1539,13 +1559,26 @@ export default function DemandeOffreFiche() {
                   </h2>
                   <ul className="space-y-2">
                     {[...erreursAgent].reverse().map((err) => (
-                      <li key={err.id || `${err.field}-${err.at}`} className="rounded-md border border-rose-100 bg-rose-50/60 px-3 py-2 text-sm">
-                        <p className="font-medium text-rose-900">❌ {err.field_label || erreurChampLabel(err.field)}</p>
-                        {err.comment && <p className="text-xs text-rose-800/80 mt-0.5">{err.comment}</p>}
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {formatDateFr(err.at || err.date)}
-                          {err.by_name ? ` · ${err.by_name}` : ""}
-                        </p>
+                      <li key={err.id || `${err.field}-${err.at}`} className="flex items-start justify-between gap-3 rounded-md border border-rose-100 bg-rose-50/60 px-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="font-medium text-rose-900">❌ {err.field_label || erreurChampLabel(err.field)}</p>
+                          {err.comment && <p className="text-xs text-rose-800/80 mt-0.5">{err.comment}</p>}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {formatDateFr(err.at || err.date)}
+                            {err.by_name ? ` · ${err.by_name}` : ""}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 border-rose-300 text-rose-800 hover:bg-rose-100"
+                          disabled={actionBusy}
+                          data-testid="retirer-erreur"
+                          onClick={() => retirerErreur(err)}
+                        >
+                          Retirer
+                        </Button>
                       </li>
                     ))}
                   </ul>

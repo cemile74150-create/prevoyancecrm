@@ -367,6 +367,25 @@ export function formatHeureRdv(value) {
   return `${match[1].padStart(2, "0")}h${match[2]}`;
 }
 
+/**
+ * Date affichée dans la colonne RDV client.
+ * `date_prochain_rdv` reste prioritaire quand elle est déjà renseignée.
+ * Sinon, on reprend la date du formulaire (`rdv_client_formulaire`),
+ * jamais la date de création ni la date d'envoi.
+ */
+export function rdvClientAffiche(row) {
+  const stored = toIsoDate(row?.date_prochain_rdv);
+  if (stored) {
+    return { date: stored, heure: String(row?.heure_rdv || "").trim() };
+  }
+  const form = row?.rdv_client_formulaire;
+  const raw = form && typeof form === "object" ? form.date : form;
+  const date = toIsoDate(raw);
+  if (!date) return { date: "", heure: "" };
+  const heure = form && typeof form === "object" ? String(form.heure || "").trim() : "";
+  return { date, heure };
+}
+
 export function isDemandeAttribuee(row) {
   return demandeOrigineKey(row?.demande_origine ?? row) === DEMANDE_ORIGINE.attribuee;
 }

@@ -32,6 +32,7 @@ import {
   avancementLabel,
   formatHeureRdv,
   rdvProximite,
+  rdvClientAffiche,
 } from "@/lib/demandesOffres";
 import { uniqueConseillerNames } from "@/lib/conseillers";
 import { PendingComplementBadge } from "@/components/NotesConseiller";
@@ -98,8 +99,9 @@ function isOffreTransmiseAgent(row) {
 }
 
 function RdvClient({ row, variant = "inline" }) {
-  const date = String(row?.date_prochain_rdv || "").slice(0, 10);
-  const heure = formatHeureRdv(row?.heure_rdv);
+  const rdv = rdvClientAffiche(row);
+  const date = rdv.date;
+  const heure = formatHeureRdv(rdv.heure);
   const cell = variant === "cell";
   if (!date) {
     return (
@@ -942,17 +944,7 @@ export default function GestionReponsesOffres() {
                           {typeof a.taux_erreur === "number" ? `${a.taux_erreur} %` : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-xs text-slate-600 max-w-md">
-                          {(a.erreurs || []).slice(0, 3).map((e, i) => (
-                            <span key={`${e.demande_id}-${i}`} className="block truncate">
-                              {e.label || e.code}
-                              {e.detail ? ` — ${e.detail}` : ""}
-                              {e.numero ? ` (${e.numero})` : ""}
-                            </span>
-                          ))}
-                          {(a.erreurs || []).length > 3 && (
-                            <span className="text-slate-400">+{(a.erreurs || []).length - 3} autres</span>
-                          )}
-                          {!(a.erreurs || []).length && "—"}
+                          <ErreursRecentesCell erreurs={a.erreurs} onOpen={openFiche} />
                         </td>
                       </tr>
                     ))
@@ -994,10 +986,7 @@ export default function GestionReponsesOffres() {
                         <td className="px-3 py-2.5 tabular-nums font-semibold text-rose-700">{a.total ?? 0}</td>
                         <td className="px-3 py-2.5 text-xs text-slate-600">
                           {(a.by_field || []).map((f) => (
-                            <span key={f.code} className="inline-flex mr-2 mb-1 rounded bg-rose-50 text-rose-900 px-2 py-0.5" title={(f.comments || []).join(" · ")}>
-                              {f.label} : {f.count}
-                              {(f.comments || [])[0] ? ` — ${(f.comments || [])[0]}` : ""}
-                            </span>
+                            <RepartitionChampErreur key={f.code} agent={a} field={f} onOpen={openFiche} />
                           ))}
                           {!(a.by_field || []).length && "—"}
                         </td>
@@ -1013,6 +1002,111 @@ export default function GestionReponsesOffres() {
       </>)}
       </div>
     </Layout>
+  );
+}
+
+function texteErreurRecente(erreur) {
+  const label = erreur?.label || erreur?.code || "Erreur";
+  const detail = erreur?.detail ? ` — ${erreur.detail}` : "";
+  const numero = erreur?.numero ? ` (${erreur.numero})` : "";
+  return `${label}${detail}${numero}`;
+}
+
+function dossiersDuChamp(agent, field) {
+  const fromApi = Array.isArray(field?.dossiers) ? field.dossiers.filter((d) => d?.demande_id) : [];
+  const source = fromApi.length
+    ? fromApi
+    : (Array.isArray(agent?.items) ? agent.items : []).reduce((acc, rec) => {
+      const code = rec?.field || rec?.code;
+      if (code !== field?.code || !rec?.demande_id || acc.some((d) => d.demande_id === rec.demande_id)) return acc;
+      acc.push({
+        demande_id: rec.demande_id,
+        numero: rec.demande_numero || rec.numero || null,
+        client: rec.client || null,
+        at: rec.at || rec.date || null,
+      });
+      return acc;
+    }, []);
+  return [...source].sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
+}
+
+function ErreursRecentesCell({ erreurs, onOpen }) {
+  const list = Array.isArray(erreurs) ? erreurs : [];
+  if (!list.length) return "—";
+  return (
+    <>
+      {list.slice(0, 3).map((erreur, index) => {
+        const text = texteErreurRecente(erreur);
+        if (!erreur?.demande_id) {
+          return <span key={`${erreur?.numero || "err"}-${index}`} className="block truncate">{text}</span>;
+        }
+        return (
+          <button
+            key={`${erreur.demande_id}-${erreur.erreur_id || erreur.code || index}`}
+            type="button"
+            className="block w-full truncate text-left text-[#002FA7] hover:underline"
+            data-testid="scoring-erreur-link"
+            title="Ouvrir le dossier"
+            onClick={() => onOpen(erreur.demande_id)}
+          >
+            {text}
+          </button>
+        );
+      })}
+      {list.length > 3 && <span className="text-slate-400">+{list.length - 3} autres</span>}
+    </>
+  );
+}
+
+function RepartitionChampErreur({ agent, field, onOpen }) {
+  const dossiers = dossiersDuChamp(agent, field);
+  const [open, setOpen] = useState(false);
+  const label = `${field.label} : ${field.count}${(field.comments || [])[0] ? ` — ${field.comments[0]}` : ""}`;
+  const chip = "inline-flex mr-2 mb-1 rounded bg-rose-50 text-rose-900 px-2 py-0.5 text-left";
+  if (dossiers.length <= 1) {
+    const demandeId = dossiers[0]?.demande_id;
+    if (!demandeId) {
+      return <span className={chip} title={(field.comments || []).join(" · ")}>{label}</span>;
+    }
+    return (
+      <button
+        type="button"
+        className={`${chip} hover:bg-rose-100 hover:underline`}
+        title="Ouvrir le dossier"
+        data-testid="erreur-champ-link"
+        onClick={() => onOpen(demandeId)}
+      >
+        {label}
+      </button>
+    );
+  }
+  return (
+    <span className="inline-flex flex-col items-start mr-2 mb-1 align-top">
+      <button
+        type="button"
+        className="inline-flex rounded bg-rose-50 text-rose-900 px-2 py-0.5 hover:bg-rose-100"
+        title="Choisir le dossier"
+        data-testid="erreur-champ-link"
+        onClick={() => setOpen((value) => !value)}
+      >
+        {label}
+      </button>
+      {open && (
+        <span className="mt-1 flex flex-col gap-0.5 rounded border border-rose-100 bg-white p-1 shadow-sm">
+          {dossiers.map((dossier) => (
+            <button
+              key={dossier.demande_id}
+              type="button"
+              className="px-1 text-left text-[11px] text-[#002FA7] hover:underline"
+              data-testid="erreur-champ-dossier"
+              onClick={() => onOpen(dossier.demande_id)}
+            >
+              {dossier.numero || "Dossier"}{dossier.client ? ` — ${dossier.client}` : ""}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
   );
 }
 

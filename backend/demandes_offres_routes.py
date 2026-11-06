@@ -2911,6 +2911,69 @@ def attach_demandes_offres_routes(
         fresh = await require_demande(demande_id, user)
         return serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
 
+    @api_router.delete("/demandes-offres/{demande_id}/erreurs/{erreur_ref}")
+    async def retirer_erreur_signalee(
+        demande_id: str,
+        erreur_ref: str,
+        user: User = Depends(current_user_dependency),
+    ):
+        """
+        Retire une erreur déjà enregistrée. Le scoring ne la compte plus.
+        La demande, son statut et les autres erreurs du dossier restent.
+        """
+        require_perm(
+            user,
+            (PERM_DEMANDES_OFFRES_PROCESS, PERM_USERS_MANAGE),
+            detail="Réservé aux gestionnaires d'offres",
+        )
+        doc = await require_demande(demande_id, user)
+        stored = await db[COLLECTION_ERREURS].find(
+            {"user_id": TENANT_USER_ID, "demande_id": demande_id},
+        ).to_list(2000)
+        embedded = [e for e in (doc.get("erreurs_agent") or []) if isinstance(e, dict)]
+        remaining, removed = retirer_erreur_agent(
+            list(stored) + embedded,
+            demande_id=demande_id,
+            erreur_ref=erreur_ref,
+        )
+        if not removed:
+            raise HTTPException(status_code=404, detail="Erreur introuvable")
+        kept, _dupes = dedupe_erreur_records(remaining, demande_id=demande_id)
+        slim = [{k: v for k, v in r.items() if k not in {"user_id", "_id"}} for r in kept]
+        delete_filter: dict = {"user_id": TENANT_USER_ID, "demande_id": demande_id}
+        clauses = []
+        removed_id = str(removed.get("id") or "").strip()
+        removed_field = str(removed.get("field") or "").strip()
+        if removed_id:
+            clauses.append({"id": removed_id})
+        if removed_field:
+            clauses.append({"field": removed_field})
+        if clauses:
+            delete_filter["$or"] = clauses
+            await db[COLLECTION_ERREURS].delete_many(delete_filter)
+        # Historique seulement : pas de nouveau statut, pas d'e-mail, pas de document.
+        await db[COLLECTION].update_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID},
+            {
+                "$set": {"erreurs_agent": slim, "updated_at": now_iso()},
+                "$push": {
+                    "historique": history(
+                        "Erreur retirée",
+                        user,
+                        detail_erreur_retiree(removed),
+                        meta={
+                            "erreur_id": removed.get("id"),
+                            "field": removed.get("field"),
+                            "field_label": removed.get("field_label"),
+                            "demande_id": demande_id,
+                        },
+                    )
+                },
+            },
+        )
+        fresh = await require_demande(demande_id, user)
+        return serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
+
     @api_router.post("/demandes-offres/{demande_id}/offres/{offre_id}/documents")
     async def add_documents_to_company_offer(
         request: Request,

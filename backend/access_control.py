@@ -841,6 +841,8 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("POST",), r"^/demandes-offres/[^/]+/complements/[^/]+/reponse$", (PERM_DEMANDES_OFFRES_EDIT, PERM_DEMANDES_OFFRES_PROCESS)),
     (("POST",), r"^/demandes-offres/[^/]+/complements/[^/]+/cloturer$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/erreurs$", PERM_DEMANDES_OFFRES_PROCESS),
+    # Retrait d'une erreur : gestionnaire (process) ou admin (users.manage). Avant le DELETE générique.
+    (("DELETE",), r"^/demandes-offres/[^/]+/erreurs/[^/]+$", (PERM_DEMANDES_OFFRES_PROCESS, PERM_USERS_MANAGE)),
     (("POST",), r"^/demandes-offres/[^/]+/soumis-compagnie$", PERM_DEMANDES_OFFRES_PROCESS),
     (("POST",), r"^/demandes-offres/[^/]+/demande-annulee$", PERM_DEMANDES_OFFRES_PROCESS),
     # Créateur (edit) ou gestionnaire (process). Le handler refuse un conseiller tiers.

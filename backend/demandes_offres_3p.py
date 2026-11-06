@@ -370,6 +370,60 @@ def active_erreur_field_keys(records: list, *, demande_id: Optional[str] = None)
     return {erreur_field_key(rec) for rec in kept if erreur_field_key(rec)}
 
 
+def _erreur_sur_demande(rec: dict, demande_id: str) -> bool:
+    """Un enregistrement sans demande_id est celui de la demande en cours de traitement."""
+    did = str(rec.get("demande_id") or "").strip()
+    return not did or did == demande_id
+
+
+def retirer_erreur_agent(records: list, *, demande_id: str, erreur_ref: str) -> tuple:
+    """
+    Retire une erreur d'une demande (par id, ou par code de champ s'il est unique).
+    Tout le groupe demande + champ part, y compris un doublon.
+    Les autres champs et les autres demandes restent. La demande elle-même n'est pas touchée.
+    """
+    demande_id = str(demande_id or "").strip()
+    ref = str(erreur_ref or "").strip()
+    pool = [rec for rec in (records or []) if isinstance(rec, dict)]
+    if not demande_id or not ref:
+        return pool, None
+
+    on_demande = [rec for rec in pool if _erreur_sur_demande(rec, demande_id)]
+    target = next((rec for rec in on_demande if str(rec.get("id") or "") == ref), None)
+    if target is None:
+        field_matches = [rec for rec in on_demande if erreur_field_key(rec) == ref.casefold()]
+        if field_matches and len({erreur_field_key(rec) for rec in field_matches}) == 1:
+            target = field_matches[0]
+    if target is None:
+        return pool, None
+
+    target_field = erreur_field_key(target)
+    remaining = []
+    for rec in pool:
+        if not _erreur_sur_demande(rec, demande_id):
+            remaining.append(rec)
+            continue
+        if target_field and erreur_field_key(rec) == target_field:
+            continue
+        if not target_field and rec is target:
+            continue
+        remaining.append(rec)
+    return remaining, target
+
+
+def detail_erreur_retiree(rec: dict) -> str:
+    """Libellé d'historique : le champ, et le motif s'il existe."""
+    label = str(rec.get("field_label") or "").strip() or erreurs_champs_label(str(rec.get("field") or ""))
+    label = label.strip() or "Erreur"
+    comment = str(rec.get("comment") or rec.get("detail") or "").strip()
+    if comment:
+        return f"{label} — {comment}"
+    numero = str(rec.get("demande_numero") or rec.get("numero") or "").strip()
+    if numero:
+        return f"{label} ({numero})"
+    return label
+
+
 def compute_erreurs_agent_stats(records: list) -> dict:
     """
     Agrège les erreurs champ par agent, après dédoublonnage demande + champ.
@@ -400,17 +454,41 @@ def compute_erreurs_agent_stats(records: list) -> dict:
         field_label = rec.get("field_label") or erreurs_champs_label(field_code)
         by_agent[key]["total"] += 1
         bucket = by_agent[key]["by_field"].setdefault(
-            field_code, {"code": field_code, "label": field_label, "count": 0, "comments": []}
+            field_code,
+            {"code": field_code, "label": field_label, "count": 0, "comments": [], "dossiers": []},
         )
         bucket["count"] += 1
         comment = str(rec.get("comment") or "").strip()
         if comment and comment not in bucket["comments"] and len(bucket["comments"]) < 3:
             bucket["comments"].append(comment)
+        dossier_id = str(rec.get("demande_id") or "").strip()
+        if dossier_id and not any(d.get("demande_id") == dossier_id for d in bucket["dossiers"]):
+            bucket["dossiers"].append({
+                "demande_id": dossier_id,
+                "numero": rec.get("demande_numero") or rec.get("numero") or None,
+                "client": rec.get("client") or None,
+                "at": rec.get("at") or rec.get("date") or None,
+                "erreur_id": rec.get("id"),
+            })
         by_agent[key]["items"].append(rec)
 
     out = []
     for a in by_agent.values():
-        fields = sorted(a["by_field"].values(), key=lambda x: (-x["count"], x["label"].casefold()))
+        fields = []
+        for bucket in a["by_field"].values():
+            dossiers = sorted(
+                list(bucket.get("dossiers") or []),
+                key=lambda d: str(d.get("at") or ""),
+                reverse=True,
+            )
+            fields.append({
+                "code": bucket["code"],
+                "label": bucket["label"],
+                "count": bucket["count"],
+                "comments": bucket["comments"],
+                "dossiers": dossiers,
+            })
+        fields.sort(key=lambda x: (-x["count"], (x.get("label") or "").casefold()))
         out.append({
             "agent": a["agent"],
             "agent_id": a.get("agent_id"),
@@ -1559,6 +1637,7 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "inclure_cga": bool(doc.get("inclure_cga")),
         "date_prochain_rdv": doc.get("date_prochain_rdv") or "",
         "heure_rdv": doc.get("heure_rdv") or "",
+        "rdv_client_formulaire": {"date": "", "heure": ""},
         "urgente": bool(doc.get("urgente")),
         "urgence_motif": doc.get("urgence_motif") or "",
         "urgence_at": doc.get("urgence_at"),
@@ -1635,6 +1714,15 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
             or statut == STATUT_OFFRE_SIGNEE
         ),
     }
+    try:
+        from offre_form_types import rdv_client_depuis_formulaire
+
+        form_date, form_heure = rdv_client_depuis_formulaire(
+            doc.get("form_type"), doc.get("form_payload")
+        )
+        out["rdv_client_formulaire"] = {"date": form_date, "heure": form_heure}
+    except Exception:
+        out["rdv_client_formulaire"] = {"date": "", "heure": ""}
     try:
         from mandat_gestion_offre import (
             MANDAT_INFO_MESSAGE,
@@ -2438,9 +2526,10 @@ def compute_erreur_stats(rows: list, error_records: Optional[list] = None) -> di
         prenom = (r.get("prenom") or "").strip()
         for err in unique:
             agents[key]["erreurs"].append({
-                "demande_id": r.get("id"),
-                "numero": r.get("numero"),
-                "client": prenom or "—",
+                "demande_id": r.get("id") or err.get("demande_id"),
+                "erreur_id": err.get("id"),
+                "numero": r.get("numero") or err.get("demande_numero"),
+                "client": prenom or err.get("client") or "—",
                 "code": err.get("field") or err.get("code"),
                 "label": err.get("field_label") or err.get("label") or erreurs_champs_label(err.get("field") or ""),
                 "detail": err.get("comment") or err.get("detail"),
