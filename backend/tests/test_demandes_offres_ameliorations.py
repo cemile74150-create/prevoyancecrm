@@ -321,6 +321,7 @@ def test_compteurs_separent_la_relance_de_l_attente():
         "attente_compagnie": 1,
         "relances": 1,
         "offre_transmise": 1,
+        "offres_partielles": 0,
     }
     assert relance_en_cours(rows[3]) is True
     assert relance_en_cours(rows[2]) is False

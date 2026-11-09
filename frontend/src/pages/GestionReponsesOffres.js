@@ -37,6 +37,7 @@ import {
 import { uniqueConseillerNames } from "@/lib/conseillers";
 import { PendingComplementBadge } from "@/components/NotesConseiller";
 import { offreNotificationPath } from "@/lib/complementsOffre";
+import { FILE_COLUMNS, urgenceDelaiLabel } from "@/lib/transmissionOffre";
 import {
   Bell, Briefcase, ClipboardList, Columns3, Eye, Filter,
   Loader2, Search, Users, AlertTriangle, Inbox, Sparkles, Clock, BarChart3,
@@ -55,10 +56,7 @@ const DAY_ACTIONS = [
 
 const TERMINAL = new Set(["Offre signée", "Offre refusée", "Demande annulée", "demande_annulee", "offre_non_signee", "Offre non signée", "Brouillon"]);
 
-const FILE_HEADERS = [
-  "Client", "Conseiller", "Type", "Date création", "Date envoi", "RDV client",
-  "Compagnies", "Statut", "Soumis cie.", "Dernière action", "Jours", "Priorité", "Action",
-];
+const FILE_HEADERS = FILE_COLUMNS;
 
 function prioRank(p) {
   if (p === "urgent") return 0;
@@ -708,12 +706,18 @@ export default function GestionReponsesOffres() {
                                   : ""
                           }`}
                         >
-                          <td className="px-3 py-2 font-medium text-slate-900 whitespace-nowrap">
+                          <td className="px-3 py-2 font-bold text-slate-900 whitespace-nowrap" data-testid="file-agent">
+                            {r.agent_label || "—"}
+                          </td>
+                          <td className="px-3 py-2 font-normal text-slate-800 whitespace-nowrap" data-testid="file-client">
                             {clientLabel(r)}
                             {r.urgente && (
                               <span className="ml-2 inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-semibold text-white">URGENT</span>
                             )}
                             {r.numero && <span className="block text-[10px] text-slate-400 font-normal">{r.numero}</span>}
+                            {r.urgente && urgenceDelaiLabel(r) ? (
+                              <span className="mt-1 block text-[11px] font-semibold text-rose-800">{urgenceDelaiLabel(r)}</span>
+                            ) : null}
                             {r.urgente && r.urgence_motif ? (
                               <span className="mt-1 block max-w-[220px] whitespace-normal text-[11px] font-normal text-rose-800">{r.urgence_motif}</span>
                             ) : null}
@@ -729,7 +733,6 @@ export default function GestionReponsesOffres() {
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.agent_label || "—"}</td>
                           <td className="px-3 py-2 text-slate-600 max-w-[140px] truncate" title={typeLabel(r)}>{typeLabel(r)}</td>
                           <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{formatDateFr(r.created_at)}</td>
                           <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{formatDateFr(r.date_envoi)}</td>
@@ -872,7 +875,7 @@ export default function GestionReponsesOffres() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50/80 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                    {["Conseiller", "Demandes", "Variantes", "Offres reçues", "Incomplètes", "Complètes", "Signées"].map((h) => (
+                    {["Conseiller", "Demandes", "Offres sollicitées", "Offres reçues", "Incomplètes", "Complètes", "Signées"].map((h) => (
                       <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>
                     ))}
                   </tr>

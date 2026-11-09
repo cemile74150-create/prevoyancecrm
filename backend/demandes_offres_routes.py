@@ -220,6 +220,11 @@ class InternalNoteRequest(BaseModel):
 class UrgenceRequest(BaseModel):
     urgente: bool = False
     motif: str = ""
+    delai_24h: bool = False
+
+
+class MessageDemandeRequest(BaseModel):
+    contenu: str = ""
 
 
 class OffresCompletesRequest(BaseModel):
@@ -1644,8 +1649,9 @@ def attach_demandes_offres_routes(
         user: User,
         commentaire: str = "",
         compagnie: str = "",
+        auto: bool = False,
     ) -> None:
-        from demandes_offres_ameliorations import enregistrer_suivi
+        from demandes_offres_ameliorations import ETAPE_OFFRES_PARTIELLES, enregistrer_suivi
 
         try:
             patch = enregistrer_suivi(
@@ -1663,9 +1669,10 @@ def attach_demandes_offres_routes(
         parts = [f"{previous} → {event.get('label') or ''}"]
         suivi_set = {
             "suivi_etape": patch["suivi_etape"],
+            "suivi_auto": bool(doc.get("suivi_auto")) if etape == "relance" else bool(auto),
             "updated_at": now_iso(),
         }
-        if (event.get("etape") == "offre_transmise") and not (doc.get("offre_transmise_agent_at") or ""):
+        if event.get("etape") in {"offre_transmise", ETAPE_OFFRES_PARTIELLES} and not (doc.get("offre_transmise_agent_at") or ""):
             suivi_set["offre_transmise_agent_at"] = event.get("at") or now_iso()
         if event.get("compagnie"):
             parts.append(event["compagnie"])
@@ -1693,6 +1700,34 @@ def attach_demandes_offres_routes(
                 },
             },
         )
+
+    async def apply_transmission_suivi(doc: dict, user: User, compagnie: str) -> bool:
+        """Aligne l'avancement sur les compagnies transmises. Vrai si la demande a changé.
+
+        Une issue du workflow (envoyée au client, signée, annulée…) n'est jamais écrasée.
+        """
+        from demandes_offres_ameliorations import (
+            ETAPE_OFFRES_PARTIELLES,
+            etape_affichee,
+            etape_transmission_cible,
+        )
+
+        cible = etape_transmission_cible(doc)
+        if not cible:
+            return False
+        current = etape_affichee(doc)
+        if current in {"envoyee_client", "signee", "annulee", "refusee", "non_signee"}:
+            return False
+        if current != cible or (doc.get("suivi_auto") and doc.get("suivi_etape") != cible):
+            await persist_suivi(doc, cible, user, compagnie=compagnie, auto=True)
+            return True
+        if doc.get("suivi_etape") in {"offre_transmise", ETAPE_OFFRES_PARTIELLES} and not doc.get("suivi_auto"):
+            await db[COLLECTION].update_one(
+                {"id": doc.get("id"), "user_id": TENANT_USER_ID},
+                {"$set": {"suivi_auto": True}},
+            )
+            return True
+        return False
 
     @api_router.post("/demandes-offres/{demande_id}/suivi")
     async def post_suivi_demande(
@@ -2131,11 +2166,18 @@ def attach_demandes_offres_routes(
         manager = can_process_offres(user)
         if not owner and not manager:
             raise HTTPException(status_code=403, detail="Accès refusé")
+        from demandes_offres_ameliorations import (
+            URGENCE_DELAI_24H,
+            urgence_echeance_iso,
+            validate_urgence_request,
+        )
+
         want = bool(payload.urgente)
         motif = (payload.motif or "").strip()
         if want:
-            if not motif:
-                raise HTTPException(status_code=422, detail="Le motif de l'urgence est obligatoire")
+            refus = validate_urgence_request(want, motif, payload.delai_24h)
+            if refus:
+                raise HTTPException(status_code=422, detail=refus)
             if not doc.get("urgente"):
                 from demandes_offres_ameliorations import (
                     count_urgences_agent,
@@ -2165,10 +2207,17 @@ def attach_demandes_offres_routes(
                         "urgence_at": stamp,
                         "urgence_by": actor_name(user),
                         "urgence_by_id": user.account_id,
+                        "urgence_delai": URGENCE_DELAI_24H,
+                        "urgence_echeance_at": urgence_echeance_iso(stamp),
                         "updated_at": stamp,
                     },
                     "$push": {
-                        "historique": history("Demande marquée urgente", user, motif, statut=doc.get("statut")),
+                        "historique": history(
+                            "Demande marquée urgente",
+                            user,
+                            f"À traiter en moins de 24 heures · {motif}",
+                            statut=doc.get("statut"),
+                        ),
                     },
                 },
             )
@@ -2198,6 +2247,105 @@ def attach_demandes_offres_routes(
             )
         fresh = await require_demande(demande_id, user)
         return serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
+
+    async def require_demande_or_403(demande_id: str, user: User) -> dict:
+        """Comme require_demande, mais une demande existante hors périmètre répond 403."""
+        doc = await db[COLLECTION].find_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID, "is_deleted": {"$ne": True}},
+            {"_id": 0},
+        )
+        if not doc:
+            raise HTTPException(status_code=404, detail="Demande d'offre introuvable")
+        if not can_access_demande(user, doc):
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        return doc
+
+    async def thread_payload(demande_id: str, user: User, *, mark_read: bool) -> dict:
+        from demandes_offres_messages import (
+            COLLECTION_MESSAGES,
+            count_unread,
+            public_message,
+        )
+
+        rows = await db[COLLECTION_MESSAGES].find(
+            {"demande_id": demande_id, "user_id": TENANT_USER_ID},
+            {"_id": 0},
+        ).sort("created_at", 1).to_list(1000)
+        unread = count_unread(rows, user)
+        if mark_read and unread and user.account_id:
+            await db[COLLECTION_MESSAGES].update_many(
+                {"demande_id": demande_id, "user_id": TENANT_USER_ID, "read_by": {"$ne": user.account_id}},
+                {"$addToSet": {"read_by": user.account_id}},
+            )
+        return {
+            "demande_id": demande_id,
+            "messages": [public_message(row, user) for row in rows],
+            "non_lus": unread,
+        }
+
+    @api_router.get("/demandes-offres/{demande_id}/messages")
+    async def list_demande_messages(
+        demande_id: str,
+        marquer_lu: bool = Query(True),
+        user: User = Depends(current_user_dependency),
+    ):
+        """Fil agent / gestionnaire. Lecture : toute personne qui peut consulter la demande."""
+        from demandes_offres_messages import can_read_thread, message_role
+
+        doc = await require_demande_or_403(demande_id, user)
+        if not can_read_thread(user, doc):
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        payload = await thread_payload(demande_id, user, mark_read=bool(marquer_lu))
+        payload["peut_ecrire"] = message_role(user, doc) is not None
+        return payload
+
+    @api_router.post("/demandes-offres/{demande_id}/messages")
+    async def post_demande_message(
+        demande_id: str,
+        payload: MessageDemandeRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        """Ajoute un message au fil. Ne crée pas de demande et ne change pas son statut."""
+        from demandes_offres_messages import (
+            COLLECTION_MESSAGES,
+            ROLE_AGENT,
+            build_message,
+            clean_message_content,
+            message_role,
+        )
+
+        doc = await require_demande_or_403(demande_id, user)
+        role = message_role(user, doc)
+        if role is None:
+            raise HTTPException(status_code=403, detail="Seuls l'agent de la demande et les gestionnaires peuvent écrire")
+        try:
+            contenu = clean_message_content(payload.contenu)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        message = build_message(demande_id=demande_id, user=user, role=role, contenu=contenu, at=now_iso())
+        message["user_id"] = TENANT_USER_ID
+        await db[COLLECTION_MESSAGES].insert_one(dict(message))
+        apercu = contenu if len(contenu) <= 120 else f"{contenu[:117]}…"
+        if role == ROLE_AGENT:
+            await write_offre_notification(
+                doc=doc,
+                event="message",
+                title=f"Nouveau message — {doc.get('numero') or ''}".strip(),
+                message=f"{actor_name(user)} : {apercu}",
+                audience="gestionnaires",
+                account_ids=[aid for aid in await manager_account_ids() if aid != user.account_id],
+            )
+        else:
+            creator = doc.get("agent_account_id") or doc.get("created_by_account_id")
+            await write_offre_notification(
+                doc=doc,
+                event="message",
+                title=f"Nouveau message — {doc.get('numero') or ''}".strip(),
+                message=f"{actor_name(user)} : {apercu}",
+                audience="conseiller",
+                account_ids=[creator] if creator and creator != user.account_id else [],
+            )
+        return await thread_payload(demande_id, user, mark_read=False)
 
     @api_router.post("/demandes-offres/{demande_id}/envoyer")
     async def send_demande_offre(
@@ -2598,24 +2746,132 @@ def attach_demandes_offres_routes(
         duree: Optional[str] = Form(None),
         commentaires: Optional[str] = Form(None),
         file: Optional[UploadFile] = File(None),
+        nb_variantes: Optional[str] = Form(None),
+        parcours: Optional[str] = Form(None),
+        client_token: Optional[str] = Form(None),
         user: User = Depends(current_user_dependency),
     ):
+        """Transmet une offre compagnie à l'agent.
+
+        parcours=reponses_compagnies : N variantes, chacune avec Offre et CGA
+        (variante_<n>_offre / _cga / _autre). parcours=traitement : un ou
+        plusieurs documents simples. Sans parcours : ancien client, inchangé.
+        """
+        from demandes_offres_transmission import (
+            PARCOURS_REPONSES,
+            PARCOURS_TRAITEMENT,
+            build_transmission,
+            document_variante_extra,
+            find_transmission,
+            group_variante_uploads,
+            history_detail,
+            missing_variante_pieces,
+            normalize_parcours,
+            parse_nb_variantes,
+            total_variantes,
+            VARIANTE_PIECES,
+        )
+
+        def form_text(value: Any) -> Optional[str]:
+            return value if isinstance(value, str) else None
+
         require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
         doc = await require_demande(demande_id, user)
-        uploads = await collect_multipart_uploads(request, single_file=file)
-
-        stored_docs = []
-        for upload in uploads:
-            stored_docs.append(
-                await store_doc(demande_id, upload, user, category="Offre compagnie")
-            )
+        parcours_raw = form_text(parcours)
+        parcours_code = normalize_parcours(parcours_raw)
+        token = (form_text(client_token) or "").strip()
 
         existing = normalize_offres_list(doc)
         try:
             compagnie_name = resolve_compagnie_saisie(doc, compagnie, existing)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not (date_reception or "").strip():
+            raise HTTPException(status_code=422, detail="Date de réception obligatoire")
+
+        if find_transmission(existing, token):
+            fresh = await require_demande(demande_id, user)
+            result = serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
+            result["transmission_deja_enregistree"] = True
+            return result
+
+        nb = None
+        variante_groups: dict = {}
+        simple_uploads: list = []
+        if parcours_code == PARCOURS_REPONSES:
+            try:
+                nb = parse_nb_variantes(form_text(nb_variantes))
+                form = await request.form()
+                items = [
+                    (key, value)
+                    for key, value in form.multi_items()
+                    if isinstance(value, (UploadFile, StarletteUploadFile))
+                    and (getattr(value, "filename", None) or "").strip()
+                ]
+                variante_groups = group_variante_uploads(items, nb)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            missing = missing_variante_pieces(variante_groups, nb)
+            if missing:
+                raise HTTPException(status_code=422, detail="Documents manquants : " + " · ".join(missing))
+            pending_uploads = [
+                upload
+                for pieces in variante_groups.values()
+                for uploads in pieces.values()
+                for upload in uploads
+            ]
+        else:
+            simple_uploads = await collect_multipart_uploads(request, single_file=file)
+            if parcours_raw == PARCOURS_TRAITEMENT and not simple_uploads:
+                raise HTTPException(status_code=422, detail="Ajoutez le document de l'offre")
+            pending_uploads = simple_uploads
+        if any(getattr(upload, "size", None) == 0 for upload in pending_uploads):
+            raise HTTPException(status_code=400, detail="Fichier vide")
+
+        transmission_id = str(uuid.uuid4())
+        stored_docs = []
+        stored_by_variante: dict = {}
+        for index, pieces in variante_groups.items():
+            stored_by_variante[index] = {}
+            for piece, _label in VARIANTE_PIECES:
+                stored_by_variante[index][piece] = []
+                for upload in pieces.get(piece) or []:
+                    stored = await store_doc(
+                        demande_id, upload, user, category="Offre compagnie",
+                        extra=document_variante_extra(
+                            transmission_id=transmission_id, parcours=parcours_code,
+                            compagnie=compagnie_name, variante=index, piece=piece,
+                        ),
+                    )
+                    stored_by_variante[index][piece].append(stored)
+                    stored_docs.append(stored)
+        stored_simple = []
+        for upload in simple_uploads:
+            stored = await store_doc(
+                demande_id, upload, user, category="Offre compagnie",
+                extra=document_variante_extra(
+                    transmission_id=transmission_id, parcours=parcours_code, compagnie=compagnie_name,
+                ),
+            )
+            stored_simple.append(stored)
+            stored_docs.append(stored)
+
         prev = find_offre_for_compagnie(existing, compagnie_name)
+        transmission = build_transmission(
+            parcours=parcours_code,
+            compagnie=compagnie_name,
+            date_reception=date_reception.strip(),
+            nb_variantes=nb or 0,
+            stored_by_variante=stored_by_variante,
+            stored_simple=stored_simple,
+            commentaire=commentaires or "",
+            by_name=actor_name(user),
+            by_id=str(user.account_id or ""),
+            at=now_iso(),
+            client_token=token,
+            transmission_id=transmission_id,
+        )
+        transmissions = [*((prev or {}).get("transmissions") or []), transmission]
         base = {
             "id": (prev or {}).get("id") or str(uuid.uuid4()),
             "compagnie": compagnie_name,
@@ -2636,14 +2892,16 @@ def attach_demandes_offres_routes(
             "received_by": actor_name(user),
             "incomplete_comment": None,
             "incomplete_at": None,
+            "transmissions": transmissions,
+            "nb_variantes": total_variantes(transmissions) or None,
         }
         offer = append_documents_to_offre(base, stored_docs)
         existing = upsert_company_offre(existing, offer)
         # Récupérer la version fusionnée (documents cumulés)
         offer = find_offre_for_compagnie(existing, compagnie_name) or offer
         new_statut = resolve_statut_apres_reception_offre(doc, existing)
-        hist_detail = compagnie_name
-        if stored_docs:
+        hist_detail = history_detail(transmission, len(stored_docs)) if parcours_raw else compagnie_name
+        if not parcours_raw and stored_docs:
             hist_detail = f"{compagnie_name} · {len(stored_docs)} document(s)"
         result = await save_status(
             demande_id,
@@ -2655,7 +2913,7 @@ def attach_demandes_offres_routes(
                 "offres": existing,
                 "offre": offer,  # dernière offre (compat UI)
             },
-            meta={"compagnie": compagnie_name, "offre_id": offer.get("id")},
+            meta={"compagnie": compagnie_name, "offre_id": offer.get("id"), "transmission_id": transmission_id},
             document_id=(offer.get("documents") or [{}])[-1].get("id") if offer.get("documents") else None,
         )
         mail_doc = {
@@ -2671,26 +2929,20 @@ def attach_demandes_offres_routes(
                 {"id": demande_id, "user_id": TENANT_USER_ID},
                 {"$set": {"offre_recue_email_sent": True, "updated_at": now_iso()}},
             )
-        from demandes_offres_ameliorations import etape_affichee
-
         fresh_after_offer = await require_demande(demande_id, user)
-        if etape_affichee(fresh_after_offer) != "offre_transmise":
-            await persist_suivi(
-                fresh_after_offer,
-                "offre_transmise",
-                user,
-                compagnie=compagnie_name,
-            )
+        if await apply_transmission_suivi(fresh_after_offer, user, compagnie_name):
             fresh_after_offer = await require_demande(demande_id, user)
         result = serialize_demande(fresh_after_offer, docs=await docs_for(demande_id), viewer=user)
         if isinstance(result, dict):
             result["email_sent"] = sent
             result["email_error"] = email_error
+            result["transmission_id"] = transmission_id
+        variantes_txt = f" ({nb} variante{'s' if nb > 1 else ''})" if nb else ""
         await write_offre_notification(
             doc=doc,
             event="recue",
             title=f"Offre reçue — {doc.get('numero') or ''}".strip(),
-            message=f"Offre {compagnie_name} disponible pour consultation.",
+            message=f"Offre {compagnie_name}{variantes_txt} disponible pour consultation.",
             audience="conseiller",
             account_ids=[doc.get("created_by_account_id")] if doc.get("created_by_account_id") else [],
         )
@@ -4190,7 +4442,7 @@ def attach_demandes_offres_routes(
         )
         if not record:
             raise HTTPException(status_code=404, detail="Document introuvable")
-        await require_demande(record.get("demande_id") or "", user)
+        await require_demande_or_403(record.get("demande_id") or "", user)
         try:
             data = await maybe_await(load_storage_bytes(record["storage_path"]))
         except Exception as exc:

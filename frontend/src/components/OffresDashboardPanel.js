@@ -27,7 +27,7 @@ const KPI_DEFS = [
   { key: "incompletes", label: "Offres incomplètes", icon: AlertTriangle, accent: "bg-rose-100 text-rose-700" },
   { key: "signees", label: "Offres signées", icon: CheckCircle2, accent: "bg-emerald-100 text-emerald-700" },
   { key: "envoyees", label: "Offres envoyées au client", icon: FileSpreadsheet, accent: "bg-purple-100 text-purple-700" },
-  { key: "variantes", label: "Variantes sollicitées", icon: Layers, accent: "bg-blue-100 text-blue-700" },
+  { key: "variantes", label: "Offres sollicitées", icon: Layers, accent: "bg-blue-100 text-blue-700" },
   { key: "completes", label: "Offres complètes", icon: CheckCircle2, accent: "bg-emerald-100 text-emerald-700" },
 ];
 

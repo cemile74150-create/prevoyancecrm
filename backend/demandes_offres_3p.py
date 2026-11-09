@@ -1643,6 +1643,8 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
         "urgence_at": doc.get("urgence_at"),
         "urgence_by": doc.get("urgence_by") or "",
         "urgence_exception": bool(doc.get("urgence_exception")),
+        "urgence_delai": doc.get("urgence_delai") or "",
+        "urgence_echeance_at": doc.get("urgence_echeance_at"),
         "suivi_etape": doc.get("suivi_etape") or "",
         "suivi_evenements": list(doc.get("suivi_evenements") or []),
         "etape_suivi": "",
@@ -1741,12 +1743,14 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
             SUIVI_LABELS,
             est_nouvelle_demande,
             etape_affichee,
+            etat_transmission,
             relance_en_cours,
         )
 
         code = etape_affichee(doc)
         out["etape_suivi"] = code
         out["etape_suivi_label"] = SUIVI_LABELS.get(code, code)
+        out["transmission"] = etat_transmission(doc)
         out["est_nouvelle"] = est_nouvelle_demande(doc)
         out["relance_en_cours"] = relance_en_cours(doc)
         out["gestion_consultee_at"] = doc.get("gestion_consultee_at") or ""
@@ -1834,11 +1838,21 @@ def _row_offres(doc: dict) -> list:
     return offres
 
 
+OFFRE_DOCUMENT_OPTIONAL_KEYS = ("variante", "piece_kind", "transmission_id", "transmission_parcours")
+
+
+def _copy_optional_document_keys(source: dict, target: dict) -> dict:
+    for key in OFFRE_DOCUMENT_OPTIONAL_KEYS:
+        if source.get(key) not in (None, ""):
+            target[key] = source.get(key)
+    return target
+
+
 def document_ref_from_stored(stored: Optional[dict]) -> Optional[dict]:
     """Résumé document stocké, attachable à une offre compagnie."""
     if not stored or not isinstance(stored, dict):
         return None
-    return {
+    return _copy_optional_document_keys(stored, {
         "id": stored.get("id"),
         "original_filename": stored.get("original_filename") or stored.get("filename") or "Document",
         "content_type": stored.get("content_type") or "application/octet-stream",
@@ -1846,7 +1860,7 @@ def document_ref_from_stored(stored: Optional[dict]) -> Optional[dict]:
         "category": stored.get("category") or "Offre compagnie",
         "created_at": stored.get("created_at") or now_iso(),
         "uploaded_by_name": stored.get("uploaded_by_name"),
-    }
+    })
 
 
 def normalize_offre_documents(offer: dict) -> list:
@@ -1866,7 +1880,7 @@ def normalize_offre_documents(offer: dict) -> list:
             continue
         if did:
             seen.add(did)
-        docs.append({
+        docs.append(_copy_optional_document_keys(item, {
             "id": did,
             "original_filename": item.get("original_filename") or item.get("filename") or "Document",
             "content_type": item.get("content_type") or "application/octet-stream",
@@ -1874,7 +1888,7 @@ def normalize_offre_documents(offer: dict) -> list:
             "category": item.get("category") or "Offre compagnie",
             "created_at": item.get("created_at") or offer.get("received_at") or now_iso(),
             "uploaded_by_name": item.get("uploaded_by_name"),
-        })
+        }))
     legacy_id = offer.get("document_id")
     if legacy_id and legacy_id not in seen:
         docs.append({
@@ -2181,6 +2195,15 @@ def resolve_statut_apres_reception_offre(doc: dict, offres: list) -> str:
     return current
 
 
+def _public_transmissions(offer: Optional[dict]) -> list:
+    out = []
+    for item in (offer or {}).get("transmissions") or []:
+        if not isinstance(item, dict):
+            continue
+        out.append({key: value for key, value in item.items() if key != "client_token"})
+    return out
+
+
 def build_reponses_compagnies(doc: dict) -> list:
     """
     Cartes « RÉPONSES DES COMPAGNIES » : une entrée par compagnie sollicitée,
@@ -2214,6 +2237,7 @@ def build_reponses_compagnies(doc: dict) -> list:
                 "garanties": offer.get("garanties"),
                 "commentaires": offer.get("commentaires"),
                 "documents": normalize_offre_documents(offer),
+                "transmissions": _public_transmissions(offer),
                 "retenue": False,
                 "has_offre": True,
                 "incomplete_comment": offer.get("incomplete_comment"),
@@ -2264,6 +2288,7 @@ def build_reponses_compagnies(doc: dict) -> list:
             "garanties": o.get("garanties"),
             "commentaires": o.get("commentaires"),
             "documents": normalize_offre_documents(o),
+            "transmissions": _public_transmissions(o),
             "retenue": False,
             "has_offre": offer_has_received_payload(o),
             "incomplete_comment": o.get("incomplete_comment"),

@@ -29,6 +29,10 @@ from demandes_offres_3p import (
     normalize_statut,
 )
 
+ETAPE_OFFRES_PARTIELLES = "offres_partielles"
+URGENCE_DELAI_24H = "moins_24h"
+URGENCE_DELAI_24H_LABEL = "À traiter en moins de 24 heures"
+
 PIECE_KINDS = ("Offre", "CGA", "Autre document")
 PIECE_KIND_ALIASES = {
     "offre": "Offre",
@@ -51,7 +55,8 @@ SUIVI_LABELS = {
     "en_cours": "En cours de traitement",
     "attente_compagnie": "En attente de la compagnie",
     "relance": "Relance effectuée auprès de la compagnie",
-    "offre_transmise": "Offre transmise à l'agent",
+    "offre_transmise": "Offres transmises à l'agent",
+    ETAPE_OFFRES_PARTIELLES: "Offres partiellement transmises à l'agent",
     "envoyee_client": "Offre envoyée au client",
     "signee": "Offre signée",
     "annulee": "Demande annulée",
@@ -88,7 +93,32 @@ def urgence_payload(doc: dict) -> dict:
         "urgence_at": doc.get("urgence_at"),
         "urgence_by": doc.get("urgence_by") or "",
         "urgence_exception": bool(doc.get("urgence_exception")),
+        "urgence_delai": str(doc.get("urgence_delai") or ""),
+        "urgence_echeance_at": doc.get("urgence_echeance_at"),
     }
+
+
+def validate_urgence_request(urgente: bool, motif: Any, delai_24h: Any) -> Optional[str]:
+    """None si la pose est acceptable, sinon le motif du refus.
+
+    Le retrait (urgente=False) ne demande ni case ni motif.
+    """
+    if not urgente:
+        return None
+    if not parse_bool(delai_24h):
+        return "Cochez « Demande à traiter sous moins de 24 h » pour confirmer l'urgence."
+    if not str(motif or "").strip():
+        return "Le motif de l'urgence est obligatoire"
+    return None
+
+
+def urgence_echeance_iso(stamp: str) -> str:
+    from datetime import timedelta
+
+    moment = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return (moment + timedelta(hours=24)).isoformat()
 
 
 def validate_urgence_for_send(doc: dict) -> Optional[str]:
@@ -363,6 +393,9 @@ SUIVI_PIPELINE_PRINCIPAL = tuple(code for code in SUIVI_PIPELINE if code != "rel
 def etapes_visibles(doc: dict) -> list:
     """Sept étapes toujours listées. La relance est un événement, pas un remplacement."""
     current = etape_affichee(doc)
+    partielle = current == ETAPE_OFFRES_PARTIELLES
+    if partielle:
+        current = "attente_compagnie"
     if current not in SUIVI_PIPELINE_PRINCIPAL:
         current = ""
     index = SUIVI_PIPELINE_PRINCIPAL.index(current) if current else -1
@@ -383,12 +416,22 @@ def etapes_visibles(doc: dict) -> list:
             })
             continue
         position = SUIVI_PIPELINE_PRINCIPAL.index(code)
+        if partielle and code == "offre_transmise":
+            steps.append({
+                "id": code,
+                "label": SUIVI_LABELS[ETAPE_OFFRES_PARTIELLES],
+                "kind": "etape",
+                "reached": False,
+                "current": True,
+                "partielle": True,
+            })
+            continue
         steps.append({
             "id": code,
             "label": SUIVI_LABELS[code],
             "kind": "etape",
             "reached": index >= position,
-            "current": code == current,
+            "current": code == current and not partielle,
         })
     return steps
 
@@ -414,6 +457,66 @@ def etape_depuis_statut(statut: Any) -> str:
     return "en_attente"
 
 
+def compagnies_transmises(doc: dict) -> list[str]:
+    """Compagnies ayant au moins une offre transmise à l'agent.
+
+    Une compagnie compte une fois, quel que soit son nombre de variantes ou
+    de transmissions. Un document déposé hors « Transmettre une offre »
+    ne crée pas d'offre et ne compte donc pas. Une compagnie seulement
+    marquée « Incomplète », sans offre reçue, ne compte pas non plus.
+    """
+    from demandes_offres_3p import company_key, company_offer_data_present, normalize_offres_list
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for offer in normalize_offres_list(doc or {}):
+        key = company_key(offer.get("compagnie"))
+        if not key or key in seen or not company_offer_data_present(offer):
+            continue
+        seen.add(key)
+        out.append(str(offer.get("compagnie") or "").strip())
+    return out
+
+
+def etat_transmission(doc: dict) -> dict:
+    """Compagnies sollicitées face aux compagnies transmises.
+
+    etat : « aucune », « partielle » ou « complete ». Sans compagnie
+    sollicitée connue, une transmission suffit pour être complète.
+    """
+    from demandes_offres_3p import company_key, effective_compagnies
+
+    sollicitees = effective_compagnies(doc or {})
+    transmises = compagnies_transmises(doc or {})
+    transmises_keys = {company_key(name) for name in transmises}
+    manquantes = [name for name in sollicitees if company_key(name) not in transmises_keys]
+    if not transmises:
+        etat = "aucune"
+    elif not sollicitees or not manquantes:
+        etat = "complete"
+    else:
+        etat = "partielle"
+    nb_sollicitees_transmises = len(sollicitees) - len(manquantes)
+    return {
+        "etat": etat,
+        "sollicitees": sollicitees,
+        "transmises": transmises,
+        "manquantes": manquantes,
+        "nb_sollicitees": len(sollicitees),
+        "nb_transmises": nb_sollicitees_transmises if sollicitees else len(transmises),
+    }
+
+
+def etape_transmission_cible(doc: dict) -> Optional[str]:
+    """Étape à enregistrer après une transmission effective, ou None si aucune."""
+    etat = etat_transmission(doc)["etat"]
+    if etat == "complete":
+        return "offre_transmise"
+    if etat == "partielle":
+        return ETAPE_OFFRES_PARTIELLES
+    return None
+
+
 def etape_affichee(doc: dict) -> str:
     """L'étape choisie par le gestionnaire est affichée.
 
@@ -421,6 +524,11 @@ def etape_affichee(doc: dict) -> str:
     annulée, non signée) restent prioritaires. Sans étape enregistrée,
     un ancien dossier est lu depuis son statut. Une relance n'est jamais
     l'étape affichée.
+
+    Une étape posée par une transmission (suivi_auto) suit les compagnies
+    réellement transmises : partielle ou complète. Un choix manuel
+    « offre_transmise » et les anciens dossiers sans suivi_auto gardent
+    leur étape.
     """
     from_statut = etape_depuis_statut(doc.get("statut"))
     if from_statut in {"signee", "annulee", "refusee", "envoyee_client", "non_signee"}:
@@ -428,7 +536,11 @@ def etape_affichee(doc: dict) -> str:
     explicit = str(doc.get("suivi_etape") or "").strip()
     if explicit == "relance":
         explicit = "attente_compagnie"
-    if explicit in {"en_attente", "en_cours", "attente_compagnie", "offre_transmise"}:
+    if explicit in {"en_attente", "en_cours", "attente_compagnie"}:
+        return explicit
+    if explicit == ETAPE_OFFRES_PARTIELLES or (explicit == "offre_transmise" and doc.get("suivi_auto")):
+        return etape_transmission_cible(doc) or explicit
+    if explicit == "offre_transmise":
         return explicit
     return from_statut
 
@@ -466,6 +578,7 @@ def compteurs_avancement(rows: list) -> dict:
         "attente_compagnie": 0,
         "relances": 0,
         "offre_transmise": 0,
+        ETAPE_OFFRES_PARTIELLES: 0,
     }
     for row in rows or []:
         if row.get("is_deleted"):
@@ -506,7 +619,7 @@ def enregistrer_suivi(
     if code == "signee":
         raise ValueError("La signature passe par le workflow de document signé")
     current = etape_affichee(doc)
-    if code == "relance" and current not in {"attente_compagnie", "relance", "en_cours", "offre_transmise"}:
+    if code == "relance" and current not in {"attente_compagnie", "relance", "en_cours", "offre_transmise", ETAPE_OFFRES_PARTIELLES}:
         raise ValueError("Une relance suppose que le dossier a été transmis à une compagnie")
     stamp = at or datetime.now(timezone.utc).isoformat()
     previous = current

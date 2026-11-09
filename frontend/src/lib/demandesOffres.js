@@ -318,6 +318,7 @@ export const AVANCEMENT_BADGE_STYLE = {
   en_cours: "bg-sky-50 text-sky-900",
   attente_compagnie: "bg-amber-50 text-amber-950",
   offre_transmise: "bg-violet-50 text-violet-900",
+  offres_partielles: "bg-violet-50 text-violet-800 ring-1 ring-inset ring-violet-200",
   envoyee_client: "bg-indigo-50 text-indigo-900",
   signee: "bg-emerald-50 text-emerald-900",
   annulee: "bg-zinc-100 text-zinc-600",
@@ -531,7 +532,7 @@ export function formatVariantesSummary(row) {
   if (!n) return null;
   const shown = comps.slice(0, 3).join(", ");
   const extra = n > 3 ? ` +${n - 3}` : "";
-  return `${n} variante${n > 1 ? "s" : ""}${shown ? ` · ${shown}${extra}` : ""}`;
+  return `${n} offre${n > 1 ? "s" : ""} sollicitée${n > 1 ? "s" : ""}${shown ? ` · ${shown}${extra}` : ""}`;
 }
 
 export function formatChf(value) {

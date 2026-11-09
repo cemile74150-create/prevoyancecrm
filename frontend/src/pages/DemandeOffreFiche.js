@@ -21,12 +21,17 @@ import {
   PRIORITE_STYLE, prioriteLabel, erreurLabel, erreurChampLabel, formatDateTimeFr,
   prefillSchemaPayloadFromClient, soumisCompagnieLabel, isSoumisCompagnie,
   isDemandeAnnuleeStatut, isOffreNonSigneeStatut, isHorsCours, statutLabel, isDemandeAnnuleeFlag,
-  AUTRE_COMPAGNIE_VALUE, compagniesAffichees, compagniesEnregistrementOffre, resolveCompagnieSaisie,
+  compagniesAffichees, compagniesEnregistrementOffre,
   MANDAT_GESTION_DOC_CATEGORY, MANDAT_GESTION_INFO, mandatGestionMissing, hasMandatGestionDocument,
   isMandatGestionCategory, demandeRequiresMandatGestion,
 } from "@/lib/demandesOffres";
 import OffreSchemaForm, { SchemaReadOnlySummary, isFieldVisible } from "@/components/OffreSchemaForm";
 import NotesConseiller from "@/components/NotesConseiller";
+import DiscussionDemande from "@/components/DiscussionDemande";
+import { TransmettreOffreSimpleDialog, TransmettreVariantesDialog } from "@/components/TransmettreOffreDialogs";
+import {
+  SIGNALER_ERREUR_CLASS, documentsParVariante, urgenceDelaiLabel, urgenceRefus,
+} from "@/lib/transmissionOffre";
 import ClientSuggestInput from "@/components/ClientSuggestInput";
 import {
   resolveAgentIdentity,
@@ -136,6 +141,11 @@ export default function DemandeOffreFiche() {
   const [externalRetourDocument, setExternalRetourDocument] = useState(false);
   const [urgenceOpen, setUrgenceOpen] = useState(false);
   const [urgenceMotif, setUrgenceMotif] = useState("");
+  const [urgenceDelai24h, setUrgenceDelai24h] = useState(false);
+  const [urgenceErreur, setUrgenceErreur] = useState("");
+  const [variantesOpen, setVariantesOpen] = useState(false);
+  const [variantesCompagnie, setVariantesCompagnie] = useState("");
+  const [simpleOfferOpen, setSimpleOfferOpen] = useState(false);
   const [externalNoteFiles, setExternalNoteFiles] = useState([]);
   const [offresCompletesOpen, setOffresCompletesOpen] = useState(false);
   const [offresCompletesNote, setOffresCompletesNote] = useState("");
@@ -595,49 +605,25 @@ export default function DemandeOffreFiche() {
   };
 
   const addOffer = async () => {
-    const companyOptions = compagniesEnregistrementOffre(demande, meta.compagnies || COMPAGNIES_DEFAUT);
-    const compagnie = resolveCompagnieSaisie(offer.compagnie, offer.autre_compagnie, companyOptions);
-    if (!compagnie || !offer.date_reception) {
-      return toast.error(offer.compagnie === AUTRE_COMPAGNIE_VALUE
-        ? "Indiquez le nom de la compagnie et la date de réception"
-        : "Compagnie et date requises");
-    }
-    const fd = new FormData();
-    Object.entries({ ...offer, compagnie }).forEach(([key, value]) => {
-      if (key.startsWith("_") || key === "files" || key === "autre_compagnie") return;
-      if (value !== null && value !== "") fd.append(key, value);
-    });
-    // Toujours envoyer une liste multipart (1 ou N) sous files[] / documents[]
     const fileList = Array.isArray(offer.files)
       ? offer.files
       : (offer.files ? [offer.files] : []);
-    fileList.forEach((f) => {
-      if (!f) return;
-      fd.append("files", f);
-      fd.append("documents", f);
-    });
-    if (fileList[0]) fd.append("file", fileList[0]); // compat anciens clients mono-fichier
+    if (!offer._offreId) return toast.error("Offre introuvable");
+    if (!fileList.length) return toast.error("Sélectionnez au moins un document");
     setActionBusy(true);
     try {
-      if (offer._mode === "add-docs" && offer._offreId) {
-        const docFd = new FormData();
-        fileList.forEach((f) => {
-          if (!f) return;
-          docFd.append("files", f);
-          docFd.append("documents", f);
-        });
-        if (fileList[0]) docFd.append("file", fileList[0]);
-        if (!fileList.length) return toast.error("Sélectionnez au moins un document");
-        const res = await api.post(
-          `/demandes-offres/${demandeId}/offres/${offer._offreId}/documents`,
-          docFd,
-        );
-        refreshFromAction(res.data, "Documents ajoutés à l'offre");
-      } else {
-        // Ne pas forcer Content-Type : le navigateur doit poser la boundary multipart
-        const res = await api.post(`/demandes-offres/${demandeId}/offre`, fd);
-        refreshFromAction(res.data, "Offre compagnie enregistrée");
-      }
+      const docFd = new FormData();
+      fileList.forEach((f) => {
+        if (!f) return;
+        docFd.append("files", f);
+        docFd.append("documents", f);
+      });
+      if (fileList[0]) docFd.append("file", fileList[0]);
+      const res = await api.post(
+        `/demandes-offres/${demandeId}/offres/${offer._offreId}/documents`,
+        docFd,
+      );
+      refreshFromAction(res.data, "Documents ajoutés à l'offre");
       setOfferOpen(false);
       setOffer({
         compagnie: "", date_reception: new Date().toISOString().slice(0, 10),
@@ -663,15 +649,18 @@ export default function DemandeOffreFiche() {
     }
   };
 
-  const openAddOffer = (compagnie = "") => {
-    setOffer({
-      compagnie: compagnie || "",
-      date_reception: new Date().toISOString().slice(0, 10),
-      reference: "", montant_prime: "", type_contrat: "", garanties: "", duree: "",
-      commentaires: "", message_conseiller: "", files: [], autre_compagnie: "",
-      _mode: "offre", _offreId: null,
-    });
-    setOfferOpen(true);
+  const openTransmitVariantes = (compagnie = "") => {
+    setVariantesCompagnie(compagnie || "");
+    setVariantesOpen(true);
+  };
+
+  const onOfferTransmitted = (data, message) => {
+    if (data?.transmission_deja_enregistree) {
+      applyDemande(data);
+      toast.message(message);
+      return;
+    }
+    refreshFromAction(data, message);
   };
 
   const openAddDocs = (card) => {
@@ -696,16 +685,26 @@ export default function DemandeOffreFiche() {
 
   const saveUrgence = async (urgente) => {
     const motif = urgenceMotif.trim();
-    if (urgente && !motif) {
-      toast.error("Le motif de l'urgence est obligatoire");
-      return;
+    if (urgente) {
+      const refus = urgenceRefus({ delai24h: urgenceDelai24h, motif });
+      setUrgenceErreur(refus);
+      if (refus) {
+        toast.error(refus);
+        return;
+      }
     }
     setActionBusy(true);
     try {
-      const res = await api.post(`/demandes-offres/${demandeId}/urgence`, { urgente, motif });
+      const res = await api.post(`/demandes-offres/${demandeId}/urgence`, {
+        urgente,
+        motif,
+        delai_24h: urgente ? urgenceDelai24h : false,
+      });
       applyDemande(res.data);
       setUrgenceOpen(false);
       setUrgenceMotif("");
+      setUrgenceDelai24h(false);
+      setUrgenceErreur("");
       toast.success(urgente ? "Demande marquée urgente" : "Caractère urgent retiré");
     } catch (error) {
       toast.error(error?.response?.data?.detail || "Enregistrement impossible");
@@ -1106,7 +1105,7 @@ export default function DemandeOffreFiche() {
                     title={demande.urgence_motif || ""}
                     data-testid="badge-urgent"
                   >
-                    URGENT
+                    URGENT{urgenceDelaiLabel(demande) ? " · moins de 24 heures" : ""}
                   </span>
                 )}
                 {demande.priorite && (
@@ -1120,7 +1119,7 @@ export default function DemandeOffreFiche() {
                 </span>
                 {(compagniesAffichees(demande).length > 0) && (
                   <span className="text-xs rounded-full bg-indigo-50 text-indigo-800 px-2.5 py-1 ring-1 ring-inset ring-indigo-200">
-                    {compagniesAffichees(demande).length} variante{compagniesAffichees(demande).length > 1 ? "s" : ""} sollicitée{compagniesAffichees(demande).length > 1 ? "s" : ""}
+                    {compagniesAffichees(demande).length} offre{compagniesAffichees(demande).length > 1 ? "s" : ""} sollicitée{compagniesAffichees(demande).length > 1 ? "s" : ""}
                   </span>
                 )}
                 {offresList.length > 0 && (
@@ -1155,7 +1154,7 @@ export default function DemandeOffreFiche() {
                 const rdv = rdvClientAffiche(demande);
                 return rdv.date ? ` · RDV client ${formatDateFr(rdv.date)}${rdv.heure ? ` ${rdv.heure}` : ""}` : "";
               })()}
-              {demande.urgente ? ` · URGENT${demande.urgence_motif ? ` — ${demande.urgence_motif}` : ""}` : ""}
+              {demande.urgente ? ` · URGENT${urgenceDelaiLabel(demande) ? ` (${urgenceDelaiLabel(demande).toLowerCase()})` : ""}${demande.urgence_motif ? ` — ${demande.urgence_motif}` : ""}` : ""}
               {demande.signature?.signee && (demande.signature.signed_by || demande.signature.recorded_by)
                 ? ` · Signée par ${demande.signature.signed_by || demande.signature.recorded_by}`
                 : ""}
@@ -1439,6 +1438,7 @@ export default function DemandeOffreFiche() {
                 focusId={searchParams.get("complement")}
                 onUpdated={applyDemande}
               />
+              {demande.statut !== "Brouillon" && <DiscussionDemande demandeId={demandeId} />}
               <div className="flex flex-wrap justify-between gap-2">
                 <div className="flex flex-wrap gap-2">
                   {(demande.statut === "Brouillon" || isDemandeAnnuleeStatut(demande.statut)) && (
@@ -1504,7 +1504,7 @@ export default function DemandeOffreFiche() {
                 cards={reponsesCompagnies}
                 canProcess={canProcess}
                 busy={actionBusy}
-                onAddOffer={openAddOffer}
+                onAddOffer={openTransmitVariantes}
                 onAddDocs={openAddDocs}
                 onMarkIncomplete={markCompanyIncomplete}
                 onCancelIncomplete={cancelCompanyIncomplete}
@@ -1513,7 +1513,7 @@ export default function DemandeOffreFiche() {
               />
               {variantes.length > 0 && !reponsesCompagnies.length && (
                 <Card className="p-5">
-                  <h2 className="font-display font-bold mb-3">Variantes sollicitées ({variantes.length})</h2>
+                  <h2 className="font-display font-bold mb-3">Offres sollicitées ({variantes.length})</h2>
                   <ul className="space-y-2">
                     {variantes.map((v) => (
                       <li key={`${v.index}-${v.compagnie}`} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
@@ -1531,6 +1531,7 @@ export default function DemandeOffreFiche() {
                 focusId={searchParams.get("complement")}
                 onUpdated={applyDemande}
               />
+              {demande.statut !== "Brouillon" && <DiscussionDemande demandeId={demandeId} />}
               {(canProcess || isAdmin) && (
                 <Card className="p-5 space-y-3">
                   <div className="flex items-center justify-between gap-2">
@@ -1637,7 +1638,7 @@ export default function DemandeOffreFiche() {
               hasOffers={offresList.length > 0 || reponsesCompagnies.some((c) => c.has_offre)}
               hasIncompleteCompany={hasIncompleteCompany}
               onIncomplete={() => openIncompleteNotify(incompleteCompagnie || reponsesCompagnies.find((c) => String(c.statut || "").toLowerCase().includes("incompl"))?.compagnie || "")}
-              onOffer={() => openAddOffer()}
+              onOffer={() => setSimpleOfferOpen(true)}
               onOffresCompletes={markOffresCompletes}
               onErreurs={openErreursDialog}
               onNote={() => setNoteOpen(true)}
@@ -1752,30 +1753,52 @@ export default function DemandeOffreFiche() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={urgenceOpen} onOpenChange={setUrgenceOpen}>
+      <Dialog
+        open={urgenceOpen}
+        onOpenChange={(open) => {
+          setUrgenceOpen(open);
+          if (!open) {
+            setUrgenceDelai24h(false);
+            setUrgenceErreur("");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader><DialogTitle>Demande urgente</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">
-            La demande restera urgente jusqu&apos;à ce que ce caractère soit retiré. Le motif est obligatoire.
+            Une demande urgente est traitée en moins de 24 heures. Elle reste urgente jusqu&apos;à ce que ce caractère soit retiré.
           </p>
+          <label className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50/60 p-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-rose-700"
+              checked={urgenceDelai24h}
+              onChange={(e) => { setUrgenceDelai24h(e.target.checked); setUrgenceErreur(""); }}
+              data-testid="urgence-delai-24h"
+            />
+            <span className="font-medium">Demande à traiter sous moins de 24 h <span className="text-rose-600">*</span></span>
+          </label>
           <Field label="Motif de l'urgence" required>
             <Textarea
               rows={4}
               value={urgenceMotif}
-              onChange={(e) => setUrgenceMotif(e.target.value)}
-              placeholder="Pourquoi cette demande doit être traitée en priorité ?"
+              onChange={(e) => { setUrgenceMotif(e.target.value); setUrgenceErreur(""); }}
+              placeholder="Pourquoi cette demande doit être traitée en moins de 24 heures ?"
               data-testid="urgence-motif"
             />
           </Field>
+          {urgenceErreur && (
+            <p className="text-sm text-rose-700" role="alert" data-testid="urgence-erreur">{urgenceErreur}</p>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setUrgenceOpen(false)}>Annuler</Button>
             <Button
               className="bg-rose-700 hover:bg-rose-800"
               onClick={() => saveUrgence(true)}
-              disabled={actionBusy || !urgenceMotif.trim()}
+              disabled={actionBusy}
               data-testid="urgence-confirmer"
             >
-              Marquer urgente
+              Confirmer l&apos;urgence
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1984,45 +2007,9 @@ export default function DemandeOffreFiche() {
       <Dialog open={offerOpen} onOpenChange={setOfferOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>
-              {offer._mode === "add-docs" ? `Ajouter des documents — ${offer.compagnie || "offre"}` : "Enregistrer une offre compagnie"}
-            </DialogTitle>
+            <DialogTitle>{`Ajouter des documents — ${offer.compagnie || "offre"}`}</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {offer._mode !== "add-docs" && (
-              <>
-                <Field label="Compagnie" required>
-                  <Choice
-                    value={offer.compagnie}
-                    onChange={(v) => setOffer({ ...offer, compagnie: v })}
-                    options={[
-                      ...compagniesEnregistrementOffre(demande, meta.compagnies || COMPAGNIES_DEFAUT),
-                      { value: AUTRE_COMPAGNIE_VALUE, label: "Autre compagnie…" },
-                    ]}
-                  />
-                  {offer.compagnie === AUTRE_COMPAGNIE_VALUE && (
-                    <Input
-                      className="mt-2"
-                      value={offer.autre_compagnie || ""}
-                      placeholder="Nom de la compagnie"
-                      onChange={(e) => setOffer({ ...offer, autre_compagnie: e.target.value })}
-                    />
-                  )}
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    Les compagnies choisies dans la demande sont proposées en premier.
-                    « Autre compagnie… » permet un cas exceptionnel, sans créer de doublon.
-                  </p>
-                </Field>
-                <Field label="Date de réception" required>
-                  <Input type="date" value={offer.date_reception} onChange={(e) => setOffer({ ...offer, date_reception: e.target.value })} />
-                </Field>
-                <Field label="Référence"><Input value={offer.reference} onChange={(e) => setOffer({ ...offer, reference: e.target.value })} /></Field>
-                <Field label="Montant (CHF)"><Input type="number" value={offer.montant_prime} onChange={(e) => setOffer({ ...offer, montant_prime: e.target.value })} /></Field>
-                <Field label="Type de contrat"><Input value={offer.type_contrat} onChange={(e) => setOffer({ ...offer, type_contrat: e.target.value })} /></Field>
-                <Field label="Durée"><Input value={offer.duree} onChange={(e) => setOffer({ ...offer, duree: e.target.value })} /></Field>
-                <Field label="Garanties" className="sm:col-span-2"><Textarea value={offer.garanties} onChange={(e) => setOffer({ ...offer, garanties: e.target.value })} /></Field>
-              </>
-            )}
             <Field label="Documents de l'offre" className="sm:col-span-2">
               <Input
                 type="file"
@@ -2040,20 +2027,30 @@ export default function DemandeOffreFiche() {
                 Plusieurs fichiers possibles. Les documents déjà enregistrés ne sont jamais remplacés.
               </p>
             </Field>
-            {offer._mode !== "add-docs" && (
-              <Field label="Commentaires" className="sm:col-span-2">
-                <Textarea value={offer.commentaires} onChange={(e) => setOffer({ ...offer, commentaires: e.target.value })} />
-              </Field>
-            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOfferOpen(false)}>Annuler</Button>
-            <Button onClick={addOffer} disabled={actionBusy}>
-              {offer._mode === "add-docs" ? "Ajouter les documents" : "Enregistrer l'offre reçue"}
-            </Button>
+            <Button onClick={addOffer} disabled={actionBusy}>Ajouter les documents</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TransmettreVariantesDialog
+        open={variantesOpen}
+        onOpenChange={setVariantesOpen}
+        demandeId={demandeId}
+        compagnieInitiale={variantesCompagnie}
+        companyOptions={compagniesEnregistrementOffre(demande, meta.compagnies || COMPAGNIES_DEFAUT)}
+        onTransmitted={onOfferTransmitted}
+      />
+
+      <TransmettreOffreSimpleDialog
+        open={simpleOfferOpen}
+        onOpenChange={setSimpleOfferOpen}
+        demandeId={demandeId}
+        companyOptions={compagniesEnregistrementOffre(demande, meta.compagnies || COMPAGNIES_DEFAUT)}
+        onTransmitted={onOfferTransmitted}
+      />
 
       <Dialog open={signatureOpen} onOpenChange={setSignatureOpen}>
         <DialogContent>
@@ -2178,11 +2175,16 @@ function CompanyResponsesPanel({
                   </div>
                   {canProcess && (
                     <div className="flex flex-col gap-1.5 shrink-0">
-                      {pending && (
-                        <Button size="sm" className="bg-violet-700 hover:bg-violet-800" disabled={busy} onClick={() => onAddOffer(card.compagnie)}>
-                          Offre reçue
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        className={pending ? "bg-violet-700 hover:bg-violet-800" : ""}
+                        variant={pending ? "default" : "outline"}
+                        disabled={busy}
+                        onClick={() => onAddOffer(card.compagnie)}
+                        data-testid={`transmettre-offre-${card.index}`}
+                      >
+                        Transmettre une offre
+                      </Button>
                       {card.has_offre && card.offre_id && (
                         <Button size="sm" variant="outline" disabled={busy} onClick={() => onAddDocs(card)}>
                           <Plus className="h-3.5 w-3.5 mr-1" /> Document
@@ -2211,14 +2213,25 @@ function CompanyResponsesPanel({
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">Documents</p>
                   {!docs.length ? (
                     <p className="text-xs text-muted-foreground">Aucun document pour cette compagnie.</p>
-                  ) : (
+                  ) : documentsParVariante(card).map((group) => (
+                    <div key={group.key} className="mb-2 last:mb-0">
+                    {group.variante ? (
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-[#002FA7] mb-1">
+                        Variante {group.variante}
+                        {(() => {
+                          const t = (card.transmissions || []).find((item) => item.id === group.transmissionId);
+                          return t?.date_reception ? <span className="ml-2 font-normal normal-case text-muted-foreground">reçue le {formatDateFr(t.date_reception)}</span> : null;
+                        })()}
+                      </p>
+                    ) : null}
                     <ul className="space-y-1.5">
-                      {docs.map((doc) => (
+                      {group.documents.map((doc) => (
                         <li key={doc.id || doc.original_filename} className="flex items-center gap-2 text-sm rounded-md border px-2.5 py-1.5 bg-white/80">
                           <FileText className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-medium">{doc.original_filename || "Document"}</p>
                             <p className="text-[10px] text-muted-foreground">
+                              {doc.piece_kind ? `${doc.piece_kind} · ` : ""}
                               {doc.content_type || "fichier"}
                               {doc.created_at ? ` · ${formatDateTimeFr(doc.created_at)}` : ""}
                             </p>
@@ -2241,7 +2254,8 @@ function CompanyResponsesPanel({
                         </li>
                       ))}
                     </ul>
-                  )}
+                    </div>
+                  ))}
                 </div>
               </div>
             );
@@ -2935,7 +2949,8 @@ const SUIVI_MENU = [
   { id: "en_cours", label: "En cours de traitement" },
   { id: "attente_compagnie", label: "En attente de la compagnie" },
   { id: "relance", label: "Relance effectuée auprès de la compagnie" },
-  { id: "offre_transmise", label: "Offre transmise à l'agent" },
+  { id: "offres_partielles", label: "Offres partiellement transmises à l'agent", auto: true },
+  { id: "offre_transmise", label: "Offres transmises à l'agent" },
 ];
 const SUIVI_VERROUILLE = ["envoyee_client", "signee", "annulee", "refusee", "non_signee"];
 
@@ -2992,9 +3007,15 @@ function SuiviTraitement({ demande, busy, onSuivi }) {
             data-testid="suivi-traitement-select"
           >
             {SUIVI_MENU.map((item) => (
-              <option key={item.id} value={item.id}>{item.label}</option>
+              <option key={item.id} value={item.id} disabled={item.auto}>{item.label}</option>
             ))}
           </select>
+          {demande?.transmission?.etat === "partielle" && (
+            <p className="text-[11px] text-slate-500" data-testid="suivi-transmission-detail">
+              {demande.transmission.nb_transmises}/{demande.transmission.nb_sollicitees} compagnies transmises
+              {demande.transmission.manquantes?.length ? ` · en attente : ${demande.transmission.manquantes.join(", ")}` : ""}
+            </p>
+          )}
           {needsDetail && (
             <div className="space-y-2">
               <Input
@@ -3285,8 +3306,8 @@ function ActionPanel({
     {showProcess && !terminal && <Button variant="outline" className="w-full justify-start" onClick={onDoc} disabled={busy}><FileText className="h-4 w-4 mr-2" /> Ajouter un document</Button>}
     {showProcess && !terminal && <Button variant="outline" className="w-full justify-start" onClick={onNote} disabled={busy}><StickyNote className="h-4 w-4 mr-2" /> Ajouter une note interne</Button>}
     {showProcess && !terminal && (
-      <Button className="w-full justify-start bg-rose-700 hover:bg-rose-800" onClick={onErreurs} disabled={busy} data-testid="erreurs-btn">
-        <AlertTriangle className="h-4 w-4 mr-2" /> Erreurs
+      <Button variant="outline" className={SIGNALER_ERREUR_CLASS} onClick={onErreurs} disabled={busy} data-testid="erreurs-btn">
+        <AlertTriangle className="h-4 w-4 mr-2 text-slate-500" /> Signaler une erreur
       </Button>
     )}
     {showProcess && (

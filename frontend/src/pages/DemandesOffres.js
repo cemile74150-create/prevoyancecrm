@@ -141,7 +141,7 @@ const KPI_SECONDARY = [
   ["incompletes", "Offres incomplètes", TriangleAlert, "bg-rose-100 text-rose-700"],
   ["offres_signees", "Offres signées", CheckCircle2, "bg-emerald-100 text-emerald-700"],
   ["offres_envoyees_client", "Offres envoyées au client", Mail, "bg-purple-100 text-purple-800"],
-  ["nb_variantes_sollicitees", "Variantes sollicitées", Layers, "bg-indigo-100 text-indigo-800"],
+  ["nb_variantes_sollicitees", "Offres sollicitées", Layers, "bg-indigo-100 text-indigo-800"],
   ["nb_origine_attribuee", "Demandes d'offre attribuées", Tag, "bg-indigo-100 text-indigo-800"],
   ["offres_completes", "Offres complètes", CheckCircle2, "bg-emerald-100 text-emerald-700"],
 ];
@@ -155,7 +155,7 @@ const KPI_CLICK_FILTERS = {
   nb_origine_attribuee: { kind: "origine", value: "attribuee", label: "Demandes d'offre attribuées" },
   nb_demandes: { kind: "all", label: "Toutes les demandes" },
   nb_brouillons: { kind: "statut", value: "Brouillon", label: "Brouillons" },
-  nb_variantes_sollicitees: { kind: "variantes", label: "Variantes sollicitées" },
+  nb_variantes_sollicitees: { kind: "variantes", label: "Offres sollicitées" },
   en_attente: {
     kind: "statuts",
     values: ["Demande envoyée", "Demande validée", "En attente d'informations"],
@@ -1049,7 +1049,12 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                                 <OrigineBadge origine={r.demande_origine} />
                                 <span className="flex items-center gap-1.5 flex-wrap justify-end">
                                   {r.urgente ? (
-                                    <span className="rounded-md bg-rose-700 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Urgent</span>
+                                    <span
+                                      className="rounded-md bg-rose-700 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+                                      title={r.urgence_delai === "moins_24h" ? "À traiter en moins de 24 heures" : undefined}
+                                    >
+                                      Urgent{r.urgence_delai === "moins_24h" ? " · < 24 h" : ""}
+                                    </span>
                                   ) : null}
                                   <AvancementBadge row={r} />
                                   <PendingComplementBadge count={r.nb_complements_en_attente} />
@@ -1194,7 +1199,7 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                           <Tooltip />
                           <Legend />
                           <Bar dataKey="demandes" name="Demandes" fill="#002FA7" radius={[4, 4, 0, 0]} />
-                          <Bar dataKey="variantes" name="Variantes sollicitées" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="variantes" name="Offres sollicitées" fill="#6366f1" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -1240,7 +1245,7 @@ export default function DemandesOffres({ mode = "conseiller" }) {
                       <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                         <th className="py-2 pr-3 font-medium">Agent</th>
                         <th className="py-2 px-3 font-medium text-right">Demandes</th>
-                        <th className="py-2 px-3 font-medium text-right">Variantes</th>
+                        <th className="py-2 px-3 font-medium text-right">Offres sollicitées</th>
                         <th className="py-2 px-3 font-medium text-right">Réponses</th>
                         <th className="py-2 pl-3 font-medium">Détail</th>
                       </tr>
