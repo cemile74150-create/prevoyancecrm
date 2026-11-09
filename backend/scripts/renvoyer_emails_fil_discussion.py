@@ -1,9 +1,9 @@
 """Renvoie l'e-mail des messages déjà postés dans le fil de discussion.
 
 Aucun message n'est ajouté au fil : seul l'e-mail est renvoyé, avec les
-destinataires calculés par le code actuel de l'API (agent → gestionnaire
-attribué ; gestionnaire → agent + gestionnaire attribué en copie s'il n'est
-pas l'expéditeur). Option ``--cloche`` : ajoute la cloche au gestionnaire
+destinataires calculés par le code actuel de l'API (agent → boîte
+``OFFRES_EMAIL_TO`` ; gestionnaire → agent, sans copie aux boîtes
+personnelles des gestionnaires). Option ``--cloche`` : ajoute la cloche au gestionnaire
 attribué pour les messages écrits par un autre gestionnaire.
 
 Simulation par défaut. L'envoi exige ``--execute`` et ``--confirmer-base``.

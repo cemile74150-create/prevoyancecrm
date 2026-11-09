@@ -755,7 +755,7 @@ def test_message_envoie_email_et_cloche_sans_spammer_lexpediteur(trois_compagnie
     assert "Je m'en occupe" in sent[0]["body"]
 
 
-def test_message_email_prefer_gestionnaire_attribue(trois_compagnies, monkeypatch):
+def test_message_agent_va_a_offres_meme_avec_gestionnaire_attribue(trois_compagnies, monkeypatch):
     h = trois_compagnies
     asyncio.run(h.db[COLLECTION].update_one(
         {"id": "dem-1"},
@@ -770,7 +770,7 @@ def test_message_email_prefer_gestionnaire_attribue(trois_compagnies, monkeypatc
     sent = []
 
     async def fake_send(to_email, subject, body_text, **kwargs):
-        sent.append({"to": to_email, "subject": subject})
+        sent.append({"to": to_email, "cc": kwargs.get("cc") or []})
         return True, None
 
     monkeypatch.setattr(email_service, "offres_email_enabled", lambda: True)
@@ -781,7 +781,9 @@ def test_message_email_prefer_gestionnaire_attribue(trois_compagnies, monkeypatc
         "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
         payload=MessageDemandeRequest(contenu="Message pour Lea"), user=AGENT,
     )
-    assert [row["to"] for row in sent] == ["lea@test.ch"]
+    assert sent == [{"to": "offres@agencemendes.ch", "cc": []}]
+    bell = h.notifications("message")[-1]
+    assert GESTION.account_id in bell["account_ids"]
 
 
 def _capture_fil_emails(monkeypatch):
@@ -797,7 +799,7 @@ def _capture_fil_emails(monkeypatch):
     return sent
 
 
-def test_message_dun_autre_gestionnaire_copie_le_gestionnaire_attribue(trois_compagnies, monkeypatch):
+def test_message_dun_autre_gestionnaire_ne_copie_pas_le_gestionnaire_attribue(trois_compagnies, monkeypatch):
     h = trois_compagnies
     asyncio.run(h.db[COLLECTION].update_one(
         {"id": "dem-1"},
@@ -815,12 +817,12 @@ def test_message_dun_autre_gestionnaire_copie_le_gestionnaire_attribue(trois_com
         "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
         payload=MessageDemandeRequest(contenu="Je reprends le dossier"), user=GESTION,
     )
-    assert sent == [{"to": "camille@test.ch", "cc": ["jordan@test.ch"]}]
+    assert sent == [{"to": "camille@test.ch", "cc": []}]
     bell = h.notifications("message")[-1]
     assert set(bell["account_ids"]) == {AGENT.account_id, "gest-jordan"}
 
 
-def test_message_agent_sans_attribution_va_aux_comptes_process(trois_compagnies, monkeypatch):
+def test_message_agent_sans_attribution_va_a_offres_pas_aux_comptes_process(trois_compagnies, monkeypatch):
     h = trois_compagnies
     for uid, email in (("proc-1", "p1@test.ch"), ("proc-2", "p2@test.ch")):
         asyncio.run(h.db.users.insert_one({
@@ -841,9 +843,9 @@ def test_message_agent_sans_attribution_va_aux_comptes_process(trois_compagnies,
         "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
         payload=MessageDemandeRequest(contenu="Qui peut regarder ?"), user=AGENT,
     )
-    assert len(sent) == 1
-    assert {sent[0]["to"], *sent[0]["cc"]} == {"p1@test.ch", "p2@test.ch"}
-    assert AGENT.email not in [sent[0]["to"], *sent[0]["cc"]]
+    assert sent == [{"to": "offres@agencemendes.ch", "cc": []}]
+    bell = h.notifications("message")[-1]
+    assert {"proc-1", "proc-2"} <= set(bell["account_ids"])
 
 
 def test_message_poste_meme_si_smtp_indisponible(trois_compagnies, monkeypatch):

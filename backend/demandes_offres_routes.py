@@ -1201,16 +1201,16 @@ def attach_demandes_offres_routes(
         Destinataires e-mail du fil : le premier en « À », les suivants en copie.
         Jamais l'expéditeur, sans doublon.
 
-        - Agent → gestionnaire attribué (`gestionnaire_id`) s'il a un e-mail ;
-          sinon tous les comptes process ayant un e-mail (comme la cloche) ;
-          sinon boîte `OFFRES_EMAIL_TO`.
-        - Gestionnaire → créateur / conseiller (même résolution que notes externes)
-          + gestionnaire attribué s'il n'est pas l'expéditeur.
+        - Agent → boîte collective `OFFRES_EMAIL_TO` uniquement.
+        - Gestionnaire → créateur / conseiller (même résolution que notes externes).
+
+        Aucune boîte personnelle de gestionnaire (attribué ou process) n'est
+        destinataire, ni en « À » ni en copie. La cloche in-app, elle, continue
+        de notifier les comptes process et le gestionnaire attribué.
         """
         from email_service import offres_email_to
         from demandes_offres_messages import ROLE_AGENT
 
-        sender_id = (sender.account_id or "").strip()
         sender_email = ((getattr(sender, "email", None) or "")).strip().lower()
         recipients: list[str] = []
 
@@ -1225,23 +1225,11 @@ def attach_demandes_offres_routes(
                 return
             recipients.append(clean)
 
-        gid = (doc.get("gestionnaire_id") or "").strip()
-        attributed = (
-            await resolve_account_email(gid) if gid and gid != sender_id else None
-        )
-
         if role == ROLE_AGENT:
-            _add(attributed)
-            if not recipients:
-                for aid in await manager_account_ids():
-                    if aid and aid != sender_id:
-                        _add(await resolve_account_email(aid))
-            if not recipients:
-                _add(offres_email_to())
+            _add(offres_email_to())
             return recipients
 
         _add(await resolve_demande_creator_email(doc))
-        _add(attributed)
         return recipients
 
     @api_router.get("/demandes-offres/modifier/recherche")
