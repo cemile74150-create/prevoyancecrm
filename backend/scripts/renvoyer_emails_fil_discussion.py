@@ -22,6 +22,7 @@ import asyncio
 import os
 import sys
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -40,6 +41,44 @@ POST_MESSAGE_PATH = "/demandes-offres/{demande_id}/messages"
 def masque(addr: str) -> str:
     local, _, domain = (addr or "").partition("@")
     return f"{local}@…" if domain else "?"
+
+
+def _compact(text: str) -> str:
+    return " ".join((text or "").split()).lower()
+
+
+async def deja_recu(db, row: dict, demande_id: str, recipients: list[str]) -> bool:
+    """Un e-mail fil « sent » de la demande, adressé à l'un des destinataires, contient déjà ce message.
+
+    Message sans texte : e-mail envoyé dans les 15 minutes suivant le message.
+    """
+    cibles = {r.lower() for r in recipients}
+    extrait = _compact(row.get("contenu") or "")[:80]
+    created = str(row.get("created_at") or "")
+    logs = db[email_service.EMAIL_LOGS_COLLECTION].find(
+        {"ref_id": demande_id, "type": email_service.MAIL_TYPE_FIL_DISCUSSION, "status": "sent"},
+        {"_id": 0, "to": 1, "cc": 1, "body_text": 1, "created_at": 1},
+    )
+    async for log in logs:
+        adresses = {(log.get("to") or "").strip().lower()} | {(c or "").strip().lower() for c in log.get("cc") or []}
+        if not cibles & adresses:
+            continue
+        if extrait:
+            if extrait in _compact(log.get("body_text") or ""):
+                return True
+        elif created and log.get("created_at"):
+            ecart = _date(log["created_at"]) - _date(created)
+            if timedelta(0) <= ecart <= timedelta(minutes=15):
+                return True
+    return False
+
+
+def _date(value) -> datetime:
+    if isinstance(value, datetime):
+        d = value
+    else:
+        d = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
 def fonctions_api(db) -> dict:
@@ -91,6 +130,8 @@ def _args(argv):
     p.add_argument("--depuis", default="", help="messages créés à partir de cette date ISO")
     p.add_argument("--message-id", action="append", default=[], help="limiter à ces messages (répétable)")
     p.add_argument("--cloche", action="store_true", help="cloche au gestionnaire attribué si un autre gestionnaire a écrit")
+    p.add_argument("--seulement-non-recus", action="store_true",
+                   help="ignorer les messages dont le destinataire actuel a déjà reçu l'e-mail (journal email_logs)")
     p.add_argument("--execute", action="store_true", help="envoie réellement les e-mails")
     p.add_argument("--confirmer-base", default="", help="nom de la base, obligatoire avec --execute")
     p.add_argument("--db", default="", help="nom de la base (défaut : DB_NAME)")
@@ -163,6 +204,10 @@ async def run(args) -> int:
               f" · e-mails fil déjà journalisés pour la demande : {previous}")
         if not recipients:
             compteur["sans destinataire"] += 1
+            continue
+        if args.seulement_non_recus and await deja_recu(db, row, did, recipients):
+            print("    déjà reçu par ce destinataire, ignoré")
+            compteur["déjà reçus"] += 1
             continue
         if not args.execute:
             compteur["à renvoyer"] += 1
