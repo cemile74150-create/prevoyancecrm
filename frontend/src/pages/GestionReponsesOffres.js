@@ -778,7 +778,11 @@ export default function GestionReponsesOffres() {
                       return (
                         <tr
                           key={r.id}
-                          className={`border-t border-slate-100 hover:bg-slate-50/60 ${
+                          role="button"
+                          tabIndex={0}
+                          data-testid={`file-row-${r.id}`}
+                          title="Ouvrir la fiche"
+                          className={`border-t border-slate-100 cursor-pointer transition-colors hover:bg-slate-50/90 ${
                             r.urgente || r.priorite === "urgent"
                               ? "bg-red-50/40"
                               : isOffreAModifier(r)
@@ -789,6 +793,13 @@ export default function GestionReponsesOffres() {
                                     : "bg-violet-50/30"
                                   : ""
                           }`}
+                          onClick={() => openFiche(r.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              openFiche(r.id);
+                            }
+                          }}
                         >
                           <td className="px-3 py-2 font-bold text-slate-900 whitespace-nowrap" data-testid="file-agent">
                             {r.agent_label || "—"}
@@ -840,7 +851,7 @@ export default function GestionReponsesOffres() {
                           <td className="px-3 py-2" data-testid="file-statut-commercial">
                             <CommercialBadge row={r} />
                           </td>
-                          <td className="px-3 py-2">
+                          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                             {canProcess ? (
                               <label
                                 className="inline-flex items-center gap-1.5 text-xs cursor-pointer"
@@ -869,7 +880,7 @@ export default function GestionReponsesOffres() {
                           </td>
                           <td className="px-3 py-2 tabular-nums text-slate-700 font-medium">{r.jours_depuis ?? "—"}</td>
                           <td className="px-3 py-2"><PrioriteBadge niveau={r.priorite} /></td>
-                          <td className="px-3 py-2">
+                          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center gap-1.5">
                               {r.bouton_traiter ? (
                                 <button

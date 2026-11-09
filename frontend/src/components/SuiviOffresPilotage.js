@@ -577,8 +577,18 @@ export default function SuiviOffresPilotage({ filterConseiller, conseillerNames 
                     return (
                       <tr
                         key={r.id}
-                        className={`border-b border-amber-100/80 hover:bg-white/70 ${r.urgente ? "bg-red-50/50" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        title="Ouvrir la fiche"
+                        className={`border-b border-amber-100/80 cursor-pointer transition-colors hover:bg-white ${r.urgente ? "bg-red-50/50" : ""}`}
                         data-testid={`a-attribuer-${r.id}`}
+                        onClick={() => openFiche(r)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openFiche(r);
+                          }
+                        }}
                       >
                         <td className="py-2 px-2 whitespace-nowrap">
                           <span className="font-semibold text-slate-900">{r.numero || "—"}</span>
@@ -603,7 +613,7 @@ export default function SuiviOffresPilotage({ filterConseiller, conseillerNames 
                             {prioriteLabel(r.priorite)}
                           </span>
                         </td>
-                        <td className="py-2 px-2">
+                        <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
                           {r.can_attribuer ? (
                             <Button
                               size="sm"
@@ -723,7 +733,21 @@ export default function SuiviOffresPilotage({ filterConseiller, conseillerNames 
                 const rdv = rdvClientAffiche(r);
                 const comps = compagniesAffichees(r);
                 return (
-                  <tr key={r.id} className={`border-b border-slate-100 hover:bg-slate-50/70 ${r.urgente ? "bg-red-50/40" : ""}`}>
+                  <tr
+                    key={r.id}
+                    role="button"
+                    tabIndex={0}
+                    title="Ouvrir la fiche"
+                    data-testid={`detail-row-${r.id}`}
+                    className={`border-b border-slate-100 cursor-pointer transition-colors hover:bg-slate-50 ${r.urgente ? "bg-red-50/40" : ""}`}
+                    onClick={() => openFiche(r)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openFiche(r);
+                      }
+                    }}
+                  >
                     <td className="py-2 px-2 whitespace-nowrap">
                       <span className="font-semibold text-slate-900">{r.numero || "—"}</span>
                       <span className="block text-[11px] text-slate-500">{clientLabel(r)}</span>
@@ -754,7 +778,7 @@ export default function SuiviOffresPilotage({ filterConseiller, conseillerNames 
                       </span>
                     </td>
                     <td className="py-2 px-2 max-w-[160px] truncate text-xs text-slate-500" title={r.derniere_action || ""}>{r.derniere_action || "—"}</td>
-                    <td className="py-2 px-2">
+                    <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"

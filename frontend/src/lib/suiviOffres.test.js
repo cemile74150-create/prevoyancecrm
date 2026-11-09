@@ -152,6 +152,21 @@ describe("libellés", () => {
     expect(pilotage).toMatch(/Répartition et activité des gestionnaires/);
   });
 
+  it("lignes des listes offres cliquables pour ouvrir la fiche, actions isolées", () => {
+    const pilotage = src("components/SuiviOffresPilotage.js");
+    const gestion = src("pages/GestionReponsesOffres.js");
+    expect(gestion).toMatch(/data-testid=\{`file-row-\$\{r\.id\}`\}/);
+    expect(gestion).toMatch(/onClick=\{\(\) => openFiche\(r\.id\)\}/);
+    expect(gestion).toMatch(/role="button"/);
+    expect(gestion).toMatch(/onClick=\{\(e\) => e\.stopPropagation\(\)\}/);
+    expect(pilotage).toMatch(/data-testid=\{`a-attribuer-\$\{r\.id\}`\}/);
+    expect(pilotage).toMatch(/data-testid=\{`detail-row-\$\{r\.id\}`\}/);
+    expect(pilotage).toMatch(/onClick=\{\(\) => openFiche\(r\)\}/);
+    expect(pilotage).toMatch(/role="button"/);
+    expect(pilotage).toMatch(/onClick=\{\(e\) => e\.stopPropagation\(\)\}/);
+    expect(pilotage).toMatch(/event\?\.stopPropagation\?\./);
+  });
+
   it("Mes dossiers : indicateurs haut + file Demandes à traiter, sans grille KPI dense", () => {
     const gestion = src("pages/GestionReponsesOffres.js");
     expect(gestion).toMatch(/Mes indicateurs — avancement du traitement/);
