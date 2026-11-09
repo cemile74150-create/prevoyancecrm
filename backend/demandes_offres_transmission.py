@@ -3,7 +3,8 @@
 Deux parcours alimentent la même réponse compagnie (offres[]) :
 - Réponses compagnies : date de réception, N variantes, Offre / CGA /
   Autre document par variante ;
-- Traitement : compagnie, date, document, commentaire.
+- Traitement : compagnie, date, Offre / CGA / Autre document, commentaire
+  (sans nombre de variantes).
 
 Chaque transmission est ajoutée à offres[].transmissions. Les documents
 précédents ne sont jamais remplacés.
@@ -30,6 +31,8 @@ VARIANTE_PIECES = (
 )
 PIECES_OBLIGATOIRES = ("offre", "cga")
 _VARIANTE_FIELD_RE = re.compile(r"^variante_(\d+)_(offre|cga|autre)$")
+_TRAITEMENT_PIECE_IDS = {piece for piece, _ in VARIANTE_PIECES}
+_TRAITEMENT_LEGACY_FIELDS = {"files", "documents", "file"}
 
 
 def normalize_parcours(raw: Any) -> str:
@@ -93,6 +96,29 @@ def missing_variante_pieces(groups: dict, nb_variantes: int) -> list[str]:
             if not pieces.get(piece):
                 missing.append(f"Variante {index} : {labels[piece]}")
     return missing
+
+
+def group_traitement_uploads(items: Iterable[tuple[str, Any]]) -> dict:
+    """{piece: [upload, ...]} pour les champs offre / cga / autre.
+
+    Les anciens champs files / documents / file sont rattachés à « offre »
+    pour ne pas casser un client qui n'envoie encore qu'un document générique.
+    """
+    groups: dict[str, list] = {piece: [] for piece, _ in VARIANTE_PIECES}
+    for field, upload in items:
+        if upload is None:
+            continue
+        name = str(field or "").strip().lower()
+        if name in _TRAITEMENT_PIECE_IDS:
+            groups[name].append(upload)
+        elif name in _TRAITEMENT_LEGACY_FIELDS:
+            groups["offre"].append(upload)
+    return groups
+
+
+def missing_traitement_pieces(groups: dict) -> list[str]:
+    labels = dict(VARIANTE_PIECES)
+    return [labels[piece] for piece in PIECES_OBLIGATOIRES if not (groups or {}).get(piece)]
 
 
 def document_variante_extra(*, transmission_id: str, parcours: str, compagnie: str,

@@ -1,7 +1,7 @@
 /**
  * Transmettre une offre : deux formulaires distincts.
  * - Réponses compagnies : compagnie, date de réception, N variantes (Offre, CGA, Autre document).
- * - Traitement : compagnie, date, document, commentaire.
+ * - Traitement : compagnie, date, Offre / CGA / Autre document, commentaire (sans variantes).
  */
 
 export const PARCOURS_REPONSES = "reponses_compagnies";
@@ -16,7 +16,7 @@ export const VARIANTE_PIECES = [
 
 export const PARCOURS_FIELDS = {
   [PARCOURS_REPONSES]: ["compagnie", "date_reception", "nb_variantes", "variantes"],
-  [PARCOURS_TRAITEMENT]: ["compagnie", "date_reception", "document", "commentaire"],
+  [PARCOURS_TRAITEMENT]: ["compagnie", "date_reception", "offre", "cga", "autre", "commentaire"],
 };
 
 export function newClientToken() {
@@ -65,6 +65,13 @@ export function variantesManquantes(variantes) {
   return missing;
 }
 
+/** Pièces obligatoires manquantes pour le parcours Traitement (sans préfixe Variante). */
+export function traitementManquantes(pieces) {
+  return VARIANTE_PIECES
+    .filter((piece) => piece.required && !(pieces?.[piece.id] || []).length)
+    .map((piece) => piece.label);
+}
+
 export function variantesFormData({ compagnie, dateReception, variantes, clientToken }) {
   const fd = new FormData();
   fd.append("compagnie", compagnie);
@@ -80,14 +87,16 @@ export function variantesFormData({ compagnie, dateReception, variantes, clientT
   return fd;
 }
 
-export function traitementFormData({ compagnie, dateReception, files, commentaire, clientToken }) {
+export function traitementFormData({ compagnie, dateReception, pieces, commentaire, clientToken }) {
   const fd = new FormData();
   fd.append("compagnie", compagnie);
   fd.append("date_reception", dateReception);
   fd.append("parcours", PARCOURS_TRAITEMENT);
   if ((commentaire || "").trim()) fd.append("commentaires", commentaire.trim());
   if (clientToken) fd.append("client_token", clientToken);
-  (files || []).forEach((file) => fd.append("files", file));
+  VARIANTE_PIECES.forEach((piece) => {
+    (pieces?.[piece.id] || []).forEach((file) => fd.append(piece.id, file));
+  });
   return fd;
 }
 

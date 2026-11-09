@@ -14,6 +14,7 @@ import {
   parseNbVariantes,
   resizeVariantes,
   traitementFormData,
+  traitementManquantes,
   variantesFormData,
   variantesManquantes,
 } from "@/lib/transmissionOffre";
@@ -265,12 +266,12 @@ export function TransmettreVariantesDialog({ open, onOpenChange, demandeId, comp
   );
 }
 
-/** Traitement : compagnie, date, document, commentaire. */
+/** Traitement : compagnie, date, Offre / CGA / Autre document, commentaire. */
 export function TransmettreOffreSimpleDialog({ open, onOpenChange, demandeId, companyOptions, onTransmitted }) {
   const [compagnie, setCompagnie] = useState("");
   const [autre, setAutre] = useState("");
   const [dateReception, setDateReception] = useState(zurichTodayIso());
-  const [files, setFiles] = useState([]);
+  const [pieces, setPieces] = useState(emptyVariante());
   const [commentaire, setCommentaire] = useState("");
   const [errors, setErrors] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -281,11 +282,15 @@ export function TransmettreOffreSimpleDialog({ open, onOpenChange, demandeId, co
     setCompagnie("");
     setAutre("");
     setDateReception(zurichTodayIso());
-    setFiles([]);
+    setPieces(emptyVariante());
     setCommentaire("");
     setErrors([]);
     setToken(newClientToken());
   }, [open]);
+
+  const updatePiece = (piece, updater) => {
+    setPieces((prev) => ({ ...prev, [piece]: updater(prev[piece] || []) }));
+  };
 
   const submit = async () => {
     if (busy) return;
@@ -293,7 +298,7 @@ export function TransmettreOffreSimpleDialog({ open, onOpenChange, demandeId, co
     const problems = [];
     if (!name) problems.push("Compagnie");
     if (!dateReception) problems.push("Date");
-    if (!files.length) problems.push("Document");
+    problems.push(...traitementManquantes(pieces));
     setErrors(problems);
     if (problems.length) {
       toast.error("Transmission incomplète");
@@ -303,7 +308,7 @@ export function TransmettreOffreSimpleDialog({ open, onOpenChange, demandeId, co
     try {
       const res = await api.post(
         `/demandes-offres/${demandeId}/offre`,
-        traitementFormData({ compagnie: name, dateReception, files, commentaire, clientToken: token }),
+        traitementFormData({ compagnie: name, dateReception, pieces, commentaire, clientToken: token }),
       );
       onTransmitted(res.data, messageTransmission(res.data));
       onOpenChange(false);
@@ -316,31 +321,39 @@ export function TransmettreOffreSimpleDialog({ open, onOpenChange, demandeId, co
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next); }}>
-      <DialogContent className="max-w-lg" data-testid="transmettre-simple-dialog">
+      <DialogContent className="max-w-2xl" data-testid="transmettre-simple-dialog">
         <DialogHeader>
           <DialogTitle>Transmettre une offre</DialogTitle>
-          <DialogDescription>Transmission rapide d&apos;un document d&apos;offre à l&apos;agent.</DialogDescription>
+          <DialogDescription>
+            Joignez l&apos;offre et les CGA. Les documents déjà transmis ne sont jamais remplacés.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3" data-testid="transmettre-simple-champs">
-          <CompagnieField
-            options={companyOptions}
-            value={compagnie}
-            autre={autre}
-            onChange={setCompagnie}
-            onAutre={setAutre}
-            testId="simple-compagnie"
-          />
-          <FieldBlock label="Date" required>
-            <Input type="date" value={dateReception} onChange={(e) => setDateReception(e.target.value)} data-testid="simple-date" />
-          </FieldBlock>
-          <FieldBlock label="Document" required>
-            <FilePicker
-              files={files}
-              testId="simple-document"
-              onAdd={(incoming) => setFiles((prev) => [...prev, ...incoming])}
-              onRemove={(i) => setFiles((prev) => prev.filter((_, k) => k !== i))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <CompagnieField
+              options={companyOptions}
+              value={compagnie}
+              autre={autre}
+              onChange={setCompagnie}
+              onAutre={setAutre}
+              testId="simple-compagnie"
             />
-          </FieldBlock>
+            <FieldBlock label="Date" required>
+              <Input type="date" value={dateReception} onChange={(e) => setDateReception(e.target.value)} data-testid="simple-date" />
+            </FieldBlock>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-testid="simple-pieces">
+            {VARIANTE_PIECES.map((piece) => (
+              <FieldBlock key={piece.id} label={piece.required ? piece.label : `${piece.label} (facultatif)`} required={piece.required}>
+                <FilePicker
+                  files={pieces[piece.id] || []}
+                  testId={`simple-${piece.id}`}
+                  onAdd={(files) => updatePiece(piece.id, (prev) => [...prev, ...files])}
+                  onRemove={(i) => updatePiece(piece.id, (prev) => prev.filter((_, k) => k !== i))}
+                />
+              </FieldBlock>
+            ))}
+          </div>
           <FieldBlock label="Commentaire">
             <Textarea rows={3} value={commentaire} onChange={(e) => setCommentaire(e.target.value)} data-testid="simple-commentaire" />
           </FieldBlock>

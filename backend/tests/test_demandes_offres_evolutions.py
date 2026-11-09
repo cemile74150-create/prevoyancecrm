@@ -47,7 +47,9 @@ from demandes_offres_routes import (  # noqa: E402
     attach_demandes_offres_routes,
 )
 from demandes_offres_transmission import (  # noqa: E402
+    group_traitement_uploads,
     group_variante_uploads,
+    missing_traitement_pieces,
     missing_variante_pieces,
     parse_nb_variantes,
     variante_field,
@@ -297,10 +299,16 @@ class Harness:
             nb_variantes=str(nb), parcours="reponses_compagnies", client_token=token, user=user,
         )
 
-    def transmettre_simple(self, compagnie, *, commentaire="", token=None):
+    def transmettre_simple(self, compagnie, *, commentaire="", token=None, autre=False):
+        items = [
+            ("offre", _upload(f"{compagnie}-offre.pdf")),
+            ("cga", _upload(f"{compagnie}-cga.pdf")),
+        ]
+        if autre:
+            items.append(("autre", _upload(f"{compagnie}-autre.pdf")))
         return self.call(
             "POST", "/demandes-offres/{demande_id}/offre",
-            request=FakeRequest([("files", _upload(f"{compagnie}-offre.pdf"))]), demande_id="dem-1",
+            request=FakeRequest(items), demande_id="dem-1",
             compagnie=compagnie, date_reception="2026-11-05", reference=None, montant_prime=None,
             type_contrat=None, garanties=None, duree=None, commentaires=commentaire, file=None,
             nb_variantes=None, parcours="traitement", client_token=token, user=GESTION,
@@ -342,6 +350,20 @@ def test_trois_variantes_donnent_trois_blocs_offre_cga_autre():
     assert missing_variante_pieces(sans_cga, 1) == ["Variante 1 : CGA"]
     with pytest.raises(ValueError):
         group_variante_uploads([(variante_field(4, "offre"), object())], 3)
+
+
+def test_traitement_exige_offre_et_cga_avec_types():
+    groups = group_traitement_uploads([
+        ("offre", object()),
+        ("cga", object()),
+        ("autre", object()),
+        ("files", object()),  # legacy → offre
+    ])
+    assert len(groups["offre"]) == 2
+    assert len(groups["cga"]) == 1
+    assert len(groups["autre"]) == 1
+    assert missing_traitement_pieces(groups) == []
+    assert missing_traitement_pieces(group_traitement_uploads([("offre", object())])) == ["CGA"]
 
 
 def test_documents_lies_a_la_bonne_variante(trois_compagnies):
@@ -414,7 +436,7 @@ def test_une_compagnie_sur_trois_partiellement_transmise(trois_compagnies):
 def test_trois_compagnies_sur_trois_transmises_par_les_deux_parcours(trois_compagnies):
     h = trois_compagnies
     h.transmettre_variantes("AXA", 2)
-    h.transmettre_simple("Zurich", commentaire="Prime annuelle")
+    h.transmettre_simple("Zurich", commentaire="Prime annuelle", autre=True)
     result = h.transmettre_variantes("Helvetia", 1)
     assert result["etape_suivi"] == "offre_transmise"
     assert result["etape_suivi_label"] == "Offres transmises à l'agent"
@@ -425,6 +447,24 @@ def test_trois_compagnies_sur_trois_transmises_par_les_deux_parcours(trois_compa
     zurich = next(o for o in h.demande()["offres"] if o["compagnie"] == "Zurich")
     assert zurich["transmissions"][0]["parcours"] == "traitement"
     assert zurich["transmissions"][0]["commentaire"] == "Prime annuelle"
+    zurich_docs = [d for d in h.db[COLLECTION_DOCS].docs if d["compagnie"] == "Zurich"]
+    assert {d["piece_kind"] for d in zurich_docs} == {"Offre", "CGA", "Autre document"}
+    assert all("variante" not in d for d in zurich_docs)
+
+
+def test_traitement_refuse_sans_cga(trois_compagnies):
+    h = trois_compagnies
+    with pytest.raises(HTTPException) as exc:
+        h.call(
+            "POST", "/demandes-offres/{demande_id}/offre",
+            request=FakeRequest([("offre", _upload("seul.pdf"))]), demande_id="dem-1",
+            compagnie="AXA", date_reception="2026-11-05", reference=None, montant_prime=None,
+            type_contrat=None, garanties=None, duree=None, commentaires=None, file=None,
+            nb_variantes=None, parcours="traitement", client_token=None, user=GESTION,
+        )
+    assert exc.value.status_code == 422
+    assert "CGA" in exc.value.detail
+    assert h.db[COLLECTION_DOCS].docs == []
 
 
 def test_trois_variantes_d_une_compagnie_ne_comptent_qu_une_compagnie(trois_compagnies, monkeypatch):

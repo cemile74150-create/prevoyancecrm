@@ -14,6 +14,7 @@ import {
   resizeVariantes,
   sortFileATraiter,
   traitementFormData,
+  traitementManquantes,
   urgentesAgentEnTete,
   urgenceDelaiLabel,
   urgenceRefus,
@@ -102,13 +103,27 @@ describe("variantes", () => {
 });
 
 describe("deux parcours distincts", () => {
-  it("Traitement : seulement Compagnie, Date, Document, Commentaire", () => {
-    expect(PARCOURS_FIELDS[PARCOURS_TRAITEMENT]).toEqual(["compagnie", "date_reception", "document", "commentaire"]);
-    const fd = traitementFormData({ compagnie: "Zurich", dateReception: "2026-11-05", files: [file("z.pdf")], commentaire: " ok " });
-    expect(Array.from(fd.keys()).sort()).toEqual(["commentaires", "compagnie", "date_reception", "files", "parcours"]);
+  it("Traitement : Compagnie, Date, Offre, CGA, Autre document, Commentaire", () => {
+    expect(PARCOURS_FIELDS[PARCOURS_TRAITEMENT]).toEqual([
+      "compagnie", "date_reception", "offre", "cga", "autre", "commentaire",
+    ]);
+    expect(traitementManquantes({ offre: [file("o.pdf")], cga: [], autre: [] })).toEqual(["CGA"]);
+    const fd = traitementFormData({
+      compagnie: "Zurich",
+      dateReception: "2026-11-05",
+      pieces: { offre: [file("z-offre.pdf")], cga: [file("z-cga.pdf")], autre: [file("z-autre.pdf")] },
+      commentaire: " ok ",
+    });
+    expect(Array.from(fd.keys()).sort()).toEqual(["autre", "cga", "commentaires", "compagnie", "date_reception", "offre", "parcours"]);
     expect(fd.get("parcours")).toBe(PARCOURS_TRAITEMENT);
+    expect(fd.get("offre").name).toBe("z-offre.pdf");
+    expect(fd.get("cga").name).toBe("z-cga.pdf");
     const dialogs = src("components/TransmettreOffreDialogs.js");
     const simple = dialogs.slice(dialogs.indexOf("export function TransmettreOffreSimpleDialog"));
+    expect(simple).toMatch(/simple-\$\{piece\.id\}/);
+    expect(simple).toMatch(/VARIANTE_PIECES\.map/);
+    expect(simple).toMatch(/data-testid="simple-pieces"/);
+    expect(simple).toMatch(/traitementManquantes/);
     expect(simple).not.toMatch(/Référence|Montant|Garanties|Durée|Type de contrat|Nombre de variantes/);
   });
 

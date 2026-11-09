@@ -2754,8 +2754,9 @@ def attach_demandes_offres_routes(
         """Transmet une offre compagnie à l'agent.
 
         parcours=reponses_compagnies : N variantes, chacune avec Offre et CGA
-        (variante_<n>_offre / _cga / _autre). parcours=traitement : un ou
-        plusieurs documents simples. Sans parcours : ancien client, inchangé.
+        (variante_<n>_offre / _cga / _autre). parcours=traitement : Offre,
+        CGA et Autre document (champs offre / cga / autre), sans variantes.
+        Sans parcours : ancien client, documents simples inchangés.
         """
         from demandes_offres_transmission import (
             PARCOURS_REPONSES,
@@ -2763,8 +2764,10 @@ def attach_demandes_offres_routes(
             build_transmission,
             document_variante_extra,
             find_transmission,
+            group_traitement_uploads,
             group_variante_uploads,
             history_detail,
+            missing_traitement_pieces,
             missing_variante_pieces,
             normalize_parcours,
             parse_nb_variantes,
@@ -2797,6 +2800,7 @@ def attach_demandes_offres_routes(
 
         nb = None
         variante_groups: dict = {}
+        traitement_pieces: dict = {}
         simple_uploads: list = []
         if parcours_code == PARCOURS_REPONSES:
             try:
@@ -2820,10 +2824,27 @@ def attach_demandes_offres_routes(
                 for uploads in pieces.values()
                 for upload in uploads
             ]
+        elif parcours_raw == PARCOURS_TRAITEMENT:
+            form = await request.form()
+            items = [
+                (key, value)
+                for key, value in form.multi_items()
+                if isinstance(value, (UploadFile, StarletteUploadFile))
+                and (getattr(value, "filename", None) or "").strip()
+            ]
+            if file is not None and (getattr(file, "filename", None) or "").strip():
+                items.append(("file", file))
+            traitement_pieces = group_traitement_uploads(items)
+            missing = missing_traitement_pieces(traitement_pieces)
+            if missing:
+                raise HTTPException(status_code=422, detail="Documents manquants : " + " · ".join(missing))
+            pending_uploads = [
+                upload
+                for piece, _label in VARIANTE_PIECES
+                for upload in (traitement_pieces.get(piece) or [])
+            ]
         else:
             simple_uploads = await collect_multipart_uploads(request, single_file=file)
-            if parcours_raw == PARCOURS_TRAITEMENT and not simple_uploads:
-                raise HTTPException(status_code=422, detail="Ajoutez le document de l'offre")
             pending_uploads = simple_uploads
         if any(getattr(upload, "size", None) == 0 for upload in pending_uploads):
             raise HTTPException(status_code=400, detail="Fichier vide")
@@ -2846,6 +2867,17 @@ def attach_demandes_offres_routes(
                     stored_by_variante[index][piece].append(stored)
                     stored_docs.append(stored)
         stored_simple = []
+        for piece, _label in VARIANTE_PIECES:
+            for upload in (traitement_pieces.get(piece) or []):
+                stored = await store_doc(
+                    demande_id, upload, user, category="Offre compagnie",
+                    extra=document_variante_extra(
+                        transmission_id=transmission_id, parcours=parcours_code,
+                        compagnie=compagnie_name, piece=piece,
+                    ),
+                )
+                stored_simple.append(stored)
+                stored_docs.append(stored)
         for upload in simple_uploads:
             stored = await store_doc(
                 demande_id, upload, user, category="Offre compagnie",
