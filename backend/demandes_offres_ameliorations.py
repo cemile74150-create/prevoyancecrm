@@ -46,6 +46,7 @@ SUIVI_PROCESS = (
     "en_cours",
     "attente_compagnie",
     "relance",
+    ETAPE_OFFRES_PARTIELLES,
     "offre_transmise",
 )
 SUIVI_AGENT = ("envoyee_client",)
@@ -598,6 +599,12 @@ def compteurs_avancement(rows: list) -> dict:
 
 
 def urgentes_en_tete(rows: list) -> list:
+    """Place les demandes urgentes agent (flag `urgente`) avant tout le monde.
+
+    Primauté distincte de la priorité système (`priorite` normal/surveiller/urgent) :
+    une urgence agent avec priorité « Normal » passe devant une non-urgente
+    même si celle-ci a une priorité système « Urgent ».
+    """
     urgent = [row for row in rows if row.get("urgente")]
     autres = [row for row in rows if not row.get("urgente")]
     return urgent + autres

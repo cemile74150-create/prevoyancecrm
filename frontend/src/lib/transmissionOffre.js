@@ -139,3 +139,39 @@ export const FILE_COLUMNS = [
   "Agent", "Client", "Type", "Date création", "Date envoi", "RDV client",
   "Compagnies", "Statut", "Soumis cie.", "Dernière action", "Jours", "Priorité", "Action",
 ];
+
+/** Demande urgente posée par l'agent (badge URGENT), distincte de la priorité système. */
+export function isUrgenceAgent(row) {
+  return Boolean(row?.urgente);
+}
+
+function prioRankFile(priorite) {
+  if (priorite === "urgent") return 0;
+  if (priorite === "surveiller") return 1;
+  return 2;
+}
+
+/**
+ * File à traiter : l'urgence agent passe avant tout le monde,
+ * même si la colonne Priorité affiche « Normal ».
+ * Ensuite priorité système, puis dernière mise à jour.
+ */
+export function sortFileATraiter(rows) {
+  return [...(rows || [])].sort((a, b) => {
+    const urgent = Number(isUrgenceAgent(b)) - Number(isUrgenceAgent(a));
+    if (urgent !== 0) return urgent;
+    const d = prioRankFile(a?.priorite) - prioRankFile(b?.priorite);
+    if (d !== 0) return d;
+    return String(b?.updated_at || "").localeCompare(String(a?.updated_at || ""));
+  });
+}
+
+/** Garde l'ordre relatif dans chaque groupe, mais place toutes les urgences agent en tête. */
+export function urgentesAgentEnTete(rows) {
+  const urgent = [];
+  const autres = [];
+  for (const row of rows || []) {
+    (isUrgenceAgent(row) ? urgent : autres).push(row);
+  }
+  return urgent.concat(autres);
+}

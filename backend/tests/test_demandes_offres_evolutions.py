@@ -33,6 +33,7 @@ from access_control import (  # noqa: E402
 from demandes_offres_3p import COLLECTION, COLLECTION_DOCS, serialize_demande  # noqa: E402
 from demandes_offres_ameliorations import (  # noqa: E402
     SUIVI_LABELS,
+    SUIVI_PROCESS,
     etape_affichee,
     etat_transmission,
     urgentes_en_tete,
@@ -41,6 +42,7 @@ from demandes_offres_ameliorations import (  # noqa: E402
 from demandes_offres_messages import COLLECTION_MESSAGES, clean_message_content  # noqa: E402
 from demandes_offres_routes import (  # noqa: E402
     MessageDemandeRequest,
+    SuiviDemandeRequest,
     UrgenceRequest,
     attach_demandes_offres_routes,
 )
@@ -459,6 +461,35 @@ def test_compagnie_seulement_marquee_incomplete_ne_compte_pas():
         {"compagnie": "Zurich", "statut": "Incomplète", "documents": []},
     ])
     assert etat_transmission(doc)["etat"] == "partielle"
+
+
+def test_offres_partielles_selectionnable_manuellement(trois_compagnies):
+    """Le gestionnaire peut poser offres_partielles sans attendre l'auto-calcul."""
+    h = trois_compagnies
+    assert "offres_partielles" in SUIVI_PROCESS
+    result = h.call(
+        "POST",
+        "/demandes-offres/{demande_id}/suivi",
+        demande_id="dem-1",
+        payload=SuiviDemandeRequest(etape="offres_partielles"),
+        user=GESTION,
+    )
+    assert result["etape_suivi"] == "offres_partielles"
+    assert result["etape_suivi_label"] == "Offres partiellement transmises à l'agent"
+    assert h.demande()["suivi_etape"] == "offres_partielles"
+    assert h.demande().get("suivi_auto") is False
+    assert h.demande()["suivi_evenements"][-1]["etape"] == "offres_partielles"
+
+    # 1/3 transmise : l'étape manuelle reste partielle et la file doit la garder
+    apres = h.transmettre_variantes("AXA", 1)
+    assert apres["etape_suivi"] == "offres_partielles"
+    assert apres["transmission"]["etat"] == "partielle"
+    assert apres["etape_suivi"] != "offre_transmise"
+
+
+def test_etape_affichee_conserve_offres_partielles_manuel_sans_transmission():
+    doc = _demande(["AXA", "Zurich", "Helvetia"], suivi_etape="offres_partielles", suivi_auto=False)
+    assert etape_affichee(doc) == "offres_partielles"
 
 
 # --------------------------------------------------------------------------- notifications

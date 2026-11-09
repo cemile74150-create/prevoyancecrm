@@ -130,6 +130,7 @@ def test_etape_choisie_par_le_gestionnaire_reste_visible():
     assert etape_affichee({"statut": STATUT_OFFRE_ENVOYEE_CLIENT, "suivi_etape": "en_cours"}) == "envoyee_client"
     assert etape_affichee({"statut": "Offre non signée", "suivi_etape": "en_cours"}) == "non_signee"
     assert etape_affichee({"statut": STATUT_ENVOYEE, "suivi_etape": "relance"}) == "attente_compagnie"
+    assert etape_affichee({"statut": STATUT_ENVOYEE, "suivi_etape": "offres_partielles", "suivi_auto": False}) == "offres_partielles"
 
 
 def test_quota_exception_releve_le_plafond_de_l_agent():
@@ -335,3 +336,15 @@ def test_les_urgences_restent_devant_le_tri():
     ]
     ordered = [row["id"] for row in urgentes_en_tete(sort_demandes(rows, "soumission_desc", today="2026-11-05"))]
     assert ordered[0] == "b"
+
+
+def test_urgence_agent_prime_priorite_systeme_urgent():
+    """Badge URGENT agent (même Priorité Normal) avant une non-urgente Priorité Urgent."""
+    rows = [
+        {"id": "sys-urgent", "urgente": False, "priorite": "urgent", "updated_at": "2026-11-09T12:00:00"},
+        {"id": "agent-urgent-normal", "urgente": True, "priorite": "normal", "updated_at": "2026-11-06T08:00:00"},
+        {"id": "autre", "urgente": False, "priorite": "surveiller", "updated_at": "2026-11-08T10:00:00"},
+    ]
+    ordered = [row["id"] for row in urgentes_en_tete(sort_demandes(rows, "rdv_asc", today="2026-11-09"))]
+    assert ordered[0] == "agent-urgent-normal"
+    assert ordered[0] != "sys-urgent"

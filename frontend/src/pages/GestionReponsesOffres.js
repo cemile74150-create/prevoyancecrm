@@ -37,7 +37,7 @@ import {
 import { uniqueConseillerNames } from "@/lib/conseillers";
 import { PendingComplementBadge } from "@/components/NotesConseiller";
 import { offreNotificationPath } from "@/lib/complementsOffre";
-import { FILE_COLUMNS, urgenceDelaiLabel } from "@/lib/transmissionOffre";
+import { FILE_COLUMNS, sortFileATraiter, urgentesAgentEnTete, urgenceDelaiLabel } from "@/lib/transmissionOffre";
 import {
   Bell, Briefcase, ClipboardList, Columns3, Eye, Filter,
   Loader2, Search, Users, AlertTriangle, Inbox, Sparkles, Clock, BarChart3,
@@ -58,12 +58,6 @@ const TERMINAL = new Set(["Offre signée", "Offre refusée", "Demande annulée",
 
 const FILE_HEADERS = FILE_COLUMNS;
 
-function prioRank(p) {
-  if (p === "urgent") return 0;
-  if (p === "surveiller") return 1;
-  return 2;
-}
-
 function isOffreAModifier(row) {
   const st = row?.statut;
   return st === "Offre à modifier" || st === "Offre modifiée";
@@ -72,17 +66,7 @@ function isOffreAModifier(row) {
 function rowHighlight(row) {
   const p = row?.priorite;
   const st = row?.statut;
-  return p === "urgent" || p === "surveiller" || st === "Demande incomplète" || st === "Offre reçue" || isOffreAModifier(row);
-}
-
-function sortQueue(rows) {
-  return [...rows].sort((a, b) => {
-    const urgent = Number(Boolean(b.urgente)) - Number(Boolean(a.urgente));
-    if (urgent !== 0) return urgent;
-    const d = prioRank(a.priorite) - prioRank(b.priorite);
-    if (d !== 0) return d;
-    return String(b.updated_at || "").localeCompare(String(a.updated_at || ""));
-  });
+  return Boolean(row?.urgente) || p === "urgent" || p === "surveiller" || st === "Demande incomplète" || st === "Offre reçue" || isOffreAModifier(row);
 }
 
 const RDV_PROXIMITE = {
@@ -224,8 +208,8 @@ export default function GestionReponsesOffres() {
       if (cat && cat !== "en_retard") params.categorie = cat;
       if (enRetard || cat === "en_retard") params.en_retard = true;
 
-      // Day-action shortcuts that map to API filters
-      if (dayAction === "urgentes") params.priorite = "urgent";
+      // Day-action shortcuts that map to API filters.
+      // « Urgentes » = urgence agent OU priorité système urgent (filtré côté client).
       if (dayAction === "a_surveiller") params.priorite = "surveiller";
       if (dayAction === "incompletes") params.categorie = "incompletes";
       if (dayAction === "offres_recues") params.categorie = "offres_recues";
@@ -315,6 +299,9 @@ export default function GestionReponsesOffres() {
   const visibleRows = useMemo(() => {
     let list = rows;
     if (!qDebounced) list = list.filter((r) => r.statut !== "Brouillon");
+    if (dayAction === "urgentes") {
+      list = list.filter((r) => Boolean(r.urgente) || r.priorite === "urgent");
+    }
     if (dayAction === "nouvelles") {
       list = list.filter((r) => {
         const st = r.statut;
@@ -322,7 +309,9 @@ export default function GestionReponsesOffres() {
         return (st === "Demande envoyée" || st === "Demande validée") && j <= 1;
       });
     }
-    return tri && tri !== "maj" ? list : sortQueue(list);
+    // L'urgence agent prime toujours, y compris si un autre tri (RDV, soumission) est choisi.
+    if (tri && tri !== "maj") return urgentesAgentEnTete(list);
+    return sortFileATraiter(list);
   }, [rows, qDebounced, dayAction, tri]);
 
   const fileRechercheActive = Boolean(
@@ -695,7 +684,7 @@ export default function GestionReponsesOffres() {
                         <tr
                           key={r.id}
                           className={`border-t border-slate-100 hover:bg-slate-50/60 ${
-                            r.priorite === "urgent"
+                            r.urgente || r.priorite === "urgent"
                               ? "bg-red-50/40"
                               : isOffreAModifier(r)
                                 ? "bg-amber-50/70"

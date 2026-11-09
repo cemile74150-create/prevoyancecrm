@@ -12,7 +12,9 @@ import {
   messageTransmission,
   parseNbVariantes,
   resizeVariantes,
+  sortFileATraiter,
   traitementFormData,
+  urgentesAgentEnTete,
   urgenceDelaiLabel,
   urgenceRefus,
   variantesFormData,
@@ -141,11 +143,38 @@ describe("file à traiter et bouton erreur", () => {
     expect(page.slice(page.lastIndexOf("<td", client), client)).toMatch(/font-normal/);
   });
 
+  it("urgence agent (Priorité Normal) passe devant priorité système Urgent", () => {
+    const rows = [
+      { id: "sys-urgent", urgente: false, priorite: "urgent", updated_at: "2026-11-09T12:00:00" },
+      { id: "agent-urgent-normal", urgente: true, priorite: "normal", updated_at: "2026-11-06T08:00:00" },
+      { id: "autre", urgente: false, priorite: "surveiller", updated_at: "2026-11-08T10:00:00" },
+    ];
+    expect(sortFileATraiter(rows).map((r) => r.id)).toEqual([
+      "agent-urgent-normal",
+      "sys-urgent",
+      "autre",
+    ]);
+    expect(urgentesAgentEnTete(rows).map((r) => r.id)[0]).toBe("agent-urgent-normal");
+    const page = src("pages/GestionReponsesOffres.js");
+    expect(page).toMatch(/sortFileATraiter/);
+    expect(page).toMatch(/urgentesAgentEnTete/);
+  });
+
   it("une transmission partielle reste dans la file, la complète en sort", () => {
     const partielle = { statut: "Demande envoyée", etape_suivi: "offres_partielles", etape_suivi_label: "Offres partiellement transmises à l'agent" };
     expect(avancementCode(partielle)).not.toBe("offre_transmise");
     expect(avancementLabel(partielle)).toBe("Offres partiellement transmises à l'agent");
     expect(src("pages/GestionReponsesOffres.js")).toMatch(/avancementCode\(row\) === "offre_transmise"/);
+  });
+
+  it("Offres partiellement transmises est sélectionnable manuellement dans Avancement", () => {
+    const fiche = src("pages/DemandeOffreFiche.js");
+    expect(fiche).toMatch(/id: "offres_partielles"/);
+    expect(fiche).not.toMatch(/id: "offres_partielles"[^\}]*auto:\s*true/);
+    expect(fiche).toMatch(/SUIVI_IMMEDIAT/);
+    expect(fiche).toMatch(/"offres_partielles"/);
+    const optionMap = fiche.slice(fiche.indexOf("SUIVI_MENU.map"), fiche.indexOf("SUIVI_MENU.map") + 220);
+    expect(optionMap).not.toMatch(/disabled=\{item\.auto\}/);
   });
 
   it("Signaler une erreur : fond blanc, texte foncé, même action", () => {

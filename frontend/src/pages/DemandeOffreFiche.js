@@ -2949,9 +2949,10 @@ const SUIVI_MENU = [
   { id: "en_cours", label: "En cours de traitement" },
   { id: "attente_compagnie", label: "En attente de la compagnie" },
   { id: "relance", label: "Relance effectuée auprès de la compagnie" },
-  { id: "offres_partielles", label: "Offres partiellement transmises à l'agent", auto: true },
+  { id: "offres_partielles", label: "Offres partiellement transmises à l'agent" },
   { id: "offre_transmise", label: "Offres transmises à l'agent" },
 ];
+const SUIVI_IMMEDIAT = new Set(["en_attente", "en_cours", "offres_partielles"]);
 const SUIVI_VERROUILLE = ["envoyee_client", "signee", "annulee", "refusee", "non_signee"];
 
 function SuiviTraitement({ demande, busy, onSuivi }) {
@@ -2968,7 +2969,7 @@ function SuiviTraitement({ demande, busy, onSuivi }) {
 
   const choose = (code) => {
     if (!code) return;
-    if (code === "en_attente" || code === "en_cours") {
+    if (SUIVI_IMMEDIAT.has(code)) {
       setPending("");
       if (code !== current) onSuivi(code, {});
       return;
@@ -3007,7 +3008,7 @@ function SuiviTraitement({ demande, busy, onSuivi }) {
             data-testid="suivi-traitement-select"
           >
             {SUIVI_MENU.map((item) => (
-              <option key={item.id} value={item.id} disabled={item.auto}>{item.label}</option>
+              <option key={item.id} value={item.id}>{item.label}</option>
             ))}
           </select>
           {demande?.transmission?.etat === "partielle" && (
