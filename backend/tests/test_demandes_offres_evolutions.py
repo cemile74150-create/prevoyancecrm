@@ -420,6 +420,18 @@ def test_transmission_supplementaire_meme_compagnie_conserve_les_documents(trois
     assert offer["nb_variantes"] == 3
 
 
+def test_premiere_mise_a_disposition_des_documents_n_est_pas_deplacee(trois_compagnies):
+    h = trois_compagnies
+    assert not h.demande().get("docs_mis_a_disposition_at")
+    h.transmettre_variantes("AXA", 1)
+    assert h.demande()["docs_mis_a_disposition_at"]
+    first = "2026-11-01T08:00:00+00:00"
+    h.db[COLLECTION].docs[0]["docs_mis_a_disposition_at"] = first
+    h.transmettre_simple("Zurich")
+    h.transmettre_variantes("AXA", 1)
+    assert h.demande()["docs_mis_a_disposition_at"] == first
+
+
 # --------------------------------------------------------------------------- avancement par compagnie
 
 def test_une_compagnie_sur_trois_partiellement_transmise(trois_compagnies):

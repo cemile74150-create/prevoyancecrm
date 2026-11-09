@@ -147,6 +147,7 @@ MAIL_TYPE_COMPLEMENT_REPONSE = "complement_reponse"
 MAIL_TYPE_DOSSIER_PRESENTE = "dossier_presente"
 MAIL_TYPE_RDV_SUIVI_RELANCE = "rdv_suivi_relance"
 MAIL_TYPE_RELANCE_AGENT_21J = "relance_agent_21j"
+MAIL_TYPE_RELANCE_AGENT_14J = "relance_agent_14j"
 MAIL_TYPE_TEST = "smtp_test"
 MAIL_TYPE_NOTIFICATION = "notification"
 
@@ -1351,58 +1352,84 @@ def format_demande_offre_recap_conseiller_email(doc: dict) -> Tuple[str, str, st
     return subject, body_text, body_html
 
 
-def format_relance_agent_21j_email(doc: dict) -> Tuple[str, str, str]:
-    """Rappel unique : l'agent n'a pas mis à jour l'offre 21 jours après sa transmission."""
+RELANCE_AGENT_14J_SUBJECT = "LeoSoft – Rappel : statut de votre demande d’offre à renseigner"
+
+
+def format_relance_agent_14j_email(doc: dict, mise_a_disposition_at: Optional[str] = None) -> Tuple[str, str, str]:
+    """Rappel unique, 14 jours après la mise à disposition des documents (texte du cahier des charges).
+
+    Deux mentions demandées au § 9 complètent le texte du § 4 : la date de mise
+    à disposition et la phrase « Merci d'indiquer sur LeoSoft… ».
+    """
     client = _offre_client_name(doc)
     numero = (doc.get("numero") or "").strip() or "—"
-    prenom = _agent_greeting_prenom(doc) or ""
-    subject = f"LeoSoft – Rappel de mise à jour du statut de votre offre {numero}"
-    greeting = f"Bonjour {prenom}," if prenom else "Bonjour,"
-    url = _demande_offre_url(doc.get("id"))
+    url = _demande_offre_url(doc.get("id")) or (f"/demandes-offres/{doc.get('id')}" if doc.get("id") else "")
+    date_label = _format_date_fr(str(mise_a_disposition_at or "")[:10]) if mise_a_disposition_at else ""
+    if mise_a_disposition_at:
+        try:
+            from zoneinfo import ZoneInfo
+
+            raw = str(mise_a_disposition_at).replace("Z", "+00:00")
+            moment = datetime.fromisoformat(raw)
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=timezone.utc)
+            date_label = moment.astimezone(ZoneInfo("Europe/Zurich")).strftime("%d.%m.%Y")
+        except (ValueError, TypeError):
+            pass
+    reference = f"{numero} – {client}"
     lines = [
-        greeting,
+        "Bonjour,",
         "",
         (
-            f"Nous constatons que le statut de l'offre concernant le dossier {client}, "
-            f"référence {numero}, n'a pas été mis à jour depuis sa transmission il y a 21 jours."
+            f"Les documents relatifs à votre demande d’offre {reference} ont été mis à votre "
+            "disposition sur LeoSoft il y a maintenant 14 jours."
         ),
-        "",
-        "Nous vous remercions de bien vouloir vous connecter à LeoSoft afin de renseigner l'avancement de cette offre :",
-        "",
-        "- Offre envoyée au client ;",
-        "- Offre signée, si le client a accepté et signé l'offre.",
-        "",
-        "Vous pouvez accéder directement au dossier en cliquant sur le lien ci-dessous :",
-        "",
-        f"Consulter la demande dans LeoSoft : {url}" if url else "Consulter la demande dans LeoSoft",
-        "",
-        "Merci d'avance pour votre retour.",
-        "",
-        "Belle journée,",
-        "",
-        "Le service des Offres",
     ]
-    safe_client = html.escape(client)
-    safe_numero = html.escape(numero)
-    button = _html_button(url, "Consulter la demande dans LeoSoft") if url else ""
+    if date_label:
+        lines.append(f"Date de mise à disposition des documents : {date_label}")
+    lines += [
+        "",
+        "À ce jour, nous n’avons pas reçu de confirmation concernant la décision finale du client.",
+        "",
+        "Nous vous remercions de bien vouloir vous connecter à LeoSoft afin de préciser obligatoirement si :",
+        "",
+        "- L’offre a été signée par le client.",
+        "- L’offre n’a pas été signée par le client.",
+        "",
+        "Merci d'indiquer sur LeoSoft si l'offre a été signée ou non signée par votre client.",
+        "",
+        "Cette information est indispensable pour assurer le suivi et la mise à jour de votre dossier.",
+        "",
+        f"Accéder à ma demande sur LeoSoft : {url}",
+        "",
+        "Merci d’avance pour votre retour.",
+        "",
+        "Cordialement,",
+        "L’équipe LeoSoft",
+    ]
+    safe_ref = html.escape(reference)
+    safe_url = html.escape(url, quote=True)
+    link = f'<a href="{safe_url}">{html.escape(url)}</a>' if url else ""
+    date_html = (
+        f"<br>Date de mise à disposition des documents : {html.escape(date_label)}" if date_label else ""
+    )
     body_html = (
         '<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.5;">'
-        f"<p>{html.escape(greeting)}</p>"
-        "<p>Nous constatons que le statut de l'offre concernant le dossier "
-        f"<strong>{safe_client}</strong>, référence <strong>{safe_numero}</strong>, "
-        "n'a pas été mis à jour depuis sa transmission il y a 21 jours.</p>"
-        "<p>Nous vous remercions de bien vouloir vous connecter à LeoSoft afin de renseigner "
-        "l'avancement de cette offre :</p>"
-        "<ul><li>Offre envoyée au client ;</li>"
-        "<li>Offre signée, si le client a accepté et signé l'offre.</li></ul>"
-        "<p>Vous pouvez accéder directement au dossier en cliquant sur le lien ci-dessous :</p>"
-        f"{button or '<p>Consulter la demande dans LeoSoft</p>'}"
-        "<p>Merci d'avance pour votre retour.</p>"
-        "<p>Belle journée,</p>"
-        "<p><strong>Le service des Offres</strong></p>"
+        "<p>Bonjour,</p>"
+        f"<p>Les documents relatifs à votre demande d’offre <strong>{safe_ref}</strong> ont été mis à votre "
+        f"disposition sur LeoSoft il y a maintenant 14 jours.{date_html}</p>"
+        "<p>À ce jour, nous n’avons pas reçu de confirmation concernant la décision finale du client.</p>"
+        "<p>Nous vous remercions de bien vouloir vous connecter à LeoSoft afin de préciser obligatoirement si :</p>"
+        "<ul><li><strong>L’offre a été signée par le client.</strong></li>"
+        "<li><strong>L’offre n’a pas été signée par le client.</strong></li></ul>"
+        "<p>Merci d'indiquer sur LeoSoft si l'offre a été signée ou non signée par votre client.</p>"
+        "<p>Cette information est indispensable pour assurer le suivi et la mise à jour de votre dossier.</p>"
+        f"<p><strong>Accéder à ma demande sur LeoSoft : {link}</strong></p>"
+        "<p>Merci d’avance pour votre retour.</p>"
+        "<p>Cordialement,<br>L’équipe LeoSoft</p>"
         "</div>"
     )
-    return subject, "\n".join(lines), body_html
+    return RELANCE_AGENT_14J_SUBJECT, "\n".join(lines), body_html
 
 
 def format_offre_recue_email(doc: dict, offer: Optional[dict] = None) -> Tuple[str, str, str]:

@@ -1,6 +1,7 @@
 """Module Demandes d'offres 3e pilier — collection Mongo dédiée."""
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -665,9 +666,10 @@ GESTION_CATEGORIES = {
         "label": "Signées",
         "statuts": [STATUT_OFFRE_SIGNEE],
     },
+    # Même définition que le statut commercial « Offre non signée » (refus inclus).
     "offres_non_signees": {
         "label": "Offres non signées",
-        "statuts": [STATUT_OFFRE_NON_SIGNEE],
+        "statuts": [STATUT_OFFRE_NON_SIGNEE, STATUT_OFFRE_REFUSEE],
     },
 }
 
@@ -682,7 +684,7 @@ GESTION_KANBAN_COLUMNS = [
     {"id": "completes", "label": "Complètes", "statuts": [STATUT_OFFRE_COMPLETE, STATUT_OFFRE_CHOISIE, STATUT_EN_CONCLUSION]},
     {"id": "envoyee_client", "label": "Chez le client", "statuts": [STATUT_OFFRE_ENVOYEE_CLIENT]},
     {"id": "signees", "label": "Signées", "statuts": [STATUT_OFFRE_SIGNEE]},
-    {"id": "offres_non_signees", "label": "Offres non signées", "statuts": [STATUT_OFFRE_NON_SIGNEE]},
+    {"id": "offres_non_signees", "label": "Offres non signées", "statuts": [STATUT_OFFRE_NON_SIGNEE, STATUT_OFFRE_REFUSEE]},
 ]
 
 # Statuts encore « ouverts » pour le calcul d'urgence / retard
@@ -1757,6 +1759,12 @@ def serialize_demande(doc: dict, *, docs: Optional[list] = None, viewer=None) ->
     except Exception:
         pass
     enrich_gestion_fields(doc, out)
+    try:
+        from demandes_offres_pilotage import enrich_pilotage_fields
+
+        enrich_pilotage_fields(doc, out, viewer=viewer)
+    except Exception:
+        logging.getLogger(__name__).exception("Champs de pilotage indisponibles pour %s", doc.get("id"))
     out["nb_variantes_sollicitees"] = len(out.get("compagnies_sollicitees") or [])
     # Notes internes + erreurs : gestionnaires process + admin (users.manage)
     from access_control import can_process_offres, ROLE_ADMIN
@@ -2945,6 +2953,8 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
     from demandes_offres_ameliorations import compteurs_avancement
 
     avancement = compteurs_avancement(rows)
+    from demandes_offres_pilotage import compute_pilotage
+
     result = {
         "total": total,
         "nb_demandes": nb_demandes,
@@ -2983,6 +2993,7 @@ def compute_stats(rows: list, *, period_meta: Optional[dict] = None) -> dict:
         },
         "gestion_kanban": GESTION_KANBAN_COLUMNS,
         "avancement": avancement,
+        "pilotage": compute_pilotage(rows),
         "delai_surveiller_jours": OFFRES_DELAI_SURVEILLER_JOURS,
         "delai_urgent_jours": OFFRES_DELAI_URGENT_JOURS,
         **agent_block,

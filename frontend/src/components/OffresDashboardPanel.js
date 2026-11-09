@@ -11,9 +11,10 @@ import {
   STATUT_STYLE,
   compagniesAffichees,
 } from "@/lib/demandesOffres";
+import SuiviOffresPilotage, { SuiviMesOffres } from "@/components/SuiviOffresPilotage";
 import {
   AlertTriangle, CheckCircle2, ChevronRight, Clock, FilePlus2, FileSearch,
-  FileSpreadsheet, FolderKanban, Layers, TrendingUp, User, X,
+  FileSpreadsheet, FolderKanban, Layers, User, X,
 } from "lucide-react";
 
 const ANNULEE = "Demande annulée";
@@ -179,7 +180,28 @@ function KpiCard({ def, value, active, onClick }) {
   );
 }
 
-export default function OffresDashboardPanel({
+/**
+ * Service des offres (vue globale) : pilotage attribution / traitement / commercial.
+ * Agent : ses demandes, avec le suivi commercial de ses offres.
+ */
+export default function OffresDashboardPanel(props) {
+  if (props.isGlobal) {
+    return (
+      <SuiviOffresPilotage
+        filterConseiller={props.filterConseiller}
+        conseillerNames={props.conseillerNames}
+      />
+    );
+  }
+  return (
+    <div className="space-y-6">
+      <SuiviMesOffres />
+      <OffresAgentPanel {...props} />
+    </div>
+  );
+}
+
+function OffresAgentPanel({
   isGlobal,
   filterConseiller,
   conseillerNames = [],
@@ -368,16 +390,6 @@ export default function OffresDashboardPanel({
     setPipelineFilter(null);
   };
 
-  const parcoursSignature = baseRows.filter((row) => [
-    "Offre envoyée au client",
-    "En conclusion",
-    "Offre signée",
-    "Offre refusée",
-  ].includes(row.statut || "")).length;
-  const taux = parcoursSignature
-    ? Math.round((kpiCounts.signees / parcoursSignature) * 1000) / 10
-    : 0;
-
   return (
     <div className="space-y-6" data-testid="offres-dashboard-panel">
       {/* Filtres */}
@@ -472,21 +484,6 @@ export default function OffresDashboardPanel({
             onClick={() => selectKpi(def.key)}
           />
         ))}
-        <Card className="p-5 border-border">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground font-medium">Taux de signature</p>
-              <p className="font-display font-black text-3xl tracking-tight mt-2 tabular-nums">{parcoursSignature ? `${taux}%` : "—"}</p>
-              <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
-                Signées / dossiers transmis au client (envoyée au client, en conclusion, signée ou refusée), sur la période affichée.
-                Même définition que Gestion réponses offres. Le compteur « envoyées client » ne compte que le statut encore chez le client.
-              </p>
-            </div>
-            <div className="h-9 w-9 rounded-md flex items-center justify-center bg-green-100 text-green-700">
-              <TrendingUp className="h-4 w-4" strokeWidth={1.75} />
-            </div>
-          </div>
-        </Card>
       </div>
 
       {/* Pipeline */}

@@ -32,6 +32,8 @@ import { TransmettreOffreSimpleDialog, TransmettreVariantesDialog } from "@/comp
 import {
   SIGNALER_ERREUR_CLASS, documentsParVariante, urgenceDelaiLabel, urgenceRefus,
 } from "@/lib/transmissionOffre";
+import { COMMERCIAL_STYLE, commercialCode, commercialLabel } from "@/lib/suiviOffres";
+import { ReattribuerDialog } from "@/components/SuiviOffresPilotage";
 import ClientSuggestInput from "@/components/ClientSuggestInput";
 import {
   resolveAgentIdentity,
@@ -42,7 +44,7 @@ import { normalizeConseillerKey } from "@/lib/conseillers";
 import {
   AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronLeft, ChevronRight,
   Download, ExternalLink, FileText, Loader2, Mail, Paperclip, Pencil, Plus,
-  RotateCcw, Save, Send, ShieldCheck, StickyNote, Trash2, X, XCircle,
+  RotateCcw, Save, Send, ShieldCheck, StickyNote, Trash2, UserCheck, UserCog, X, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -1657,6 +1659,8 @@ export default function DemandeOffreFiche() {
                 commentaire: extra?.commentaire || "",
                 compagnie: extra?.compagnie || "",
               }, "Avancement enregistré")}
+              onAttribuer={() => runAction("attribuer", {}, "Dossier attribué à vous-même")}
+              onReattribue={(data) => { if (data) applyDemande(data); }}
             />
           </div>
         )}
@@ -3263,10 +3267,92 @@ function viewerIsCreatingAgent(demande, user, { canFollowSignature, isAdmin }) {
   return Boolean(canFollowSignature);
 }
 
+/** Statut commercial courant : libellé, date, auteur, mise à disposition et rappel 14 jours. */
+function SuiviCommercialStatut({ demande }) {
+  const code = commercialCode(demande);
+  const decision = demande.decision_client || {};
+  return (
+    <div className="space-y-1 text-xs text-slate-600">
+      <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ${COMMERCIAL_STYLE[code] || ""}`} data-testid="statut-commercial">
+        {commercialLabel(demande)}
+      </span>
+      {demande.statut_commercial_at ? (
+        <p>
+          Renseigné le {formatDateFr(demande.statut_commercial_at)}
+          {demande.statut_commercial_by ? ` par ${demande.statut_commercial_by}` : ""}
+        </p>
+      ) : null}
+      {decision.docs_transmis_at ? (
+        <p>
+          Documents mis à disposition le {formatDateFr(decision.docs_transmis_at)}
+          {decision.a_renseigner && decision.jours != null ? ` · ${decision.jours} jour${decision.jours > 1 ? "s" : ""}` : ""}
+        </p>
+      ) : null}
+      {decision.a_renseigner ? (
+        <p className={decision.depasse_14j ? "font-semibold text-red-700" : "text-amber-800"}>
+          Décision finale du client à renseigner : signée ou non signée.
+        </p>
+      ) : null}
+      {decision.rappel_envoye_at ? (
+        <p>Rappel automatique envoyé à l&apos;agent le {formatDateFr(decision.rappel_envoye_at)}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Gestionnaire responsable : « M'attribuer », « Réattribuer le dossier » et historique. */
+function AttributionDossier({ demande, busy, onAttribuer, onReattribue }) {
+  const [open, setOpen] = useState(false);
+  const historique = Array.isArray(demande.attributions_historique) ? demande.attributions_historique : [];
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3 space-y-2" data-testid="attribution-dossier">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gestionnaire</span>
+        {demande.gestionnaire_id ? (
+          <span className="text-sm font-semibold text-slate-900" data-testid="gestionnaire-attribue">{demande.gestionnaire_nom}</span>
+        ) : (
+          <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900" data-testid="dossier-non-attribue">
+            Non attribuée
+          </span>
+        )}
+      </div>
+      {demande.gestionnaire_attribue_at ? (
+        <p className="text-[11px] text-slate-500">Depuis le {formatDateFr(demande.gestionnaire_attribue_at)}</p>
+      ) : null}
+      {demande.can_attribuer && (
+        <Button className="w-full justify-start bg-[#002FA7] hover:bg-[#00248a]" onClick={onAttribuer} disabled={busy} data-testid="m-attribuer-btn">
+          <UserCheck className="h-4 w-4 mr-2" /> M&apos;attribuer
+        </Button>
+      )}
+      {demande.can_reattribuer && (
+        <Button variant="outline" className="w-full justify-start" onClick={() => setOpen(true)} disabled={busy} data-testid="reattribuer-btn">
+          <UserCog className="h-4 w-4 mr-2" /> Réattribuer le dossier
+        </Button>
+      )}
+      {historique.length > 0 && (
+        <details className="text-[11px] text-slate-600">
+          <summary className="cursor-pointer select-none">Historique des attributions ({historique.length})</summary>
+          <ul className="mt-1 space-y-1">
+            {[...historique].reverse().map((h, i) => (
+              <li key={`${h.at}-${i}`}>
+                {formatDateFr(h.at)} · {h.ancien_nom ? `${h.ancien_nom} → ` : ""}<strong>{h.nouveau_nom}</strong>
+                {h.par_nom && h.par_nom !== h.nouveau_nom ? ` (par ${h.par_nom})` : ""}
+                {h.motif ? ` · ${h.motif}` : ""}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <ReattribuerDialog row={demande} open={open} onOpenChange={setOpen} onDone={onReattribue} />
+    </div>
+  );
+}
+
 function ActionPanel({
   demande, user, canEdit, canProcess, canFollowSignature, isAdmin, busy, hasOffers, hasIncompleteCompany,
   onIncomplete, onOffer, onErreurs, onNote, onExternalNote, onDoc, onConclusion, onSendClient,
   onSignature, onSoumisCompagnie, onDemandeAnnulee, onCancel, onRestore, onDelete, onSuivi,
+  onAttribuer, onReattribue,
 }) {
   const terminal = ["Offre signée", "Offre refusée"].includes(demande.statut) || isHorsCours(demande.statut);
   const canSendClient = hasOffers || demande.offre;
@@ -3283,9 +3369,24 @@ function ActionPanel({
   const demandeAnnulee = isDemandeAnnuleeFlag(demande.demande_annulee) || isDemandeAnnuleeStatut(demande.statut);
   const panelTitle = showProcess && showConseillerFollowup ? "Traitement & suivi" : showProcess ? "Traitement" : "Actions";
   if (!showProcess && !showConseillerFollowup && !canRestore && !canDeleteHard) return null;
+  const showSendClient = showConseillerFollowup && canSendClient && !["Offre envoyée au client", "Offre signée", "Offre refusée"].includes(demande.statut) && !isHorsCours(demande.statut);
   return <Card className="p-5 space-y-3 sticky top-20">
     <h2 className="font-display font-bold flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-[#002FA7]" /> {panelTitle}</h2>
+    {(showProcess || demande.can_reattribuer) && demande.statut !== "Brouillon" && (
+      <AttributionDossier
+        demande={demande}
+        busy={busy}
+        onAttribuer={onAttribuer}
+        onReattribue={onReattribue}
+      />
+    )}
     {showProcess && <SuiviTraitement demande={demande} busy={busy} onSuivi={onSuivi} />}
+    {showProcess && !showConseillerFollowup && demande.statut_commercial && demande.statut !== "Brouillon" && (
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs space-y-1" data-testid="suivi-commercial-gestion">
+        <p className="font-semibold text-slate-700">Statut commercial (renseigné par l&apos;agent)</p>
+        <SuiviCommercialStatut demande={demande} />
+      </div>
+    )}
     {canRestore && (
       <div className="rounded-md border border-amber-200 bg-amber-50/80 p-3 space-y-2">
         <p className="text-sm text-amber-950 font-medium">Demande annulée</p>
@@ -3341,14 +3442,25 @@ function ActionPanel({
         </span>
       </label>
     )}
-    {showConseillerFollowup && canSendClient && !["Offre envoyée au client", "Offre signée", "Offre refusée"].includes(demande.statut) && !isHorsCours(demande.statut) &&
-      <Button className="w-full justify-start bg-[#002FA7] hover:bg-[#00248a]" onClick={onSendClient} disabled={busy} data-testid="offre-envoyee-client-btn">
-        <Mail className="h-4 w-4 mr-2" /> Offre envoyée au client
-      </Button>}
-    {showSignature && (
-      <Button className="w-full justify-start bg-emerald-700 hover:bg-emerald-800" onClick={() => onSignature(true)} disabled={busy} data-testid="offre-signee-btn">
-        <CheckCircle2 className="h-4 w-4 mr-2" /> Offre signée
-      </Button>
+    {showConseillerFollowup && demande.statut !== "Brouillon" && (
+      <div className="rounded-md border border-[#002FA7]/25 bg-[#002FA7]/[0.03] p-3 space-y-2" data-testid="suivi-mon-offre">
+        <p className="text-sm font-semibold text-slate-900">Suivi de mon offre</p>
+        <SuiviCommercialStatut demande={demande} />
+        {showSendClient &&
+          <Button className="w-full justify-start bg-[#002FA7] hover:bg-[#00248a]" onClick={onSendClient} disabled={busy} data-testid="offre-envoyee-client-btn">
+            <Mail className="h-4 w-4 mr-2" /> Offre transmise au client
+          </Button>}
+        {showSignature && (
+          <Button className="w-full justify-start bg-emerald-700 hover:bg-emerald-800" onClick={() => onSignature(true)} disabled={busy} data-testid="offre-signee-btn">
+            <CheckCircle2 className="h-4 w-4 mr-2" /> Offre signée
+          </Button>
+        )}
+        {canMarkNonSignee && (
+          <Button variant="outline" className="w-full justify-start border-rose-300 text-rose-800 bg-white" onClick={onCancel} disabled={busy} data-testid="offre-non-signee-panel-btn">
+            <XCircle className="h-4 w-4 mr-2" /> ❌ Offre non signée
+          </Button>
+        )}
+      </div>
     )}
     {showProcess && (
       <label
@@ -3374,11 +3486,6 @@ function ActionPanel({
           </span>
         </span>
       </label>
-    )}
-    {canMarkNonSignee && (
-      <Button variant="outline" className="w-full justify-start border-rose-300 text-rose-800" onClick={onCancel} disabled={busy} data-testid="offre-non-signee-panel-btn">
-        <XCircle className="h-4 w-4 mr-2" /> ❌ Offre non signée
-      </Button>
     )}
     {canDeleteHard && (
       <Button variant="ghost" className="w-full justify-start text-rose-700" onClick={onDelete} disabled={busy}>

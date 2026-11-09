@@ -60,7 +60,10 @@ export default function Dashboard() {
   const [dialog, setDialog] = useState(false);
   const [openConseiller, setOpenConseiller] = useState(null);
   const [filterConseiller, setFilterConseiller] = useState("all");
-  const [categorie, setCategorie] = useState("prevoyance");
+  const [categorie, setCategorie] = useState(() => {
+    const wanted = new URLSearchParams(window.location.search).get("categorie");
+    return CATEGORIES.some((c) => c.id === wanted) ? wanted : "prevoyance";
+  });
   const [conseillerNames, setConseillerNames] = useState([]);
   const navigate = useNavigate();
 

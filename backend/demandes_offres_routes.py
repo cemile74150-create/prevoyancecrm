@@ -52,6 +52,35 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+_GESTION_WRITE_ROUTES = (
+    (("POST",), re.compile(
+        r"^/demandes-offres/([^/]+)/(incomplete|compagnie-incomplete|compagnie-incomplete-annuler|"
+        r"complete|offres-completes|offre|notes-internes|notes-externes|erreurs|soumis-compagnie|"
+        r"demande-annulee|conclusion|suivi|documents)$"
+    )),
+    (("POST",), re.compile(r"^/demandes-offres/([^/]+)/complements/[^/]+/cloturer$")),
+    (("POST",), re.compile(r"^/demandes-offres/([^/]+)/documents/[^/]+/confirmer-retour$")),
+    (("POST", "DELETE"), re.compile(r"^/demandes-offres/([^/]+)/offres/[^/]+/documents(/[^/]+)?$")),
+    (("DELETE",), re.compile(r"^/demandes-offres/([^/]+)/erreurs/[^/]+$")),
+)
+_GESTION_WRITE_EXCLUDED_IDS = {"modifier", "documents", "parametres-urgence", "stats", "pilotage", "gestionnaires"}
+
+
+def gestion_write_target(method: str, path: str) -> Optional[str]:
+    """Identifiant de la demande visée par une action de traitement, sinon None."""
+    from access_control import _normalize_api_path
+
+    normalized = _normalize_api_path(path)
+    verb = (method or "").upper()
+    for methods, pattern in _GESTION_WRITE_ROUTES:
+        if verb not in methods:
+            continue
+        match = pattern.match(normalized)
+        if match and match.group(1) not in _GESTION_WRITE_EXCLUDED_IDS:
+            return match.group(1)
+    return None
+
+
 def _coerce_to_list(value: Any) -> Optional[list]:
     """Pydantic/JSON : une valeur seule ne doit pas faire échouer un champ list."""
     if value is None:
@@ -165,6 +194,11 @@ class SuiviDemandeRequest(BaseModel):
     etape: str
     commentaire: Optional[str] = None
     compagnie: Optional[str] = None
+
+
+class ReattributionRequest(BaseModel):
+    gestionnaire_id: str = Field(..., min_length=1)
+    motif: Optional[str] = Field(None, max_length=500)
 
 
 class UrgenceSettingsRequest(BaseModel):
@@ -332,7 +366,24 @@ def attach_demandes_offres_routes(
     ) -> User:
         user = await resolve_session_user(db, request, authorization)
         enforce_route_permission(user, request.method, request.url.path)
+        await guard_dossier_collegue(user, request.method, request.url.path)
         return user
+
+    async def guard_dossier_collegue(user: User, method: str, path: str) -> None:
+        """Un gestionnaire ne modifie pas le dossier attribué à un collègue."""
+        from demandes_offres_pilotage import refus_ecriture_gestion
+
+        demande_id = gestion_write_target(method, path)
+        if not demande_id or not can_process_offres(user):
+            return
+        doc = await db[COLLECTION].find_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID, "is_deleted": {"$ne": True}},
+            {"_id": 0, "id": 1, "gestionnaire_id": 1, "gestionnaire_nom": 1,
+             "created_by_account_id": 1, "agent_label": 1, "agent_email": 1},
+        )
+        motif = refus_ecriture_gestion(doc or {}, user)
+        if motif:
+            raise HTTPException(status_code=403, detail=motif)
 
     current_user_dependency = _shared_get_current_user or _injected_get_current_user
 
@@ -1336,20 +1387,126 @@ def attach_demandes_offres_routes(
             raise HTTPException(status_code=404, detail="Type de formulaire inconnu")
         return schema
 
+    def pilotage_scope_clauses(user: User, perimetre: Optional[str], gestionnaire: Optional[str]) -> list[dict]:
+        """Périmètre personnel (dossiers attribués au gestionnaire connecté) et filtre gestionnaire."""
+        from demandes_offres_pilotage import NON_ATTRIBUE_ID, non_attribuee_filter
+
+        clauses: list[dict] = []
+        if (perimetre or "").strip().lower() == "personnel":
+            require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+            clauses.append({"gestionnaire_id": str(user.account_id or "")})
+        wanted = (gestionnaire or "").strip()
+        if wanted and wanted != "all":
+            clauses.append(non_attribuee_filter() if wanted == NON_ATTRIBUE_ID else {"gestionnaire_id": wanted})
+        return clauses
+
+    def scoped_query(base: dict, clauses: list[dict]) -> dict:
+        return {"$and": [base, *clauses]} if clauses else base
+
+    async def gestionnaires_habilites() -> list[dict]:
+        """Comptes actifs ayant accès à « Gestionnaire d'offres »."""
+        from access_control import user_from_doc
+
+        users = await db.users.find(
+            {"active": {"$ne": False}},
+            {"_id": 0, "password_hash": 0, "password": 0},
+        ).to_list(500)
+        out = []
+        for row in users:
+            try:
+                account = user_from_doc(row)
+            except Exception:
+                continue
+            if not can_process_offres(account):
+                continue
+            out.append({
+                "id": str(account.account_id or ""),
+                "nom": actor_name(account) or str(row.get("email") or ""),
+                "role": getattr(account, "role", None),
+            })
+        return sorted([g for g in out if g["id"]], key=lambda g: g["nom"].casefold())
+
     @api_router.get("/demandes-offres/stats")
     async def demandes_offres_stats(
         conseiller: Optional[str] = Query(None),
         periode: Optional[str] = Query("all"),
         date_de: Optional[str] = Query(None),
         date_a: Optional[str] = Query(None),
+        perimetre: Optional[str] = Query(None),
+        gestionnaire: Optional[str] = Query(None),
         user: User = Depends(current_user_dependency),
     ):
-        query = demandes_offres_base_query(user, conseiller)
+        query = scoped_query(
+            demandes_offres_base_query(user, conseiller),
+            pilotage_scope_clauses(user, perimetre, gestionnaire),
+        )
         rows = await db[COLLECTION].find(query, {"_id": 0}).to_list(10000)
         rows, period_meta = filter_rows_by_period(
             rows, periode=periode, date_de=date_de, date_a=date_a
         )
-        return compute_stats(rows, period_meta=period_meta)
+        result = compute_stats(rows, period_meta=period_meta)
+        result["perimetre"] = "personnel" if (perimetre or "").strip().lower() == "personnel" else "global"
+        return result
+
+    @api_router.get("/demandes-offres/pilotage")
+    async def demandes_offres_pilotage(
+        perimetre: Optional[str] = Query("global"),
+        conseiller: Optional[str] = Query(None),
+        gestionnaire: Optional[str] = Query(None),
+        form_type: Optional[str] = Query(None),
+        compagnie: Optional[str] = Query(None),
+        periode: Optional[str] = Query("all"),
+        date_de: Optional[str] = Query(None),
+        date_a: Optional[str] = Query(None),
+        user: User = Depends(current_user_dependency),
+    ):
+        """Indicateurs du service (global) ou du gestionnaire connecté (personnel).
+
+        Même calcul (compute_pilotage) pour les deux périmètres. Un agent ne
+        voit que ses propres demandes, via la requête de base habituelle.
+        """
+        from demandes_offres_pilotage import compute_pilotage, peut_reattribuer, peut_sattribuer
+
+        personnel = (perimetre or "").strip().lower() == "personnel"
+        clauses = pilotage_scope_clauses(user, "personnel" if personnel else None, gestionnaire)
+        if form_type and form_type != "all":
+            clauses.append({"form_type": form_type})
+        if compagnie and compagnie != "all":
+            cie_match = {"$regex": f"^{re.escape(compagnie.strip())}$", "$options": "i"}
+            clauses.append({"$or": [
+                {"compagnies": cie_match},
+                {"offre.compagnie": cie_match},
+                {"offres.compagnie": cie_match},
+            ]})
+        query = scoped_query(demandes_offres_base_query(user, conseiller), clauses)
+        rows = await db[COLLECTION].find(query, {"_id": 0}).to_list(10000)
+        rows, period_meta = filter_rows_by_period(rows, periode=periode, date_de=date_de, date_a=date_a)
+        global_view = can_view_all_offres(user)
+        from access_control import ROLE_GESTIONNAIRE_OFFRES
+
+        gestionnaires = (
+            [g for g in await gestionnaires_habilites() if g.get("role") == ROLE_GESTIONNAIRE_OFFRES]
+            if global_view and not personnel
+            else []
+        )
+        result = compute_pilotage(rows, gestionnaires=gestionnaires)
+        if not global_view or personnel:
+            result["gestionnaires"] = []
+        result["perimetre"] = "personnel" if personnel else ("global" if global_view else "agent")
+        result["periode"] = period_meta
+        result["viewer"] = {
+            "account_id": user.account_id,
+            "nom": actor_name(user),
+            "can_attribuer": peut_sattribuer(user),
+            "can_reattribuer": peut_reattribuer(user),
+        }
+        return result
+
+    @api_router.get("/demandes-offres/gestionnaires")
+    async def list_gestionnaires_offres(user: User = Depends(current_user_dependency)):
+        if not can_view_all_offres(user):
+            raise HTTPException(status_code=403, detail="Réservé au service des offres")
+        return await gestionnaires_habilites()
 
     @api_router.get("/demandes-offres/stats/erreurs")
     async def demandes_offres_stats_erreurs(
@@ -1472,11 +1629,18 @@ def attach_demandes_offres_routes(
         tri: Optional[str] = Query(None),
         urgente: Optional[bool] = Query(None),
         rdv_a_venir: Optional[bool] = Query(None),
+        perimetre: Optional[str] = Query(None),
+        gestionnaire: Optional[str] = Query(None),
+        statut_traitement: Optional[str] = Query(None),
+        statut_commercial: Optional[str] = Query(None),
+        indicateur: Optional[str] = Query(None),
         limit: int = Query(200, ge=1, le=1000),
         user: User = Depends(current_user_dependency),
     ):
+        from demandes_offres_pilotage import filtrer_lignes
+
         query = demandes_offres_base_query(user, conseiller)
-        clauses: list[dict] = []
+        clauses: list[dict] = pilotage_scope_clauses(user, perimetre, gestionnaire)
         cat = (categorie or "").strip()
         if cat == "attribuees":
             clauses.append({"demande_origine": DEMANDE_ORIGINE_ATTRIBUEE})
@@ -1551,6 +1715,16 @@ def attach_demandes_offres_routes(
             rows = filter_urgente(rows, True)
         if rdv_a_venir is True:
             rows = filter_rdv_a_venir(rows, True)
+        if (gestionnaire or "").strip() not in {"", "all"}:
+            from demandes_offres_pilotage import dans_pilotage
+
+            rows = [row for row in rows if dans_pilotage(row)]
+        rows = filtrer_lignes(
+            rows,
+            tag=indicateur,
+            statut_traitement=statut_traitement,
+            statut_commercial=statut_commercial,
+        )
         rows = urgentes_en_tete(sort_demandes(rows, tri))
         rows = rows[:limit]
         return [serialize_demande(row, viewer=user) for row in rows]
@@ -1701,6 +1875,21 @@ def attach_demandes_offres_routes(
             },
         )
 
+    async def stamp_mise_a_disposition(demande_id: str) -> None:
+        """Première mise à disposition des documents à l'agent : posée une fois, jamais déplacée."""
+        await db[COLLECTION].update_one(
+            {
+                "id": demande_id,
+                "user_id": TENANT_USER_ID,
+                "$or": [
+                    {"docs_mis_a_disposition_at": {"$exists": False}},
+                    {"docs_mis_a_disposition_at": None},
+                    {"docs_mis_a_disposition_at": ""},
+                ],
+            },
+            {"$set": {"docs_mis_a_disposition_at": now_iso()}},
+        )
+
     async def apply_transmission_suivi(doc: dict, user: User, compagnie: str) -> bool:
         """Aligne l'avancement sur les compagnies transmises. Vrai si la demande a changé.
 
@@ -1751,6 +1940,151 @@ def attach_demandes_offres_routes(
         )
         fresh = await require_demande(demande_id, user)
         return serialize_demande(fresh, viewer=user, docs=await docs_for(demande_id))
+
+    async def enregistrer_attribution(
+        doc: dict,
+        user: User,
+        *,
+        cible_id: str,
+        cible_nom: str,
+        motif: str = "",
+    ) -> bool:
+        """Écrit le gestionnaire si le dossier n'a pas changé de main entre-temps.
+
+        Le filtre porte sur le gestionnaire lu : deux prises en charge
+        simultanées ne peuvent pas réussir toutes les deux.
+        """
+        from demandes_offres_pilotage import attribution_event, gestionnaire_info, non_attribuee_filter
+
+        current = gestionnaire_info(doc)
+        stamp = now_iso()
+        par_nom = actor_name(user)
+        kind = "reattribution" if current["id"] else (
+            "auto_attribution" if cible_id == str(user.account_id or "") else "attribution"
+        )
+        event = attribution_event(
+            kind=kind,
+            at=stamp,
+            par_id=str(user.account_id or ""),
+            par_nom=par_nom,
+            ancien_id=current["id"],
+            ancien_nom=current["nom"],
+            nouveau_id=cible_id,
+            nouveau_nom=cible_nom,
+            motif=motif,
+        )
+        filt = {"id": doc.get("id"), "user_id": TENANT_USER_ID, "is_deleted": {"$ne": True}}
+        if current["id"]:
+            filt["gestionnaire_id"] = current["id"]
+        else:
+            filt.update(non_attribuee_filter())
+        if kind == "reattribution":
+            action = "Dossier réattribué"
+            detail = f"{current['nom'] or '—'} → {cible_nom}"
+        else:
+            action = "Dossier attribué"
+            detail = f"Pris en charge par {cible_nom}"
+        if motif.strip():
+            detail = f"{detail} · {motif.strip()}"
+        result = await db[COLLECTION].update_one(
+            filt,
+            {
+                "$set": {
+                    "gestionnaire_id": cible_id,
+                    "gestionnaire_nom": cible_nom,
+                    "gestionnaire_attribue_at": stamp,
+                    "gestionnaire_attribue_par": par_nom,
+                    "updated_at": stamp,
+                },
+                "$push": {
+                    "attributions_historique": event,
+                    "historique": history(
+                        action,
+                        user,
+                        detail,
+                        statut=doc.get("statut"),
+                        meta={"attribution": True, "gestionnaire_id": cible_id, "ancien_gestionnaire_id": current["id"]},
+                    ),
+                },
+            },
+        )
+        return bool(getattr(result, "modified_count", 0))
+
+    async def apres_attribution(demande_id: str, user: User) -> dict:
+        from demandes_offres_pilotage import passe_en_cours_apres_attribution
+
+        fresh = await require_demande(demande_id, user)
+        if passe_en_cours_apres_attribution(fresh):
+            await persist_suivi(fresh, "en_cours", user, commentaire="Prise en charge du dossier")
+            fresh = await require_demande(demande_id, user)
+        return serialize_demande(fresh, viewer=user, docs=await docs_for(demande_id))
+
+    @api_router.post("/demandes-offres/{demande_id}/attribuer")
+    async def attribuer_demande_offre(
+        demande_id: str,
+        user: User = Depends(current_user_dependency),
+    ):
+        """« M'attribuer » : le gestionnaire connecté prend en charge une demande non attribuée."""
+        from demandes_offres_pilotage import dans_pilotage, gestionnaire_info, peut_sattribuer
+
+        if not peut_sattribuer(user):
+            raise HTTPException(status_code=403, detail="Réservé aux gestionnaires d'offres")
+        doc = await require_demande(demande_id, user)
+        if not dans_pilotage(doc):
+            raise HTTPException(status_code=409, detail="Seule une demande soumise peut être attribuée")
+        me = str(user.account_id or "")
+        current = gestionnaire_info(doc)
+        if current["id"] == me:
+            return serialize_demande(doc, viewer=user, docs=await docs_for(demande_id))
+        if current["id"]:
+            raise HTTPException(status_code=409, detail=f"Dossier déjà attribué à {current['nom'] or 'un gestionnaire'}")
+        if not await enregistrer_attribution(doc, user, cible_id=me, cible_nom=actor_name(user)):
+            fresh = await require_demande(demande_id, user)
+            winner = gestionnaire_info(fresh)
+            if winner["id"] != me:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Dossier déjà attribué à {winner['nom'] or 'un gestionnaire'}",
+                )
+        return await apres_attribution(demande_id, user)
+
+    @api_router.post("/demandes-offres/{demande_id}/reattribuer")
+    async def reattribuer_demande_offre(
+        demande_id: str,
+        payload: ReattributionRequest,
+        user: User = Depends(current_user_dependency),
+    ):
+        """Transfert vers un autre gestionnaire. Administrateur ou responsable uniquement."""
+        from demandes_offres_pilotage import dans_pilotage, gestionnaire_info, peut_reattribuer
+
+        if not peut_reattribuer(user):
+            raise HTTPException(status_code=403, detail="Réservé aux administrateurs et responsables")
+        doc = await require_demande(demande_id, user)
+        if not dans_pilotage(doc):
+            raise HTTPException(status_code=409, detail="Seule une demande soumise peut être attribuée")
+        target_id = payload.gestionnaire_id.strip()
+        cible = next((g for g in await gestionnaires_habilites() if g["id"] == target_id), None)
+        if cible is None:
+            raise HTTPException(status_code=422, detail="Gestionnaire inconnu ou sans accès à Gestionnaire d'offres")
+        if gestionnaire_info(doc)["id"] == target_id:
+            return serialize_demande(doc, viewer=user, docs=await docs_for(demande_id))
+        if not await enregistrer_attribution(
+            doc, user, cible_id=target_id, cible_nom=cible["nom"], motif=payload.motif or ""
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Le dossier vient d'être attribué par quelqu'un d'autre. Rechargez la page.",
+            )
+        if target_id != str(user.account_id or ""):
+            await write_offre_notification(
+                doc=doc,
+                event="attribuee_gestionnaire",
+                title=f"Dossier attribué — {doc.get('numero') or ''}".strip(),
+                message=f"{actor_name(user)} vous a attribué ce dossier.",
+                audience="gestionnaires",
+                account_ids=[target_id],
+            )
+        return await apres_attribution(demande_id, user)
 
     @api_router.post("/demandes-offres")
     async def create_demande_offre(
@@ -2948,6 +3282,8 @@ def attach_demandes_offres_routes(
             meta={"compagnie": compagnie_name, "offre_id": offer.get("id"), "transmission_id": transmission_id},
             document_id=(offer.get("documents") or [{}])[-1].get("id") if offer.get("documents") else None,
         )
+        if stored_docs and normalize_statut(doc.get("statut")) != STATUT_BROUILLON:
+            await stamp_mise_a_disposition(demande_id)
         mail_doc = {
             **doc,
             **(result if isinstance(result, dict) else {}),

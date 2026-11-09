@@ -146,7 +146,7 @@ export const SIGNALER_ERREUR_CLASS = "w-full justify-start bg-white text-slate-9
 
 export const FILE_COLUMNS = [
   "Agent", "Client", "Type", "Date création", "Date envoi", "RDV client",
-  "Compagnies", "Statut", "Soumis cie.", "Dernière action", "Jours", "Priorité", "Action",
+  "Compagnies", "Statut traitement", "Statut commercial", "Soumis cie.", "Dernière action", "Jours", "Priorité", "Action",
 ];
 
 /** Demande urgente posée par l'agent (badge URGENT), distincte de la priorité système. */

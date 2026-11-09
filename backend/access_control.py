@@ -854,6 +854,9 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("POST",), r"^/demandes-offres/[^/]+/conclusion$", PERM_DEMANDES_OFFRES_PROCESS),
     # Renvoi admin d'une offre déjà envoyée (même id) — réservé administrateur
     (("POST",), r"^/demandes-offres/[^/]+/renvoyer$", PERM_USERS_MANAGE),
+    # Attribution : « M'attribuer » gestionnaire ; réattribution admin / responsable (vérifié dans le handler).
+    (("POST",), r"^/demandes-offres/[^/]+/attribuer$", PERM_DEMANDES_OFFRES_PROCESS),
+    (("POST",), r"^/demandes-offres/[^/]+/reattribuer$", (PERM_DEMANDES_OFFRES_PROCESS, PERM_USERS_MANAGE)),
     (("POST",), r"^/demandes-offres", PERM_DEMANDES_OFFRES_EDIT),
     (("PUT",), r"^/demandes-offres", PERM_DEMANDES_OFFRES_EDIT),
     (("PATCH",), r"^/demandes-offres", PERM_DEMANDES_OFFRES_EDIT),

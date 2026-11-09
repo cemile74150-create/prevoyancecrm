@@ -18,8 +18,10 @@ from demandes_offres_ameliorations import (
     sort_demandes,
     validate_urgence_for_send,
 )
-from demandes_offres_relance_agent import process_relances_agent_21j, relance_agent_decision
-from email_service import format_relance_agent_21j_email
+from datetime import date
+
+from demandes_offres_relance_agent import process_relances_agent_14j, relance_agent_decision
+from email_service import RELANCE_AGENT_14J_SUBJECT, format_relance_agent_14j_email
 from demandes_offres_3p import (
     STATUT_BROUILLON,
     STATUT_ENVOYEE,
@@ -164,51 +166,84 @@ def _transmis(days_ago, **extra):
     doc = {
         "statut": "Offre reçue",
         "suivi_etape": "offre_transmise",
-        "offre_transmise_agent_at": (now - timedelta(days=days_ago)).isoformat(),
+        "docs_mis_a_disposition_at": (now - timedelta(days=days_ago)).isoformat(),
     }
     doc.update(extra)
     return doc, now
 
 
-def test_relance_agent_21_jours_selon_lavancement():
-    fresh, now = _transmis(10)
+def test_relance_agent_14_jours_selon_la_decision_commerciale():
+    fresh, now = _transmis(13)
     assert relance_agent_decision(fresh, now) == "wait"
-    due, now = _transmis(21)
+    due, now = _transmis(14)
     assert relance_agent_decision(due, now) == "send"
-    sent_client, now = _transmis(30, statut=STATUT_OFFRE_ENVOYEE_CLIENT, suivi_etape="offre_transmise")
-    assert relance_agent_decision(sent_client, now) == "skip"
+    sent_client, now = _transmis(20, statut=STATUT_OFFRE_ENVOYEE_CLIENT)
+    assert relance_agent_decision(sent_client, now) == "send"
     signed, now = _transmis(40, statut=STATUT_OFFRE_SIGNEE)
     assert relance_agent_decision(signed, now) == "skip"
+    non_signee, now = _transmis(40, statut="Offre non signée")
+    assert relance_agent_decision(non_signee, now) == "skip"
     refused, now = _transmis(40, statut=STATUT_OFFRE_REFUSEE)
     assert relance_agent_decision(refused, now) == "skip"
     cancelled, now = _transmis(40, statut="Demande annulée")
     assert relance_agent_decision(cancelled, now) == "skip"
-    already, now = _transmis(30, relance_agent_21j_sent_at="2026-11-01T08:00:00+00:00")
+    draft, now = _transmis(40, statut=STATUT_BROUILLON)
+    assert relance_agent_decision(draft, now) == "skip"
+    already, now = _transmis(30, relance_agent_14j_sent_at="2026-11-01T08:00:00+00:00")
     assert relance_agent_decision(already, now) == "skip"
+    old_21j, now = _transmis(30, relance_agent_21j_sent_at="2026-11-01T08:00:00+00:00")
+    assert relance_agent_decision(old_21j, now) == "skip"
     old = {"statut": "Offre reçue", "date_envoi": "2020-01-01T00:00:00+00:00"}
     assert relance_agent_decision(old, now) == "skip"
-    failed, now = _transmis(21, relance_agent_21j_last_error="SMTP")
+    failed, now = _transmis(14, relance_agent_14j_last_error="SMTP")
     assert relance_agent_decision(failed, now) == "retry"
-    waiting_company, now = _transmis(21, suivi_etape="attente_compagnie")
+    waiting_company, now = _transmis(14, suivi_etape="attente_compagnie")
     assert relance_agent_decision(waiting_company, now) == "send"
 
 
-def test_email_relance_agent_reprend_le_texte_demande():
-    subject, text, html = format_relance_agent_21j_email({
+def test_relance_14_jours_sans_envoi_retroactif():
+    due, now = _transmis(14)
+    assert relance_agent_decision(due, now, mise_en_service=date(2026, 11, 5)) == "send"
+    ancien, now = _transmis(60)
+    assert relance_agent_decision(ancien, now, mise_en_service=date(2026, 11, 1)) == "skip"
+    legacy_sans_offre, now = _transmis(0, docs_mis_a_disposition_at=None,
+                                       offre_transmise_agent_at=(now - timedelta(days=20)).isoformat())
+    assert relance_agent_decision(legacy_sans_offre, now) == "skip"
+
+
+def test_relance_14_jours_compte_en_jours_calendaires_zurich():
+    # 22.10 22:30 UTC = 23.10 00:30 à Zurich : échéance le 06.11 (heure de Zurich).
+    doc = {"statut": "Offre reçue", "docs_mis_a_disposition_at": "2026-10-22T22:30:00+00:00"}
+    assert relance_agent_decision(doc, datetime(2026, 11, 5, 22, 30, tzinfo=timezone.utc)) == "wait"
+    assert relance_agent_decision(doc, datetime(2026, 11, 5, 23, 30, tzinfo=timezone.utc)) == "send"
+
+
+def test_email_relance_agent_14j_reprend_le_texte_du_cahier():
+    subject, text, html = format_relance_agent_14j_email({
         "id": "d1",
         "numero": "OFF-2026-0042",
         "prenom": "Jean",
         "nom": "Dupont",
         "agent_prenom": "Ines",
-    })
-    assert subject == "LeoSoft – Rappel de mise à jour du statut de votre offre OFF-2026-0042"
-    assert "Bonjour Ines," in text
-    assert "Jean Dupont" in text
-    assert "OFF-2026-0042" in text
-    assert "Offre envoyée au client" in text
-    assert "Offre signée" in text
-    assert "Le service des Offres" in text
-    assert "Consulter la demande dans LeoSoft" in html
+    }, "2026-10-22T08:00:00+00:00")
+    assert subject == "LeoSoft – Rappel : statut de votre demande d’offre à renseigner"
+    assert subject == RELANCE_AGENT_14J_SUBJECT
+    assert text.startswith("Bonjour,\n")
+    assert (
+        "Les documents relatifs à votre demande d’offre OFF-2026-0042 – Jean Dupont ont été mis à votre "
+        "disposition sur LeoSoft il y a maintenant 14 jours."
+    ) in text
+    assert "Date de mise à disposition des documents : 22.10.2026" in text
+    assert "À ce jour, nous n’avons pas reçu de confirmation concernant la décision finale du client." in text
+    assert "afin de préciser obligatoirement si :" in text
+    assert "- L’offre a été signée par le client." in text
+    assert "- L’offre n’a pas été signée par le client." in text
+    assert "Merci d'indiquer sur LeoSoft si l'offre a été signée ou non signée par votre client." in text
+    assert "Cette information est indispensable pour assurer le suivi et la mise à jour de votre dossier." in text
+    assert "Accéder à ma demande sur LeoSoft : " in text and "/demandes-offres/d1" in text
+    assert "Merci d’avance pour votre retour." in text
+    assert text.rstrip().endswith("Cordialement,\nL’équipe LeoSoft")
+    assert "/demandes-offres/d1" in html
 
 
 class _Result:
@@ -231,16 +266,18 @@ class _Memory:
     def find(self, query, projection=None):
         rows = [
             doc for doc in self.docs.values()
-            if doc.get("offre_transmise_agent_at") and not doc.get("relance_agent_21j_sent_at")
+            if (doc.get("docs_mis_a_disposition_at") or doc.get("offre_transmise_agent_at"))
+            and not doc.get("relance_agent_14j_sent_at")
+            and not doc.get("relance_agent_21j_sent_at")
         ]
         return _Cursor(rows)
 
     async def find_one(self, query, projection=None):
         return None
 
-    async def update_one(self, filt, update):
+    async def update_one(self, filt, update, upsert=False):
         doc = self.docs.get(filt.get("id"))
-        if not doc or doc.get("relance_agent_21j_sent_at"):
+        if not doc or doc.get("relance_agent_14j_sent_at"):
             return _Result(0)
         if "$set" in update:
             doc.update(update["$set"])
@@ -279,19 +316,60 @@ def test_echec_denvoi_puis_nouvel_essai_sans_doublon(monkeypatch):
         "agent_prenom": "Ines",
         "prenom": "Nadia",
         "nom": "Blanc",
-        "offre_transmise_agent_at": (now - timedelta(days=21)).isoformat(),
+        "docs_mis_a_disposition_at": (now - timedelta(days=14)).isoformat(),
     }
     db = _Db([doc])
-    first = asyncio.run(process_relances_agent_21j(db, now=now))
+    first = asyncio.run(process_relances_agent_14j(db, now=now))
     assert first["failed"] == 1
-    assert not db.demandes.docs["d-21"].get("relance_agent_21j_sent_at")
-    second = asyncio.run(process_relances_agent_21j(db, now=now))
+    assert not db.demandes.docs["d-21"].get("relance_agent_14j_sent_at")
+    second = asyncio.run(process_relances_agent_14j(db, now=now))
     assert second["sent"] == 1
-    assert db.demandes.docs["d-21"]["relance_agent_21j_sent_at"]
-    assert any("Relance automatique envoyée" in item["action"] for item in db.demandes.docs["d-21"]["historique"])
-    third = asyncio.run(process_relances_agent_21j(db, now=now))
+    assert db.demandes.docs["d-21"]["relance_agent_14j_sent_at"]
+    assert any("Rappel automatique 14 jours" in item["action"] for item in db.demandes.docs["d-21"]["historique"])
+    third = asyncio.run(process_relances_agent_14j(db, now=now))
     assert third["sent"] == 0
     assert calls["n"] == 2
+
+
+def test_relance_14j_envoie_seulement_sans_decision_et_a_l_agent(monkeypatch):
+    sent = []
+
+    async def fake_send(to, subject, *args, **kwargs):
+        sent.append((to, subject))
+        return True, ""
+
+    monkeypatch.setattr("email_service.offres_email_enabled", lambda: True)
+    monkeypatch.setattr("email_service.send_email_async", fake_send)
+    now = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
+    start = (now - timedelta(days=14)).isoformat()
+
+    def dossier(did, statut, email):
+        return {"id": did, "numero": did, "statut": statut, "agent_email": email,
+                "gestionnaire_id": "g1", "docs_mis_a_disposition_at": start}
+
+    db = _Db([
+        dossier("signee", STATUT_OFFRE_SIGNEE, "a1@example.com"),
+        dossier("non-signee", "Offre non signée", "a2@example.com"),
+        dossier("transmise", STATUT_OFFRE_ENVOYEE_CLIENT, "a3@example.com"),
+        dossier("non-renseigne", STATUT_OFFRE_RECUE, "a4@example.com"),
+    ])
+    stats = asyncio.run(process_relances_agent_14j(db, now=now))
+    assert stats["sent"] == 2
+    assert sorted(to for to, _ in sent) == ["a3@example.com", "a4@example.com"]
+    assert all(subject == RELANCE_AGENT_14J_SUBJECT for _, subject in sent)
+    again = asyncio.run(process_relances_agent_14j(db, now=now + timedelta(hours=1)))
+    assert again["sent"] == 0 and len(sent) == 2
+
+
+def test_ancien_rappel_21_jours_n_est_plus_planifie():
+    import pathlib
+
+    import demandes_offres_relance_agent as module
+
+    assert not hasattr(module, "process_relances_agent_21j")
+    server = (pathlib.Path(__file__).resolve().parents[1] / "server.py").read_text(encoding="utf-8")
+    assert "_relance_agent_14j_loop()" in server
+    assert "_relance_agent_21j_loop" not in server
 
 
 def test_nouvelle_demande_exige_un_marquage_explicite():

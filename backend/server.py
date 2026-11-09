@@ -8438,8 +8438,8 @@ async def startup():
     # Rappels auto : demandes Envoyé sans Reçu après 1,5 mois
     asyncio.create_task(_demande_envoi_relance_loop())
 
-    # Rappel unique à l'agent, 21 jours après la transmission d'une offre
-    asyncio.create_task(_relance_agent_21j_loop())
+    # Rappel unique à l'agent, 14 jours après la mise à disposition des documents (remplace le rappel 21 jours)
+    asyncio.create_task(_relance_agent_14j_loop())
 
     # Lier Offres / Suivi 3P existants à la base Clients (idempotent)
     asyncio.create_task(_clients_hub_link_once())
@@ -8883,20 +8883,20 @@ async def _clients_hub_link_once():
         logger.exception("Dossiers visibility migration failed")
 
 
-async def _relance_agent_21j_loop():
-    """Vérifie chaque heure les offres transmises depuis 21 jours, sans session utilisateur."""
+async def _relance_agent_14j_loop():
+    """Vérifie chaque heure les documents mis à disposition depuis 14 jours, sans session utilisateur."""
     import asyncio
 
-    from demandes_offres_relance_agent import process_relances_agent_21j
+    from demandes_offres_relance_agent import process_relances_agent_14j
 
     await asyncio.sleep(120)
     while True:
         try:
-            stats = await process_relances_agent_21j(db)
+            stats = await process_relances_agent_14j(db)
             if stats.get("sent") or stats.get("failed") or stats.get("no_recipient"):
-                logger.info("Relance agent 21 jours: %s", stats)
+                logger.info("Rappel agent 14 jours: %s", stats)
         except Exception:
-            logger.exception("Relance agent 21 jours: échec du contrôle")
+            logger.exception("Rappel agent 14 jours: échec du contrôle")
         await asyncio.sleep(3600)
 
 

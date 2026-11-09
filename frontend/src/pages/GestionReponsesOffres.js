@@ -38,6 +38,8 @@ import { uniqueConseillerNames } from "@/lib/conseillers";
 import { PendingComplementBadge } from "@/components/NotesConseiller";
 import { offreNotificationPath } from "@/lib/complementsOffre";
 import { FILE_COLUMNS, sortFileATraiter, urgentesAgentEnTete, urgenceDelaiLabel } from "@/lib/transmissionOffre";
+import { CARTES_COMMERCIALES, NON_ATTRIBUE, TRAITEMENT_STYLE, boutonTraiter, tauxSignatureLabel } from "@/lib/suiviOffres";
+import { CommercialBadge, TraitementBadge, useAttribuer } from "@/components/SuiviOffresPilotage";
 import {
   Bell, Briefcase, ClipboardList, Columns3, Eye, Filter,
   Loader2, Search, Users, AlertTriangle, Inbox, Sparkles, Clock, BarChart3,
@@ -157,6 +159,10 @@ export default function GestionReponsesOffres() {
   const [tri, setTri] = useState("maj");
   const [erreurStats, setErreurStats] = useState(null);
   const [erreursAgentStats, setErreursAgentStats] = useState(null);
+  const [espace, setEspace] = useState("mes_dossiers");
+  const [indicateur, setIndicateur] = useState(null);
+  const [pilotage, setPilotage] = useState(null);
+  const [nbAAttribuer, setNbAAttribuer] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 250);
@@ -217,17 +223,29 @@ export default function GestionReponsesOffres() {
 
       const statsParams = { periode: periode && periode !== "all" ? periode : undefined };
       if (conseiller !== "all") statsParams.conseiller = conseiller;
+      // Espace personnel : mes dossiers attribués, ou les demandes encore à prendre en charge.
+      const scope = espace === "a_attribuer" ? { gestionnaire: NON_ATTRIBUE } : { perimetre: "personnel" };
+      if (canProcess) Object.assign(params, scope);
+      if (indicateur) params.indicateur = indicateur;
 
-      const [listRes, statsRes, errRes, errAgentRes] = await Promise.all([
+      const [listRes, statsRes, errRes, errAgentRes, , pilRes, globalRes] = await Promise.all([
         api.get("/demandes-offres", { params }),
-        api.get("/demandes-offres/stats", { params: statsParams }).catch((err) => {
+        api.get("/demandes-offres/stats", { params: canProcess ? { ...statsParams, ...scope } : statsParams }).catch((err) => {
           console.warn("stats offres", err);
           return { data: null, _error: err };
         }),
         api.get("/demandes-offres/stats/erreurs", { params: statsParams }).catch(() => ({ data: null })),
         api.get("/demandes-offres/stats/erreurs-agent", { params: statsParams }).catch(() => ({ data: null })),
         loadNotifs(),
+        canProcess
+          ? api.get("/demandes-offres/pilotage", { params: { ...statsParams, perimetre: "personnel" } }).catch(() => ({ data: null }))
+          : Promise.resolve({ data: null }),
+        canProcess
+          ? api.get("/demandes-offres/pilotage", { params: statsParams }).catch(() => ({ data: null }))
+          : Promise.resolve({ data: null }),
       ]);
+      setPilotage(pilRes?.data || null);
+      setNbAAttribuer(globalRes?.data?.indicateurs?.non_attribuees ?? 0);
       setRows(Array.isArray(listRes.data) ? listRes.data : []);
       if (statsRes?.data) setStats(statsRes.data);
       else if (statsRes?._error) {
@@ -241,9 +259,19 @@ export default function GestionReponsesOffres() {
     } finally {
       setLoading(false);
     }
-  }, [qDebounced, conseiller, compagnie, formType, priorite, periode, categorie, enRetard, dayAction, origine, tri, loadNotifs]);
+  }, [qDebounced, conseiller, compagnie, formType, priorite, periode, categorie, enRetard, dayAction, origine, tri, loadNotifs, espace, indicateur, canProcess]);
 
   useEffect(() => { load(); }, [load]);
+
+  const { attribuer, busyId } = useAttribuer(useCallback(() => load(), [load]));
+
+  const applyIndicateur = (tag) => {
+    setIndicateur((prev) => (prev === tag ? null : tag));
+    setCategorie(null);
+    setDayAction(null);
+    setEnRetard(false);
+    setTab("file");
+  };
 
   const openFiche = useCallback((id) => {
     if (!id) return;
@@ -323,6 +351,7 @@ export default function GestionReponsesOffres() {
     || (periode && periode !== "all")
     || origine !== "all"
     || (tri && tri !== "maj")
+    || Boolean(indicateur)
   );
 
   const fileRows = useMemo(() => {
@@ -413,6 +442,106 @@ export default function GestionReponsesOffres() {
             </Button>
           </div>
         </div>
+
+        {/* Espace personnel du gestionnaire */}
+        <Card className="p-3 border-slate-200 space-y-3" data-testid="espace-personnel">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50" role="tablist">
+              {[
+                { id: "mes_dossiers", label: "Mes dossiers" },
+                { id: "a_attribuer", label: `Demandes non attribuées (${nbAAttribuer})` },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={espace === item.id}
+                  data-testid={`espace-${item.id}`}
+                  onClick={() => { setEspace(item.id); setIndicateur(null); }}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                    espace === item.id ? "bg-white shadow-sm text-[#002FA7]" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">
+              {espace === "mes_dossiers"
+                ? "Seuls les dossiers qui vous sont attribués. Les compteurs ci-dessous portent sur ces dossiers."
+                : "Demandes soumises sans gestionnaire : « M'attribuer » pour prendre un dossier en charge."}
+            </p>
+            <button
+              type="button"
+              className="ml-auto text-xs font-medium text-[#002FA7] hover:underline"
+              onClick={() => navigate("/dashboard?categorie=offres")}
+            >
+              Suivi global du service
+            </button>
+          </div>
+          {pilotage && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Mes indicateurs — avancement du traitement
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+                {(pilotage.traitement || []).map((t) => (
+                  <button
+                    key={t.code}
+                    type="button"
+                    data-testid={`mes-traitement-${t.code}`}
+                    onClick={() => { setEspace("mes_dossiers"); applyIndicateur(t.tag); }}
+                    className={`rounded-lg border px-3 py-2 text-left ${TRAITEMENT_STYLE[t.code] || ""} ${
+                      indicateur === t.tag ? "ring-2 ring-[#002FA7] ring-offset-1" : ""
+                    }`}
+                  >
+                    <span className="block text-[11px] font-medium leading-snug">{t.label}</span>
+                    <span className="block text-lg font-bold tabular-nums">{t.count}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 pt-1">
+                Mes indicateurs — résultat commercial
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+                {CARTES_COMMERCIALES.map((c) => (
+                  <button
+                    key={c.tag}
+                    type="button"
+                    data-testid={`mes-commercial-${c.tag.replace(":", "-")}`}
+                    onClick={() => { setEspace("mes_dossiers"); applyIndicateur(c.tag); }}
+                    className={`rounded-lg border border-slate-200 bg-white px-3 py-2 text-left ${
+                      indicateur === c.tag ? "ring-2 ring-[#002FA7] ring-offset-1" : ""
+                    }`}
+                  >
+                    <span className="block text-[11px] font-medium text-slate-600 leading-snug">{c.label}</span>
+                    <span className="block text-lg font-bold tabular-nums">{pilotage.indicateurs?.[c.tag] ?? 0}</span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  data-testid="mes-decision-a-renseigner"
+                  onClick={() => { setEspace("mes_dossiers"); applyIndicateur("decision_a_renseigner"); }}
+                  className={`rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left ${
+                    indicateur === "decision_a_renseigner" ? "ring-2 ring-[#002FA7] ring-offset-1" : ""
+                  }`}
+                >
+                  <span className="block text-[11px] font-medium text-red-900 leading-snug">Décision client à renseigner</span>
+                  <span className="block text-lg font-bold tabular-nums text-red-900">
+                    {pilotage.indicateurs?.decision_a_renseigner ?? 0}
+                    <span className="ml-1 text-[11px] font-medium">
+                      dont {pilotage.indicateurs?.decision_depassee_14j ?? 0} &gt; 14 j
+                    </span>
+                  </span>
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Taux de signature : <strong>{tauxSignatureLabel(pilotage.taux_signature)}</strong>
+                {pilotage.taux_signature_definition ? ` (${pilotage.taux_signature_definition})` : ""}
+              </p>
+            </div>
+          )}
+        </Card>
 
         {/* Mes actions du jour */}
         <Card className="p-3 border-slate-200">
@@ -598,7 +727,7 @@ export default function GestionReponsesOffres() {
             >
               En retard
             </Button>
-            {(categorie || dayAction || enRetard || priorite !== "all" || q || conseiller !== "all" || origine !== "all") && (
+            {(categorie || dayAction || enRetard || indicateur || priorite !== "all" || q || conseiller !== "all" || origine !== "all") && (
               <Button
                 type="button"
                 size="sm"
@@ -615,6 +744,7 @@ export default function GestionReponsesOffres() {
                   setCategorie(null);
                   setEnRetard(false);
                   setDayAction(null);
+                  setIndicateur(null);
                   setTri("maj");
                 }}
               >
@@ -731,8 +861,8 @@ export default function GestionReponsesOffres() {
                           <td className="px-3 py-2 text-slate-600 text-xs max-w-[140px]">
                             {formatVariantesSummary(r) || compsShort(r)}
                           </td>
-                          <td className="px-3 py-2">
-                            <AvancementBadge row={r} />
+                          <td className="px-3 py-2" data-testid="file-statut-traitement">
+                            {r.statut_traitement ? <TraitementBadge row={r} /> : <AvancementBadge row={r} />}
                             {Number(r.nb_complements_en_attente) > 0 && (
                               <span className="mt-1 block">
                                 <PendingComplementBadge count={r.nb_complements_en_attente} />
@@ -741,6 +871,9 @@ export default function GestionReponsesOffres() {
                             {r.statut === "Offre modifiée" && (
                               <span className="mt-1 block text-[10px] font-semibold text-amber-950">Offre à modifier</span>
                             )}
+                          </td>
+                          <td className="px-3 py-2" data-testid="file-statut-commercial">
+                            <CommercialBadge row={r} />
                           </td>
                           <td className="px-3 py-2">
                             {canProcess ? (
@@ -772,16 +905,41 @@ export default function GestionReponsesOffres() {
                           <td className="px-3 py-2 tabular-nums text-slate-700 font-medium">{r.jours_depuis ?? "—"}</td>
                           <td className="px-3 py-2"><PrioriteBadge niveau={r.priorite} /></td>
                           <td className="px-3 py-2">
-                            <Button
-                              size="sm"
-                              variant={actionLabel === "Traiter" ? "default" : "outline"}
-                              className="h-7 text-xs gap-1"
-                              style={actionLabel === "Traiter" ? { background: ACCENT } : undefined}
-                              onClick={() => openFiche(r.id)}
-                            >
-                              {actionLabel === "Voir" ? <Eye className="h-3 w-3" /> : null}
-                              {actionLabel}
-                            </Button>
+                            <div className="flex items-center gap-1.5">
+                              {r.bouton_traiter ? (
+                                <button
+                                  type="button"
+                                  data-testid={`file-traiter-${r.id}`}
+                                  className={`h-7 rounded-md px-2.5 text-xs font-medium whitespace-nowrap ${boutonTraiter(r).className}`}
+                                  onClick={() => openFiche(r.id)}
+                                >
+                                  {boutonTraiter(r).label}
+                                </button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant={actionLabel === "Traiter" ? "default" : "outline"}
+                                  className="h-7 text-xs gap-1"
+                                  style={actionLabel === "Traiter" ? { background: ACCENT } : undefined}
+                                  onClick={() => openFiche(r.id)}
+                                >
+                                  {actionLabel === "Voir" ? <Eye className="h-3 w-3" /> : null}
+                                  {actionLabel}
+                                </Button>
+                              )}
+                              {r.can_attribuer ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs whitespace-nowrap"
+                                  disabled={busyId === r.id}
+                                  data-testid={`file-attribuer-${r.id}`}
+                                  onClick={(e) => attribuer(r, e)}
+                                >
+                                  M&apos;attribuer
+                                </Button>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       );
