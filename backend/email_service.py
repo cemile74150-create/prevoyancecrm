@@ -60,6 +60,9 @@ CONSEILLER_OFFRE_EVENTS = frozenset(
         "external_note",
         "complement_demande",
         "complement-demande",
+        # Fil agent ← gestionnaire (destinataire = créateur)
+        "fil_discussion_agent",
+        "message_agent",
     }
 )
 
@@ -144,6 +147,7 @@ MAIL_TYPE_OFFRE_MODIFIEE = "offre_modifiee"
 MAIL_TYPE_NOTE_EXTERNE = "note_externe"
 MAIL_TYPE_COMPLEMENT_DEMANDE = "complement_demande"
 MAIL_TYPE_COMPLEMENT_REPONSE = "complement_reponse"
+MAIL_TYPE_FIL_DISCUSSION = "fil_discussion"
 MAIL_TYPE_DOSSIER_PRESENTE = "dossier_presente"
 MAIL_TYPE_RDV_SUIVI_RELANCE = "rdv_suivi_relance"
 MAIL_TYPE_RELANCE_AGENT_21J = "relance_agent_21j"
@@ -1712,6 +1716,69 @@ def format_note_externe_email(doc: dict, *, note: Optional[str] = None) -> Tuple
         + html.escape(note_text or "—").replace("\n", "<br/>")
         + "</p>"
     )
+    if url:
+        html_parts.append(_html_button(url, link_label))
+    html_parts.append("<p>Cordialement,<br/>LeoSoft</p></div>")
+    return subject, body_text, "".join(html_parts)
+
+
+def format_fil_discussion_email(
+    doc: dict,
+    *,
+    note: Optional[str] = None,
+    author: Optional[str] = None,
+    author_role: Optional[str] = None,
+) -> Tuple[str, str, str]:
+    """
+    Nouveau message du fil agent ↔ gestionnaire.
+    Objet clair, aperçu du message, lien Accéder à la demande (PUBLIC_APP_URL).
+    """
+    client = _offre_client_name(doc)
+    numero = (doc.get("numero") or "").strip() or "—"
+    subject = f"LeoSoft – Nouveau message sur {numero} – {client}"
+    who = (author or doc.get("fil_message_author") or "").strip() or "Un collaborateur"
+    role_raw = (author_role or doc.get("fil_message_role") or "").strip().lower()
+    if role_raw in {"gestionnaire", "manager"}:
+        role_label = "gestionnaire"
+    elif role_raw in {"agent", "conseiller"}:
+        role_label = "agent"
+    else:
+        role_label = ""
+    preview = (note or "").strip() or "—"
+    url = _demande_offre_url(doc.get("id"))
+    link_label = "Accéder à la demande"
+    de_line = f"{who} ({role_label})" if role_label else who
+
+    text_lines = [
+        "Bonjour,",
+        "",
+        "Un nouveau message a été publié sur le fil de discussion de la demande d’offre.",
+        "",
+        f"N° / référence : {numero}",
+        f"Client : {client}",
+        f"De : {de_line}",
+        "",
+        "Message :",
+        preview,
+    ]
+    if url:
+        text_lines.extend(["", f"{link_label} :", url])
+    text_lines.extend(["", "Cordialement,", "LeoSoft"])
+    body_text = "\n".join(text_lines)
+
+    html_parts = [
+        '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.5;">',
+        "<p>Bonjour,</p>",
+        "<p>Un nouveau message a été publié sur le fil de discussion de la demande d’offre.</p>",
+        "<p>"
+        f"<strong>N° / référence</strong> : {html.escape(numero)}<br/>"
+        f"<strong>Client</strong> : {html.escape(client)}<br/>"
+        f"<strong>De</strong> : {html.escape(de_line)}"
+        "</p>",
+        "<p><strong>Message :</strong><br/>"
+        + html.escape(preview).replace("\n", "<br/>")
+        + "</p>",
+    ]
     if url:
         html_parts.append(_html_button(url, link_label))
     html_parts.append("<p>Cordialement,<br/>LeoSoft</p></div>")

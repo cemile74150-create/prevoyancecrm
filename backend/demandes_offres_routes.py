@@ -728,6 +728,7 @@ def attach_demandes_offres_routes(
                 MAIL_TYPE_NOTE_EXTERNE,
                 MAIL_TYPE_COMPLEMENT_DEMANDE,
                 MAIL_TYPE_COMPLEMENT_REPONSE,
+                MAIL_TYPE_FIL_DISCUSSION,
                 format_demande_incomplete_email,
                 format_demande_offre_email,
                 format_demande_offre_recap_conseiller_email,
@@ -737,6 +738,7 @@ def attach_demandes_offres_routes(
                 format_note_externe_email,
                 format_complement_demande_email,
                 format_complement_reponse_email,
+                format_fil_discussion_email,
                 format_offre_signee_email,
                 normalize_message_id,
                 office_email_to,
@@ -829,6 +831,24 @@ def attach_demandes_offres_routes(
             to_addr = to_override or await resolve_demande_creator_email(doc)
             if not to_addr:
                 return False, "E-mail du créateur introuvable sur la demande"
+        elif event_key in {
+            "fil_discussion",
+            "fil_discussion_agent",
+            "fil_discussion_gestionnaire",
+            "message",
+            "message_agent",
+            "message_gestionnaire",
+        }:
+            mail_type = MAIL_TYPE_FIL_DISCUSSION
+            subject, body_text, body_html = format_fil_discussion_email(
+                doc,
+                note=note,
+                author=doc.get("fil_message_author"),
+                author_role=doc.get("fil_message_role"),
+            )
+            to_addr = to_override
+            if not to_addr:
+                return False, "Destinataire du fil introuvable"
         else:
             mail_type = MAIL_TYPE_DEMANDE_OFFRE
             subject, body_text, body_html = format_demande_offre_email(doc)
@@ -1155,6 +1175,59 @@ def attach_demandes_offres_routes(
             if "@" in email:
                 return email
         return await resolve_conseiller_notify_email(doc)
+
+    async def resolve_account_email(account_id: Optional[str]) -> Optional[str]:
+        """E-mail actif d'un compte (user_id / account_id)."""
+        aid = (account_id or "").strip()
+        if not aid:
+            return None
+        u = await db.users.find_one(
+            {
+                "$or": [{"user_id": aid}, {"account_id": aid}],
+                "active": {"$ne": False},
+            },
+            {"_id": 0, "email": 1},
+        )
+        email = ((u or {}).get("email") or "").strip()
+        return email if "@" in email else None
+
+    async def resolve_fil_discussion_email_to(
+        doc: dict,
+        *,
+        role: str,
+        sender: User,
+    ) -> Optional[str]:
+        """
+        Destinataire e-mail du fil (un seul envoi, jamais l'expéditeur).
+
+        Choix documenté :
+        - Agent → gestionnaire attribué (`gestionnaire_id`) s'il a un e-mail ;
+          sinon boîte process `OFFRES_EMAIL_TO` (même canal que réponses complément /
+          envoi demande). La cloche continue d'alerter tous les comptes process.
+        - Gestionnaire → créateur / conseiller (même résolution que notes externes).
+        """
+        from email_service import offres_email_to
+        from demandes_offres_messages import ROLE_AGENT
+
+        sender_email = ((getattr(sender, "email", None) or "")).strip().lower()
+
+        def _usable(addr: Optional[str]) -> Optional[str]:
+            clean = (addr or "").strip()
+            if not clean or "@" not in clean:
+                return None
+            if sender_email and clean.lower() == sender_email:
+                return None
+            return clean
+
+        if role == ROLE_AGENT:
+            gid = (doc.get("gestionnaire_id") or "").strip()
+            if gid and gid != (sender.account_id or ""):
+                attributed = _usable(await resolve_account_email(gid))
+                if attributed:
+                    return attributed
+            return _usable(offres_email_to())
+
+        return _usable(await resolve_demande_creator_email(doc))
 
     @api_router.get("/demandes-offres/modifier/recherche")
     async def recherche_offres_par_nom_client(
@@ -2662,24 +2735,48 @@ def attach_demandes_offres_routes(
         message["user_id"] = TENANT_USER_ID
         await db[COLLECTION_MESSAGES].insert_one(dict(message))
         apercu = contenu if len(contenu) <= 120 else f"{contenu[:117]}…"
+        author = actor_name(user)
         if role == ROLE_AGENT:
             await write_offre_notification(
                 doc=doc,
                 event="message",
                 title=f"Nouveau message — {doc.get('numero') or ''}".strip(),
-                message=f"{actor_name(user)} : {apercu}",
+                message=f"{author} : {apercu}",
                 audience="gestionnaires",
                 account_ids=[aid for aid in await manager_account_ids() if aid != user.account_id],
             )
+            mail_event = "fil_discussion_gestionnaire"
         else:
             creator = doc.get("agent_account_id") or doc.get("created_by_account_id")
             await write_offre_notification(
                 doc=doc,
                 event="message",
                 title=f"Nouveau message — {doc.get('numero') or ''}".strip(),
-                message=f"{actor_name(user)} : {apercu}",
+                message=f"{author} : {apercu}",
                 audience="conseiller",
                 account_ids=[creator] if creator and creator != user.account_id else [],
+            )
+            mail_event = "fil_discussion_agent"
+        # E-mail en plus de la cloche ; un échec SMTP ne doit pas faire échouer le POST.
+        try:
+            to_addr = await resolve_fil_discussion_email_to(doc, role=role, sender=user)
+            if to_addr:
+                mail_doc = {
+                    **doc,
+                    "fil_message_author": author,
+                    "fil_message_role": role,
+                }
+                await try_send_email(
+                    mail_doc,
+                    event=mail_event,
+                    note=contenu,
+                    to_override=to_addr,
+                )
+        except Exception:
+            logger.exception(
+                "Fil discussion e-mail failed demande=%s role=%s",
+                demande_id,
+                role,
             )
         return await thread_payload(demande_id, user, mark_read=False)
 

@@ -671,6 +671,113 @@ def test_agent_envoie_et_gestionnaire_repond(trois_compagnies):
     assert len(h.notifications("message")) == 2
 
 
+def test_format_fil_discussion_email_contenu_et_lien(monkeypatch):
+    monkeypatch.setenv("PUBLIC_APP_URL", "https://leosoft.example")
+    subject, text, html = email_service.format_fil_discussion_email(
+        {
+            "id": "dem-1",
+            "numero": "OFF-2026-0001",
+            "prenom": "Jean",
+            "nom": "Client",
+        },
+        note="Le client préfère AXA",
+        author="Camille Durand",
+        author_role="agent",
+    )
+    assert subject == "LeoSoft – Nouveau message sur OFF-2026-0001 – Jean Client"
+    assert "Le client préfère AXA" in text
+    assert "Camille Durand (agent)" in text
+    assert "https://leosoft.example/demandes-offres/dem-1" in text
+    assert "Accéder à la demande" in html
+    assert email_service.offre_notify_role("fil_discussion_agent") == "createur"
+    assert email_service.offre_notify_role("fil_discussion_gestionnaire") == "offres_mailbox"
+
+
+def test_message_envoie_email_et_cloche_sans_spammer_lexpediteur(trois_compagnies, monkeypatch):
+    h = trois_compagnies
+    sent = []
+
+    async def fake_send(to_email, subject, body_text, **kwargs):
+        sent.append({"to": to_email, "subject": subject, "body": body_text, **kwargs})
+        return True, None
+
+    monkeypatch.setattr(email_service, "offres_email_enabled", lambda: True)
+    monkeypatch.setattr(email_service, "send_email_async", fake_send)
+    monkeypatch.setattr(email_service, "offres_email_to", lambda: "offres@agencemendes.ch")
+    monkeypatch.setenv("PUBLIC_APP_URL", "https://leosoft.example")
+
+    h.call(
+        "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
+        payload=MessageDemandeRequest(contenu="Besoin d'un avis sur Zurich"), user=AGENT,
+    )
+    assert len(h.notifications("message")) == 1
+    assert len(h.db[COLLECTION_MESSAGES].docs) == 1
+    assert len(sent) == 1
+    assert sent[0]["to"] == "offres@agencemendes.ch"
+    assert "OFF-2026-0001" in sent[0]["subject"]
+    assert "Besoin d'un avis sur Zurich" in sent[0]["body"]
+    assert sent[0]["mail_type"] == email_service.MAIL_TYPE_FIL_DISCUSSION
+
+    sent.clear()
+    h.call(
+        "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
+        payload=MessageDemandeRequest(contenu="Je m'en occupe"), user=GESTION,
+    )
+    assert len(h.notifications("message")) == 2
+    assert len(sent) == 1
+    assert sent[0]["to"] == "camille@test.ch"
+    assert sent[0]["to"] != GESTION.email
+    assert "Je m'en occupe" in sent[0]["body"]
+
+
+def test_message_email_prefer_gestionnaire_attribue(trois_compagnies, monkeypatch):
+    h = trois_compagnies
+    asyncio.run(h.db[COLLECTION].update_one(
+        {"id": "dem-1"},
+        {"$set": {"gestionnaire_id": GESTION.account_id, "gestionnaire_nom": "Lea Gestion"}},
+    ))
+    asyncio.run(h.db.users.insert_one({
+        "user_id": GESTION.account_id,
+        "email": "lea@test.ch",
+        "active": True,
+        "role": ROLE_GESTIONNAIRE_OFFRES,
+    }))
+    sent = []
+
+    async def fake_send(to_email, subject, body_text, **kwargs):
+        sent.append({"to": to_email, "subject": subject})
+        return True, None
+
+    monkeypatch.setattr(email_service, "offres_email_enabled", lambda: True)
+    monkeypatch.setattr(email_service, "send_email_async", fake_send)
+    monkeypatch.setattr(email_service, "offres_email_to", lambda: "offres@agencemendes.ch")
+
+    h.call(
+        "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
+        payload=MessageDemandeRequest(contenu="Message pour Lea"), user=AGENT,
+    )
+    assert [row["to"] for row in sent] == ["lea@test.ch"]
+
+
+def test_message_poste_meme_si_smtp_indisponible(trois_compagnies, monkeypatch):
+    h = trois_compagnies
+
+    async def boom(*_a, **_k):
+        raise RuntimeError("SMTP down")
+
+    monkeypatch.setattr(email_service, "offres_email_enabled", lambda: True)
+    monkeypatch.setattr(email_service, "send_email_async", boom)
+
+    out = h.call(
+        "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
+        payload=MessageDemandeRequest(contenu="Toujours enregistré"), user=AGENT,
+    )
+    assert len(h.db[COLLECTION_MESSAGES].docs) == 1
+    assert h.db[COLLECTION_MESSAGES].docs[0]["contenu"] == "Toujours enregistré"
+    assert out["messages"][0]["contenu"] == "Toujours enregistré"
+    assert len(h.notifications("message")) == 1
+
+
 def test_utilisateur_non_autorise_recoit_403_sur_le_fil_et_les_documents(trois_compagnies):
     h = trois_compagnies
     h.transmettre_simple("AXA")
