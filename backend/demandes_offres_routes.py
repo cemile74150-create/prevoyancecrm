@@ -1196,38 +1196,53 @@ def attach_demandes_offres_routes(
         *,
         role: str,
         sender: User,
-    ) -> Optional[str]:
+    ) -> list[str]:
         """
-        Destinataire e-mail du fil (un seul envoi, jamais l'expéditeur).
+        Destinataires e-mail du fil : le premier en « À », les suivants en copie.
+        Jamais l'expéditeur, sans doublon.
 
-        Choix documenté :
         - Agent → gestionnaire attribué (`gestionnaire_id`) s'il a un e-mail ;
-          sinon boîte process `OFFRES_EMAIL_TO` (même canal que réponses complément /
-          envoi demande). La cloche continue d'alerter tous les comptes process.
-        - Gestionnaire → créateur / conseiller (même résolution que notes externes).
+          sinon tous les comptes process ayant un e-mail (comme la cloche) ;
+          sinon boîte `OFFRES_EMAIL_TO`.
+        - Gestionnaire → créateur / conseiller (même résolution que notes externes)
+          + gestionnaire attribué s'il n'est pas l'expéditeur.
         """
         from email_service import offres_email_to
         from demandes_offres_messages import ROLE_AGENT
 
+        sender_id = (sender.account_id or "").strip()
         sender_email = ((getattr(sender, "email", None) or "")).strip().lower()
+        recipients: list[str] = []
 
-        def _usable(addr: Optional[str]) -> Optional[str]:
+        def _add(addr: Optional[str]) -> None:
             clean = (addr or "").strip()
             if not clean or "@" not in clean:
-                return None
-            if sender_email and clean.lower() == sender_email:
-                return None
-            return clean
+                return
+            low = clean.lower()
+            if sender_email and low == sender_email:
+                return
+            if any(low == existing.lower() for existing in recipients):
+                return
+            recipients.append(clean)
+
+        gid = (doc.get("gestionnaire_id") or "").strip()
+        attributed = (
+            await resolve_account_email(gid) if gid and gid != sender_id else None
+        )
 
         if role == ROLE_AGENT:
-            gid = (doc.get("gestionnaire_id") or "").strip()
-            if gid and gid != (sender.account_id or ""):
-                attributed = _usable(await resolve_account_email(gid))
-                if attributed:
-                    return attributed
-            return _usable(offres_email_to())
+            _add(attributed)
+            if not recipients:
+                for aid in await manager_account_ids():
+                    if aid and aid != sender_id:
+                        _add(await resolve_account_email(aid))
+            if not recipients:
+                _add(offres_email_to())
+            return recipients
 
-        return _usable(await resolve_demande_creator_email(doc))
+        _add(await resolve_demande_creator_email(doc))
+        _add(attributed)
+        return recipients
 
     @api_router.get("/demandes-offres/modifier/recherche")
     async def recherche_offres_par_nom_client(
@@ -2748,19 +2763,24 @@ def attach_demandes_offres_routes(
             mail_event = "fil_discussion_gestionnaire"
         else:
             creator = doc.get("agent_account_id") or doc.get("created_by_account_id")
+            gestionnaire = (doc.get("gestionnaire_id") or "").strip()
+            bell_ids = []
+            for aid in (creator, gestionnaire):
+                if aid and aid != user.account_id and aid not in bell_ids:
+                    bell_ids.append(aid)
             await write_offre_notification(
                 doc=doc,
                 event="message",
                 title=f"Nouveau message — {doc.get('numero') or ''}".strip(),
                 message=f"{author} : {apercu}",
                 audience="conseiller",
-                account_ids=[creator] if creator and creator != user.account_id else [],
+                account_ids=bell_ids,
             )
             mail_event = "fil_discussion_agent"
         # E-mail en plus de la cloche ; un échec SMTP ne doit pas faire échouer le POST.
         try:
-            to_addr = await resolve_fil_discussion_email_to(doc, role=role, sender=user)
-            if to_addr:
+            recipients = await resolve_fil_discussion_email_to(doc, role=role, sender=user)
+            if recipients:
                 mail_doc = {
                     **doc,
                     "fil_message_author": author,
@@ -2770,7 +2790,8 @@ def attach_demandes_offres_routes(
                     mail_doc,
                     event=mail_event,
                     note=contenu,
-                    to_override=to_addr,
+                    to_override=recipients[0],
+                    cc=recipients[1:] or None,
                 )
         except Exception:
             logger.exception(

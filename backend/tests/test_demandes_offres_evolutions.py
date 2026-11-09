@@ -759,6 +759,68 @@ def test_message_email_prefer_gestionnaire_attribue(trois_compagnies, monkeypatc
     assert [row["to"] for row in sent] == ["lea@test.ch"]
 
 
+def _capture_fil_emails(monkeypatch):
+    sent = []
+
+    async def fake_send(to_email, subject, body_text, **kwargs):
+        sent.append({"to": to_email, "cc": kwargs.get("cc") or []})
+        return True, None
+
+    monkeypatch.setattr(email_service, "offres_email_enabled", lambda: True)
+    monkeypatch.setattr(email_service, "send_email_async", fake_send)
+    monkeypatch.setattr(email_service, "offres_email_to", lambda: "offres@agencemendes.ch")
+    return sent
+
+
+def test_message_dun_autre_gestionnaire_copie_le_gestionnaire_attribue(trois_compagnies, monkeypatch):
+    h = trois_compagnies
+    asyncio.run(h.db[COLLECTION].update_one(
+        {"id": "dem-1"},
+        {"$set": {"gestionnaire_id": "gest-jordan", "gestionnaire_nom": "Jordan"}},
+    ))
+    asyncio.run(h.db.users.insert_one({
+        "user_id": "gest-jordan",
+        "email": "jordan@test.ch",
+        "active": True,
+        "role": ROLE_GESTIONNAIRE_OFFRES,
+    }))
+    sent = _capture_fil_emails(monkeypatch)
+
+    h.call(
+        "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
+        payload=MessageDemandeRequest(contenu="Je reprends le dossier"), user=GESTION,
+    )
+    assert sent == [{"to": "camille@test.ch", "cc": ["jordan@test.ch"]}]
+    bell = h.notifications("message")[-1]
+    assert set(bell["account_ids"]) == {AGENT.account_id, "gest-jordan"}
+
+
+def test_message_agent_sans_attribution_va_aux_comptes_process(trois_compagnies, monkeypatch):
+    h = trois_compagnies
+    for uid, email in (("proc-1", "p1@test.ch"), ("proc-2", "p2@test.ch")):
+        asyncio.run(h.db.users.insert_one({
+            "user_id": uid,
+            "email": email,
+            "active": True,
+            "role": ROLE_GESTIONNAIRE_OFFRES,
+        }))
+    asyncio.run(h.db.users.insert_one({
+        "user_id": AGENT.account_id,
+        "email": AGENT.email,
+        "active": True,
+        "role": "admin",
+    }))
+    sent = _capture_fil_emails(monkeypatch)
+
+    h.call(
+        "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
+        payload=MessageDemandeRequest(contenu="Qui peut regarder ?"), user=AGENT,
+    )
+    assert len(sent) == 1
+    assert {sent[0]["to"], *sent[0]["cc"]} == {"p1@test.ch", "p2@test.ch"}
+    assert AGENT.email not in [sent[0]["to"], *sent[0]["cc"]]
+
+
 def test_message_poste_meme_si_smtp_indisponible(trois_compagnies, monkeypatch):
     h = trois_compagnies
 
