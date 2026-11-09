@@ -20,6 +20,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Iterable, Optional
 
 from demandes_offres_3p import (
+    ACTION_ENVOYEE,
     OFFRES_DELAI_SURVEILLER_JOURS,
     STATUT_BROUILLON,
     STATUT_EN_CONCLUSION,
@@ -692,6 +693,134 @@ def compute_pilotage(
         "gestionnaires": repartition_gestionnaires(rows, gestionnaires, now=now),
         "decisions_a_renseigner": decisions,
         "delai_decision_jours": RELANCE_DECISION_JOURS,
+    }
+
+
+# --------------------------------------------------------------------------- statistiques mensuelles
+
+STATS_MENSUELLES_MOIS = (6, 12)
+SERIES_MENSUELLES = (
+    {"key": "recues", "label": "Offres reçues"},
+    {"key": "signees", "label": "Offres signées"},
+    {"key": "non_signees", "label": "Offres non signées"},
+)
+STATS_MENSUELLES_DEFINITIONS = {
+    "recues": "Demandes soumises dans le mois (date d'envoi de la demande, brouillons exclus).",
+    "signees": "Passage au statut commercial « Offre signée » dans le mois.",
+    "non_signees": "Passage au statut commercial « Offre non signée » dans le mois.",
+}
+_MOIS_FR = ("janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc.")
+
+
+def _historique_at(doc: dict, *, statuts: set[str] = frozenset(), actions: set[str] = frozenset(), first: bool = False):
+    """Date d'une entrée d'historique (statut posé ou action), la dernière par défaut."""
+    stamps = []
+    for entry in (doc or {}).get("historique") or []:
+        if not isinstance(entry, dict) or not str(entry.get("at") or "").strip():
+            continue
+        statut = entry.get("statut")
+        if (statut and normalize_statut(statut) in statuts) or str(entry.get("action") or "").strip() in actions:
+            stamps.append(str(entry["at"]).strip())
+    if not stamps:
+        return None
+    return stamps[0] if first else stamps[-1]
+
+
+def date_reception_demande(doc: dict) -> Optional[str]:
+    """Soumission de la demande : ``date_envoi``, sinon le premier « Demande envoyée » de l'historique."""
+    if not dans_pilotage(doc):
+        return None
+    stamp = str(doc.get("date_envoi") or "").strip()
+    return stamp or _historique_at(doc, actions={ACTION_ENVOYEE}, first=True)
+
+
+def date_decision_commerciale(doc: dict) -> Optional[str]:
+    """Passage à la décision finale actuelle (signée / non signée).
+
+    Date enregistrée par le bouton de décision (``signature.recorded_at`` ou
+    ``offre_non_signee.at``), sinon l'entrée d'historique qui a posé ce statut.
+    Aucune date n'est déduite d'un autre champ.
+    """
+    if not dans_pilotage(doc):
+        return None
+    code = commercial_code(doc)
+    if code not in COMMERCIAL_FINAUX:
+        return None
+    stamp = str(commercial_trace(doc)["at"] or "").strip()
+    if stamp:
+        return stamp
+    statuts = {STATUT_OFFRE_SIGNEE} if code == COMMERCIAL_SIGNEE else {STATUT_OFFRE_NON_SIGNEE, STATUT_OFFRE_REFUSEE}
+    return _historique_at(doc, statuts=statuts)
+
+
+def mois_glissants(nb_mois: int, now: Optional[datetime] = None) -> list[str]:
+    """``nb_mois`` derniers mois calendaires (Europe/Zurich), mois courant inclus, du plus ancien au plus récent."""
+    today = _zurich_today(now)
+    year, month = today.year, today.month
+    out = []
+    for _ in range(max(1, int(nb_mois))):
+        out.append(f"{year:04d}-{month:02d}")
+        month -= 1
+        if month == 0:
+            year, month = year - 1, 12
+    return out[::-1]
+
+
+def libelle_mois(cle: str) -> str:
+    year, month = cle.split("-")
+    return f"{_MOIS_FR[int(month) - 1]} {year}"
+
+
+def compute_stats_mensuelles(
+    rows: Iterable[dict],
+    *,
+    nb_mois: int = 6,
+    debut: Optional[str] = None,
+    fin: Optional[str] = None,
+    now: Optional[datetime] = None,
+) -> dict:
+    """Offres reçues / signées / non signées par mois.
+
+    Chaque série lit sa propre date : une offre reçue en septembre et signée en
+    octobre compte en septembre (reçues) et en octobre (signées). Une demande
+    compte au plus une fois par série. ``debut`` (inclus) et ``fin`` (exclu)
+    bornent la date de l'événement (filtre « Période » du tableau de bord).
+    Les décisions sans date enregistrée sont comptées dans ``sans_date``.
+    """
+    nb_mois = nb_mois if nb_mois in STATS_MENSUELLES_MOIS else STATS_MENSUELLES_MOIS[0]
+    cles = mois_glissants(nb_mois, now)
+    buckets = {cle: {"mois": cle, "label": libelle_mois(cle), "recues": 0, "signees": 0, "non_signees": 0} for cle in cles}
+    borne_debut = _parse_iso(debut) if debut else None
+    borne_fin = _parse_iso(fin) if fin else None
+    sans_date = Counter()
+
+    def placer(serie: str, stamp: Optional[str]) -> None:
+        moment = _parse_iso(stamp)
+        if moment is None:
+            sans_date[serie] += 1
+            return
+        if (borne_debut and moment < borne_debut) or (borne_fin and moment >= borne_fin):
+            return
+        bucket = buckets.get(_zurich_date(moment).strftime("%Y-%m"))
+        if bucket is not None:
+            bucket[serie] += 1
+
+    for row in rows or []:
+        if not isinstance(row, dict) or not dans_pilotage(row):
+            continue
+        placer("recues", date_reception_demande(row))
+        code = commercial_code(row)
+        if code in COMMERCIAL_FINAUX:
+            placer("signees" if code == COMMERCIAL_SIGNEE else "non_signees", date_decision_commerciale(row))
+
+    mois = [buckets[cle] for cle in cles]
+    return {
+        "nb_mois": nb_mois,
+        "mois": mois,
+        "series": [dict(s) for s in SERIES_MENSUELLES],
+        "totaux": {s["key"]: sum(m[s["key"]] for m in mois) for s in SERIES_MENSUELLES},
+        "sans_date": {s["key"]: int(sans_date.get(s["key"], 0)) for s in SERIES_MENSUELLES},
+        "definitions": dict(STATS_MENSUELLES_DEFINITIONS),
     }
 
 

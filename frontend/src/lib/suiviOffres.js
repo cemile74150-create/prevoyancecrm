@@ -234,6 +234,37 @@ export function trierRepartition(lignes, key = "attribues", direction = "desc") 
   return [...others, ...unassigned];
 }
 
+export const STATS_MENSUELLES_MOIS = [6, 12];
+
+export const STATS_MENSUELLES_SERIES = [
+  { key: "recues", label: "Offres reçues", color: "#002FA7" },
+  { key: "signees", label: "Offres signées", color: "#10b981" },
+  { key: "non_signees", label: "Offres non signées", color: "#f43f5e" },
+];
+
+/** Paramètres de /demandes-offres/pilotage/mensuel : mêmes filtres que le pilotage. */
+export function statsMensuellesParams({
+  mois = 6, periode = "all", dateDe = "", dateA = "", conseiller = "all", filtres = FILTRES_VIDES, perimetre,
+} = {}) {
+  const f = { ...FILTRES_VIDES, ...(filtres || {}) };
+  const params = { mois: STATS_MENSUELLES_MOIS.includes(Number(mois)) ? Number(mois) : 6, periode: periode || "all" };
+  if (params.periode === "custom") {
+    if (dateDe) params.date_de = dateDe;
+    if (dateA) params.date_a = dateA;
+  }
+  if (perimetre) params.perimetre = perimetre;
+  if (conseiller && conseiller !== "all") params.conseiller = conseiller;
+  if (f.gestionnaire !== "all") params.gestionnaire = f.gestionnaire;
+  if (f.type !== "all") params.form_type = f.type;
+  if (f.compagnie !== "all") params.compagnie = f.compagnie;
+  return params;
+}
+
+export function statsMensuellesVides(data) {
+  const mois = Array.isArray(data?.mois) ? data.mois : [];
+  return !mois.some((m) => STATS_MENSUELLES_SERIES.some((s) => Number(m?.[s.key]) > 0));
+}
+
 export function tauxSignatureLabel(taux) {
   return taux === null || taux === undefined ? "—" : `${String(taux).replace(".", ",")} %`;
 }

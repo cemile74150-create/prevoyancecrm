@@ -4,14 +4,18 @@ import {
   A_ATTRIBUER_COLUMNS,
   BOUTON_TRAITER_CLASS,
   DETAIL_COLUMNS,
+  FILTRES_VIDES,
   NON_ATTRIBUE,
   REPARTITION_COLUMNS,
+  STATS_MENSUELLES_SERIES,
   boutonTraiter,
   commercialLabel,
   filtrerDetail,
   filtresActifs,
   listerNonAttribuees,
   matchTag,
+  statsMensuellesParams,
+  statsMensuellesVides,
   tauxSignatureLabel,
   trierRepartition,
 } from "./suiviOffres";
@@ -178,5 +182,61 @@ describe("libellés", () => {
     expect(gestion).not.toMatch(/GESTION_KPI_CARDS/);
     expect(gestion).not.toMatch(/mes-decision-a-renseigner/);
     expect(gestion).not.toMatch(/Décision client à renseigner/);
+  });
+});
+
+describe("statistiques mensuelles des offres", () => {
+  it("6 mois par défaut, 12 en option, rien d'autre", () => {
+    expect(statsMensuellesParams()).toEqual({ mois: 6, periode: "all" });
+    expect(statsMensuellesParams({ mois: 12 }).mois).toBe(12);
+    expect(statsMensuellesParams({ mois: 7 }).mois).toBe(6);
+  });
+
+  it("reprend période, agent, gestionnaire, type et compagnie du pilotage", () => {
+    const params = statsMensuellesParams({
+      mois: 12,
+      periode: "custom",
+      dateDe: "2026-09-01",
+      dateA: "2026-10-31",
+      conseiller: "Camille Durand",
+      filtres: { ...FILTRES_VIDES, gestionnaire: NON_ATTRIBUE, type: "pilier3", compagnie: "AXA", tag: "soumises" },
+    });
+    expect(params).toEqual({
+      mois: 12,
+      periode: "custom",
+      date_de: "2026-09-01",
+      date_a: "2026-10-31",
+      conseiller: "Camille Durand",
+      gestionnaire: NON_ATTRIBUE,
+      form_type: "pilier3",
+      compagnie: "AXA",
+    });
+    expect(statsMensuellesParams({ periode: "month", dateDe: "2026-09-01", conseiller: "all" })).toEqual({ mois: 6, periode: "month" });
+    expect(statsMensuellesParams({ perimetre: "personnel" }).perimetre).toBe("personnel");
+  });
+
+  it("état vide tant qu'aucune série n'a de valeur", () => {
+    expect(statsMensuellesVides(null)).toBe(true);
+    expect(statsMensuellesVides({ mois: [{ mois: "2026-11", recues: 0, signees: 0, non_signees: 0 }] })).toBe(true);
+    expect(statsMensuellesVides({ mois: [{ mois: "2026-11", recues: 0, signees: 0, non_signees: 1 }] })).toBe(false);
+  });
+
+  it("trois séries de couleurs distinctes", () => {
+    expect(STATS_MENSUELLES_SERIES.map((s) => s.label)).toEqual(["Offres reçues", "Offres signées", "Offres non signées"]);
+    expect(new Set(STATS_MENSUELLES_SERIES.map((s) => s.color)).size).toBe(3);
+  });
+
+  it("graphique sous les indicateurs du pilotage, même composant que les stats Prévoyance", () => {
+    const pilotage = src("components/SuiviOffresPilotage.js");
+    const resultat = pilotage.indexOf("Résultat commercial</h2>");
+    const graphique = pilotage.indexOf("<OffresStatsMensuelles");
+    const pipeline = pilotage.indexOf("Pipeline des offres</h2>");
+    expect(resultat).toBeGreaterThan(-1);
+    expect(graphique).toBeGreaterThan(resultat);
+    expect(pipeline).toBeGreaterThan(graphique);
+    expect(src("components/OffresStatsMensuelles.js")).toMatch(/<MonthlyBarChart/);
+    expect(src("components/OffresStatsMensuelles.js")).toMatch(/\/demandes-offres\/pilotage\/mensuel/);
+    expect(src("pages/Dashboard.js")).toMatch(/<MonthlyBarChart data=\{prev\.monthly\}/);
+    expect(src("components/OffresDashboardPanel.js")).toMatch(/<OffresStatsMensuelles \/>/);
   });
 });

@@ -40,6 +40,7 @@ import {
   tauxSignatureLabel,
   trierRepartition,
 } from "@/lib/suiviOffres";
+import OffresStatsMensuelles from "@/components/OffresStatsMensuelles";
 import { ArrowDown, ArrowUp, ChevronRight, Loader2, UserCheck, UserCog, X } from "lucide-react";
 
 const PERIODES = [
@@ -277,6 +278,7 @@ export default function SuiviOffresPilotage({ filterConseiller, conseillerNames 
   const [filtres, setFiltres] = useState(FILTRES_VIDES);
   const [tri, setTri] = useState({ key: "attribues", direction: "desc" });
   const [reattribuer, setReattribuer] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const conseiller = filterConseiller && filterConseiller !== "all" ? filterConseiller : agent;
 
@@ -396,7 +398,14 @@ export default function SuiviOffresPilotage({ filterConseiller, conseillerNames 
           <p className="text-[11px] text-slate-500 max-w-sm leading-snug">
             Les compteurs suivent la période et l&apos;agent choisis. Cliquez un compteur pour filtrer le tableau détaillé.
           </p>
-          <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={load} disabled={loading}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-auto"
+            onClick={() => { load(); setRefreshKey((k) => k + 1); }}
+            disabled={loading}
+          >
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
             Actualiser
           </Button>
@@ -460,6 +469,15 @@ export default function SuiviOffresPilotage({ filterConseiller, conseillerNames 
           </div>
         </div>
       </section>
+
+      <OffresStatsMensuelles
+        periode={periode}
+        dateDe={dateDe}
+        dateA={dateA}
+        conseiller={conseiller}
+        filtres={filtres}
+        refreshKey={refreshKey}
+      />
 
       {/* B8 — pipeline en trois sections */}
       <Card className="p-5 border-border">

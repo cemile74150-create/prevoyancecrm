@@ -12,10 +12,8 @@ import {
   FolderKanban, Plus, CalendarClock, ListTodo, PauseCircle, User,
   Shield, Landmark, FileSpreadsheet, PhoneCall, TrendingUp,
 } from "lucide-react";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
-  PieChart, Pie, Cell,
-} from "recharts";
+import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import MonthlyBarChart from "@/components/MonthlyBarChart";
 import { getDashboardTarget } from "@/lib/dashboardRoutes";
 import { conseillerNames as toConseillerNameList } from "@/lib/conseillers";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,6 +23,12 @@ const CATEGORIES = [
   { id: "prevoyance", label: "Suivi Prévoyance", icon: Shield },
   { id: "suivi_3p", label: "Suivi 3e pilier", icon: Landmark },
   { id: "offres", label: "Suivi des offres", icon: FileSpreadsheet },
+];
+
+const PREVOYANCE_MONTHLY_BARS = [
+  { key: "dossiers", label: "Dossiers", color: "#002FA7" },
+  { key: "rendezvous", label: "Rendez-vous", color: "#06b6d4" },
+  { key: "rapports", label: "Rapports", color: "#10b981" },
 ];
 
 const KPI = ({ icon: Icon, label, value, accent, testid, onClick }) => (
@@ -199,18 +203,7 @@ export default function Dashboard() {
               <Card className="lg:col-span-2 p-6">
                 <h2 className="font-display font-bold text-lg tracking-tight mb-1">Statistiques mensuelles</h2>
                 <p className="text-sm text-muted-foreground mb-6">Dossiers, rendez-vous et rapports (6 derniers mois)</p>
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={prev.monthly || []} barGap={4}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2f6" />
-                    <XAxis dataKey="mois" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} allowDecimals={false} />
-                    <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }} />
-                    <Legend wrapperStyle={{ fontSize: 13 }} />
-                    <Bar dataKey="dossiers" name="Dossiers" fill="#002FA7" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="rendezvous" name="Rendez-vous" fill="#06b6d4" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="rapports" name="Rapports" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <MonthlyBarChart data={prev.monthly} bars={PREVOYANCE_MONTHLY_BARS} />
               </Card>
 
               <Card className="p-6">

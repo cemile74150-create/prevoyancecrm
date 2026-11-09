@@ -1590,6 +1590,50 @@ def attach_demandes_offres_routes(
         }
         return result
 
+    @api_router.get("/demandes-offres/pilotage/mensuel")
+    async def demandes_offres_pilotage_mensuel(
+        mois: int = Query(6),
+        perimetre: Optional[str] = Query("global"),
+        conseiller: Optional[str] = Query(None),
+        gestionnaire: Optional[str] = Query(None),
+        form_type: Optional[str] = Query(None),
+        compagnie: Optional[str] = Query(None),
+        periode: Optional[str] = Query("all"),
+        date_de: Optional[str] = Query(None),
+        date_a: Optional[str] = Query(None),
+        user: User = Depends(current_user_dependency),
+    ):
+        """Offres reçues / signées / non signées par mois, sur le périmètre du pilotage.
+
+        La période du tableau de bord borne la date de chaque événement, pas la
+        date de création : une demande créée avant la période mais signée
+        pendant celle-ci est comptée dans « Offres signées ».
+        """
+        from demandes_offres_3p import period_bounds
+        from demandes_offres_pilotage import compute_stats_mensuelles
+
+        personnel = (perimetre or "").strip().lower() == "personnel"
+        clauses = pilotage_scope_clauses(user, "personnel" if personnel else None, gestionnaire)
+        if form_type and form_type != "all":
+            clauses.append({"form_type": form_type})
+        if compagnie and compagnie != "all":
+            cie_match = {"$regex": f"^{re.escape(compagnie.strip())}$", "$options": "i"}
+            clauses.append({"$or": [
+                {"compagnies": cie_match},
+                {"offre.compagnie": cie_match},
+                {"offres.compagnie": cie_match},
+            ]})
+        query = scoped_query(demandes_offres_base_query(user, conseiller), clauses)
+        rows = await db[COLLECTION].find(query, {"_id": 0}).to_list(10000)
+        try:
+            debut, fin, norm = period_bounds(periode, date_de, date_a)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Dates de période invalides") from exc
+        result = compute_stats_mensuelles(rows, nb_mois=mois, debut=debut, fin=fin)
+        result["periode"] = {"periode": norm, "debut": debut, "fin": fin}
+        result["perimetre"] = "personnel" if personnel else ("global" if can_view_all_offres(user) else "agent")
+        return result
+
     @api_router.get("/demandes-offres/gestionnaires")
     async def list_gestionnaires_offres(user: User = Depends(current_user_dependency)):
         if not can_view_all_offres(user):

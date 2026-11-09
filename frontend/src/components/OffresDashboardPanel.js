@@ -12,6 +12,7 @@ import {
   compagniesAffichees,
 } from "@/lib/demandesOffres";
 import SuiviOffresPilotage, { SuiviMesOffres } from "@/components/SuiviOffresPilotage";
+import OffresStatsMensuelles from "@/components/OffresStatsMensuelles";
 import {
   AlertTriangle, CheckCircle2, ChevronRight, Clock, FilePlus2, FileSearch,
   FileSpreadsheet, FolderKanban, Layers, User, X,
@@ -196,6 +197,7 @@ export default function OffresDashboardPanel(props) {
   return (
     <div className="space-y-6">
       <SuiviMesOffres />
+      <OffresStatsMensuelles />
       <OffresAgentPanel {...props} />
     </div>
   );
