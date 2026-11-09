@@ -1,16 +1,18 @@
-"""Rappel unique à l'agent, 14 jours calendaires après la mise à disposition des documents.
+"""Rappel unique à l'agent, 14 jours calendaires après « Offres transmises à l'agent ».
 
 Remplace l'ancien rappel à 21 jours (même module, même tâche serveur) :
-- départ du délai : première mise à disposition des documents
-  (``docs_mis_a_disposition_at``, à défaut ``offre_transmise_agent_at``) ;
-  un ajout ultérieur de documents ne repousse pas l'échéance ;
+- départ du délai : premier passage du dossier à « Offres transmises à l'agent »
+  (transmission complète, voir ``transmis_agent_at``) ; une transmission partielle
+  ne fait pas partir le délai, un ajout ultérieur de documents ne le repousse pas ;
+- le dossier doit être encore à l'étape « Offres transmises à l'agent » ;
 - offre signée, non signée, refusée ou annulée : aucun e-mail ;
 - offre transmise au client sans décision, ou statut non renseigné : e-mail à l'agent seul ;
 - un dossier déjà relancé par l'ancien rappel 21 jours n'est pas relancé une seconde fois ;
 - pas d'envoi rétroactif groupé : la première exécution enregistre sa date de mise
   en service (``crm_settings`` id ``offres_relance_14j``, ou variable
   ``OFFRES_RELANCE_14J_DEPUIS`` au format AAAA-MM-JJ). Un dossier dont l'échéance
-  J+14 tombe avant cette date n'est jamais relancé.
+  J+14 tombe avant cette date n'est jamais relancé ;
+- au plus ``MAX_ENVOIS_PAR_PASSAGE`` e-mails par passage horaire, les plus anciens d'abord.
 Un simple changement d'avancement n'appelle pas ce module.
 """
 from __future__ import annotations
@@ -32,11 +34,13 @@ from demandes_offres_pilotage import (
     commercial_code,
     dans_pilotage,
     relance_depart_at,
+    traitement_code,
 )
 
 RELANCE_DELAY_DAYS = 14
 RELANCE_DELAY = timedelta(days=RELANCE_DELAY_DAYS)
 CLAIM_TTL = timedelta(minutes=30)
+MAX_ENVOIS_PAR_PASSAGE = 20
 SETTINGS_ID = "offres_relance_14j"
 DECISIONS_FINALES = {COMMERCIAL_SIGNEE, COMMERCIAL_NON_SIGNEE}
 _NOT_SENT = {
@@ -55,7 +59,8 @@ _NOT_SENT_21J = {
 }
 _HAS_START = {
     "$or": [
-        {"docs_mis_a_disposition_at": {"$exists": True, "$nin": [None, ""]}},
+        {"offres_transmises_agent_at": {"$exists": True, "$nin": [None, ""]}},
+        {"suivi_evenements.etape": "offre_transmise"},
         {"offre_transmise_agent_at": {"$exists": True, "$nin": [None, ""]}},
     ]
 }
@@ -100,9 +105,10 @@ def echeance_relance(doc: dict) -> Optional[date]:
 def relance_agent_decision(doc: dict, now: datetime, *, mise_en_service: Optional[date] = None) -> str:
     """send, wait, skip ou retry.
 
-    skip : décision déjà connue, rappel déjà envoyé (14 ou 21 jours), aucun départ daté,
-           brouillon/annulée, ou échéance antérieure à la mise en service.
-    wait : moins de 14 jours calendaires depuis la mise à disposition.
+    skip : décision déjà connue, rappel déjà envoyé (14 ou 21 jours), jamais passé à
+           « Offres transmises à l'agent » ou plus à cette étape, brouillon/annulée,
+           ou échéance antérieure à la mise en service.
+    wait : moins de 14 jours calendaires depuis « Offres transmises à l'agent ».
     send : premier rappel dû.
     retry : un envoi précédent a échoué.
     """
@@ -111,6 +117,8 @@ def relance_agent_decision(doc: dict, now: datetime, *, mise_en_service: Optiona
     if not dans_pilotage(doc):
         return "skip"
     if commercial_code(doc) in DECISIONS_FINALES:
+        return "skip"
+    if traitement_code(doc) != "offre_transmise":
         return "skip"
     due = echeance_relance(doc)
     if due is None:
@@ -138,16 +146,21 @@ def _date_from_setting(value: Any) -> Optional[date]:
     return None
 
 
-async def mise_en_service_relance(db, moment: datetime) -> date:
-    """Date de mise en service du rappel 14 jours, posée une seule fois."""
+async def lire_mise_en_service(db) -> Optional[date]:
+    """Date de mise en service déjà connue, sans rien écrire."""
     forced = _date_from_setting(os.environ.get("OFFRES_RELANCE_14J_DEPUIS"))
     if forced:
         return forced
-    settings = db["crm_settings"]
-    stored = await settings.find_one({"id": SETTINGS_ID}, {"_id": 0})
-    found = _date_from_setting((stored or {}).get("active_depuis"))
+    stored = await db["crm_settings"].find_one({"id": SETTINGS_ID}, {"_id": 0})
+    return _date_from_setting((stored or {}).get("active_depuis"))
+
+
+async def mise_en_service_relance(db, moment: datetime) -> date:
+    """Date de mise en service du rappel 14 jours, posée une seule fois."""
+    found = await lire_mise_en_service(db)
     if found:
         return found
+    settings = db["crm_settings"]
     today = _zurich_date(moment).isoformat()
     await settings.update_one(
         {"id": SETTINGS_ID},
@@ -176,7 +189,50 @@ async def _recipient_email(db, doc: dict) -> str:
     return ""
 
 
-async def process_relances_agent_14j(db, *, now: Optional[datetime] = None, limit: int = 200) -> dict:
+async def _candidats(db) -> list[dict]:
+    cursor = db[COLLECTION].find(
+        {
+            "is_deleted": {"$ne": True},
+            "$and": [_HAS_START, _NOT_SENT, _NOT_SENT_21J],
+        },
+        {"_id": 0},
+    )
+    rows = await cursor.to_list(None)
+    return sorted(rows, key=lambda doc: str(relance_depart_at(doc) or ""))
+
+
+async def rapport_relances_agent_14j(db, *, now: Optional[datetime] = None) -> dict:
+    """Lecture seule : dossiers que le prochain passage relancerait, sans envoi ni écriture."""
+    moment = now or datetime.now(timezone.utc)
+    depuis = await lire_mise_en_service(db)
+    effective = depuis or _zurich_date(moment)
+    lignes = []
+    for doc in await _candidats(db):
+        decision = relance_agent_decision(doc, moment, mise_en_service=effective)
+        if decision not in {"send", "retry"}:
+            continue
+        start = _parse_iso(relance_depart_at(doc))
+        lignes.append({
+            "numero": doc.get("numero"),
+            "agent": doc.get("agent_label") or "",
+            "email": await _recipient_email(db, doc),
+            "transmis_agent_at": relance_depart_at(doc),
+            "jours": (_zurich_date(moment) - _zurich_date(start)).days if start else None,
+            "decision": decision,
+        })
+    return {
+        "active_depuis": depuis.isoformat() if depuis else None,
+        "max_par_passage": MAX_ENVOIS_PAR_PASSAGE,
+        "a_relancer": lignes,
+    }
+
+
+async def process_relances_agent_14j(
+    db,
+    *,
+    now: Optional[datetime] = None,
+    max_envois: int = MAX_ENVOIS_PAR_PASSAGE,
+) -> dict:
     from email_service import (
         MAIL_TYPE_RELANCE_AGENT_14J,
         format_relance_agent_14j_email,
@@ -185,20 +241,12 @@ async def process_relances_agent_14j(db, *, now: Optional[datetime] = None, limi
     )
 
     moment = now or datetime.now(timezone.utc)
-    stats = {"scanned": 0, "sent": 0, "skipped": 0, "waiting": 0, "failed": 0, "no_recipient": 0}
+    stats = {"scanned": 0, "sent": 0, "skipped": 0, "waiting": 0, "failed": 0, "no_recipient": 0, "deferred": 0}
     if not offres_email_enabled():
         return {**stats, "disabled": True}
     depuis = await mise_en_service_relance(db, moment)
     stats["active_depuis"] = depuis.isoformat()
-    cursor = db[COLLECTION].find(
-        {
-            "is_deleted": {"$ne": True},
-            "$and": [_HAS_START, _NOT_SENT, _NOT_SENT_21J],
-        },
-        {"_id": 0},
-    )
-    rows = await cursor.to_list(limit)
-    for doc in rows:
+    for doc in await _candidats(db):
         stats["scanned"] += 1
         decision = relance_agent_decision(doc, moment, mise_en_service=depuis)
         if decision == "wait":
@@ -206,6 +254,9 @@ async def process_relances_agent_14j(db, *, now: Optional[datetime] = None, limi
             continue
         if decision == "skip":
             stats["skipped"] += 1
+            continue
+        if stats["sent"] + stats["failed"] >= max_envois:
+            stats["deferred"] += 1
             continue
         email = await _recipient_email(db, doc)
         if "@" not in email:

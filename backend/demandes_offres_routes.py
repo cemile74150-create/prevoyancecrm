@@ -1848,6 +1848,8 @@ def attach_demandes_offres_routes(
         }
         if event.get("etape") in {"offre_transmise", ETAPE_OFFRES_PARTIELLES} and not (doc.get("offre_transmise_agent_at") or ""):
             suivi_set["offre_transmise_agent_at"] = event.get("at") or now_iso()
+        if event.get("etape") == "offre_transmise" and not (doc.get("offres_transmises_agent_at") or ""):
+            suivi_set["offres_transmises_agent_at"] = event.get("at") or now_iso()
         if event.get("compagnie"):
             parts.append(event["compagnie"])
         if event.get("commentaire"):

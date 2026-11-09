@@ -443,6 +443,7 @@ def test_une_compagnie_sur_trois_partiellement_transmise(trois_compagnies):
     assert result["transmission"]["manquantes"] == ["Zurich", "Helvetia"]
     assert result["statut"] != "Offre reçue"
     assert h.demande()["offre_transmise_agent_at"]
+    assert not h.demande().get("offres_transmises_agent_at")
 
 
 def test_trois_compagnies_sur_trois_transmises_par_les_deux_parcours(trois_compagnies):
@@ -456,6 +457,8 @@ def test_trois_compagnies_sur_trois_transmises_par_les_deux_parcours(trois_compa
     assert result["transmission"]["nb_transmises"] == 3
     assert h.demande()["suivi_etape"] == "offre_transmise"
     assert [e["etape"] for e in h.demande()["suivi_evenements"]] == ["offres_partielles", "offre_transmise"]
+    complete_at = h.demande()["suivi_evenements"][-1]["at"]
+    assert h.demande()["offres_transmises_agent_at"] == complete_at
     zurich = next(o for o in h.demande()["offres"] if o["compagnie"] == "Zurich")
     assert zurich["transmissions"][0]["parcours"] == "traitement"
     assert zurich["transmissions"][0]["commentaire"] == "Prime annuelle"

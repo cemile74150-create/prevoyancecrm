@@ -250,7 +250,10 @@ export function SuiviMesOffres() {
                 >
                   <span><strong>{d.numero}</strong> · {d.client}</span>
                   <span className={`text-xs ${d.depasse_14j ? "font-bold text-red-700" : "text-slate-500"}`}>
-                    Documents transmis le {formatDateFr(d.docs_transmis_at)} · {d.jours ?? 0} j · {d.statut_commercial_label}
+                    {d.transmis_agent_at
+                      ? `Offres transmises à l'agent le ${formatDateFr(d.transmis_agent_at)} · ${d.jours ?? 0} j`
+                      : `Documents transmis le ${formatDateFr(d.docs_transmis_at)} · transmission complète non enregistrée`}
+                    {" · "}{d.statut_commercial_label}
                   </span>
                 </button>
               </li>

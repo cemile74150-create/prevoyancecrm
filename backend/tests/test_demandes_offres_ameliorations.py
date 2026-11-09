@@ -20,7 +20,11 @@ from demandes_offres_ameliorations import (
 )
 from datetime import date
 
-from demandes_offres_relance_agent import process_relances_agent_14j, relance_agent_decision
+from demandes_offres_relance_agent import (
+    process_relances_agent_14j,
+    rapport_relances_agent_14j,
+    relance_agent_decision,
+)
 from email_service import RELANCE_AGENT_14J_SUBJECT, format_relance_agent_14j_email
 from demandes_offres_3p import (
     STATUT_BROUILLON,
@@ -166,7 +170,7 @@ def _transmis(days_ago, **extra):
     doc = {
         "statut": "Offre reçue",
         "suivi_etape": "offre_transmise",
-        "docs_mis_a_disposition_at": (now - timedelta(days=days_ago)).isoformat(),
+        "offres_transmises_agent_at": (now - timedelta(days=days_ago)).isoformat(),
     }
     doc.update(extra)
     return doc, now
@@ -198,7 +202,30 @@ def test_relance_agent_14_jours_selon_la_decision_commerciale():
     failed, now = _transmis(14, relance_agent_14j_last_error="SMTP")
     assert relance_agent_decision(failed, now) == "retry"
     waiting_company, now = _transmis(14, suivi_etape="attente_compagnie")
-    assert relance_agent_decision(waiting_company, now) == "send"
+    assert relance_agent_decision(waiting_company, now) == "skip"
+    sent_client_waiting, now = _transmis(20, statut=STATUT_OFFRE_ENVOYEE_CLIENT, suivi_etape="attente_compagnie")
+    assert relance_agent_decision(sent_client_waiting, now) == "send"
+
+
+def test_relance_14_jours_part_du_passage_a_offres_transmises_a_l_agent():
+    now = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
+    partiel = {
+        "statut": "Offre reçue",
+        "suivi_etape": "offres_partielles",
+        "docs_mis_a_disposition_at": (now - timedelta(days=30)).isoformat(),
+        "offre_transmise_agent_at": (now - timedelta(days=30)).isoformat(),
+        "suivi_evenements": [{"etape": "offres_partielles", "at": (now - timedelta(days=30)).isoformat()}],
+    }
+    assert relance_agent_decision(partiel, now) == "skip"
+    complet = dict(partiel, suivi_etape="offre_transmise", suivi_evenements=[
+        *partiel["suivi_evenements"],
+        {"etape": "offre_transmise", "at": (now - timedelta(days=10)).isoformat()},
+    ])
+    assert relance_agent_decision(complet, now) == "wait"
+    assert relance_agent_decision(complet, now + timedelta(days=4)) == "send"
+    seulement_docs = {"statut": "Offre reçue", "suivi_etape": "offre_transmise",
+                      "docs_mis_a_disposition_at": (now - timedelta(days=30)).isoformat()}
+    assert relance_agent_decision(seulement_docs, now) == "skip"
 
 
 def test_relance_14_jours_sans_envoi_retroactif():
@@ -206,14 +233,15 @@ def test_relance_14_jours_sans_envoi_retroactif():
     assert relance_agent_decision(due, now, mise_en_service=date(2026, 11, 5)) == "send"
     ancien, now = _transmis(60)
     assert relance_agent_decision(ancien, now, mise_en_service=date(2026, 11, 1)) == "skip"
-    legacy_sans_offre, now = _transmis(0, docs_mis_a_disposition_at=None,
+    legacy_sans_offre, now = _transmis(0, offres_transmises_agent_at=None,
                                        offre_transmise_agent_at=(now - timedelta(days=20)).isoformat())
     assert relance_agent_decision(legacy_sans_offre, now) == "skip"
 
 
 def test_relance_14_jours_compte_en_jours_calendaires_zurich():
     # 22.10 22:30 UTC = 23.10 00:30 à Zurich : échéance le 06.11 (heure de Zurich).
-    doc = {"statut": "Offre reçue", "docs_mis_a_disposition_at": "2026-10-22T22:30:00+00:00"}
+    doc = {"statut": "Offre reçue", "suivi_etape": "offre_transmise",
+           "offres_transmises_agent_at": "2026-10-22T22:30:00+00:00"}
     assert relance_agent_decision(doc, datetime(2026, 11, 5, 22, 30, tzinfo=timezone.utc)) == "wait"
     assert relance_agent_decision(doc, datetime(2026, 11, 5, 23, 30, tzinfo=timezone.utc)) == "send"
 
@@ -266,7 +294,8 @@ class _Memory:
     def find(self, query, projection=None):
         rows = [
             doc for doc in self.docs.values()
-            if (doc.get("docs_mis_a_disposition_at") or doc.get("offre_transmise_agent_at"))
+            if (doc.get("offres_transmises_agent_at") or doc.get("offre_transmise_agent_at")
+                or any(e.get("etape") == "offre_transmise" for e in doc.get("suivi_evenements") or []))
             and not doc.get("relance_agent_14j_sent_at")
             and not doc.get("relance_agent_21j_sent_at")
         ]
@@ -316,7 +345,7 @@ def test_echec_denvoi_puis_nouvel_essai_sans_doublon(monkeypatch):
         "agent_prenom": "Ines",
         "prenom": "Nadia",
         "nom": "Blanc",
-        "docs_mis_a_disposition_at": (now - timedelta(days=14)).isoformat(),
+        "offres_transmises_agent_at": (now - timedelta(days=14)).isoformat(),
     }
     db = _Db([doc])
     first = asyncio.run(process_relances_agent_14j(db, now=now))
@@ -345,7 +374,8 @@ def test_relance_14j_envoie_seulement_sans_decision_et_a_l_agent(monkeypatch):
 
     def dossier(did, statut, email):
         return {"id": did, "numero": did, "statut": statut, "agent_email": email,
-                "gestionnaire_id": "g1", "docs_mis_a_disposition_at": start}
+                "gestionnaire_id": "g1", "suivi_etape": "offre_transmise",
+                "offres_transmises_agent_at": start}
 
     db = _Db([
         dossier("signee", STATUT_OFFRE_SIGNEE, "a1@example.com"),
@@ -359,6 +389,38 @@ def test_relance_14j_envoie_seulement_sans_decision_et_a_l_agent(monkeypatch):
     assert all(subject == RELANCE_AGENT_14J_SUBJECT for _, subject in sent)
     again = asyncio.run(process_relances_agent_14j(db, now=now + timedelta(hours=1)))
     assert again["sent"] == 0 and len(sent) == 2
+
+
+def test_relance_14j_envoi_progressif_et_rapport_sans_ecriture(monkeypatch):
+    sent = []
+
+    async def fake_send(to, subject, *args, **kwargs):
+        sent.append(to)
+        return True, ""
+
+    monkeypatch.setattr("email_service.offres_email_enabled", lambda: True)
+    monkeypatch.setattr("email_service.send_email_async", fake_send)
+    now = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
+    docs = [
+        {"id": f"d{i}", "numero": f"OFF-{i}", "statut": STATUT_OFFRE_RECUE, "suivi_etape": "offre_transmise",
+         "agent_label": "Ines", "agent_email": f"a{i}@example.com",
+         "offres_transmises_agent_at": (now - timedelta(days=14 + i)).isoformat()}
+        for i in range(5)
+    ]
+    db = _Db(docs)
+    monkeypatch.delenv("OFFRES_RELANCE_14J_DEPUIS", raising=False)
+    sans_date = asyncio.run(rapport_relances_agent_14j(db, now=now))
+    assert sans_date["active_depuis"] is None
+    assert [ligne["numero"] for ligne in sans_date["a_relancer"]] == ["OFF-0"]
+    monkeypatch.setenv("OFFRES_RELANCE_14J_DEPUIS", "2026-10-01")
+    rapport = asyncio.run(rapport_relances_agent_14j(db, now=now))
+    assert [ligne["numero"] for ligne in rapport["a_relancer"]] == ["OFF-4", "OFF-3", "OFF-2", "OFF-1", "OFF-0"]
+    assert rapport["a_relancer"][0]["jours"] == 18 and rapport["a_relancer"][0]["email"] == "a4@example.com"
+    assert not any(doc.get("relance_agent_14j_sent_at") for doc in db.demandes.docs.values()) and not sent
+    first = asyncio.run(process_relances_agent_14j(db, now=now, max_envois=2))
+    assert first["sent"] == 2 and first["deferred"] == 3 and sent == ["a4@example.com", "a3@example.com"]
+    second = asyncio.run(process_relances_agent_14j(db, now=now + timedelta(hours=1), max_envois=2))
+    assert second["sent"] == 2 and sent[2:] == ["a2@example.com", "a1@example.com"]
 
 
 def test_ancien_rappel_21_jours_n_est_plus_planifie():

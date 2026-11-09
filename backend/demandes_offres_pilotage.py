@@ -16,17 +16,17 @@ Aucun statut n'est réécrit : les anciens dossiers sans gestionnaire restent
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Iterable, Optional
 
 from demandes_offres_3p import (
+    OFFRES_DELAI_SURVEILLER_JOURS,
     STATUT_BROUILLON,
     STATUT_EN_CONCLUSION,
     STATUT_OFFRE_ENVOYEE_CLIENT,
     STATUT_OFFRE_NON_SIGNEE,
     STATUT_OFFRE_REFUSEE,
     STATUT_OFFRE_SIGNEE,
-    compute_priorite,
     count_offres_recues,
     is_demande_annulee_statut,
     normalize_statut,
@@ -50,6 +50,9 @@ TRAITEMENT_CODES = (
 )
 TRAITEMENT_LABELS = {code: SUIVI_LABELS[code] for code in TRAITEMENT_CODES}
 TRAITEMENT_EN_COURS_GLOBAL = {"en_cours", "attente_compagnie", "relance", ETAPE_OFFRES_PARTIELLES}
+TRAITEMENT_NON_TERMINE = {"en_attente", *TRAITEMENT_EN_COURS_GLOBAL}
+# Un RDV dans ce délai laisse moins que le délai minimum de réponse des compagnies.
+RDV_RETARD_JOURS = OFFRES_DELAI_SURVEILLER_JOURS
 
 COMMERCIAL_NON_RENSEIGNE = "non_renseigne"
 COMMERCIAL_TRANSMISE = "transmise_client"
@@ -97,7 +100,7 @@ INDICATEURS = {
     "commercial:non_signee": "Offres non signées",
     "commercial:non_renseigne": "Statuts commerciaux non renseignés",
     "decision_a_renseigner": "Décision client à renseigner",
-    "decision_depassee_14j": "Sans décision depuis plus de 14 jours",
+    "decision_depassee_14j": "Sans décision 14 jours après la transmission à l'agent",
     "relance_14j_envoyee": "Agents relancés (14 jours)",
     "urgentes": "Urgences agent",
     **{f"traitement:{code}": label for code, label in TRAITEMENT_LABELS.items()},
@@ -164,15 +167,19 @@ def _zurich_date(moment: datetime):
     return moment.astimezone(ZoneInfo("Europe/Zurich")).date()
 
 
+def _zurich_today(now: Optional[datetime] = None) -> date:
+    moment = now or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return _zurich_date(moment)
+
+
 def jours_calendaires_depuis(stamp: Any, now: Optional[datetime] = None) -> Optional[int]:
     """Jours calendaires entre la date (Europe/Zurich) de ``stamp`` et aujourd'hui."""
     start = _parse_iso(stamp)
     if start is None:
         return None
-    moment = now or datetime.now(timezone.utc)
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
-    return max(0, (_zurich_date(moment) - _zurich_date(start)).days)
+    return max(0, (_zurich_today(now) - _zurich_date(start)).days)
 
 
 # --------------------------------------------------------------------------- périmètre
@@ -226,6 +233,37 @@ def traitement_code(doc: dict) -> str:
     if code == "attente_compagnie" and _derniere_etape_evenement(doc) == "relance":
         return "relance"
     return code
+
+
+def rdv_client_date(doc: dict) -> Optional[date]:
+    """Date du RDV client affichée : ``date_prochain_rdv``, sinon celle du formulaire."""
+    try:
+        from offre_form_types import rdv_client_effectif
+
+        raw, _heure = rdv_client_effectif(doc)
+    except Exception:
+        raw = str((doc or {}).get("date_prochain_rdv") or "")
+    try:
+        return date.fromisoformat(str(raw or "").strip()[:10])
+    except ValueError:
+        return None
+
+
+def en_retard_rdv(doc: dict, now: Optional[datetime] = None) -> bool:
+    """« Dossiers en retard » : traitement non terminé et RDV client proche ou passé.
+
+    Non terminé : en attente, en cours, attente compagnie, relance ou
+    transmission partielle (tout sauf « Offres transmises à l'agent »).
+    RDV proche : au plus ``RDV_RETARD_JOURS`` jours calendaires (Europe/Zurich)
+    avant le RDV, ou RDV déjà passé. Sans date de RDV, le dossier n'est pas en retard.
+    Le délai de décision commerciale (14 jours) n'intervient pas.
+    """
+    if traitement_code(doc) not in TRAITEMENT_NON_TERMINE:
+        return False
+    rdv = rdv_client_date(doc)
+    if rdv is None:
+        return False
+    return (rdv - _zurich_today(now)).days <= RDV_RETARD_JOURS
 
 
 def bouton_traiter(doc: dict) -> dict:
@@ -287,26 +325,44 @@ def _premiere_transmission_at(doc: dict) -> Optional[str]:
     return min(stamps) if stamps else None
 
 
-def relance_depart_at(doc: dict) -> Optional[str]:
-    """Départ du délai de 14 jours : première mise à disposition effective.
+def transmis_agent_at(doc: dict) -> Optional[str]:
+    """Premier passage effectif à « Offres transmises à l'agent » (transmission complète).
 
-    ``docs_mis_a_disposition_at`` est posé une seule fois, à la première
-    transmission de documents. ``offre_transmise_agent_at`` (rappel 21 jours)
-    reste accepté s'il existe une offre réellement reçue. Aucune date n'est
-    reconstruite depuis l'historique : pas de relance rétroactive.
+    Dans l'ordre : ``offres_transmises_agent_at`` (posé à ce passage), le premier
+    événement de suivi ``offre_transmise``, puis ``offre_transmise_agent_at`` pour
+    un dossier sans transmission partielle (ce champ est aussi posé à la première
+    transmission partielle). Une transmission partielle ou la mise à disposition
+    d'un premier document ne fait jamais partir le délai.
     """
+    doc = doc or {}
+    stamp = str(doc.get("offres_transmises_agent_at") or "").strip()
+    if stamp:
+        return stamp
+    events = [e for e in (doc.get("suivi_evenements") or []) if isinstance(e, dict)]
+    for event in events:
+        if event.get("etape") == "offre_transmise" and str(event.get("at") or "").strip():
+            return str(event["at"]).strip()
+    partielle = any(event.get("etape") == ETAPE_OFFRES_PARTIELLES for event in events)
+    legacy = str(doc.get("offre_transmise_agent_at") or "").strip()
+    if legacy and not partielle and count_offres_recues(doc) > 0:
+        return legacy
+    return None
+
+
+def relance_depart_at(doc: dict) -> Optional[str]:
+    """Départ du délai de 14 jours : passage à « Offres transmises à l'agent »."""
+    return transmis_agent_at(doc)
+
+
+def docs_disponibles_at(doc: dict) -> Optional[str]:
+    """Date affichée de première mise à disposition des documents (y compris partielle)."""
     stamp = str((doc or {}).get("docs_mis_a_disposition_at") or "").strip()
     if stamp:
         return stamp
     legacy = str((doc or {}).get("offre_transmise_agent_at") or "").strip()
     if legacy and count_offres_recues(doc) > 0:
         return legacy
-    return None
-
-
-def docs_disponibles_at(doc: dict) -> Optional[str]:
-    """Date affichée de transmission des documents (y compris anciens dossiers)."""
-    return relance_depart_at(doc) or _premiere_transmission_at(doc)
+    return transmis_agent_at(doc) or _premiere_transmission_at(doc)
 
 
 def rappel_decision_at(doc: dict) -> Optional[str]:
@@ -314,12 +370,21 @@ def rappel_decision_at(doc: dict) -> Optional[str]:
 
 
 def decision_client(doc: dict, now: Optional[datetime] = None) -> dict:
+    """Décision client attendue de l'agent.
+
+    ``a_renseigner`` : documents mis à disposition, sans décision finale.
+    ``jours`` et ``depasse_14j`` partent du passage à « Offres transmises à
+    l'agent », comme le rappel automatique ; sans ce passage, aucun délai ne court.
+    """
     code = commercial_code(doc)
-    depuis = docs_disponibles_at(doc) if dans_pilotage(doc) else None
-    jours = jours_calendaires_depuis(depuis, now) if depuis else None
+    actif = dans_pilotage(doc)
+    depuis = docs_disponibles_at(doc) if actif else None
+    transmis = transmis_agent_at(doc) if actif else None
+    jours = jours_calendaires_depuis(transmis, now) if transmis else None
     a_renseigner = bool(depuis) and code not in COMMERCIAL_FINAUX
     return {
         "docs_transmis_at": depuis,
+        "transmis_agent_at": transmis,
         "jours": jours,
         "a_renseigner": a_renseigner,
         "depasse_14j": bool(a_renseigner and jours is not None and jours >= RELANCE_DECISION_JOURS),
@@ -444,7 +509,7 @@ def pilotage_tags(doc: dict, now: Optional[datetime] = None) -> list[str]:
         tags.append("en_cours_global")
     elif traitement == "offre_transmise":
         tags.append("termines")
-    if compute_priorite(doc, now=now).get("en_retard"):
+    if en_retard_rdv(doc, now):
         tags.append("en_retard")
     if count_offres_recues(doc) > 0:
         tags.append("offres_recues")
@@ -486,6 +551,8 @@ def enrich_pilotage_fields(doc: dict, out: dict, *, viewer=None, now: Optional[d
     out["attribution"] = "attribuee" if info["id"] else "non_attribuee"
     out["decision_client"] = decision_client(doc, now)
     out["docs_mis_a_disposition_at"] = out["decision_client"]["docs_transmis_at"]
+    out["offres_transmises_agent_at"] = out["decision_client"]["transmis_agent_at"]
+    out["en_retard_rdv"] = en_retard_rdv(doc, now)
     out["relance_agent_14j_sent_at"] = doc.get("relance_agent_14j_sent_at") or None
     out["bouton_traiter"] = bouton_traiter(doc)
     out["pilotage_tags"] = pilotage_tags(doc, now)
@@ -574,6 +641,7 @@ def ligne_decision(doc: dict, now: Optional[datetime] = None) -> dict:
         "agent": doc.get("agent_label") or "—",
         "gestionnaire": gestionnaire_info(doc)["nom"],
         "docs_transmis_at": decision["docs_transmis_at"],
+        "transmis_agent_at": decision["transmis_agent_at"],
         "jours": decision["jours"],
         "statut_commercial": commercial_code(doc),
         "statut_commercial_label": COMMERCIAL_LABELS[commercial_code(doc)],

@@ -36,14 +36,17 @@ from demandes_offres_3p import COLLECTION, serialize_demande  # noqa: E402
 from demandes_offres_pilotage import (  # noqa: E402
     BOUTONS_TRAITER,
     COMMERCIAL_LABELS,
+    RDV_RETARD_JOURS,
     TRAITEMENT_CODES,
     bouton_traiter,
     commercial_code,
     compute_pilotage,
+    en_retard_rdv,
     filtrer_lignes,
     pilotage_tags,
     refus_ecriture_gestion,
     traitement_code,
+    transmis_agent_at,
 )
 from demandes_offres_routes import (  # noqa: E402
     ReattributionRequest,
@@ -492,7 +495,11 @@ def _jeu_de_dossiers():
                  statut="Offre reçue", suivi_etape="offres_partielles"),
         _demande("d-0106", gestionnaire_id=G1.account_id, gestionnaire_nom="Lea Gestion",
                  statut="Offre reçue", suivi_etape="offre_transmise",
-                 docs_mis_a_disposition_at="2026-10-20T08:00:00+00:00"),
+                 docs_mis_a_disposition_at="2026-10-10T08:00:00+00:00",
+                 suivi_evenements=[
+                     {"etape": "offres_partielles", "at": "2026-10-10T08:00:00+00:00"},
+                     {"etape": "offre_transmise", "at": "2026-10-20T08:00:00+00:00"},
+                 ]),
         _demande("d-0107", statut="Offre signée", created_by_account_id=AUTRE_AGENT.account_id,
                  agent_label="Alex Martin", agent_email="agent-2@test.ch",
                  docs_mis_a_disposition_at="2026-10-01T08:00:00+00:00"),
@@ -500,6 +507,7 @@ def _jeu_de_dossiers():
                  docs_mis_a_disposition_at="2026-10-01T08:00:00+00:00"),
         _demande("d-0109", statut="Offre envoyée au client", gestionnaire_id=G1.account_id,
                  gestionnaire_nom="Lea Gestion", docs_mis_a_disposition_at="2026-10-15T08:00:00+00:00",
+                 offres_transmises_agent_at="2026-10-15T08:00:00+00:00",
                  envoi_client={"at": "2026-10-16T08:00:00+00:00", "by": "Camille Durand", "by_id": "agent-1"}),
         _demande("d-0110", statut="Brouillon"),
     ]
@@ -655,6 +663,52 @@ def test_tableau_decision_client_signale_les_depassements():
     lignes = {d["id"]: d for d in data["decisions_a_renseigner"]}
     assert set(lignes) == {"d-0106", "d-0109"}
     assert lignes["d-0106"]["jours"] == 20 and lignes["d-0106"]["depasse_14j"] is True
+    assert lignes["d-0106"]["transmis_agent_at"] == "2026-10-20T08:00:00+00:00"
+    assert lignes["d-0106"]["docs_transmis_at"] == "2026-10-10T08:00:00+00:00"
     assert lignes["d-0109"]["statut_commercial"] == "transmise_client"
     assert lignes["d-0109"]["agent"] == "Camille Durand"
     assert "rappel_envoye_at" in lignes["d-0109"]
+
+
+def test_en_retard_traitement_non_termine_et_rdv_proche():
+    # NOW = 09.11.2026 ; seuil RDV_RETARD_JOURS = 5 jours calendaires (Europe/Zurich).
+    assert RDV_RETARD_JOURS == 5
+    cas = {
+        "attente-rdv-dans-5j": (_demande("r1", date_prochain_rdv="2026-11-14"), True),
+        "attente-rdv-dans-6j": (_demande("r2", date_prochain_rdv="2026-11-15"), False),
+        "attente-rdv-passe": (_demande("r3", date_prochain_rdv="2026-11-01"), True),
+        "sans-rdv": (_demande("r4", date_prochain_rdv="", date_envoi="2026-09-01T08:00:00+00:00"), False),
+        "en-cours": (_demande("r5", suivi_etape="en_cours", date_prochain_rdv="2026-11-10"), True),
+        "partielle": (_demande("r6", statut="Offre reçue", suivi_etape="offres_partielles",
+                               date_prochain_rdv="2026-11-10"), True),
+        "transmise": (_demande("r7", statut="Offre reçue", suivi_etape="offre_transmise",
+                               date_prochain_rdv="2026-11-10"), False),
+        "signee": (_demande("r8", statut="Offre signée", date_prochain_rdv="2026-11-01"), False),
+        "annulee": (_demande("r9", statut="Demande annulée", date_prochain_rdv="2026-11-01"), False),
+    }
+    for nom, (doc, attendu) in cas.items():
+        assert en_retard_rdv(doc, NOW) is attendu, nom
+        assert ("en_retard" in pilotage_tags(doc, NOW)) is attendu, nom
+    # 08.11 23:30 UTC = 09.11 00:30 à Zurich : RDV le 14.11 à J+5.
+    tard = datetime(2026, 11, 8, 23, 30, tzinfo=timezone.utc)
+    assert en_retard_rdv(_demande("r10", date_prochain_rdv="2026-11-14"), tard) is True
+
+
+def test_delai_14j_part_de_offres_transmises_a_l_agent():
+    partiel = _demande("t1", statut="Offre reçue", suivi_etape="offres_partielles",
+                       docs_mis_a_disposition_at="2026-10-01T08:00:00+00:00",
+                       offre_transmise_agent_at="2026-10-01T08:00:00+00:00",
+                       suivi_evenements=[{"etape": "offres_partielles", "at": "2026-10-01T08:00:00+00:00"}])
+    assert transmis_agent_at(partiel) is None
+    decision = compute_pilotage([partiel], now=NOW)["decisions_a_renseigner"][0]
+    assert decision["jours"] is None and decision["depasse_14j"] is False
+    complet = dict(partiel, suivi_etape="offre_transmise", suivi_evenements=[
+        *partiel["suivi_evenements"],
+        {"etape": "offre_transmise", "at": "2026-10-30T08:00:00+00:00"},
+    ])
+    assert transmis_agent_at(complet) == "2026-10-30T08:00:00+00:00"
+    decision = compute_pilotage([complet], now=NOW)["decisions_a_renseigner"][0]
+    assert decision["jours"] == 10 and decision["depasse_14j"] is False
+    assert transmis_agent_at(dict(complet, offres_transmises_agent_at="2026-10-25T08:00:00+00:00")) == (
+        "2026-10-25T08:00:00+00:00"
+    )

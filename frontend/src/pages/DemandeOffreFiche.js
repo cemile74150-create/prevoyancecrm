@@ -3283,8 +3283,11 @@ function SuiviCommercialStatut({ demande }) {
         </p>
       ) : null}
       {decision.docs_transmis_at ? (
+        <p>Documents mis à disposition le {formatDateFr(decision.docs_transmis_at)}</p>
+      ) : null}
+      {decision.transmis_agent_at ? (
         <p>
-          Documents mis à disposition le {formatDateFr(decision.docs_transmis_at)}
+          Offres transmises à l&apos;agent le {formatDateFr(decision.transmis_agent_at)}
           {decision.a_renseigner && decision.jours != null ? ` · ${decision.jours} jour${decision.jours > 1 ? "s" : ""}` : ""}
         </p>
       ) : null}

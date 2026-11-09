@@ -1356,7 +1356,7 @@ RELANCE_AGENT_14J_SUBJECT = "LeoSoft – Rappel : statut de votre demande d’of
 
 
 def format_relance_agent_14j_email(doc: dict, mise_a_disposition_at: Optional[str] = None) -> Tuple[str, str, str]:
-    """Rappel unique, 14 jours après la mise à disposition des documents (texte du cahier des charges).
+    """Rappel unique, 14 jours après « Offres transmises à l'agent » (texte du cahier des charges).
 
     Deux mentions demandées au § 9 complètent le texte du § 4 : la date de mise
     à disposition et la phrase « Merci d'indiquer sur LeoSoft… ».

@@ -8884,7 +8884,7 @@ async def _clients_hub_link_once():
 
 
 async def _relance_agent_14j_loop():
-    """Vérifie chaque heure les documents mis à disposition depuis 14 jours, sans session utilisateur."""
+    """Vérifie chaque heure les offres transmises à l'agent depuis 14 jours, sans session utilisateur."""
     import asyncio
 
     from demandes_offres_relance_agent import process_relances_agent_14j
