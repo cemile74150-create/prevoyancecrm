@@ -50,7 +50,7 @@ describe("variantes", () => {
     expect(variantes).toHaveLength(3);
     variantes.forEach((v) => expect(Object.keys(v)).toEqual(["offre", "cga", "autre"]));
     expect(VARIANTE_PIECES.map((p) => [p.label, p.required])).toEqual([
-      ["Offre", true], ["CGA", true], ["Autre document", false],
+      ["Offre", true], ["CGA", false], ["Autre document", false],
     ]);
   });
 
@@ -66,8 +66,9 @@ describe("variantes", () => {
     expect(down.variantesRetirees).toBe(1);
   });
 
-  it("exige Offre et CGA pour chaque variante", () => {
-    expect(variantesManquantes([{ offre: [file("o")], cga: [], autre: [] }])).toEqual(["Variante 1 : CGA"]);
+  it("exige l'Offre pour chaque variante, CGA facultatives", () => {
+    expect(variantesManquantes([{ offre: [file("o")], cga: [], autre: [] }])).toEqual([]);
+    expect(variantesManquantes([{ offre: [], cga: [file("c")], autre: [] }])).toEqual(["Variante 1 : Offre"]);
   });
 
   it("envoie chaque fichier sous le champ de sa variante", () => {
@@ -107,7 +108,8 @@ describe("deux parcours distincts", () => {
     expect(PARCOURS_FIELDS[PARCOURS_TRAITEMENT]).toEqual([
       "compagnie", "date_reception", "offre", "cga", "autre", "commentaire",
     ]);
-    expect(traitementManquantes({ offre: [file("o.pdf")], cga: [], autre: [] })).toEqual(["CGA"]);
+    expect(traitementManquantes({ offre: [file("o.pdf")], cga: [], autre: [] })).toEqual([]);
+    expect(traitementManquantes({ offre: [], cga: [file("c.pdf")], autre: [] })).toEqual(["Offre"]);
     const fd = traitementFormData({
       compagnie: "Zurich",
       dateReception: "2026-11-05",

@@ -10,7 +10,7 @@ export const MAX_VARIANTES = 20;
 
 export const VARIANTE_PIECES = [
   { id: "offre", label: "Offre", required: true },
-  { id: "cga", label: "CGA", required: true },
+  { id: "cga", label: "CGA", required: false },
   { id: "autre", label: "Autre document", required: false },
 ];
 

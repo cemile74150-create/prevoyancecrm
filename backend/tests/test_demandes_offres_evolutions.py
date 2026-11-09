@@ -347,12 +347,14 @@ def test_trois_variantes_donnent_trois_blocs_offre_cga_autre():
         assert groups[index]["autre"] == []
     assert missing_variante_pieces(groups, 3) == []
     sans_cga = group_variante_uploads([(variante_field(1, "offre"), object())], 1)
-    assert missing_variante_pieces(sans_cga, 1) == ["Variante 1 : CGA"]
+    assert missing_variante_pieces(sans_cga, 1) == []
+    sans_offre = group_variante_uploads([(variante_field(1, "cga"), object())], 1)
+    assert missing_variante_pieces(sans_offre, 1) == ["Variante 1 : Offre"]
     with pytest.raises(ValueError):
         group_variante_uploads([(variante_field(4, "offre"), object())], 3)
 
 
-def test_traitement_exige_offre_et_cga_avec_types():
+def test_traitement_exige_offre_cga_facultatives_avec_types():
     groups = group_traitement_uploads([
         ("offre", object()),
         ("cga", object()),
@@ -363,7 +365,8 @@ def test_traitement_exige_offre_et_cga_avec_types():
     assert len(groups["cga"]) == 1
     assert len(groups["autre"]) == 1
     assert missing_traitement_pieces(groups) == []
-    assert missing_traitement_pieces(group_traitement_uploads([("offre", object())])) == ["CGA"]
+    assert missing_traitement_pieces(group_traitement_uploads([("offre", object())])) == []
+    assert missing_traitement_pieces(group_traitement_uploads([("cga", object())])) == ["Offre"]
 
 
 def test_documents_lies_a_la_bonne_variante(trois_compagnies):
@@ -399,13 +402,13 @@ def test_piece_obligatoire_manquante_refusee_sans_rien_enregistrer(trois_compagn
     with pytest.raises(HTTPException) as exc:
         h.call(
             "POST", "/demandes-offres/{demande_id}/offre",
-            request=FakeRequest([(variante_field(1, "offre"), _upload("o.pdf"))]), demande_id="dem-1",
+            request=FakeRequest([(variante_field(1, "cga"), _upload("c.pdf"))]), demande_id="dem-1",
             compagnie="AXA", date_reception="2026-11-05", reference=None, montant_prime=None,
             type_contrat=None, garanties=None, duree=None, commentaires=None, file=None,
             nb_variantes="1", parcours="reponses_compagnies", client_token=None, user=GESTION,
         )
     assert exc.value.status_code == 422
-    assert "CGA" in exc.value.detail
+    assert "Offre" in exc.value.detail
     assert h.db[COLLECTION_DOCS].docs == []
     assert not h.demande().get("offres")
 
@@ -467,18 +470,40 @@ def test_trois_compagnies_sur_trois_transmises_par_les_deux_parcours(trois_compa
     assert all("variante" not in d for d in zurich_docs)
 
 
-def test_traitement_refuse_sans_cga(trois_compagnies):
+def _transmettre_traitement(h, items):
+    return h.call(
+        "POST", "/demandes-offres/{demande_id}/offre",
+        request=FakeRequest(items), demande_id="dem-1",
+        compagnie="AXA", date_reception="2026-11-05", reference=None, montant_prime=None,
+        type_contrat=None, garanties=None, duree=None, commentaires=None, file=None,
+        nb_variantes=None, parcours="traitement", client_token=None, user=GESTION,
+    )
+
+
+def test_traitement_accepte_sans_cga(trois_compagnies):
+    h = trois_compagnies
+    _transmettre_traitement(h, [("offre", _upload("seul.pdf"))])
+    assert [d["piece_kind"] for d in h.db[COLLECTION_DOCS].docs] == ["Offre"]
+
+
+def test_variantes_acceptees_sans_cga(trois_compagnies):
+    h = trois_compagnies
+    h.call(
+        "POST", "/demandes-offres/{demande_id}/offre",
+        request=FakeRequest([(variante_field(1, "offre"), _upload("o.pdf"))]), demande_id="dem-1",
+        compagnie="AXA", date_reception="2026-11-05", reference=None, montant_prime=None,
+        type_contrat=None, garanties=None, duree=None, commentaires=None, file=None,
+        nb_variantes="1", parcours="reponses_compagnies", client_token=None, user=GESTION,
+    )
+    assert [d["piece_kind"] for d in h.db[COLLECTION_DOCS].docs] == ["Offre"]
+
+
+def test_traitement_refuse_sans_offre(trois_compagnies):
     h = trois_compagnies
     with pytest.raises(HTTPException) as exc:
-        h.call(
-            "POST", "/demandes-offres/{demande_id}/offre",
-            request=FakeRequest([("offre", _upload("seul.pdf"))]), demande_id="dem-1",
-            compagnie="AXA", date_reception="2026-11-05", reference=None, montant_prime=None,
-            type_contrat=None, garanties=None, duree=None, commentaires=None, file=None,
-            nb_variantes=None, parcours="traitement", client_token=None, user=GESTION,
-        )
+        _transmettre_traitement(h, [("cga", _upload("cga.pdf"))])
     assert exc.value.status_code == 422
-    assert "CGA" in exc.value.detail
+    assert "Offre" in exc.value.detail
     assert h.db[COLLECTION_DOCS].docs == []
 
 

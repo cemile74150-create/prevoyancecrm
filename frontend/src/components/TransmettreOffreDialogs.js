@@ -183,7 +183,7 @@ export function TransmettreVariantesDialog({ open, onOpenChange, demandeId, comp
         <DialogHeader>
           <DialogTitle>Transmettre une offre</DialogTitle>
           <DialogDescription>
-            Chaque variante reçoit son offre et ses CGA. Les documents déjà transmis ne sont jamais remplacés.
+            Chaque variante reçoit son offre (CGA facultatives). Les documents déjà transmis ne sont jamais remplacés.
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -325,7 +325,7 @@ export function TransmettreOffreSimpleDialog({ open, onOpenChange, demandeId, co
         <DialogHeader>
           <DialogTitle>Transmettre une offre</DialogTitle>
           <DialogDescription>
-            Joignez l&apos;offre et les CGA. Les documents déjà transmis ne sont jamais remplacés.
+            Joignez l&apos;offre (CGA facultatives). Les documents déjà transmis ne sont jamais remplacés.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3" data-testid="transmettre-simple-champs">

@@ -29,7 +29,7 @@ VARIANTE_PIECES = (
     ("cga", "CGA"),
     ("autre", "Autre document"),
 )
-PIECES_OBLIGATOIRES = ("offre", "cga")
+PIECES_OBLIGATOIRES = ("offre",)
 _VARIANTE_FIELD_RE = re.compile(r"^variante_(\d+)_(offre|cga|autre)$")
 _TRAITEMENT_PIECE_IDS = {piece for piece, _ in VARIANTE_PIECES}
 _TRAITEMENT_LEGACY_FIELDS = {"files", "documents", "file"}
