@@ -134,6 +134,20 @@ export const DECISION_COLUMNS = [
   "Rappel envoyé",
 ];
 
+/** Colonnes de la file d'attribution sous le tableau B4 (dossiers non attribués). */
+export const A_ATTRIBUER_COLUMNS = [
+  "Réf. OFF",
+  "Agent demandeur",
+  "Date de soumission",
+  "Date RDV client",
+  "Type d'offre",
+  "Compagnie(s)",
+  "Statut traitement",
+  "Jours",
+  "Priorité / Urgence",
+  "Actions",
+];
+
 /** Le filtre « En attente compagnie » du tableau B4 inclut les dossiers relancés. */
 export function matchTag(row, tag) {
   if (!tag) return true;
@@ -192,6 +206,17 @@ export function filtrerDetail(rows, filtres = FILTRES_VIDES) {
 export function filtresActifs(filtres) {
   const f = { ...FILTRES_VIDES, ...(filtres || {}) };
   return Object.keys(FILTRES_VIDES).some((key) => f[key] !== FILTRES_VIDES[key]);
+}
+
+/** Demandes soumises sans gestionnaire, plus anciennes en premier (file d'attribution). */
+export function listerNonAttribuees(rows) {
+  const list = filtrerDetail(rows, { ...FILTRES_VIDES, gestionnaire: NON_ATTRIBUE });
+  return [...list].sort((a, b) => {
+    const da = String(a?.date_envoi || "");
+    const db = String(b?.date_envoi || "");
+    if (da !== db) return da.localeCompare(db);
+    return String(a?.numero || "").localeCompare(String(b?.numero || ""), "fr");
+  });
 }
 
 /** Tri du tableau B4 : la ligne « Non attribué » reste toujours en dernier. */

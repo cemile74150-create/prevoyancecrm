@@ -17,12 +17,12 @@ import {
   rdvClientAffiche,
 } from "@/lib/demandesOffres";
 import {
+  A_ATTRIBUER_COLUMNS,
   CARTES_COMMERCIALES,
   CARTES_GLOBALES,
   COMMERCIAL_LABELS,
   COMMERCIAL_ORDER,
   COMMERCIAL_STYLE,
-  DECISION_COLUMNS,
   DETAIL_COLUMNS,
   FILTRES_VIDES,
   NON_ATTRIBUE,
@@ -36,6 +36,7 @@ import {
   filtrerDetail,
   filtresActifs,
   gestionnaireLabel,
+  listerNonAttribuees,
   tauxSignatureLabel,
   trierRepartition,
 } from "@/lib/suiviOffres";
@@ -313,6 +314,7 @@ export default function SuiviOffresPilotage({ filterConseiller, conseillerNames 
   };
 
   const detail = useMemo(() => filtrerDetail(rows, filtres), [rows, filtres]);
+  const nonAttribuees = useMemo(() => listerNonAttribuees(rows), [rows]);
   const repartition = useMemo(
     () => trierRepartition(data?.gestionnaires || [], tri.key, tri.direction),
     [data, tri],
@@ -544,51 +546,87 @@ export default function SuiviOffresPilotage({ filterConseiller, conseillerNames 
             </tbody>
           </table>
         </div>
-      </Card>
 
-      {/* A5 — décision client à renseigner */}
-      <Card className="p-5 border-border overflow-hidden" data-testid="decision-a-renseigner">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="font-display font-bold text-lg tracking-tight">Décision client à renseigner</h2>
-          <p className="text-xs text-slate-500">
-            Documents transmis, décision finale non renseignée. En rouge : plus de {data?.delai_decision_jours ?? 14} jours.
-          </p>
-        </div>
-        {(data?.decisions_a_renseigner || []).length === 0 ? (
-          <p className="text-sm text-slate-400 py-6 text-center">Aucun dossier en attente de décision.</p>
-        ) : (
-          <div className="overflow-x-auto mt-3 max-h-[360px] overflow-y-auto">
-            <table className="w-full text-sm min-w-[720px]">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                  {DECISION_COLUMNS.map((h) => <th key={h} className="py-2 px-2 font-semibold whitespace-nowrap">{h}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {data.decisions_a_renseigner.map((d) => (
-                  <tr
-                    key={d.id}
-                    className={`border-b border-slate-100 cursor-pointer hover:bg-slate-50 ${d.depasse_14j ? "bg-red-50/70" : ""}`}
-                    onClick={() => navigate(`/demandes-offres/${d.id}`)}
-                    data-testid={`decision-${d.id}`}
-                  >
-                    <td className="py-2 px-2 font-medium whitespace-nowrap">{d.numero || "—"}</td>
-                    <td className="py-2 px-2">{d.client}</td>
-                    <td className="py-2 px-2 font-semibold">{d.agent}</td>
-                    <td className="py-2 px-2 whitespace-nowrap">{formatDateFr(d.docs_transmis_at)}</td>
-                    <td className={`py-2 px-2 tabular-nums ${d.depasse_14j ? "font-bold text-red-700" : ""}`}>{d.jours ?? "—"}</td>
-                    <td className="py-2 px-2">
-                      <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ${COMMERCIAL_STYLE[d.statut_commercial] || ""}`}>
-                        {d.statut_commercial_label}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2 whitespace-nowrap">{d.rappel_envoye_at ? `Oui, le ${formatDateFr(d.rappel_envoye_at)}` : "Non"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="mt-5 border-t border-amber-200/80 pt-4" data-testid="dossiers-a-attribuer">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+            <h3 className="font-display font-bold text-base tracking-tight text-amber-950">
+              Dossiers à attribuer
+              <span className="ml-2 tabular-nums text-sm font-semibold text-amber-800">({nonAttribuees.length})</span>
+            </h3>
+            <p className="text-xs text-slate-500 max-w-xl">
+              Liste des demandes sans gestionnaire. « M&apos;attribuer » prend le dossier en charge sans ouvrir la fiche
+              (réservé aux gestionnaires / process).
+            </p>
           </div>
-        )}
+          {nonAttribuees.length === 0 ? (
+            <p className="text-sm text-slate-400 py-4 text-center">Aucun dossier à attribuer.</p>
+          ) : (
+            <div className="overflow-x-auto max-h-[420px] overflow-y-auto rounded-md border border-amber-100 bg-amber-50/30">
+              <table className="w-full text-sm min-w-[980px]">
+                <thead className="sticky top-0 bg-amber-50/95 backdrop-blur-sm">
+                  <tr className="border-b border-amber-200/80 text-left text-[11px] uppercase tracking-wide text-slate-500">
+                    {A_ATTRIBUER_COLUMNS.map((h) => (
+                      <th key={h} className="py-2 px-2 font-semibold whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {nonAttribuees.map((r) => {
+                    const rdv = rdvClientAffiche(r);
+                    const comps = compagniesAffichees(r);
+                    return (
+                      <tr
+                        key={r.id}
+                        className={`border-b border-amber-100/80 hover:bg-white/70 ${r.urgente ? "bg-red-50/50" : ""}`}
+                        data-testid={`a-attribuer-${r.id}`}
+                      >
+                        <td className="py-2 px-2 whitespace-nowrap">
+                          <span className="font-semibold text-slate-900">{r.numero || "—"}</span>
+                          <span className="block text-[11px] text-slate-500">{clientLabel(r)}</span>
+                        </td>
+                        <td className="py-2 px-2 font-bold text-slate-900 whitespace-nowrap">{r.agent_label || "—"}</td>
+                        <td className="py-2 px-2 whitespace-nowrap text-slate-700">{formatDateFr(r.date_envoi)}</td>
+                        <td className="py-2 px-2 whitespace-nowrap text-slate-700">{rdv.date ? formatDateFr(rdv.date) : "—"}</td>
+                        <td className="py-2 px-2 max-w-[150px] truncate text-slate-600" title={r.form_type_label || ""}>
+                          {r.form_type_label || r.type_pilier || "—"}
+                        </td>
+                        <td className="py-2 px-2 max-w-[140px] truncate text-slate-600" title={comps.join(", ")}>
+                          {comps.join(", ") || "—"}
+                        </td>
+                        <td className="py-2 px-2"><TraitementBadge row={r} /></td>
+                        <td className="py-2 px-2 tabular-nums">{r.jours_depuis ?? "—"}</td>
+                        <td className="py-2 px-2 whitespace-nowrap">
+                          {r.urgente ? (
+                            <span className="inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-semibold text-white mr-1">URGENT</span>
+                          ) : null}
+                          <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ${PRIORITE_STYLE[r.priorite] || PRIORITE_STYLE.normal}`}>
+                            {prioriteLabel(r.priorite)}
+                          </span>
+                        </td>
+                        <td className="py-2 px-2">
+                          {r.can_attribuer ? (
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs gap-1 whitespace-nowrap text-white bg-[#002FA7] hover:bg-[#00237d]"
+                              disabled={busyId === r.id}
+                              onClick={(e) => attribuer(r, e)}
+                              data-testid={`a-attribuer-btn-${r.id}`}
+                            >
+                              {busyId === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserCheck className="h-3 w-3" />}
+                              M&apos;attribuer
+                            </Button>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </Card>
 
       {/* B5 — tableau détaillé */}

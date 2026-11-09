@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {
+  A_ATTRIBUER_COLUMNS,
   BOUTON_TRAITER_CLASS,
   DETAIL_COLUMNS,
   NON_ATTRIBUE,
@@ -9,6 +10,7 @@ import {
   commercialLabel,
   filtrerDetail,
   filtresActifs,
+  listerNonAttribuees,
   matchTag,
   tauxSignatureLabel,
   trierRepartition,
@@ -47,6 +49,10 @@ describe("colonnes", () => {
     expect(REPARTITION_COLUMNS.map((c) => c.label)).toEqual([
       "Gestionnaire", "Attribués", "En cours", "En attente compagnie", "Transmis à l'agent",
       "Signés", "Non signés", "En retard",
+    ]);
+    expect(A_ATTRIBUER_COLUMNS).toEqual([
+      "Réf. OFF", "Agent demandeur", "Date de soumission", "Date RDV client", "Type d'offre",
+      "Compagnie(s)", "Statut traitement", "Jours", "Priorité / Urgence", "Actions",
     ]);
   });
 });
@@ -96,6 +102,18 @@ describe("répartition des gestionnaires", () => {
   });
 });
 
+describe("file d'attribution", () => {
+  it("liste uniquement les non attribuées, plus anciennes en premier", () => {
+    const rows = [
+      row("new", { date_envoi: "2026-03-10", numero: "OFF-2", pilotage_tags: ["soumises", "non_attribuees"] }),
+      row("old", { date_envoi: "2026-01-05", numero: "OFF-1", pilotage_tags: ["soumises", "non_attribuees"] }),
+      row("taken", { gestionnaire_id: "g1", date_envoi: "2025-12-01", pilotage_tags: ["soumises", "attribuees"] }),
+      row("draft", { date_envoi: "2025-01-01", pilotage_tags: [] }),
+    ];
+    expect(listerNonAttribuees(rows).map((r) => r.id)).toEqual(["old", "new"]);
+  });
+});
+
 describe("libellés", () => {
   it("ancien dossier sans décision : Statut non renseigné", () => {
     expect(commercialLabel({})).toBe("Statut non renseigné");
@@ -121,5 +139,29 @@ describe("libellés", () => {
     expect(pilotage).not.toMatch(/statut === "Offre signée"/);
     const gestion = src("pages/GestionReponsesOffres.js");
     expect(gestion).toMatch(/perimetre: "personnel"/);
+  });
+
+  it("Suivi des offres : file d'attribution directe, sans tableau décision client", () => {
+    const pilotage = src("components/SuiviOffresPilotage.js");
+    expect(pilotage).toMatch(/dossiers-a-attribuer/);
+    expect(pilotage).toMatch(/a-attribuer-btn-/);
+    expect(pilotage).toMatch(/listerNonAttribuees/);
+    expect(pilotage).toMatch(/\/demandes-offres\/\$\{row\.id\}\/attribuer/);
+    expect(pilotage).not.toMatch(/data-testid="decision-a-renseigner"/);
+    expect(pilotage).not.toMatch(/Décision client à renseigner/);
+    expect(pilotage).toMatch(/Répartition et activité des gestionnaires/);
+  });
+
+  it("Mes dossiers : indicateurs haut + file Demandes à traiter, sans grille KPI dense", () => {
+    const gestion = src("pages/GestionReponsesOffres.js");
+    expect(gestion).toMatch(/Mes indicateurs — avancement du traitement/);
+    expect(gestion).toMatch(/Mes indicateurs — résultat commercial/);
+    expect(gestion).toMatch(/file-demandes-a-traiter/);
+    expect(gestion).toMatch(/Demandes à traiter/);
+    expect(gestion).toMatch(/boutonTraiter\(r\)/);
+    expect(gestion).toMatch(/file-attribuer-/);
+    expect(gestion).not.toMatch(/GESTION_KPI_CARDS/);
+    expect(gestion).not.toMatch(/mes-decision-a-renseigner/);
+    expect(gestion).not.toMatch(/Décision client à renseigner/);
   });
 });

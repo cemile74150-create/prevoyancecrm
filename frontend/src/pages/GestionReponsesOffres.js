@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  GESTION_KPI_CARDS,
   GESTION_KANBAN_FALLBACK,
   PRIORITE_STYLE,
   prioriteLabel,
@@ -314,16 +313,6 @@ export default function GestionReponsesOffres() {
     setTab("file");
   };
 
-  const applyKpi = (id) => {
-    const next = categorie === id ? null : id;
-    setCategorie(next);
-    setDayAction(null);
-    if (next === "en_retard") setEnRetard(true);
-    else if (!next) setEnRetard(false);
-    else setEnRetard(false);
-    setTab("file");
-  };
-
   const visibleRows = useMemo(() => {
     let list = rows;
     if (!qDebounced) list = list.filter((r) => r.statut !== "Brouillon");
@@ -503,7 +492,7 @@ export default function GestionReponsesOffres() {
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 pt-1">
                 Mes indicateurs — résultat commercial
               </p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
                 {CARTES_COMMERCIALES.map((c) => (
                   <button
                     key={c.tag}
@@ -518,22 +507,6 @@ export default function GestionReponsesOffres() {
                     <span className="block text-lg font-bold tabular-nums">{pilotage.indicateurs?.[c.tag] ?? 0}</span>
                   </button>
                 ))}
-                <button
-                  type="button"
-                  data-testid="mes-decision-a-renseigner"
-                  onClick={() => { setEspace("mes_dossiers"); applyIndicateur("decision_a_renseigner"); }}
-                  className={`rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left ${
-                    indicateur === "decision_a_renseigner" ? "ring-2 ring-[#002FA7] ring-offset-1" : ""
-                  }`}
-                >
-                  <span className="block text-[11px] font-medium text-red-900 leading-snug">Décision client à renseigner</span>
-                  <span className="block text-lg font-bold tabular-nums text-red-900">
-                    {pilotage.indicateurs?.decision_a_renseigner ?? 0}
-                    <span className="ml-1 text-[11px] font-medium">
-                      dont {pilotage.indicateurs?.decision_depassee_14j ?? 0} &gt; 14 j
-                    </span>
-                  </span>
-                </button>
               </div>
               <p className="text-[11px] text-slate-500">
                 Taux de signature : <strong>{tauxSignatureLabel(pilotage.taux_signature)}</strong>
@@ -543,40 +516,39 @@ export default function GestionReponsesOffres() {
           )}
         </Card>
 
-        {/* Mes actions du jour */}
-        <Card className="p-3 border-slate-200">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <ClipboardList className="h-4 w-4" style={{ color: ACCENT }} />
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Mes actions du jour</p>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-            {DAY_ACTIONS.map(({ id, label, icon: Icon, tone }) => {
-              const n = gestion[id] ?? 0;
-              const active = dayAction === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => applyDayAction(id)}
-                  className={`rounded-lg border px-3 py-2.5 text-left transition ${tone} ${
-                    active ? "ring-2 ring-[#002FA7] ring-offset-1" : "hover:opacity-90"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[11px] font-medium opacity-80 flex items-center gap-1">
-                      <Icon className="h-3 w-3" /> {label}
-                    </span>
-                    <span className="text-lg font-bold tabular-nums">{n}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </Card>
+        {/* Mes actions du jour + notifications discrètes */}
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-3">
+          <Card className="p-3 border-slate-200">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <ClipboardList className="h-4 w-4" style={{ color: ACCENT }} />
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Mes actions du jour</p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+              {DAY_ACTIONS.map(({ id, label, icon: Icon, tone }) => {
+                const n = gestion[id] ?? 0;
+                const active = dayAction === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => applyDayAction(id)}
+                    className={`rounded-lg border px-3 py-2.5 text-left transition ${tone} ${
+                      active ? "ring-2 ring-[#002FA7] ring-offset-1" : "hover:opacity-90"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[11px] font-medium opacity-80 flex items-center gap-1">
+                        <Icon className="h-3 w-3" /> {label}
+                      </span>
+                      <span className="text-lg font-bold tabular-nums">{n}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
 
-        {/* Notifications + KPI */}
-        <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-4">
-          <Card className="p-3 border-slate-200 flex flex-col max-h-64">
+          <Card className="p-3 border-slate-200 flex flex-col max-h-40" data-testid="mes-notifications">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 flex items-center gap-1.5">
                 <Bell className="h-3.5 w-3.5" style={{ color: ACCENT }} />
@@ -593,7 +565,7 @@ export default function GestionReponsesOffres() {
             </div>
             <div className="overflow-y-auto space-y-1 flex-1 min-h-0">
               {notifs.filter((n) => !n.read).length === 0 ? (
-                <p className="text-xs text-slate-400 py-4 text-center">Aucune non lue</p>
+                <p className="text-xs text-slate-400 py-3 text-center">Aucune non lue</p>
               ) : (
                 notifs.filter((n) => !n.read).map((n) => (
                   <button
@@ -611,31 +583,6 @@ export default function GestionReponsesOffres() {
               )}
             </div>
           </Card>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {GESTION_KPI_CARDS.map((card) => {
-              const n = gestion[card.id] ?? 0;
-              const active = categorie === card.id;
-              return (
-                <button
-                  key={card.id}
-                  type="button"
-                  onClick={() => applyKpi(card.id)}
-                  className={`rounded-2xl border px-4 py-4 text-left transition ${card.color} ${
-                    active ? "ring-2 ring-[#002FA7] ring-offset-1 shadow-sm" : "hover:shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold leading-snug">{card.label}</div>
-                      <div className="text-3xl font-bold tabular-nums mt-2">{n}</div>
-                    </div>
-                    <div className="text-2xl leading-none shrink-0">{card.emoji}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         {/* Filters */}
@@ -757,7 +704,11 @@ export default function GestionReponsesOffres() {
         {/* Tabs */}
         <div className="flex flex-wrap gap-1 border-b border-slate-200 pb-0">
           {[
-            { id: "file", label: "File à traiter", icon: ClipboardList },
+            {
+              id: "file",
+              label: espace === "a_attribuer" ? "Demandes non attribuées" : "Demandes à traiter",
+              icon: ClipboardList,
+            },
             { id: "kanban", label: "Kanban", icon: Columns3 },
             { id: "agents", label: "Activité conseillers", icon: Users },
           ].map(({ id, label, icon: Icon }) => (
@@ -780,9 +731,21 @@ export default function GestionReponsesOffres() {
           </span>
         </div>
 
-        {/* File à traiter */}
+        {/* Demandes à traiter / non attribuées */}
         {tab === "file" && (
-          <Card className="border-slate-200 overflow-hidden">
+          <Card className="border-slate-200 overflow-hidden" data-testid="file-demandes-a-traiter">
+            <div className="px-3 pt-3 pb-2 border-b border-slate-100 flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">
+                  {espace === "a_attribuer" ? "Demandes non attribuées" : "Demandes à traiter"}
+                </h2>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {espace === "a_attribuer"
+                    ? "Prenez un dossier en charge avec « M'attribuer » — il apparaîtra ensuite dans Mes dossiers."
+                    : "Dossiers qui vous sont attribués. Le bouton suit le statut de traitement (Traiter, En cours, Attente compagnie…)."}
+                </p>
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -802,7 +765,9 @@ export default function GestionReponsesOffres() {
                   ) : fileRows.length === 0 ? (
                     <tr>
                       <td colSpan={FILE_HEADERS.length} className="px-3 py-12 text-center text-slate-400">
-                        Aucune demande dans la file.
+                        {espace === "a_attribuer"
+                          ? "Aucune demande non attribuée."
+                          : "Aucune demande à traiter. Attribuez-vous un dossier depuis l'onglet Demandes non attribuées."}
                       </td>
                     </tr>
                   ) : (
