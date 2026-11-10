@@ -83,6 +83,13 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
+    id: "conges",
+    label: "Congés & absences",
+    items: [
+      { key: "leaves.manage", label: "Gérer les demandes de congés (RH : valider, refuser, annulations)" },
+    ],
+  },
+  {
     id: "lamal",
     label: "Comparateur LAMal",
     items: [
@@ -104,6 +111,7 @@ export function defaultPermissions(role) {
   } else {
     perms["demandes_offres.process"] = true;
   }
+  perms["leaves.manage"] = role === "admin";
   perms["lamal_module_access"] = false;
   return perms;
 }

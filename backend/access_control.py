@@ -59,6 +59,8 @@ PERM_FORMULAIRES_VIEW = "formulaires.view"
 PERM_ANALYSES_VIEW = "analyses.view"
 PERM_ANALYSES_EDIT = "analyses.edit"
 PERM_USERS_MANAGE = "users.manage"
+# Décisions RH sur les demandes de congés. Faire une demande ne demande aucun droit.
+PERM_LEAVES_MANAGE = "leaves.manage"
 PERM_LAMAL_MODULE_ACCESS = "lamal_module_access"
 # Compte administrateur existant (Cemile Demirtas). Le rôle admin ne suffit pas.
 LAMAL_OWNER_EMAIL = "cdemirtas@agencemendes.ch"
@@ -87,6 +89,7 @@ PERMISSION_KEYS = [
     PERM_ANALYSES_VIEW,
     PERM_ANALYSES_EDIT,
     PERM_USERS_MANAGE,
+    PERM_LEAVES_MANAGE,
     PERM_LAMAL_MODULE_ACCESS,
 ]
 
@@ -175,6 +178,16 @@ PERMISSION_CATALOG = [
         "label": "Administration",
         "items": [
             {"key": PERM_USERS_MANAGE, "label": "Gérer les utilisateurs"},
+        ],
+    },
+    {
+        "id": "conges",
+        "label": "Congés & absences",
+        "items": [
+            {
+                "key": PERM_LEAVES_MANAGE,
+                "label": "Gérer les demandes de congés (RH : valider, refuser, annulations)",
+            },
         ],
     },
     {
@@ -281,6 +294,7 @@ def default_permissions(role: str) -> Dict[str, bool]:
         perms[PERM_DEMANDES_OFFRES_PROCESS] = False
     else:
         perms[PERM_DEMANDES_OFFRES_PROCESS] = True
+    perms[PERM_LEAVES_MANAGE] = role == ROLE_ADMIN
     perms[PERM_LAMAL_MODULE_ACCESS] = False
     return perms
 
@@ -625,6 +639,8 @@ def has_perm(user: User, key: str) -> bool:
         return bool(perms[key])
     if key == PERM_USERS_MANAGE:
         return bool(getattr(user, "can_manage_users", False)) or getattr(user, "role", None) == ROLE_ADMIN
+    if key == PERM_LEAVES_MANAGE:
+        return getattr(user, "role", None) == ROLE_ADMIN
     # Clés absentes (ex. nouveaux modules) : autorisées par défaut, comme le front.
     return True
 
@@ -768,6 +784,10 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("DELETE",), r"^/documents/", PERM_DOCUMENTS_DELETE),
     (("GET",), r"^/document-templates$", PERM_DOCUMENTS_VIEW),
     (("GET",), r"^/demand-packs$", (PERM_DOSSIERS_VIEW, PERM_DOCUMENTS_VIEW)),
+    # Congés : tout compte connecté gère ses propres demandes (contrôle d'appartenance dans le handler).
+    (None, r"^/leaves/admin(/|$)", PERM_LEAVES_MANAGE),
+    (("GET",), r"^/leaves/employees$", PERM_LEAVES_MANAGE),
+    (("POST",), r"^/leaves/[^/]+/(approve|reject|resolve-cancellation)$", PERM_LEAVES_MANAGE),
     # Éligibilité : création de liste vérifiée dans le handler (ELIGIBILITY_MANAGER_USER_ID).
     (("GET",), r"^/eligibility(/|$)", (PERM_CLIENTS_VIEW, PERM_DOSSIERS_VIEW)),
     (("GET",), r"^/clients/[^/]+/eligibility$", (PERM_CLIENTS_VIEW, PERM_DOSSIERS_VIEW)),

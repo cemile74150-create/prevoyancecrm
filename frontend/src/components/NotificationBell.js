@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { Bell, Check, CalendarClock, FileSpreadsheet } from "lucide-react";
+import { Bell, Check, CalendarClock, FileSpreadsheet, Palmtree } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
@@ -22,19 +22,29 @@ export default function NotificationBell() {
   const navigate = useNavigate();
   const { hasPerm } = useAuth();
   const canProcess = hasPerm("demandes_offres.process");
+  const canRappels = hasPerm("rappels.view");
+  const canOffres = hasPerm("demandes_offres.view");
   const [open, setOpen] = useState(false);
   const [rappelCount, setRappelCount] = useState(0);
   const [rappelItems, setRappelItems] = useState([]);
   const [offreCount, setOffreCount] = useState(0);
   const [offreItems, setOffreItems] = useState([]);
+  const [congeCount, setCongeCount] = useState(0);
+  const [congeItems, setCongeItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
+    const empty = Promise.resolve({ data: { count: 0, items: [] } });
     try {
-      const [rappelsRes, offresRes] = await Promise.all([
-        api.get("/notifications/rappels").catch(() => ({ data: { count: 0, items: [] } })),
-        api.get("/notifications/offres", { params: { limit: 20 } }).catch(() => ({ data: { count: 0, items: [] } })),
+      const [rappelsRes, offresRes, congesRes] = await Promise.all([
+        canRappels ? api.get("/notifications/rappels").catch(() => ({ data: { count: 0, items: [] } })) : empty,
+        canOffres
+          ? api.get("/notifications/offres", { params: { limit: 20 } }).catch(() => ({ data: { count: 0, items: [] } }))
+          : empty,
+        api.get("/notifications/conges", { params: { limit: 20 } }).catch(() => ({ data: { count: 0, items: [] } })),
       ]);
+      setCongeCount(Number(congesRes.data?.count) || 0);
+      setCongeItems(Array.isArray(congesRes.data?.items) ? congesRes.data.items : []);
       setRappelCount(Number(rappelsRes.data?.count) || 0);
       setRappelItems(Array.isArray(rappelsRes.data?.items) ? rappelsRes.data.items : []);
       const offresData = offresRes.data;
@@ -47,7 +57,7 @@ export default function NotificationBell() {
     } catch {
       // silencieux
     }
-  }, []);
+  }, [canRappels, canOffres]);
 
   useEffect(() => {
     load();
@@ -62,7 +72,19 @@ export default function NotificationBell() {
     }
   }, [open, load]);
 
-  const totalCount = rappelCount + offreCount;
+  const totalCount = rappelCount + offreCount + congeCount;
+
+  const openCongeNotif = async (n) => {
+    try {
+      if (n?.id && !n.read) await api.post(`/notifications/conges/${n.id}/read`);
+    } catch {
+      // ignore
+    }
+    setOpen(false);
+    const tab = n?.audience === "managers" ? "gestion" : "mes-conges";
+    navigate(`/conges?tab=${tab}${n?.leave_request_id ? `&demande=${n.leave_request_id}` : ""}`);
+    load();
+  };
 
   const markDone = async (id, e) => {
     e?.stopPropagation?.();
@@ -119,13 +141,37 @@ export default function NotificationBell() {
       <PopoverContent align="end" className="w-[380px] p-0">
         <div className="px-4 py-3 border-b border-border">
           <p className="text-sm font-semibold">Notifications</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Rappels et demandes d&apos;offres</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Rappels, demandes d&apos;offres et congés</p>
         </div>
         <div className="max-h-[420px] overflow-y-auto">
           {loading ? (
             <p className="text-sm text-muted-foreground p-4">Chargement…</p>
           ) : (
             <>
+              {congeItems.length > 0 && (
+                <div data-testid="notifications-conges">
+                  <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Congés</p>
+                  {congeItems.slice(0, 6).map((n) => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => openCongeNotif(n)}
+                      className={`w-full text-left px-4 py-3 border-b border-border transition-colors ${
+                        n.read ? "hover:bg-secondary/40" : "bg-[#002FA7]/5 hover:bg-[#002FA7]/10"
+                      }`}
+                    >
+                      <div className="flex gap-2">
+                        <Palmtree className="h-4 w-4 text-[#002FA7] shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{n.title || "Congés"}</p>
+                          {n.message && <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.message}</p>}
+                          <p className="text-[11px] text-muted-foreground mt-1">{formatWhen(n.created_at)}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
               {offreItems.length > 0 && (
                 <div>
                   <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Offres</p>
@@ -150,6 +196,8 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
+              {canRappels && (
+              <>
               <div className="px-4 pt-3 pb-1 flex items-center justify-between">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Rappels</p>
                 <button
@@ -185,7 +233,9 @@ export default function NotificationBell() {
                   </div>
                 ))
               )}
-              {offreItems.length === 0 && rappelItems.length === 0 && !loading && (
+              </>
+              )}
+              {offreItems.length === 0 && rappelItems.length === 0 && congeItems.length === 0 && !loading && (
                 <p className="text-sm text-muted-foreground p-4 text-center">Aucune notification.</p>
               )}
             </>

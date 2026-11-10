@@ -27,6 +27,7 @@ import EffectuerAnalyseEditor from "@/pages/EffectuerAnalyseEditor";
 import ComparatifRentes from "@/pages/ComparatifRentes";
 import ComparatifRentesEditor from "@/pages/ComparatifRentesEditor";
 import Eligibilite from "@/pages/Eligibilite";
+import Conges from "@/pages/Conges";
 import LamalDashboard from "@/lamal/DashboardPage";
 import LamalCompare from "@/lamal/ComparePage";
 import LamalClients from "@/lamal/ClientsPage";
@@ -85,6 +86,7 @@ function AppRoutes() {
       <Route path="/historique-emails" element={<Protected anyOf={["users.manage"]}><HistoriqueEmails /></Protected>} />
       <Route path="/eligibilite" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
       <Route path="/eligibilite/:listId" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
+      <Route path="/conges" element={<Protected><Conges /></Protected>} />
       <Route path="/rappels" element={<Protected perm="rappels.view"><Rappels /></Protected>} />
       <Route path="/demandes" element={<Navigate to="/rappels" replace />} />
       <Route path="/agenda" element={<Protected perm="agenda.view"><Agenda /></Protected>} />

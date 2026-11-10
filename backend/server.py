@@ -8080,6 +8080,10 @@ attach_eligibility_routes(
     log_action=log_action,
 )
 
+from leaves_routes import attach_leaves_routes
+
+attach_leaves_routes(api_router, db=db, get_current_user=get_current_user)
+
 app.include_router(api_router)
 
 cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
@@ -8335,6 +8339,11 @@ async def _ensure_mongo_indexes():
             logger.info("Éligibilité : %s liste(s) par défaut créée(s)", created)
     except Exception as e:
         logger.warning("Index / seed Éligibilité: %s", e)
+    try:
+        from leaves import ensure_indexes as ensure_leaves_indexes
+        await ensure_leaves_indexes(db)
+    except Exception as e:
+        logger.warning("Index Congés & absences: %s", e)
 
 
 @app.on_event("startup")
