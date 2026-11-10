@@ -5,11 +5,11 @@ import Layout from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import ClientFormDialog from "@/components/ClientFormDialog";
-import { STATUT_DOT, STATUTS } from "@/lib/constants";
+import { STATUT_DOT, STATUTS, STATUT_PRESENTE_EN_COURS } from "@/lib/constants";
 import { useAuth } from "@/context/AuthContext";
 import {
   FilePlus2, Clock, FileSearch, Presentation, CheckCircle2, AlertTriangle,
-  FolderKanban, Plus, CalendarClock, ListTodo, PauseCircle, User,
+  FolderKanban, Plus, CalendarClock, ListTodo, PauseCircle, User, Handshake,
   Shield, Landmark, FileSpreadsheet, PhoneCall, TrendingUp,
 } from "lucide-react";
 import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
@@ -81,7 +81,7 @@ export default function Dashboard() {
       setStats(res.data);
     } catch (e) {
       setStats({
-        nouveaux: 0, en_attente_docs: 0, en_analyse: 0, stand_by: 0, a_presenter: 0, termines: 0,
+        nouveaux: 0, en_attente_docs: 0, en_analyse: 0, stand_by: 0, a_presenter: 0, presente_en_cours: 0, termines: 0,
         urgent: 0, total: 0, pending_tasks: 0, statuts: [], by_statut: {}, monthly: [],
         today_appointments: [], upcoming_tasks: [], by_conseiller: [],
         prevoyance: null, suivi_3p: null, offres: null, categorie,
@@ -104,7 +104,15 @@ export default function Dashboard() {
   const suivi = stats.suivi_3p || {};
 
   const pieData = (prev.statuts || STATUTS || []).map((s) => ({ name: s, value: prev.by_statut?.[s] })).filter((d) => d.value > 0);
-  const pieColors = ["#10b981", "#f59e0b", "#3b82f6", "#f97316", "#a855f7", "#64748b"];
+  const pieColors = {
+    "Nouveau": "#10b981",
+    "Documents en attente": "#f59e0b",
+    "Analyse en cours": "#3b82f6",
+    "Stand-by": "#f97316",
+    "À présenter": "#a855f7",
+    [STATUT_PRESENTE_EN_COURS]: "#14b8a6",
+    "Clôturé": "#64748b",
+  };
   const byConseiller = Array.isArray(prev.by_conseiller)
     ? [...prev.by_conseiller].sort((a, b) => (b.total || 0) - (a.total || 0))
     : [];
@@ -193,6 +201,7 @@ export default function Dashboard() {
               <KPI testid="kpi-analyse" icon={FileSearch} label="Analyse en cours" value={prev.en_analyse} accent="bg-blue-100 text-blue-700" onClick={() => goToDashboardTarget("analyse")} />
               <KPI testid="kpi-stand-by" icon={PauseCircle} label="Stand-by" value={prev.stand_by || 0} accent="bg-orange-100 text-orange-700" onClick={() => goToDashboardTarget("stand-by")} />
               <KPI testid="kpi-presenter" icon={Presentation} label="À présenter" value={prev.a_presenter} accent="bg-purple-100 text-purple-700" onClick={() => goToDashboardTarget("presenter")} />
+              <KPI testid="kpi-presente-en-cours" icon={Handshake} label="Dossier présenté — en cours" value={prev.presente_en_cours || 0} accent="bg-teal-100 text-teal-700" onClick={() => goToDashboardTarget("presente-en-cours")} />
               <KPI testid="kpi-termines" icon={CheckCircle2} label="Dossiers terminés" value={prev.termines} accent="bg-emerald-100 text-emerald-700" onClick={() => goToDashboardTarget("termines")} />
               <KPI testid="kpi-urgents" icon={AlertTriangle} label="Dossiers urgents" value={prev.urgent} accent="bg-red-100 text-red-700" onClick={() => goToDashboardTarget("urgent")} />
               <KPI testid="kpi-total" icon={FolderKanban} label="Total des dossiers" value={prev.total} accent="bg-slate-100 text-slate-700" onClick={() => goToDashboardTarget("total")} />
@@ -213,7 +222,7 @@ export default function Dashboard() {
                   <ResponsiveContainer width="100%" height={220}>
                     <PieChart>
                       <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2}>
-                        {pieData.map((_, i) => <Cell key={i} fill={pieColors[i % pieColors.length]} />)}
+                        {pieData.map((d) => <Cell key={d.name} fill={pieColors[d.name] || "#94a3b8"} />)}
                       </Pie>
                       <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }} />
                     </PieChart>

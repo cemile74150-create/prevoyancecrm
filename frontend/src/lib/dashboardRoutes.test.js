@@ -7,6 +7,10 @@ describe('getDashboardTarget', () => {
     expect(getDashboardTarget('analyse')).toEqual({ path: '/dossiers', search: '?statut=Analyse%20en%20cours' });
     expect(getDashboardTarget('stand-by')).toEqual({ path: '/dossiers', search: '?statut=Stand-by' });
     expect(getDashboardTarget('presenter')).toEqual({ path: '/dossiers', search: '?statut=%C3%80%20pr%C3%A9senter' });
+    expect(getDashboardTarget('presente-en-cours')).toEqual({
+      path: '/dossiers',
+      search: `?statut=${encodeURIComponent('Dossier présenté — en cours')}`,
+    });
     expect(getDashboardTarget('urgent')).toEqual({ path: '/dossiers', search: '?priorite=urgent' });
     expect(getDashboardTarget('taches')).toEqual({ path: '/agenda' });
   });

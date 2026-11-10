@@ -434,12 +434,15 @@ async def _try_read_storage_bytes(storage_path: str) -> Optional[bytes]:
         logger.warning("Lecture storage échouée (%s): %s", storage_path, e)
         return None
 # ---------------- Constants ----------------
+STATUT_PRESENTE_EN_COURS = "Dossier présenté — en cours"
+
 STATUTS = [
     "Nouveau",
     "Documents en attente",
     "Analyse en cours",
     "Stand-by",
     "À présenter",
+    STATUT_PRESENTE_EN_COURS,
     "Clôturé",
 ]
 
@@ -2277,7 +2280,8 @@ async def update_statut(client_id: str, payload: StatutUpdate, user: User = Depe
     )
 
     # E-mail auto conseiller : passage à « À présenter » si analyse de prévoyance déjà présente.
-    # (Le CRM n'a pas de statut « Présenté » — la colonne Kanban est « À présenter ».)
+    # Le passage à « Dossier présenté — en cours » conserve le marqueur d'envoi :
+    # un retour à « À présenter » ne renvoie pas l'e-mail.
     if statut == "À présenter" and old_statut != "À présenter":
         try:
             await _notify_conseiller_dossier_presente(
@@ -2291,7 +2295,7 @@ async def update_statut(client_id: str, payload: StatutUpdate, user: User = Depe
                 "E-mail dossier présenté échoué client=%s",
                 client_id,
             )
-    elif old_statut == "À présenter" and statut != "À présenter":
+    elif old_statut == "À présenter" and statut not in ("À présenter", STATUT_PRESENTE_EN_COURS):
         try:
             await _clear_dossier_presente_email_flag(
                 user_id=user.user_id,
@@ -7860,7 +7864,7 @@ async def dashboard_stats(
         report_count = sum(
             1
             for did, updated_at in dossier_updated_map.items()
-            if (updated_at or "").startswith(key) and dossier_statut_map.get(did) in ["À présenter", "Clôturé"]
+            if (updated_at or "").startswith(key) and dossier_statut_map.get(did) in ["À présenter", STATUT_PRESENTE_EN_COURS, "Clôturé"]
         )
         monthly.append({"mois": label, "dossiers": dossiers_count, "rendezvous": appt_count, "rapports": report_count})
 
@@ -7873,6 +7877,7 @@ async def dashboard_stats(
         "en_analyse": by_statut.get("Analyse en cours", 0),
         "stand_by": by_statut.get("Stand-by", 0),
         "a_presenter": by_statut.get("À présenter", 0),
+        "presente_en_cours": by_statut.get(STATUT_PRESENTE_EN_COURS, 0),
         "termines": by_statut.get("Clôturé", 0),
         "today_appointments": today_appts,
         "monthly": monthly,

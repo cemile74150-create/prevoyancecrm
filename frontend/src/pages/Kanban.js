@@ -5,9 +5,18 @@ import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import ClientFormDialog from "@/components/ClientFormDialog";
 import { STATUTS, STATUT_DOT, normalizeStatut } from "@/lib/constants";
-import { Plus, AlertTriangle, MoreHorizontal, Folder, User } from "lucide-react";
+import { Plus, AlertTriangle, MoreHorizontal, Folder, User, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { conseillerNames as toConseillerNameList } from "@/lib/conseillers";
+import {
+  NON_ATTRIBUE,
+  groupConseillers,
+  groupMatchesConseiller,
+  kanbanConseillerOptions,
+  sameConseiller,
+} from "@/lib/kanbanConseiller";
 
 function isMarriedEtat(etat) {
   const v = (etat || "").toLowerCase();
@@ -149,23 +158,43 @@ export default function Kanban() {
   };
   useEffect(() => { load(); }, []);
 
+  const [activeConseillers, setActiveConseillers] = useState([]);
+  useEffect(() => {
+    api.get("/users/conseillers").then((r) => setActiveConseillers(toConseillerNameList(r.data))).catch(() => {});
+  }, []);
+
   const params = new URLSearchParams(location.search);
   const selectedStatut = params.get("statut");
   const selectedPriority = params.get("priorite");
   const selectedConseiller = params.get("conseiller");
 
   const groups = buildKanbanGroups(clients);
+  const conseillerOptions = kanbanConseillerOptions(activeConseillers, groups);
+  if (
+    selectedConseiller &&
+    selectedConseiller !== NON_ATTRIBUE &&
+    !conseillerOptions.some((n) => sameConseiller(n, selectedConseiller))
+  ) {
+    conseillerOptions.push(selectedConseiller);
+  }
+  const conseillerSelectValue = !selectedConseiller
+    ? "all"
+    : selectedConseiller === NON_ATTRIBUE
+      ? NON_ATTRIBUE
+      : conseillerOptions.find((n) => sameConseiller(n, selectedConseiller));
+
+  const onConseillerChange = (value) => {
+    const next = new URLSearchParams(location.search);
+    if (!value || value === "all") next.delete("conseiller");
+    else next.set("conseiller", value);
+    const qs = next.toString();
+    navigate(qs ? `/dossiers?${qs}` : "/dossiers", { replace: true });
+  };
 
   const filteredGroups = groups.filter((g) => {
     if (selectedStatut && g.statut !== selectedStatut) return false;
     if (selectedPriority && g.priorite !== selectedPriority) return false;
-    if (selectedConseiller) {
-      const names = (g.members || []).map((m) => (m.conseiller || "").trim()).filter(Boolean);
-      const match = selectedConseiller === "Non attribué"
-        ? names.length === 0
-        : names.some((n) => n.toLowerCase() === selectedConseiller.toLowerCase());
-      if (!match) return false;
-    }
+    if (!groupMatchesConseiller(g, selectedConseiller)) return false;
     return true;
   });
 
@@ -197,11 +226,25 @@ export default function Kanban() {
             Prévoyance uniquement — glissez-déposez pour changer de statut
           </p>
         </div>
-        {canCreate && (
-        <Button data-testid="kanban-new-dossier-btn" size="sm" onClick={() => setDialog(true)} className="bg-[#002FA7] hover:bg-[#00248a] gap-1.5 h-8">
-          <Plus className="h-3.5 w-3.5" /> Nouveau dossier
-        </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <Select value={conseillerSelectValue} onValueChange={onConseillerChange}>
+            <SelectTrigger className="w-[220px] h-8 text-xs" data-testid="kanban-filter-conseiller" aria-label="Conseiller">
+              <SelectValue placeholder="Tous les conseillers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les conseillers</SelectItem>
+              <SelectItem value={NON_ATTRIBUE}>{NON_ATTRIBUE}</SelectItem>
+              {conseillerOptions.map((n) => (
+                <SelectItem key={n} value={n}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {canCreate && (
+          <Button data-testid="kanban-new-dossier-btn" size="sm" onClick={() => setDialog(true)} className="bg-[#002FA7] hover:bg-[#00248a] gap-1.5 h-8">
+            <Plus className="h-3.5 w-3.5" /> Nouveau dossier
+          </Button>
+          )}
+        </div>
       </div>
 
       {(selectedStatut || selectedPriority || selectedConseiller) && (
@@ -230,7 +273,7 @@ export default function Kanban() {
               <div className="flex items-center justify-between px-2.5 h-9">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className={`h-2 w-2 rounded-full shrink-0 ${STATUT_DOT[statut]}`} />
-                  <span className="text-xs font-semibold truncate">{statut}</span>
+                  <span className="text-xs font-semibold truncate" title={statut}>{statut}</span>
                 </div>
                 <span className="text-[10px] font-medium text-muted-foreground bg-background/80 rounded-full px-1.5 py-0.5 tabular-nums">
                   {items.length}
@@ -240,6 +283,7 @@ export default function Kanban() {
                 {items.map((c) => {
                   const title = dossierTitle(c);
                   const createdLabel = formatDossierDate(dossierCreatedAt(c));
+                  const conseillerLabel = groupConseillers(c).join(" · ");
                   return (
                     <div
                       key={c.key}
@@ -290,6 +334,14 @@ export default function Kanban() {
                           </div>
                           <p className="mt-0.5 text-[11px] text-muted-foreground" data-testid={`kanban-date-${c.key}`}>
                             {createdLabel}
+                          </p>
+                          <p
+                            className={`mt-0.5 flex items-center gap-1 text-[11px] leading-tight ${conseillerLabel ? "text-[#002FA7]/80" : "text-muted-foreground/60 italic"}`}
+                            data-testid={`kanban-conseiller-${c.key}`}
+                            title={conseillerLabel ? `Conseiller : ${conseillerLabel}` : "Aucun conseiller attribué"}
+                          >
+                            <UserCheck className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{conseillerLabel || NON_ATTRIBUE}</span>
                           </p>
                         </div>
                       </div>

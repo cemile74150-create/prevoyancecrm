@@ -10,6 +10,8 @@ export function getDashboardTarget(key) {
       return { path: '/dossiers', search: '?statut=Stand-by' };
     case 'presenter':
       return { path: '/dossiers', search: '?statut=%C3%80%20pr%C3%A9senter' };
+    case 'presente-en-cours':
+      return { path: '/dossiers', search: '?statut=Dossier%20pr%C3%A9sent%C3%A9%20%E2%80%94%20en%20cours' };
     case 'termines':
       return { path: '/dossiers', search: '?statut=Cl%C3%B4tur%C3%A9' };
     case 'urgent':
