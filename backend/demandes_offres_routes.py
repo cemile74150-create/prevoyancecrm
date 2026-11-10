@@ -4401,6 +4401,14 @@ def attach_demandes_offres_routes(
                     status_code=422,
                     detail="La proposition signée doit être un fichier PDF",
                 )
+        extra_uploads = (
+            await signature_extra_uploads(request) if payload.signee and signee is not None else []
+        )
+        if len(extra_uploads) > MAX_SIGNATURE_FILES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Maximum {MAX_SIGNATURE_FILES} documents complémentaires",
+            )
         stored = (
             await store_doc(
                 demande_id,
@@ -4411,6 +4419,30 @@ def attach_demandes_offres_routes(
             if file is not None
             else None
         )
+        extra_stored = []
+        try:
+            for upload in extra_uploads:
+                extra_stored.append(
+                    await store_doc(
+                        demande_id,
+                        upload,
+                        user,
+                        category=DOC_CATEGORY_DOCUMENT_SIGNATURE,
+                    )
+                )
+        except Exception:
+            await discard_complement_uploads(
+                [item.get("id") for item in [stored, *extra_stored] if item],
+                user,
+            )
+            raise
+        signature_docs = [
+            signature_document_ref(item, category=DOC_CATEGORY_PROPOSITION_SIGNEE)
+            for item in ([stored] if stored else [])
+        ] + [
+            signature_document_ref(item, category=DOC_CATEGORY_DOCUMENT_SIGNATURE)
+            for item in extra_stored
+        ]
         stamp = now_iso()
         signature = {
             "signee": payload.signee,
@@ -4419,6 +4451,8 @@ def attach_demandes_offres_routes(
             "date_relance": (payload.date_relance or "").strip() or None,
             "document_id": stored.get("id") if stored else None,
             "document_category": DOC_CATEGORY_PROPOSITION_SIGNEE if stored else None,
+            "documents": signature_docs,
+            "complements": [],
             "recorded_at": stamp,
             "recorded_by": actor_name(user),
             "recorded_by_id": user.account_id,
@@ -4434,11 +4468,16 @@ def attach_demandes_offres_routes(
             user,
             statut=statut,
             action=action,
-            detail=signature["commentaire"] or (
-                (stored.get("original_filename") if stored else None) or ""
+            detail=(
+                signature_history_detail(signature["commentaire"], signature_docs)
+                if payload.signee
+                else signature["commentaire"] or (
+                    (stored.get("original_filename") if stored else None) or ""
+                )
             ),
             extra={"signature": signature},
             document_id=signature.get("document_id"),
+            meta={"document_ids": [d["id"] for d in signature_docs]} if signature_docs else None,
         )
         if payload.signee:
             mail_doc = {**doc, "statut": STATUT_OFFRE_SIGNEE, "signature": signature}
@@ -4459,6 +4498,107 @@ def attach_demandes_offres_routes(
                 account_ids=await manager_account_ids(),
             )
         return result
+
+    async def signature_extra_uploads(request: Request) -> list[UploadFile]:
+        """Pièces complémentaires (champ « documents ») ; « file » reste la proposition signée."""
+        form = await request.form()
+        uploads: list[UploadFile] = []
+        for item in form.getlist("documents"):
+            if not isinstance(item, (UploadFile, StarletteUploadFile)):
+                continue
+            if not (getattr(item, "filename", None) or "").strip():
+                continue
+            uploads.append(item)
+        return uploads
+
+    @api_router.post("/demandes-offres/{demande_id}/signature/complements")
+    async def add_signature_complement(
+        request: Request,
+        demande_id: str,
+        commentaire: Optional[str] = Form(None),
+        user: User = Depends(current_user_dependency),
+    ):
+        """Après « Offre signée » : l'agent ajoute des documents et/ou un commentaire."""
+        doc = await require_demande(demande_id, user)
+        if not (can_follow_signature(user, doc) or getattr(user, "can_manage_users", False)):
+            raise HTTPException(
+                status_code=403,
+                detail="Le suivi signature est réservé à l'agent ayant créé la demande",
+            )
+        if doc.get("statut") != STATUT_OFFRE_SIGNEE:
+            raise HTTPException(status_code=409, detail="L'offre n'est pas signée")
+        text = (commentaire or "").strip()
+        uploads = await signature_extra_uploads(request)
+        if not text and not uploads:
+            raise HTTPException(
+                status_code=422,
+                detail="Ajoutez au moins un document ou un commentaire",
+            )
+        if len(uploads) > MAX_SIGNATURE_FILES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Maximum {MAX_SIGNATURE_FILES} documents",
+            )
+        stored = []
+        try:
+            for upload in uploads:
+                stored.append(
+                    await store_doc(
+                        demande_id,
+                        upload,
+                        user,
+                        category=DOC_CATEGORY_DOCUMENT_SIGNATURE,
+                    )
+                )
+        except Exception:
+            await discard_complement_uploads([item.get("id") for item in stored], user)
+            raise
+        refs = [
+            signature_document_ref(item, category=DOC_CATEGORY_DOCUMENT_SIGNATURE)
+            for item in stored
+        ]
+        entry = build_signature_complement(
+            commentaire=text,
+            documents=refs,
+            by_name=actor_name(user),
+            by_id=user.account_id,
+            at=now_iso(),
+        )
+        current_signature = doc.get("signature") if isinstance(doc.get("signature"), dict) else {"signee": True}
+        complements = [
+            *[c for c in (current_signature.get("complements") or []) if isinstance(c, dict)],
+            entry,
+        ]
+        hist = collapse_demande_historique(doc.get("historique") or [])
+        hist.append(
+            history(
+                ACTION_COMPLEMENT_SIGNATURE,
+                user,
+                signature_history_detail(text, refs),
+                document_id=refs[0]["id"] if refs else None,
+                meta={"document_ids": [d["id"] for d in refs]} if refs else None,
+            )
+        )
+        await db[COLLECTION].update_one(
+            {"id": demande_id, "user_id": TENANT_USER_ID},
+            {
+                "$set": {
+                    "signature": {**current_signature, "complements": complements},
+                    "updated_at": entry["at"],
+                    "historique": hist,
+                },
+            },
+        )
+        await write_offre_notification(
+            doc=doc,
+            event="signee_complement",
+            title=f"Offre signée — complément {doc.get('numero') or ''}".strip(),
+            message=signature_history_detail(text, refs) or "Complément ajouté par l'agent.",
+            audience="gestionnaires",
+            account_ids=await manager_account_ids(),
+        )
+        fresh = await require_demande(demande_id, user)
+        return serialize_demande(fresh, docs=await docs_for(demande_id), viewer=user)
 
     @api_router.post("/demandes-offres/{demande_id}/soumis-compagnie")
     async def mark_soumis_compagnie(

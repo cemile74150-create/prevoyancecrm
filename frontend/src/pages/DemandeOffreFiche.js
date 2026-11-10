@@ -28,7 +28,9 @@ import {
 import OffreSchemaForm, { SchemaReadOnlySummary, isFieldVisible } from "@/components/OffreSchemaForm";
 import NotesConseiller from "@/components/NotesConseiller";
 import DiscussionDemande from "@/components/DiscussionDemande";
-import { TransmettreOffreSimpleDialog, TransmettreVariantesDialog } from "@/components/TransmettreOffreDialogs";
+import { FilePicker, TransmettreOffreSimpleDialog, TransmettreVariantesDialog } from "@/components/TransmettreOffreDialogs";
+import { ComplementSignatureDialog, OffreSigneeDetails } from "@/components/OffreSigneeComplements";
+import { mergeSignatureFiles } from "@/lib/offreSignee";
 import {
   SIGNALER_ERREUR_CLASS, documentsParVariante, urgenceDelaiLabel, urgenceRefus,
 } from "@/lib/transmissionOffre";
@@ -170,8 +172,9 @@ export default function DemandeOffreFiche() {
   const [showFullForm, setShowFullForm] = useState(false);
   const [signature, setSignature] = useState({
     date_signature: new Date().toISOString().slice(0, 10),
-    commentaire: "", date_relance: "", file: null,
+    commentaire: "", date_relance: "", file: null, documents: [],
   });
+  const [complementSignatureOpen, setComplementSignatureOpen] = useState(false);
   const formDirtyRef = useRef(false);
   const autosaveTimerRef = useRef(null);
   const agentIdentity = useMemo(() => {
@@ -911,6 +914,7 @@ export default function DemandeOffreFiche() {
     if (signature.commentaire) fd.append("commentaire", signature.commentaire);
     if (signature.date_relance) fd.append("date_relance", signature.date_relance);
     if (signature.file) fd.append("file", signature.file);
+    if (signatureMode) (signature.documents || []).forEach((doc) => fd.append("documents", doc));
     setActionBusy(true);
     try {
       const res = await api.post(`/demandes-offres/${demandeId}/signature`, fd, { headers: { "Content-Type": "multipart/form-data" } });
@@ -918,7 +922,7 @@ export default function DemandeOffreFiche() {
       setSignatureOpen(false);
       setSignature({
         date_signature: new Date().toISOString().slice(0, 10),
-        commentaire: "", date_relance: "", file: null,
+        commentaire: "", date_relance: "", file: null, documents: [],
       });
     } catch (e) {
       toast.error(errorMessage(e, "Enregistrement impossible"));
@@ -1627,7 +1631,7 @@ export default function DemandeOffreFiche() {
                 docMetaRef={docMetaRef}
                 remove={deleteDocument}
               />
-              <History entries={demande.historique || []} />
+              <History entries={demande.historique || []} documents={demande.documents || []} />
             </div>
             <ActionPanel
               demande={demande}
@@ -1649,6 +1653,7 @@ export default function DemandeOffreFiche() {
               onConclusion={markConclusion}
               onSendClient={() => runAction("envoyer-client", {}, "Offre envoyée au client")}
               onSignature={(signed) => { setSignatureMode(signed); setSignatureOpen(true); }}
+              onSignatureComplement={() => setComplementSignatureOpen(true)}
               onSoumisCompagnie={toggleSoumisCompagnie}
               onDemandeAnnulee={toggleDemandeAnnulee}
               onCancel={() => setCancelOpen(true)}
@@ -1665,7 +1670,7 @@ export default function DemandeOffreFiche() {
           </div>
         )}
 
-        {editable && <History entries={demande.historique || []} />}
+        {editable && <History entries={demande.historique || []} documents={demande.documents || []} />}
       </div>
 
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
@@ -2070,8 +2075,13 @@ export default function DemandeOffreFiche() {
                 <Input type="date" value={signature.date_relance} onChange={(e) => setSignature({ ...signature, date_relance: e.target.value })} />
               </Field>
             )}
-            <Field label="Commentaire">
-              <Textarea value={signature.commentaire} onChange={(e) => setSignature({ ...signature, commentaire: e.target.value })} />
+            <Field label={signatureMode ? "Commentaire (facultatif)" : "Commentaire"}>
+              <Textarea
+                value={signature.commentaire}
+                data-testid="signature-commentaire"
+                placeholder={signatureMode ? "Information utile pour le gestionnaire…" : undefined}
+                onChange={(e) => setSignature({ ...signature, commentaire: e.target.value })}
+              />
             </Field>
             {signatureMode && (
               <Field label="Proposition signée (PDF) *">
@@ -2083,6 +2093,20 @@ export default function DemandeOffreFiche() {
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
                   Obligatoire. Le fichier sera enregistré dans le dossier sous le libellé « Proposition signée ».
+                </p>
+              </Field>
+            )}
+            {signatureMode && (
+              <Field label="Autres documents (facultatif)">
+                <FilePicker
+                  files={signature.documents || []}
+                  onAdd={(incoming) => setSignature((prev) => ({ ...prev, documents: mergeSignatureFiles(prev.documents, incoming) }))}
+                  onRemove={(index) => setSignature((prev) => ({ ...prev, documents: (prev.documents || []).filter((_, i) => i !== index) }))}
+                  testId="signature-documents"
+                  label="Ajouter des documents"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Pièces d&apos;identité, mandat, questionnaire… Plusieurs fichiers possibles, tous formats.
                 </p>
               </Field>
             )}
@@ -2104,6 +2128,13 @@ export default function DemandeOffreFiche() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ComplementSignatureDialog
+        open={complementSignatureOpen}
+        onOpenChange={setComplementSignatureOpen}
+        demandeId={demandeId}
+        onSaved={(data) => refreshFromAction(data, "Complément enregistré")}
+      />
     </Layout>
   );
 }
@@ -3299,6 +3330,7 @@ function SuiviCommercialStatut({ demande }) {
       {decision.rappel_envoye_at ? (
         <p>Rappel automatique envoyé à l&apos;agent le {formatDateFr(decision.rappel_envoye_at)}</p>
       ) : null}
+      {demande.statut === "Offre signée" && <OffreSigneeDetails demande={demande} />}
     </div>
   );
 }
@@ -3354,7 +3386,7 @@ function AttributionDossier({ demande, busy, onAttribuer, onReattribue }) {
 function ActionPanel({
   demande, user, canEdit, canProcess, canFollowSignature, isAdmin, busy, hasOffers, hasIncompleteCompany,
   onIncomplete, onOffer, onErreurs, onNote, onExternalNote, onDoc, onConclusion, onSendClient,
-  onSignature, onSoumisCompagnie, onDemandeAnnulee, onCancel, onRestore, onDelete, onSuivi,
+  onSignature, onSignatureComplement, onSoumisCompagnie, onDemandeAnnulee, onCancel, onRestore, onDelete, onSuivi,
   onAttribuer, onReattribue,
 }) {
   const terminal = ["Offre signée", "Offre refusée"].includes(demande.statut) || isHorsCours(demande.statut);
@@ -3458,6 +3490,11 @@ function ActionPanel({
             <CheckCircle2 className="h-4 w-4 mr-2" /> Offre signée
           </Button>
         )}
+        {demande.statut === "Offre signée" && (
+          <Button variant="outline" className="w-full h-auto min-h-9 justify-start whitespace-normal text-left py-2 border-emerald-300 text-emerald-800 bg-white" onClick={onSignatureComplement} disabled={busy} data-testid="offre-signee-complement-btn">
+            <Paperclip className="h-4 w-4 mr-2" /> Ajouter documents / commentaire
+          </Button>
+        )}
         {canMarkNonSignee && (
           <Button variant="outline" className="w-full justify-start border-rose-300 text-rose-800 bg-white" onClick={onCancel} disabled={busy} data-testid="offre-non-signee-panel-btn">
             <XCircle className="h-4 w-4 mr-2" /> ❌ Offre non signée
@@ -3499,8 +3536,13 @@ function ActionPanel({
   </Card>;
 }
 
-function History({ entries }) {
+function History({ entries, documents = [] }) {
   const ordered = [...(entries || [])].sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+  const docNames = new Map((documents || []).filter((d) => d?.id).map((d) => [d.id, d.original_filename]));
+  const entryDocNames = (entry) => {
+    const ids = Array.isArray(entry.meta?.document_ids) ? entry.meta.document_ids : [];
+    return ids.length > 1 ? ids.map((id) => docNames.get(id)).filter(Boolean) : [];
+  };
   return <Card className="p-5" data-testid="historique-demande"><h2 className="font-display font-bold mb-1">Historique</h2>
     <p className="text-xs text-muted-foreground mb-4">Changements dans l&apos;ordre chronologique, avec la date, l&apos;heure et l&apos;auteur.</p>
     {!ordered.length ? <p className="text-sm text-muted-foreground">Aucun événement.</p> :
@@ -3520,10 +3562,15 @@ function History({ entries }) {
           )}
         </div>
         {entry.detail && <p className="text-sm text-muted-foreground mt-0.5">{entry.detail}</p>}
-        {(entry.document_id || entry.document_filename || entry.document) && (
+        {entryDocNames(entry).length > 0 ? entryDocNames(entry).map((name, i) => (
+          <p key={`${name}-${i}`} className="text-xs text-[#002FA7] mt-1 flex items-center gap-1">
+            <FileText className="h-3 w-3" />
+            {name}
+          </p>
+        )) : (entry.document_id || entry.document_filename || entry.document) && (
           <p className="text-xs text-[#002FA7] mt-1 flex items-center gap-1">
             <FileText className="h-3 w-3" />
-            {entry.document_filename || entry.document?.original_filename || entry.document || `Document ${entry.document_id}`}
+            {entry.document_filename || entry.document?.original_filename || entry.document || docNames.get(entry.document_id) || `Document ${entry.document_id}`}
           </p>
         )}
         <p className="text-xs text-muted-foreground mt-1">{formatDateTimeFr(entry.at)}{entry.by_name ? ` · ${entry.by_name}` : ""}</p>

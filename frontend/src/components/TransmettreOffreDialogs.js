@@ -54,7 +54,7 @@ function CompagnieField({ options, value, autre, onChange, onAutre, testId }) {
   );
 }
 
-function FilePicker({ files, onAdd, onRemove, testId, label = "Choisir un fichier" }) {
+export function FilePicker({ files, onAdd, onRemove, testId, label = "Choisir un fichier" }) {
   return (
     <div className="space-y-1.5">
       <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-1.5 text-sm hover:bg-slate-50">

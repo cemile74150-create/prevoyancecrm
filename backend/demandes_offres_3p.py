@@ -45,6 +45,10 @@ STATUT_ANNULEE = "Demande annulée"
 
 # Document déposé par le conseiller lors du passage à « Offre signée »
 DOC_CATEGORY_PROPOSITION_SIGNEE = "Proposition signée"
+# Pièces complémentaires facultatives jointes à la signature (ou après)
+DOC_CATEGORY_DOCUMENT_SIGNATURE = "Document de signature"
+ACTION_COMPLEMENT_SIGNATURE = "Complément à l'offre signée"
+MAX_SIGNATURE_FILES = 15
 # Indicateur manuel gestionnaire (indépendant du statut « Offre signée »)
 ACTION_SOUMIS_COMPAGNIE = "Soumis à la compagnie"
 ACTION_NON_SOUMIS_COMPAGNIE = "Non soumis à la compagnie"
@@ -519,6 +523,48 @@ def can_follow_signature(user, doc: dict) -> bool:
     if email_matches_conseiller(doc, user):
         return True
     return False
+
+
+def signature_document_ref(stored: dict, *, category: str) -> dict:
+    """Référence publique d'une pièce liée à la signature (pas de chemin de stockage)."""
+    return {
+        "id": stored.get("id"),
+        "original_filename": stored.get("original_filename") or "Document",
+        "content_type": stored.get("content_type") or "application/octet-stream",
+        "size": stored.get("size"),
+        "category": stored.get("category") or category,
+        "created_at": stored.get("created_at"),
+    }
+
+
+def signature_history_detail(commentaire: Optional[str], documents: Optional[list]) -> str:
+    """Détail d'historique : commentaire, puis nombre de pièces."""
+    text = (commentaire or "").strip()
+    count = len([d for d in (documents or []) if isinstance(d, dict) and d.get("id")])
+    if not count:
+        return text
+    pieces = f"{count} document{'s' if count > 1 else ''}"
+    return f"{text} · {pieces}" if text else pieces
+
+
+def build_signature_complement(
+    *,
+    commentaire: Optional[str],
+    documents: Optional[list],
+    by_name: str,
+    by_id: Optional[str],
+    at: str,
+    entry_id: Optional[str] = None,
+) -> dict:
+    """Ajout de l'agent après « Offre signée » : commentaire et/ou pièces, horodaté."""
+    return {
+        "id": entry_id or str(uuid.uuid4()),
+        "at": at,
+        "by": by_name,
+        "by_id": by_id,
+        "commentaire": (commentaire or "").strip() or None,
+        "documents": [d for d in (documents or []) if isinstance(d, dict) and d.get("id")],
+    }
 
 
 def can_mark_offre_non_signee(user, doc: dict) -> bool:
