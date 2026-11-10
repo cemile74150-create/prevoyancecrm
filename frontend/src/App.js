@@ -26,6 +26,7 @@ import EffectuerAnalyse from "@/pages/EffectuerAnalyse";
 import EffectuerAnalyseEditor from "@/pages/EffectuerAnalyseEditor";
 import ComparatifRentes from "@/pages/ComparatifRentes";
 import ComparatifRentesEditor from "@/pages/ComparatifRentesEditor";
+import Eligibilite from "@/pages/Eligibilite";
 import LamalDashboard from "@/lamal/DashboardPage";
 import LamalCompare from "@/lamal/ComparePage";
 import LamalClients from "@/lamal/ClientsPage";
@@ -82,6 +83,8 @@ function AppRoutes() {
       <Route path="/modifier-offre" element={<Protected perm="demandes_offres.edit"><ModifierOffre /></Protected>} />
       <Route path="/demandes-offres/:demandeId" element={<Protected perm="demandes_offres.view"><DemandeOffreFiche /></Protected>} />
       <Route path="/historique-emails" element={<Protected anyOf={["users.manage"]}><HistoriqueEmails /></Protected>} />
+      <Route path="/eligibilite" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
+      <Route path="/eligibilite/:listId" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
       <Route path="/rappels" element={<Protected perm="rappels.view"><Rappels /></Protected>} />
       <Route path="/demandes" element={<Navigate to="/rappels" replace />} />
       <Route path="/agenda" element={<Protected perm="agenda.view"><Agenda /></Protected>} />

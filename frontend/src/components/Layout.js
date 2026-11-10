@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
-import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, Menu, Bell, Settings2, KeyRound, Shield, FileSpreadsheet, Activity, Pencil, Mail, UserCircle, Calculator, HeartPulse, Scale } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, Menu, Bell, Settings2, KeyRound, Shield, FileSpreadsheet, Activity, Pencil, Mail, UserCircle, Calculator, HeartPulse, Scale, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import PasswordInput from "@/components/PasswordInput";
@@ -29,6 +29,7 @@ const nav = [
   { to: "/modifier-offre", label: "Modifier une offre", icon: Pencil, testid: "nav-modifier-offre", perm: "demandes_offres.edit" },
   { to: "/gestion-reponses-offres", label: "Gestion réponses offres", icon: FileSpreadsheet, testid: "nav-gestion-offres", perm: "demandes_offres.process" },
   { to: "/historique-emails", label: "Historique des e-mails", icon: Mail, testid: "nav-historique-emails", anyOf: ["users.manage"] },
+  { to: "/eligibilite", label: "Éligibilité", icon: ListChecks, testid: "nav-eligibilite", anyOf: ["clients.view", "dossiers.view"] },
   { to: "/rappels", label: "Rappels", icon: Bell, testid: "nav-rappels", perm: "rappels.view" },
   { to: "/agenda", label: "Ordre du jour", icon: CalendarDays, testid: "nav-agenda", perm: "agenda.view" },
   { to: "/formulaires", label: "Formulaires", icon: Files, testid: "nav-formulaires", perm: "formulaires.view" },

@@ -19,6 +19,7 @@ import { finmaByConseillerName, lookupConseillerFinma } from "@/lib/conseillers"
 import { useAuth } from "@/context/AuthContext";
 import LamalClientHistory from "@/lamal/ClientHistory";
 import PlanificationClientTab from "@/pages/PlanificationClientTab";
+import EligibilityClientTab from "@/components/EligibilityClientTab";
 import { getInitialDocumentChecklistState, getNextDocumentStatus, getDemandesChecklistItems, getChecklistDisplayLabel, isStandardChecklistItem, omitChecklistItem } from "@/lib/documentChecklist";
 import {
   LPP_DECOMPTE_PIECES_JOINTES_INTRO,
@@ -42,7 +43,7 @@ import {
   ArrowLeft, Pencil, Trash2, Mail, Phone, MapPin, Briefcase, Users2, AlertTriangle,
   FileText, Upload, Plus, StickyNote, CalendarClock, User, Sparkles, Loader2,
   Send, ClipboardList, Shield, Eye, Download, BarChart3, Bell, FileSpreadsheet,
-  Paperclip, ExternalLink, Calculator,
+  Paperclip, ExternalLink, Calculator, ClipboardCheck,
 } from "lucide-react";
 
 const ANALYSE_PREVOYANCE_CATEGORY = "Analyse de prévoyance";
@@ -59,6 +60,7 @@ const CLIENT_DETAIL_TABS = new Set([
   "analyse-prevoyance",
   "planification",
   "offres",
+  "eligibilite",
 ]);
 const OFFRE_CATEGORY = "Offre";
 
@@ -2487,12 +2489,16 @@ export default function ClientDetail() {
               {hasPerm("lamal_module_access") && (
                 <TabsTrigger value="lamal" data-testid="tab-lamal"><Shield className="h-4 w-4 mr-1.5" />LAMal</TabsTrigger>
               )}
+              <TabsTrigger value="eligibilite" data-testid="tab-eligibilite"><ClipboardCheck className="h-4 w-4 mr-1.5" />Éligibilité</TabsTrigger>
             </TabsList>
             {hasPerm("lamal_module_access") && (
               <TabsContent value="lamal">
                 <LamalClientHistory clientId={client?.id} />
               </TabsContent>
             )}
+            <TabsContent value="eligibilite">
+              {activeTab === "eligibilite" && <EligibilityClientTab clientId={client?.id} />}
+            </TabsContent>
 
             <TabsContent value="infos">
               <Card className="p-6 space-y-6">

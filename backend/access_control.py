@@ -768,6 +768,10 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("DELETE",), r"^/documents/", PERM_DOCUMENTS_DELETE),
     (("GET",), r"^/document-templates$", PERM_DOCUMENTS_VIEW),
     (("GET",), r"^/demand-packs$", (PERM_DOSSIERS_VIEW, PERM_DOCUMENTS_VIEW)),
+    # Éligibilité : création de liste vérifiée dans le handler (ELIGIBILITY_MANAGER_USER_ID).
+    (("GET",), r"^/eligibility(/|$)", (PERM_CLIENTS_VIEW, PERM_DOSSIERS_VIEW)),
+    (("GET",), r"^/clients/[^/]+/eligibility$", (PERM_CLIENTS_VIEW, PERM_DOSSIERS_VIEW)),
+    (("PUT", "DELETE"), r"^/clients/[^/]+/eligibility/[^/]+$", (PERM_CLIENTS_EDIT, PERM_DOSSIERS_EDIT)),
     (("GET",), r"^/clients/[^/]+/notes$", PERM_CLIENTS_VIEW),
     (("POST",), r"^/clients/[^/]+/notes$", PERM_CLIENTS_EDIT),
     (("GET",), r"^/clients/[^/]+/journal$", (PERM_CLIENTS_VIEW, PERM_DOSSIERS_VIEW)),

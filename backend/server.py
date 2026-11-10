@@ -2534,6 +2534,8 @@ async def delete_client(client_id: str, user: User = Depends(get_current_user)):
     res = await db.clients.delete_one({"id": client_id, "user_id": user.user_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Client introuvable")
+    from eligibility import remove_client_memberships
+    await remove_client_memberships(db, client_id)
     return {"ok": True}
 
 # ---------------- Notes ----------------
@@ -8065,6 +8067,19 @@ attach_lamal_routes(
     decrypt_client=_decrypt_client_doc,
 )
 
+from eligibility_routes import attach_eligibility_routes
+
+attach_eligibility_routes(
+    api_router,
+    db=db,
+    get_current_user=get_current_user,
+    require_client=require_client,
+    decrypt_client=_decrypt_client_doc,
+    normalize_statut=normalize_statut,
+    fold_search=_fold_search,
+    log_action=log_action,
+)
+
 app.include_router(api_router)
 
 cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
@@ -8313,6 +8328,13 @@ async def _ensure_mongo_indexes():
         await ensure_lamal_indexes(db)
     except Exception as e:
         logger.warning("Index LAMal: %s", e)
+    try:
+        from eligibility import ensure_setup as ensure_eligibility_setup
+        created = await ensure_eligibility_setup(db)
+        if created:
+            logger.info("Éligibilité : %s liste(s) par défaut créée(s)", created)
+    except Exception as e:
+        logger.warning("Index / seed Éligibilité: %s", e)
 
 
 @app.on_event("startup")
