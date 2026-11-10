@@ -418,6 +418,11 @@ def non_attribuee_filter() -> dict:
     ]}
 
 
+def attribuee_filter() -> dict:
+    """Filtre Mongo : un gestionnaire est enregistré."""
+    return {"gestionnaire_id": {"$exists": True, "$nin": [None, ""]}}
+
+
 def attribution_event(
     *,
     kind: str,

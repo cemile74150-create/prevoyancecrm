@@ -173,8 +173,9 @@ describe("libellés", () => {
 
   it("Mes dossiers : indicateurs haut + file Demandes à traiter, sans grille KPI dense", () => {
     const gestion = src("pages/GestionReponsesOffres.js");
-    expect(gestion).toMatch(/Mes indicateurs — avancement du traitement/);
-    expect(gestion).toMatch(/Mes indicateurs — résultat commercial/);
+    expect(gestion).toMatch(/: "Mes indicateurs";/);
+    expect(gestion).toMatch(/\{indicateursTitre\} — avancement du traitement/);
+    expect(gestion).toMatch(/\{indicateursTitre\} — résultat commercial/);
     expect(gestion).toMatch(/file-demandes-a-traiter/);
     expect(gestion).toMatch(/Demandes à traiter/);
     expect(gestion).toMatch(/boutonTraiter\(r\)/);
@@ -182,6 +183,16 @@ describe("libellés", () => {
     expect(gestion).not.toMatch(/GESTION_KPI_CARDS/);
     expect(gestion).not.toMatch(/mes-decision-a-renseigner/);
     expect(gestion).not.toMatch(/Décision client à renseigner/);
+  });
+
+  it("Suivi de l'équipe : 3e onglet, filtre gestionnaire côté serveur, consultation seule", () => {
+    const gestion = src("pages/GestionReponsesOffres.js");
+    expect(gestion).toMatch(/\{ id: "equipe", label: "Suivi de l'équipe" \}/);
+    expect(gestion).toMatch(/Tous les gestionnaires/);
+    expect(gestion).toMatch(/\/demandes-offres\/gestionnaires/);
+    expect(gestion).toMatch(/scope = \{ perimetre: "equipe" \}/);
+    expect(gestion).toMatch(/scope\.gestionnaire = gestionnaireEquipe/);
+    expect(gestion).toMatch(/canProcess && !equipe \?/);
   });
 });
 

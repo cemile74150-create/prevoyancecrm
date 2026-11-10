@@ -1463,14 +1463,28 @@ def attach_demandes_offres_routes(
             raise HTTPException(status_code=404, detail="Type de formulaire inconnu")
         return schema
 
+    def perimetre_code(perimetre: Optional[str]) -> Optional[str]:
+        code = (perimetre or "").strip().lower()
+        return code if code in {"personnel", "equipe"} else None
+
     def pilotage_scope_clauses(user: User, perimetre: Optional[str], gestionnaire: Optional[str]) -> list[dict]:
-        """Périmètre personnel (dossiers attribués au gestionnaire connecté) et filtre gestionnaire."""
-        from demandes_offres_pilotage import NON_ATTRIBUE_ID, non_attribuee_filter
+        """Périmètres « personnel » (mes dossiers) et « equipe » (dossiers attribués, lecture seule).
+
+        « equipe » est ouvert aux gestionnaires d'offres, comme « personnel » :
+        il ne retient que les dossiers attribués, éventuellement à un seul
+        gestionnaire. Les écritures sur le dossier d'un collègue restent
+        refusées par ``refus_ecriture_gestion``.
+        """
+        from demandes_offres_pilotage import NON_ATTRIBUE_ID, attribuee_filter, non_attribuee_filter
 
         clauses: list[dict] = []
-        if (perimetre or "").strip().lower() == "personnel":
+        code = perimetre_code(perimetre)
+        if code:
             require_perm(user, PERM_DEMANDES_OFFRES_PROCESS, detail="Réservé aux gestionnaires d'offres")
+        if code == "personnel":
             clauses.append({"gestionnaire_id": str(user.account_id or "")})
+        elif code == "equipe":
+            clauses.append(attribuee_filter())
         wanted = (gestionnaire or "").strip()
         if wanted and wanted != "all":
             clauses.append(non_attribuee_filter() if wanted == NON_ATTRIBUE_ID else {"gestionnaire_id": wanted})
@@ -1520,8 +1534,12 @@ def attach_demandes_offres_routes(
         rows, period_meta = filter_rows_by_period(
             rows, periode=periode, date_de=date_de, date_a=date_a
         )
+        if perimetre_code(perimetre) == "equipe":
+            from demandes_offres_pilotage import dans_pilotage
+
+            rows = [row for row in rows if dans_pilotage(row)]
         result = compute_stats(rows, period_meta=period_meta)
-        result["perimetre"] = "personnel" if (perimetre or "").strip().lower() == "personnel" else "global"
+        result["perimetre"] = perimetre_code(perimetre) or "global"
         return result
 
     @api_router.get("/demandes-offres/pilotage")
@@ -1536,15 +1554,17 @@ def attach_demandes_offres_routes(
         date_a: Optional[str] = Query(None),
         user: User = Depends(current_user_dependency),
     ):
-        """Indicateurs du service (global) ou du gestionnaire connecté (personnel).
+        """Indicateurs du service (global), du gestionnaire connecté (personnel)
+        ou des dossiers attribués à l'équipe (equipe, filtre ``gestionnaire``).
 
-        Même calcul (compute_pilotage) pour les deux périmètres. Un agent ne
+        Même calcul (compute_pilotage) pour tous les périmètres. Un agent ne
         voit que ses propres demandes, via la requête de base habituelle.
         """
         from demandes_offres_pilotage import compute_pilotage, peut_reattribuer, peut_sattribuer
 
-        personnel = (perimetre or "").strip().lower() == "personnel"
-        clauses = pilotage_scope_clauses(user, "personnel" if personnel else None, gestionnaire)
+        code = perimetre_code(perimetre)
+        personnel = code == "personnel"
+        clauses = pilotage_scope_clauses(user, code, gestionnaire)
         if form_type and form_type != "all":
             clauses.append({"form_type": form_type})
         if compagnie and compagnie != "all":
@@ -1568,7 +1588,7 @@ def attach_demandes_offres_routes(
         result = compute_pilotage(rows, gestionnaires=gestionnaires)
         if not global_view or personnel:
             result["gestionnaires"] = []
-        result["perimetre"] = "personnel" if personnel else ("global" if global_view else "agent")
+        result["perimetre"] = code or ("global" if global_view else "agent")
         result["periode"] = period_meta
         result["viewer"] = {
             "account_id": user.account_id,
@@ -1600,8 +1620,8 @@ def attach_demandes_offres_routes(
         from demandes_offres_3p import period_bounds
         from demandes_offres_pilotage import compute_stats_mensuelles
 
-        personnel = (perimetre or "").strip().lower() == "personnel"
-        clauses = pilotage_scope_clauses(user, "personnel" if personnel else None, gestionnaire)
+        code = perimetre_code(perimetre)
+        clauses = pilotage_scope_clauses(user, code, gestionnaire)
         if form_type and form_type != "all":
             clauses.append({"form_type": form_type})
         if compagnie and compagnie != "all":
@@ -1619,7 +1639,7 @@ def attach_demandes_offres_routes(
             raise HTTPException(status_code=422, detail="Dates de période invalides") from exc
         result = compute_stats_mensuelles(rows, nb_mois=mois, debut=debut, fin=fin)
         result["periode"] = {"periode": norm, "debut": debut, "fin": fin}
-        result["perimetre"] = "personnel" if personnel else ("global" if can_view_all_offres(user) else "agent")
+        result["perimetre"] = code or ("global" if can_view_all_offres(user) else "agent")
         return result
 
     @api_router.get("/demandes-offres/gestionnaires")
@@ -1835,7 +1855,7 @@ def attach_demandes_offres_routes(
             rows = filter_urgente(rows, True)
         if rdv_a_venir is True:
             rows = filter_rdv_a_venir(rows, True)
-        if (gestionnaire or "").strip() not in {"", "all"}:
+        if (gestionnaire or "").strip() not in {"", "all"} or perimetre_code(perimetre) == "equipe":
             from demandes_offres_pilotage import dans_pilotage
 
             rows = [row for row in rows if dans_pilotage(row)]

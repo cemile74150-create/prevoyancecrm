@@ -529,6 +529,41 @@ def test_espace_personnel_ne_montre_que_mes_dossiers(monkeypatch):
     assert _status(exc) == 403
 
 
+def test_suivi_equipe_ne_montre_que_les_dossiers_attribues(monkeypatch):
+    h = Harness(_jeu_de_dossiers(), monkeypatch)
+    avant = copy.deepcopy(h.db[COLLECTION].docs)
+    attribues = ["d-0102", "d-0103", "d-0104", "d-0105", "d-0106", "d-0108", "d-0109"]
+    assert sorted(r["id"] for r in h.liste(G1, perimetre="equipe")) == attribues
+    tous = h.pilotage(G1, perimetre="equipe")
+    assert tous["perimetre"] == "equipe"
+    assert tous["indicateurs"]["soumises"] == 7
+    assert tous["indicateurs"]["non_attribuees"] == 0
+
+    collegue = h.liste(G1, perimetre="equipe", gestionnaire=G2.account_id)
+    assert sorted(r["id"] for r in collegue) == ["d-0104", "d-0105", "d-0108"]
+    assert all(not r["can_attribuer"] for r in collegue)
+    pil = h.pilotage(G1, perimetre="equipe", gestionnaire=G2.account_id)
+    counts = {t["code"]: t["count"] for t in pil["traitement"]}
+    assert pil["indicateurs"]["soumises"] == 3
+    assert counts["attente_compagnie"] == 1 and counts["offres_partielles"] == 1
+    assert pil["indicateurs"]["commercial:non_signee"] == 1
+    perso_g2 = h.pilotage(G2, perimetre="personnel")
+    assert pil["indicateurs"] == perso_g2["indicateurs"]
+    assert pil["traitement"] == perso_g2["traitement"]
+    stats = h.call("GET", "/demandes-offres/stats", user=G1, perimetre="equipe", gestionnaire=G2.account_id)
+    assert stats["perimetre"] == "equipe"
+    assert h.liste(G1, perimetre="equipe", gestionnaire="non_attribue") == []
+    assert h.db[COLLECTION].docs == avant
+
+    for user in (AGENT, AUTRE_AGENT):
+        with pytest.raises(HTTPException) as exc:
+            h.liste(user, perimetre="equipe")
+        assert _status(exc) == 403
+        with pytest.raises(HTTPException) as exc:
+            h.pilotage(user, perimetre="equipe", gestionnaire=G1.account_id)
+        assert _status(exc) == 403
+
+
 def test_six_compteurs_traitement_et_cartes_globales(monkeypatch):
     h = Harness(_jeu_de_dossiers(), monkeypatch)
     data = h.pilotage(G1)

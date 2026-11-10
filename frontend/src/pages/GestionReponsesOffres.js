@@ -162,6 +162,10 @@ export default function GestionReponsesOffres() {
   const [indicateur, setIndicateur] = useState(null);
   const [pilotage, setPilotage] = useState(null);
   const [nbAAttribuer, setNbAAttribuer] = useState(0);
+  const [gestionnaires, setGestionnaires] = useState([]);
+  const [gestionnaireEquipe, setGestionnaireEquipe] = useState("all");
+  const equipe = espace === "equipe";
+  const gestionnaireEquipeNom = gestionnaires.find((g) => g.id === gestionnaireEquipe)?.nom;
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 250);
@@ -183,6 +187,13 @@ export default function GestionReponsesOffres() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!canProcess) return;
+    api.get("/demandes-offres/gestionnaires")
+      .then((res) => setGestionnaires(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setGestionnaires([]));
+  }, [canProcess]);
 
   const loadNotifs = useCallback(async () => {
     try {
@@ -222,8 +233,15 @@ export default function GestionReponsesOffres() {
 
       const statsParams = { periode: periode && periode !== "all" ? periode : undefined };
       if (conseiller !== "all") statsParams.conseiller = conseiller;
-      // Espace personnel : mes dossiers attribués, ou les demandes encore à prendre en charge.
-      const scope = espace === "a_attribuer" ? { gestionnaire: NON_ATTRIBUE } : { perimetre: "personnel" };
+      // Espace personnel : mes dossiers attribués, les demandes encore à prendre en charge,
+      // ou les dossiers attribués à l'équipe (consultation, filtre gestionnaire côté serveur).
+      let scope = { perimetre: "personnel" };
+      if (espace === "a_attribuer") scope = { gestionnaire: NON_ATTRIBUE };
+      if (espace === "equipe") {
+        scope = { perimetre: "equipe" };
+        if (gestionnaireEquipe !== "all") scope.gestionnaire = gestionnaireEquipe;
+      }
+      const pilotageScope = espace === "equipe" ? scope : { perimetre: "personnel" };
       if (canProcess) Object.assign(params, scope);
       if (indicateur) params.indicateur = indicateur;
 
@@ -237,7 +255,7 @@ export default function GestionReponsesOffres() {
         api.get("/demandes-offres/stats/erreurs-agent", { params: statsParams }).catch(() => ({ data: null })),
         loadNotifs(),
         canProcess
-          ? api.get("/demandes-offres/pilotage", { params: { ...statsParams, perimetre: "personnel" } }).catch(() => ({ data: null }))
+          ? api.get("/demandes-offres/pilotage", { params: { ...statsParams, ...pilotageScope } }).catch(() => ({ data: null }))
           : Promise.resolve({ data: null }),
         canProcess
           ? api.get("/demandes-offres/pilotage", { params: statsParams }).catch(() => ({ data: null }))
@@ -258,7 +276,7 @@ export default function GestionReponsesOffres() {
     } finally {
       setLoading(false);
     }
-  }, [qDebounced, conseiller, compagnie, formType, priorite, periode, categorie, enRetard, dayAction, origine, tri, loadNotifs, espace, indicateur, canProcess]);
+  }, [qDebounced, conseiller, compagnie, formType, priorite, periode, categorie, enRetard, dayAction, origine, tri, loadNotifs, espace, indicateur, canProcess, gestionnaireEquipe]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -271,6 +289,16 @@ export default function GestionReponsesOffres() {
     setEnRetard(false);
     setTab("file");
   };
+
+  // Les indicateurs du suivi d'équipe filtrent sur place ; ailleurs ils ramènent à Mes dossiers.
+  const applyIndicateurEspace = (tag) => {
+    if (!equipe) setEspace("mes_dossiers");
+    applyIndicateur(tag);
+  };
+
+  const indicateursTitre = equipe
+    ? `Indicateurs ${gestionnaireEquipeNom ? `de ${gestionnaireEquipeNom}` : "de l'équipe"}`
+    : "Mes indicateurs";
 
   const openFiche = useCallback((id) => {
     if (!id) return;
@@ -439,6 +467,7 @@ export default function GestionReponsesOffres() {
               {[
                 { id: "mes_dossiers", label: "Mes dossiers" },
                 { id: "a_attribuer", label: `Demandes non attribuées (${nbAAttribuer})` },
+                { id: "equipe", label: "Suivi de l'équipe" },
               ].map((item) => (
                 <button
                   key={item.id}
@@ -455,10 +484,24 @@ export default function GestionReponsesOffres() {
                 </button>
               ))}
             </div>
+            {equipe && (
+              <label className="flex items-center gap-2 text-xs text-slate-600">
+                Gestionnaire
+                <Select value={gestionnaireEquipe} onValueChange={(v) => { setGestionnaireEquipe(v); setIndicateur(null); }}>
+                  <SelectTrigger className="h-8 w-[220px]" data-testid="equipe-gestionnaire"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les gestionnaires</SelectItem>
+                    {gestionnaires.map((g) => <SelectItem key={g.id} value={g.id}>{g.nom}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </label>
+            )}
             <p className="text-xs text-slate-500">
               {espace === "mes_dossiers"
                 ? "Seuls les dossiers qui vous sont attribués. Les compteurs ci-dessous portent sur ces dossiers."
-                : "Demandes soumises sans gestionnaire : « M'attribuer » pour prendre un dossier en charge."}
+                : equipe
+                  ? "Consultation des dossiers attribués. Les compteurs portent sur le gestionnaire choisi ; l'attribution n'est jamais modifiée ici."
+                  : "Demandes soumises sans gestionnaire : « M'attribuer » pour prendre un dossier en charge."}
             </p>
             <button
               type="button"
@@ -471,7 +514,7 @@ export default function GestionReponsesOffres() {
           {pilotage && (
             <div className="space-y-2">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Mes indicateurs — avancement du traitement
+                {indicateursTitre} — avancement du traitement
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
                 {(pilotage.traitement || []).map((t) => (
@@ -479,7 +522,7 @@ export default function GestionReponsesOffres() {
                     key={t.code}
                     type="button"
                     data-testid={`mes-traitement-${t.code}`}
-                    onClick={() => { setEspace("mes_dossiers"); applyIndicateur(t.tag); }}
+                    onClick={() => applyIndicateurEspace(t.tag)}
                     className={`rounded-lg border px-3 py-2 text-left ${TRAITEMENT_STYLE[t.code] || ""} ${
                       indicateur === t.tag ? "ring-2 ring-[#002FA7] ring-offset-1" : ""
                     }`}
@@ -490,7 +533,7 @@ export default function GestionReponsesOffres() {
                 ))}
               </div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 pt-1">
-                Mes indicateurs — résultat commercial
+                {indicateursTitre} — résultat commercial
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
                 {CARTES_COMMERCIALES.map((c) => (
@@ -498,7 +541,7 @@ export default function GestionReponsesOffres() {
                     key={c.tag}
                     type="button"
                     data-testid={`mes-commercial-${c.tag.replace(":", "-")}`}
-                    onClick={() => { setEspace("mes_dossiers"); applyIndicateur(c.tag); }}
+                    onClick={() => applyIndicateurEspace(c.tag)}
                     className={`rounded-lg border border-slate-200 bg-white px-3 py-2 text-left ${
                       indicateur === c.tag ? "ring-2 ring-[#002FA7] ring-offset-1" : ""
                     }`}
@@ -521,7 +564,9 @@ export default function GestionReponsesOffres() {
           <Card className="p-3 border-slate-200">
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <ClipboardList className="h-4 w-4" style={{ color: ACCENT }} />
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Mes actions du jour</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                {equipe ? "Actions à suivre" : "Mes actions du jour"}
+              </p>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
               {DAY_ACTIONS.map(({ id, label, icon: Icon, tone }) => {
@@ -742,7 +787,9 @@ export default function GestionReponsesOffres() {
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   {espace === "a_attribuer"
                     ? "Prenez un dossier en charge avec « M'attribuer » — il apparaîtra ensuite dans Mes dossiers."
-                    : "Dossiers qui vous sont attribués. Le bouton suit le statut de traitement (Traiter, En cours, Attente compagnie…)."}
+                    : equipe
+                      ? `Dossiers attribués à ${gestionnaireEquipeNom || "l'équipe"} — consultation.`
+                      : "Dossiers qui vous sont attribués. Le bouton suit le statut de traitement (Traiter, En cours, Attente compagnie…)."}
                 </p>
               </div>
             </div>
@@ -767,7 +814,9 @@ export default function GestionReponsesOffres() {
                       <td colSpan={FILE_HEADERS.length} className="px-3 py-12 text-center text-slate-400">
                         {espace === "a_attribuer"
                           ? "Aucune demande non attribuée."
-                          : "Aucune demande à traiter. Attribuez-vous un dossier depuis l'onglet Demandes non attribuées."}
+                          : equipe
+                            ? "Aucun dossier attribué pour ce gestionnaire."
+                            : "Aucune demande à traiter. Attribuez-vous un dossier depuis l'onglet Demandes non attribuées."}
                       </td>
                     </tr>
                   ) : (
@@ -819,6 +868,11 @@ export default function GestionReponsesOffres() {
                             <span className="block text-[11px] text-slate-500 font-normal mt-0.5">
                               Soumission : {r.date_envoi ? formatDateFr(r.date_envoi) : "—"}
                             </span>
+                            {equipe && r.gestionnaire_nom ? (
+                              <span className="block text-[11px] font-medium text-[#002FA7] mt-0.5" data-testid="file-gestionnaire">
+                                Gestionnaire : {r.gestionnaire_nom}
+                              </span>
+                            ) : null}
                             {demandeOrigineKey(r.demande_origine) === "attribuee" && (
                               <span
                                 className={`inline-flex mt-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${DEMANDE_ORIGINE_STYLE.attribuee}`}
@@ -852,7 +906,7 @@ export default function GestionReponsesOffres() {
                             <CommercialBadge row={r} />
                           </td>
                           <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                            {canProcess ? (
+                            {canProcess && !equipe ? (
                               <label
                                 className="inline-flex items-center gap-1.5 text-xs cursor-pointer"
                                 title={soumisCompagnieLabel(r.soumis_compagnie)}
@@ -961,6 +1015,9 @@ export default function GestionReponsesOffres() {
                         >
                           <p className="text-sm font-semibold text-slate-900 truncate">{clientLabel(r)}</p>
                           <p className="text-[11px] text-slate-500 truncate mt-0.5">{r.agent_label || "—"}</p>
+                          {equipe && r.gestionnaire_nom ? (
+                            <p className="text-[11px] font-medium text-[#002FA7] truncate mt-0.5">Gestionnaire : {r.gestionnaire_nom}</p>
+                          ) : null}
                           <p className="text-[11px] text-slate-500 mt-0.5">Soumission : {r.date_envoi ? formatDateFr(r.date_envoi) : "—"}</p>
                           <RdvClient row={r} />
                           <p className="text-[11px] text-slate-600 truncate mt-1">{typeLabel(r)}</p>
