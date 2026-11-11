@@ -106,6 +106,13 @@ export function ComparatifRentesApp({
     setFolderNote(null);
   }
 
+  /** Affichage / PDF seulement : ne force pas un nouveau calcul. */
+  function setInclureImpotFortune(checked: boolean) {
+    setInput((prev) => ({ ...prev, inclureImpotFortune: checked }));
+    setResults((prev) => (prev ? { ...prev, inclureImpotFortune: checked } : prev));
+    setFolderNote(null);
+  }
+
   function onEtatCivil(v: EtatCivil) {
     if (v === "Marié(e)") {
       patchInput({
@@ -148,10 +155,22 @@ export function ComparatifRentesApp({
     }
   }
 
+  /** Persiste la case fortune sans effacer le tableau calculé. */
+  async function persistDisplayOptions() {
+    const res = await api.put(`/comparatifs-rentes/${initialRecord.id}`, {
+      input,
+      autosave: true,
+    });
+    setInput(res.data.input);
+    if (res.data.results) setResults(res.data.results);
+    onSaved?.();
+  }
+
   async function downloadPdf() {
     setPending(true);
     setError(null);
     try {
+      await persistDisplayOptions();
       const res = await api.get(`/comparatifs-rentes/${initialRecord.id}/pdf`, {
         responseType: "blob",
       });
@@ -182,6 +201,7 @@ export function ComparatifRentesApp({
     setError(null);
     setFolderNote(null);
     try {
+      await persistDisplayOptions();
       await api.post(`/comparatifs-rentes/${initialRecord.id}/enregistrer-dossier`);
       setFolderNote("Le PDF est dans le dossier du client, rubrique Analyse de prévoyance.");
     } catch (err) {
@@ -209,6 +229,7 @@ export function ComparatifRentesApp({
 
   const columns = results?.columns || [];
   const yearCount = results?.anneesAffichees || 0;
+  const inclureImpotFortune = input.inclureImpotFortune !== false;
   const fortuneDurations = columns
     .map((col) => col.dureeFortune)
     .filter((value) => value != null);
@@ -623,7 +644,17 @@ export function ComparatifRentesApp({
 
         {columns.length > 0 && (
           <section className="space-y-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6">
-            <h2 className="text-lg font-semibold tracking-wide">COMPARATIF DES RENTES</h2>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <h2 className="text-lg font-semibold tracking-wide">COMPARATIF DES RENTES</h2>
+              <label className="flex items-center gap-2 text-sm" data-testid="comparatif-inclure-impot-fortune">
+                <input
+                  type="checkbox"
+                  checked={inclureImpotFortune}
+                  onChange={(e) => setInclureImpotFortune(e.target.checked)}
+                />
+                Inclure l&apos;impôt sur la fortune
+              </label>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-sm" data-testid="comparatif-rentes-table">
                 <thead>
@@ -683,59 +714,96 @@ export function ComparatifRentesApp({
                     tone="net"
                     cell={(col) => money(col.revenuNet)}
                   />
+                  {inclureImpotFortune ? (
+                    <>
+                      <DataRow
+                        label={totalLabel}
+                        columns={columns}
+                        tone="net"
+                        testId="comparatif-fortune-total"
+                        cell={(col) => {
+                          if (col.totalImpotFortune == null) return "—";
+                          const amount = money(col.totalImpotFortune);
+                          if (uniqueDurations.length !== 1 && col.dureeFortune) {
+                            return `${amount} (sur ${col.dureeFortune} ans)`;
+                          }
+                          return amount;
+                        }}
+                      />
+                      <DataRow
+                        label="Impôt fortune si capital non affecté"
+                        columns={columns}
+                        testId="comparatif-fortune-non-affectee"
+                        cell={(col) => money(col.impotFortuneSiNonAffecte)}
+                      />
+                    </>
+                  ) : null}
+                  <SectionRow label="Gain sur la durée" span={columns.length} />
                   <DataRow
-                    label={totalLabel}
+                    label="Revenus nets cumulés"
+                    columns={columns}
+                    testId="comparatif-revenus-cumules"
+                    cell={(col) => money(col.revenusNetsCumules)}
+                  />
+                  <DataRow
+                    label="Capital initial investi"
+                    columns={columns}
+                    cell={(col) =>
+                      col.dureeAnnees != null && col.dureeAnnees > 0
+                        ? money(col.capitalPlace)
+                        : "—"
+                    }
+                  />
+                  <DataRow
+                    label="Capital résiduel (fin de période)"
+                    columns={columns}
+                    testId="comparatif-capital-residuel"
+                    cell={(col) => money(col.capitalResiduel)}
+                  />
+                  <DataRow
+                    label="Gain ou perte"
                     columns={columns}
                     tone="net"
-                    testId="comparatif-fortune-total"
-                    cell={(col) => {
-                      if (col.totalImpotFortune == null) return "—";
-                      const amount = money(col.totalImpotFortune);
-                      if (uniqueDurations.length !== 1 && col.dureeFortune) {
-                        return `${amount} (sur ${col.dureeFortune} ans)`;
-                      }
-                      return amount;
-                    }}
+                    testId="comparatif-gain-net"
+                    cell={(col) => money(col.gainNet)}
                   />
-                  <DataRow
-                    label="Impôt fortune si capital non affecté"
-                    columns={columns}
-                    testId="comparatif-fortune-non-affectee"
-                    cell={(col) => money(col.impotFortuneSiNonAffecte)}
-                  />
-                  <SectionRow label="Détail de la fortune décroissante" span={columns.length} />
-                  {yearCount === 0 ? (
-                    <tr>
-                      <td className="border border-slate-200 px-3 py-2 text-slate-600" colSpan={columns.length + 1}>
-                        Rente viagère, ou rente certaine sans durée : pas de calendrier de fortune.
-                      </td>
-                    </tr>
-                  ) : (
-                    Array.from({ length: yearCount }, (_, index) => {
-                      const annee = index + 1;
-                      return (
-                        <tr key={annee} data-testid={`comparatif-fortune-annee-${annee}`}>
-                          <td className="border border-slate-200 px-3 py-2">Année {annee}</td>
-                          {columns.map((col) => {
-                            const row = col.fortuneAnnees?.find((item) => item.annee === annee);
-                            const recommended = col.recommander ? "bg-emerald-50" : "";
-                            return (
-                              <td key={col.id} className={`border border-slate-200 px-3 py-2 text-right tabular-nums ${recommended}`}>
-                                {row ? (
-                                  <div>
-                                    <div>{money(row.fortune)}</div>
-                                    <div className="text-xs text-slate-600">
-                                      impôt {money(row.impotFortune)}
-                                    </div>
-                                  </div>
-                                ) : "—"}
-                              </td>
-                            );
-                          })}
+                  {inclureImpotFortune ? (
+                    <>
+                      <SectionRow label="Détail de la fortune décroissante" span={columns.length} />
+                      {yearCount === 0 ? (
+                        <tr>
+                          <td className="border border-slate-200 px-3 py-2 text-slate-600" colSpan={columns.length + 1}>
+                            Rente viagère, ou rente certaine sans durée : pas de calendrier de fortune.
+                          </td>
                         </tr>
-                      );
-                    })
-                  )}
+                      ) : (
+                        Array.from({ length: yearCount }, (_, index) => {
+                          const annee = index + 1;
+                          return (
+                            <tr key={annee} data-testid={`comparatif-fortune-annee-${annee}`}>
+                              <td className="border border-slate-200 px-3 py-2">Année {annee}</td>
+                              {columns.map((col) => {
+                                const row = col.fortuneAnnees?.find((item) => item.annee === annee);
+                                const recommended = col.recommander ? "bg-emerald-50" : "";
+                                return (
+                                  <td key={col.id} className={`border border-slate-200 px-3 py-2 text-right tabular-nums ${recommended}`}>
+                                    {row ? (
+                                      <div>
+                                        <div>{money(row.fortune)}</div>
+                                        <div className="text-xs text-slate-600">
+                                          impôt {money(row.impotFortune)}
+                                        </div>
+                                      </div>
+                                    ) : "—"}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </>
+                  ) : null}
                 </tbody>
               </table>
             </div>
@@ -745,9 +813,12 @@ export function ComparatifRentesApp({
             <p className="text-xs text-slate-600">
               L&apos;impôt de la rente est annuel. Il n&apos;est pas multiplié par la durée.
               Les revenus ajoutés avec + (AVS, rente LPP, autre) entrent dans cet impôt.
-              Le total d&apos;impôt sur la fortune est la somme des impôts sur le capital qui diminue chaque année de la rente garantie, sans descendre sous 0.
-              La dernière ligne est l&apos;impôt sur la fortune de ce capital s&apos;il n&apos;est pas affecté à la rente : même fortune chaque année, impôt d&apos;une année × durée.
-              Sans durée, les deux impôts sur la fortune restent vides.
+              Gain ou perte = revenus nets cumulés + capital résiduel − capital initial
+              (le résiduel est le capital restant après rente garantie × durée, plancher 0).
+              {inclureImpotFortune
+                ? " Le total d'impôt sur la fortune est la somme des impôts sur le capital qui diminue chaque année de la rente garantie, sans descendre sous 0. L'impôt fortune si capital non affecté garde le capital constant : impôt d'une année × durée."
+                : " Les lignes d'impôt sur la fortune sont masquées."}
+              {" "}Sans durée, gain et impôts fortune restent vides.
             </p>
           </section>
         )}

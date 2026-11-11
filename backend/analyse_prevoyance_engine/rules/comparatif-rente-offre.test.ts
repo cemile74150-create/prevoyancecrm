@@ -4,8 +4,10 @@ import { revenuFiscalImposable } from "./rente-hypotheses.ts";
 import {
   assietteOffreComparatif,
   fortunesDecroissantes,
+  capitalResiduelOffre,
   gainNetOffre,
   impotFortuneCapitalNonAffecte,
+  revenusNetsCumulesOffre,
   impotRevenuPourPdf,
   revenuEncaisseOffre,
   totalImpotFortune,
@@ -125,9 +127,29 @@ describe("impôt de la rente sur le PDF", () => {
 });
 
 describe("gain net et fortune non affectée", () => {
-  it("gain net = revenu net annuel × durée − capital affecté", () => {
+  it("capital résiduel = max(0, capital − rente garantie × durée)", () => {
+    assert.equal(capitalResiduelOffre(130_000, 6_001, 20), 9_980);
+    assert.equal(capitalResiduelOffre(10_000, 6_000, 5), 0);
+    assert.equal(capitalResiduelOffre(400_000, 10_000, 10), 300_000);
+    assert.equal(capitalResiduelOffre(130_000, 6_001, null), null);
+    assert.equal(capitalResiduelOffre(130_000, 6_001, 0), null);
+  });
+
+  it("revenus nets cumulés = revenu net annuel × durée", () => {
+    assert.equal(revenusNetsCumulesOffre(7_621.06, 20), 152_421.2);
+    assert.equal(revenusNetsCumulesOffre(10_000, 10), 100_000);
+    assert.equal(revenusNetsCumulesOffre(null, 20), null);
+    assert.equal(revenusNetsCumulesOffre(10_000, 0), null);
+  });
+
+  it("gain = revenus cumulés + capital résiduel − capital initial", () => {
+    // Sans résiduel (défaut 0) : revenus × durée − capital
     assert.equal(gainNetOffre(7621.06, 20, 130_000), 22_421.2);
     assert.equal(gainNetOffre(10_000, 10, 400_000), -300_000);
+    // Avec résiduel 9980 : 152421.2 + 9980 − 130000
+    assert.equal(gainNetOffre(7621.06, 20, 130_000, 9_980), 32_401.2);
+    // Capital entièrement consommé : résiduel 0
+    assert.equal(gainNetOffre(10_000, 5, 10_000, 0), 40_000);
     assert.equal(gainNetOffre(10_000, null, 400_000), null);
     assert.equal(gainNetOffre(null, 20, 130_000), null);
     assert.equal(gainNetOffre(10_000, 0, 400_000), null);

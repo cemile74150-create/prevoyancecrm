@@ -2,8 +2,8 @@
  * PDF du comparatif d'offres.
  * Même mise en page que pageComparatifDesRentes (en-tête, titre, tableau .compare).
  * L'impôt de la rente reste annuel.
- * Sous le revenu net : total d'impôt fortune sur la durée,
- * impôt fortune si le capital n'est pas affecté. Pas de ligne Gain net.
+ * Sous le revenu net : optionnellement les deux lignes d'impôt fortune,
+ * puis le bloc gain sur la durée (cumul, capital, résiduel, gain).
  * Les revenus ajoutés (AVS, rente LPP, autre) entrent dans l'impôt sur le revenu.
  * Pas de calendrier année par année. Pas de notes sous le tableau.
  * Le rapport d'analyse n'est pas modifié et ne reçoit pas ces lignes.
@@ -23,6 +23,11 @@ import type {
 } from "../services/ComparatifRenteOffreService";
 
 const GRAY_SOFT = "#757171";
+
+export interface RenderComparatifOffreOptions {
+  /** Défaut true (comportement historique). */
+  inclureImpotFortune?: boolean;
+}
 
 function esc(value: string): string {
   return value
@@ -47,8 +52,11 @@ function logoCompact(): string {
 export function renderComparatifOffreHtml(
   result: ComparatifRenteOffreResult,
   clientLabel = "",
+  options: RenderComparatifOffreOptions = {},
 ): string {
   const cols = result.columns || [];
+  const inclureImpotFortune =
+    options.inclureImpotFortune !== false && result.inclureImpotFortune !== false;
   const labelPct = cols.length <= 1 ? 36 : cols.length === 2 ? 28 : cols.length === 3 ? 22 : 18;
   const rest = ((100 - labelPct) / Math.max(cols.length, 1)).toFixed(2);
   const colgroup = `<colgroup><col style="width:${labelPct}%" />${cols
@@ -97,6 +105,44 @@ export function renderComparatifOffreHtml(
     ? `<p class="note">${esc(clientLabel.trim())}</p>`
     : "";
 
+  const fortuneRows = inclureImpotFortune
+    ? `${row(
+        fortuneLabel,
+        cols.map((col) => (col.totalImpotFortune == null ? "—" : esc(money(col.totalImpotFortune)))),
+        "row-net",
+      )}
+    ${row(
+      "Impôt fortune si capital non affecté",
+      cols.map((col) =>
+        col.impotFortuneSiNonAffecte == null ? "—" : esc(money(col.impotFortuneSiNonAffecte)),
+      ),
+    )}`
+    : "";
+
+  const gainRows = `
+    ${sec("Gain sur la durée")}
+    ${row(
+      "Revenus nets cumulés",
+      cols.map((col) => esc(money(col.revenusNetsCumules ?? null))),
+    )}
+    ${row(
+      "Capital initial investi",
+      cols.map((col) =>
+        col.dureeAnnees != null && col.dureeAnnees > 0
+          ? esc(money(col.capitalPlace))
+          : "—",
+      ),
+    )}
+    ${row(
+      "Capital résiduel (fin de période)",
+      cols.map((col) => esc(money(col.capitalResiduel ?? null))),
+    )}
+    ${row(
+      "Gain ou perte",
+      cols.map((col) => esc(money(col.gainNet))),
+      "row-gain",
+    )}`;
+
   const inner = `
   <div class="brand-row" style="margin-bottom:8px">
     ${logoCompact()}
@@ -141,17 +187,8 @@ export function renderComparatifOffreHtml(
       cols.map((col) => esc(money(col.revenuNet))),
       "row-net",
     )}
-    ${row(
-      fortuneLabel,
-      cols.map((col) => (col.totalImpotFortune == null ? "—" : esc(money(col.totalImpotFortune)))),
-      "row-net",
-    )}
-    ${row(
-      "Impôt fortune si capital non affecté",
-      cols.map((col) =>
-        col.impotFortuneSiNonAffecte == null ? "—" : esc(money(col.impotFortuneSiNonAffecte)),
-      ),
-    )}
+    ${fortuneRows}
+    ${gainRows}
   </table>`;
 
   return `<!DOCTYPE html>
@@ -177,7 +214,8 @@ export function analyseReportHasOffreResultatLines(): boolean {
   const source = readFileSync(new URL("./renderPrintableReportHtml.ts", import.meta.url), "utf8");
   return (
     source.includes("Impôt fortune si capital non affecté") ||
-    source.includes("Gain net") ||
+    source.includes("Gain ou perte") ||
+    source.includes("Revenus nets cumulés") ||
     source.includes(LIBELLE_IMPOT_RENTE_ANNUEL)
   );
 }

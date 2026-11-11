@@ -42,7 +42,10 @@ describe("calcul comparatif — appels ESTV isolés", () => {
     assert.equal(col.revenuEncaisse, 7743);
     assert.equal(col.impotRevenu, 174.2);
     assert.equal(col.revenuNet, 7568.8);
-    assert.equal(col.gainNet, 21_376);
+    assert.equal(col.revenusNetsCumules, 7568.8 * 20);
+    assert.equal(col.capitalResiduel, 130_000 - 6001 * 20);
+    // Gain = cumulés + résiduel − capital = 151376 + 9980 − 130000
+    assert.equal(col.gainNet, 31_356);
     assert.equal(col.impotFortuneSiNonAffecte, 26_000);
     assert.equal(col.fortuneAnnees?.length, 20);
     assert.equal(col.fortuneAnnees?.[0].fortune, 130_000);
@@ -97,10 +100,13 @@ describe("calcul comparatif — appels ESTV isolés", () => {
     assert.equal(result.columns[0].partImposable, 1_100);
     assert.equal(result.columns[0].dureeAnnees, null);
     assert.equal(result.columns[0].fortuneAnnees, null);
+    assert.equal(result.columns[0].revenusNetsCumules, null);
+    assert.equal(result.columns[0].capitalResiduel, null);
     assert.equal(result.columns[0].gainNet, null);
     assert.equal(result.columns[0].totalImpotFortune, null);
     assert.equal(result.columns[0].impotFortuneSiNonAffecte, null);
     assert.equal(result.anneesAffichees, 0);
+    assert.equal(result.inclureImpotFortune, true);
     assert.ok(calls.every((call) => call.fortune === 0));
     assert.equal(calls.length, 1);
   });
@@ -124,6 +130,8 @@ describe("calcul comparatif — appels ESTV isolés", () => {
     ];
     const result = await service.build(input);
     assert.equal(result.columns[0].impotRevenu, 80);
+    assert.equal(result.columns[0].revenusNetsCumules, null);
+    assert.equal(result.columns[0].capitalResiduel, null);
     assert.equal(result.columns[0].gainNet, null);
     assert.equal(result.columns[0].totalImpotFortune, null);
     assert.equal(result.columns[0].impotFortuneSiNonAffecte, null);
@@ -154,7 +162,10 @@ describe("calcul comparatif — appels ESTV isolés", () => {
     assert.equal(col.dureeFortune, 40);
     assert.equal(col.fortuneAnnees?.length, 40);
     assert.equal(col.revenuNet, 900);
-    assert.equal(col.gainNet, 900 * 41 - 10_000);
+    assert.equal(col.revenusNetsCumules, 900 * 41);
+    // Rente garantie 0 → le capital n'est pas consommé ; résiduel = capital.
+    assert.equal(col.capitalResiduel, 10_000);
+    assert.equal(col.gainNet, 900 * 41);
     assert.equal(col.totalImpotFortune, 4_000);
     assert.equal(col.impotFortuneSiNonAffecte, 4_100);
     assert.match(result.avertissement || "", /41 ans/);

@@ -7,11 +7,13 @@ import type { AnalyseInput, RenteHypothesisInput } from "../types";
 import { ageRetraitePersonne } from "../rules/age-retraite";
 import {
   assietteOffreComparatif,
+  capitalResiduelOffre,
   fortunesDecroissantes,
   gainNetOffre,
   impotFortuneCapitalNonAffecte,
   libelleRevenuAjoute,
   revenuEncaisseOffre,
+  revenusNetsCumulesOffre,
   totalImpotFortune,
   totalRevenusAjoutesImpot,
   type OffreRenteType,
@@ -45,7 +47,17 @@ export interface ComparatifOffreColumn {
   partImposable: number;
   impotRevenu: number | null;
   revenuNet: number | null;
-  /** Revenu net annuel × durée saisie − capital. Null sans durée. */
+  /** Revenu net annuel × durée. Null sans durée. */
+  revenusNetsCumules: number | null;
+  /**
+   * Capital restant en fin de période (après rente garantie × durée).
+   * Null sans durée. 0 si le capital est entièrement consommé.
+   */
+  capitalResiduel: number | null;
+  /**
+   * Gain économique = revenus nets cumulés + capital résiduel − capital initial.
+   * Null sans durée.
+   */
   gainNet: number | null;
   recommander: boolean;
   /** Null pour une viagère, ou une certaine sans durée. */
@@ -70,6 +82,11 @@ export interface ComparatifRenteOffreResult {
   revenusAjoutes: RevenuAjouteAffiche[];
   anneesAffichees: number;
   avertissement: string | null;
+  /**
+   * Afficher les deux lignes d'impôt fortune (total décroissant + non affecté).
+   * Défaut true si absent (comportement historique).
+   */
+  inclureImpotFortune?: boolean;
 }
 
 export interface TaxClient {
@@ -135,8 +152,15 @@ export class ComparatifRenteOffreService {
       }))
       .filter((row) => row.montant > 0);
     const extra = totalRevenusAjoutesImpot(input.revenusAjoutesImpot);
+    const inclureImpotFortune = input.inclureImpotFortune !== false;
     if (!input.taxLocationId || !hypotheses.length) {
-      return { columns: [], revenusAjoutes, anneesAffichees: 0, avertissement: null };
+      return {
+        columns: [],
+        revenusAjoutes,
+        anneesAffichees: 0,
+        avertissement: null,
+        inclureImpotFortune,
+      };
     }
 
     const married = input.etatCivil === "Marié(e)";
@@ -192,6 +216,7 @@ export class ComparatifRenteOffreService {
       revenusAjoutes,
       anneesAffichees,
       avertissement: warnings[0] || null,
+      inclureImpotFortune,
     };
   }
 
@@ -230,6 +255,8 @@ export class ComparatifRenteOffreService {
     let fortuneAnnees: FortuneAnnee[] | null = null;
     let total: number | null = null;
     let dureeFortune: number | null = null;
+    let revenusNetsCumules: number | null = null;
+    let capitalResiduel: number | null = null;
     let gainNet: number | null = null;
     let impotFortuneSiNonAffecte: number | null = null;
     if (type === "certaine" && row.dureeAnnees != null && n(row.dureeAnnees) > 0) {
@@ -253,7 +280,9 @@ export class ComparatifRenteOffreService {
       dureeFortune = duree;
       // Durée saisie du contrat, y compris au-delà du calendrier plafonné.
       // L'année 1 est déjà l'impôt ESTV sur le capital entier (revenu 0, âge de retraite).
-      gainNet = gainNetOffre(revenuNet, asked, capital);
+      revenusNetsCumules = revenusNetsCumulesOffre(revenuNet, asked);
+      capitalResiduel = capitalResiduelOffre(capital, garantie, asked);
+      gainNet = gainNetOffre(revenuNet, asked, capital, capitalResiduel);
       impotFortuneSiNonAffecte = impotFortuneCapitalNonAffecte(
         fortuneAnnees[0]?.impotFortune ?? null,
         asked,
@@ -274,6 +303,8 @@ export class ComparatifRenteOffreService {
       partImposable,
       impotRevenu,
       revenuNet,
+      revenusNetsCumules,
+      capitalResiduel,
       gainNet,
       recommander: Boolean(row.recommander),
       fortuneAnnees,

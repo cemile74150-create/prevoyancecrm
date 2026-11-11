@@ -382,6 +382,11 @@ export interface AnalyseInput {
    * Le rapport de planification ne les lit pas.
    */
   revenusAjoutesImpot?: RevenuAjouteImpot[];
+  /**
+   * Comparatif d'offres seulement. Affiche les deux lignes d'impôt fortune.
+   * Absent ou true : visibles. false : masquées (écran + PDF).
+   */
+  inclureImpotFortune?: boolean;
   /** Résumé des prestations à 65 ans, écran et PDF. Décoché : masqué. */
   afficherResumePrestationsLpp?: boolean;
   /** Prestations retraite disponibles de 60 à 65 ans, écran et PDF. Décoché : masqué. */
@@ -717,6 +722,8 @@ export function emptyAnalyseInput(): AnalyseInput {
     agePerceptionAvs: null,
     ageRetraitLpp: null,
     comparerAvecRenteLpp: false,
+    revenusAjoutesImpot: [],
+    inclureImpotFortune: true,
     afficherResumePrestationsLpp: false,
     afficherTableauAgesLpp: false,
     afficherTableauAnticipationAvs: false,

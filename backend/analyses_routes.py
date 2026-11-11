@@ -760,12 +760,24 @@ def attach_analyses_routes(
         if isinstance(saved_input, dict):
             saved_input = dict(saved_input)
             saved_input["comparerAvecRenteLpp"] = False
-        updated = {
-            "input": saved_input,
-            "results": None,
-            "status": "brouillon",
-            "updated_at": _now(),
-        }
+        # autosave : garde le tableau calculé (ex. bascule « impôt fortune » avant PDF).
+        if payload.autosave and doc.get("results"):
+            results = dict(doc.get("results") or {})
+            if isinstance(saved_input, dict):
+                results["inclureImpotFortune"] = saved_input.get("inclureImpotFortune", True) is not False
+            updated = {
+                "input": saved_input,
+                "results": results,
+                "status": doc.get("status") or "calculee",
+                "updated_at": _now(),
+            }
+        else:
+            updated = {
+                "input": saved_input,
+                "results": None,
+                "status": "brouillon",
+                "updated_at": _now(),
+            }
         await db.comparatifs_rentes.update_one({"id": comparatif_id}, {"$set": updated})
         doc.update(updated)
         return refresh_report_display_prenoms(_public(doc), client, spouse)
@@ -809,6 +821,9 @@ def attach_analyses_routes(
         doc.update(updated)
         return refresh_report_display_prenoms(_public(doc), client, spouse)
 
+    def _inclure_impot_fortune(doc: dict) -> bool:
+        return (doc.get("input") or {}).get("inclureImpotFortune", True) is not False
+
     @api_router.get("/comparatifs-rentes/{comparatif_id}/pdf")
     async def pdf_comparatif(comparatif_id: str, user: User = Depends(get_current_user)):
         doc = await _get_comparatif(comparatif_id, user)
@@ -821,7 +836,11 @@ def attach_analyses_routes(
             path = str(Path(tmp) / "comparatif-offres.pdf")
             run_engine(
                 "comparatif-rente-pdf",
-                {"results": results, "clientLabel": label},
+                {
+                    "results": results,
+                    "clientLabel": label,
+                    "inclureImpotFortune": _inclure_impot_fortune(doc),
+                },
                 pdf_path=path,
                 timeout=120,
             )
@@ -843,7 +862,11 @@ def attach_analyses_routes(
             path = str(Path(tmp) / "comparatif-offres.pdf")
             run_engine(
                 "comparatif-rente-pdf",
-                {"results": results, "clientLabel": label},
+                {
+                    "results": results,
+                    "clientLabel": label,
+                    "inclureImpotFortune": _inclure_impot_fortune(doc),
+                },
                 pdf_path=path,
                 timeout=120,
             )

@@ -53,7 +53,11 @@ async function main() {
   if (cmd === "comparatif-rente-pdf") {
     const results = body.results as ComparatifRenteOffreResult;
     if (!results?.columns?.length) throw new Error("résultats requis");
-    const html = renderComparatifOffreHtml(results, String(body.clientLabel || ""));
+    const inclureImpotFortune =
+      body.inclureImpotFortune !== false && results.inclureImpotFortune !== false;
+    const html = renderComparatifOffreHtml(results, String(body.clientLabel || ""), {
+      inclureImpotFortune,
+    });
     const outPath = process.argv[3];
     if (!outPath) {
       process.stdout.write(html);

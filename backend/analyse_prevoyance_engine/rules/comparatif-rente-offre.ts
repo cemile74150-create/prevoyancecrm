@@ -131,18 +131,52 @@ export function impotRevenuPourPdf(
 }
 
 /**
- * Gain net = revenu net annuel × durée saisie − capital affecté à la rente.
+ * Capital encore disponible en fin de période (rente certaine).
+ * Même logique que fortunesDecroissantes : chaque année retire la rente garantie,
+ * plancher à 0. Null sans durée positive.
+ */
+export function capitalResiduelOffre(
+  capitalPlace: number | null | undefined,
+  renteGarantie: number | null | undefined,
+  dureeAnnees: number | null | undefined,
+): number | null {
+  const years = Math.floor(n(Number(dureeAnnees)));
+  if (years <= 0) return null;
+  return roundMoney(Math.max(0, n(Number(capitalPlace)) - n(Number(renteGarantie)) * years));
+}
+
+/** Revenus nets cumulés = revenu net annuel × durée. Null sans durée / sans revenu net. */
+export function revenusNetsCumulesOffre(
+  revenuNetAnnuel: number | null | undefined,
+  dureeAnnees: number | null | undefined,
+): number | null {
+  if (revenuNetAnnuel == null || Number.isNaN(Number(revenuNetAnnuel))) return null;
+  const years = Math.floor(n(Number(dureeAnnees)));
+  if (years <= 0) return null;
+  return roundMoney(n(revenuNetAnnuel) * years);
+}
+
+/**
+ * Gain économique réel sur la durée :
+ *   revenus nets cumulés + capital résiduel − capital initial
+ * soit aussi (revenu net annuel × N) + résiduel − capital.
+ * Le résiduel évite de compter le capital deux fois : s'il est consommé
+ * entièrement, résiduel = 0 et Gain = revenus cumulés − capital.
  * Sans durée (viagère, ou certaine sans durée) : pas de montant.
  */
 export function gainNetOffre(
   revenuNetAnnuel: number | null | undefined,
   dureeAnnees: number | null | undefined,
   capitalPlace: number | null | undefined,
+  capitalResiduel: number | null | undefined = 0,
 ): number | null {
-  if (revenuNetAnnuel == null || Number.isNaN(Number(revenuNetAnnuel))) return null;
-  const years = Math.floor(n(Number(dureeAnnees)));
-  if (years <= 0) return null;
-  return roundMoney(n(revenuNetAnnuel) * years - n(Number(capitalPlace)));
+  const cumules = revenusNetsCumulesOffre(revenuNetAnnuel, dureeAnnees);
+  if (cumules == null) return null;
+  const residual =
+    capitalResiduel == null || Number.isNaN(Number(capitalResiduel))
+      ? 0
+      : n(Number(capitalResiduel));
+  return roundMoney(cumules + residual - n(Number(capitalPlace)));
 }
 
 /**

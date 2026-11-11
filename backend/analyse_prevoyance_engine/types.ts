@@ -431,6 +431,12 @@ export interface AnalyseInput {
    */
   revenusAjoutesImpot?: RevenuAjouteImpot[];
   /**
+   * Comparatif d'offres seulement. Affiche les deux lignes d'impôt fortune
+   * (total décroissant + capital non affecté) à l'écran et dans le PDF.
+   * Absent ou true : lignes visibles. false : lignes masquées.
+   */
+  inclureImpotFortune?: boolean;
+  /**
    * Résumé des prestations à 65 ans, à l'écran et dans le PDF.
    * Absent ou false : ce résumé est masqué. N'agit pas sur le tableau 60–65.
    */
@@ -794,6 +800,8 @@ export function emptyAnalyseInput(): AnalyseInput {
     agePerceptionAvs: null,
     ageRetraitLpp: null,
     comparerAvecRenteLpp: false,
+    revenusAjoutesImpot: [],
+    inclureImpotFortune: true,
     afficherResumePrestationsLpp: false,
     afficherTableauAgesLpp: false,
     afficherTableauAnticipationAvs: false,
