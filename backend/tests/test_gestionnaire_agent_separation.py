@@ -16,11 +16,15 @@ from access_control import (  # noqa: E402
     user_from_doc,
 )
 from demandes_offres_3p import (  # noqa: E402
+    ERREUR_FIELD_ANNULATION_OFFRE,
+    ERREUR_LABEL_ANNULATION_OFFRE,
     ERREURS_CHAMPS_CATALOG,
     build_erreur_agent_records,
     build_erreurs_checklist,
     can_follow_signature,
+    compute_erreur_stats,
     compute_erreurs_agent_stats,
+    is_non_signee_erreur_record,
     normalize_erreurs_agent_fields,
     serialize_demande,
 )
@@ -102,11 +106,79 @@ def test_compute_erreurs_agent_stats_breakdown():
     ]
     stats = compute_erreurs_agent_stats(records)
     assert stats["total"] == 4
+    assert stats["non_signees"]["total"] == 0
     jean = next(a for a in stats["by_agent"] if a["agent_id"] == "a1")
     assert jean["total"] == 3
     by_code = {f["code"]: f["count"] for f in jean["by_field"]}
     assert by_code["salaire"] == 2
     assert by_code["vehicule"] == 1
+
+
+def test_offre_non_signee_excluded_from_erreurs_stats():
+    """Les motifs « Offre non signée » ne sont pas des erreurs de saisie."""
+    records = [
+        {
+            "id": "e1",
+            "demande_id": "d1",
+            "demande_numero": "OFF-2024-0151",
+            "client": "Alessandro COLLORA",
+            "agent_label": "Cemile Demirtas",
+            "agent_id": "c1",
+            "field": "salaire",
+            "field_label": "Salaire",
+            "comment": "Montant incohérent",
+        },
+        {
+            "id": "e2",
+            "demande_id": "d2",
+            "demande_numero": "OFF-2024-0151",
+            "client": "Alessandro COLLORA",
+            "agent_label": "Cemile Demirtas",
+            "agent_id": "c1",
+            "field": ERREUR_FIELD_ANNULATION_OFFRE,
+            "field_label": ERREUR_LABEL_ANNULATION_OFFRE,
+            "comment": "Mr souhaite garder une partie en rente",
+        },
+        {
+            "id": "e3",
+            "demande_id": "d3",
+            "demande_numero": "OFF-2024-0078",
+            "client": "Benoit STEMPFEL",
+            "agent_label": "Cemile Demirtas",
+            "agent_id": "c1",
+            "field": ERREUR_FIELD_ANNULATION_OFFRE,
+            "field_label": ERREUR_LABEL_ANNULATION_OFFRE,
+            "comment": "Mr souhaite garder une partie en rente",
+        },
+    ]
+    assert is_non_signee_erreur_record(records[1]) is True
+    assert is_non_signee_erreur_record(records[0]) is False
+
+    stats = compute_erreurs_agent_stats(records)
+    assert stats["total"] == 1
+    assert stats["by_agent"][0]["total"] == 1
+    assert stats["by_agent"][0]["by_field"][0]["code"] == "salaire"
+    assert ERREUR_FIELD_ANNULATION_OFFRE not in {
+        f["code"] for f in stats["by_agent"][0]["by_field"]
+    }
+
+    ns = stats["non_signees"]
+    assert ns["total"] == 2
+    assert ns["by_agent"][0]["total"] == 2
+    assert ns["by_agent"][0]["by_field"][0]["label"] == ERREUR_LABEL_ANNULATION_OFFRE
+    assert ns["by_agent"][0]["by_field"][0]["comments"][0].startswith("Mr souhaite")
+
+    demandes = [
+        {"id": "d1", "statut": "Offre envoyée au client", "agent_label": "Cemile Demirtas", "prenom": "Alessandro"},
+        {"id": "d2", "statut": "Offre non signée", "agent_label": "Cemile Demirtas", "prenom": "Alessandro"},
+        {"id": "d3", "statut": "Offre non signée", "agent_label": "Cemile Demirtas", "prenom": "Benoit"},
+    ]
+    score = compute_erreur_stats(demandes, error_records=records)
+    agent = score["by_agent"][0]
+    assert agent["incompletes"] == 1
+    assert agent["demandes"] == 3
+    assert {e["code"] for e in agent["erreurs"]} == {"salaire"}
+    assert not any(e["code"] == ERREUR_FIELD_ANNULATION_OFFRE for e in agent["erreurs"])
 
 
 def test_serialize_hides_notes_keeps_erreurs_for_agent():

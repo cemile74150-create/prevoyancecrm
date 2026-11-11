@@ -41,7 +41,7 @@ import { CARTES_COMMERCIALES, NON_ATTRIBUE, TRAITEMENT_STYLE, boutonTraiter, tau
 import { CommercialBadge, TraitementBadge, useAttribuer } from "@/components/SuiviOffresPilotage";
 import {
   Bell, Briefcase, ClipboardList, Columns3, Eye, Filter,
-  Loader2, Search, Users, AlertTriangle, Inbox, Sparkles, Clock, BarChart3,
+  Loader2, Search, Users, AlertTriangle, Inbox, Sparkles, Clock, BarChart3, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -1138,7 +1138,7 @@ export default function GestionReponsesOffres() {
           </Card>
         )}
 
-        {/* Erreurs champ par agent (bouton Erreurs) */}
+        {/* Erreurs champ par agent (bouton Erreurs) — hors offres non signées */}
         {canProcess && (
           <Card className="border-slate-200 overflow-hidden" data-testid="erreurs-agent-stats">
             <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
@@ -1176,6 +1176,50 @@ export default function GestionReponsesOffres() {
                       </tr>
                     ))
                   )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+
+        {/* Offres non signées — motifs, distincts des erreurs de saisie */}
+        {canProcess && (erreursAgentStats?.non_signees?.total > 0) && (
+          <Card className="border-slate-200 overflow-hidden" data-testid="offres-non-signees-stats">
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
+              <XCircle className="h-4 w-4 text-slate-500" />
+              <h2 className="text-sm font-semibold text-slate-800">Offres non signées</h2>
+              <span className="text-[11px] text-slate-400">
+                Total : {erreursAgentStats.non_signees.total}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50/80 text-left text-[11px] uppercase tracking-wide text-slate-500">
+                    {["Agent", "Total", "Motifs"].map((h) => (
+                      <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(erreursAgentStats.non_signees.by_agent || []).map((a) => (
+                    <tr key={`ns-${a.agent_id || a.agent}`} className="border-t border-slate-100">
+                      <td className="px-3 py-2.5 font-medium text-slate-900">{a.agent}</td>
+                      <td className="px-3 py-2.5 tabular-nums font-semibold text-slate-700">{a.total ?? 0}</td>
+                      <td className="px-3 py-2.5 text-xs text-slate-600">
+                        {(a.by_field || []).map((f) => (
+                          <RepartitionChampErreur
+                            key={f.code}
+                            agent={a}
+                            field={f}
+                            onOpen={openFiche}
+                            variant="neutral"
+                          />
+                        ))}
+                        {!(a.by_field || []).length && "—"}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1241,11 +1285,19 @@ function ErreursRecentesCell({ erreurs, onOpen }) {
   );
 }
 
-function RepartitionChampErreur({ agent, field, onOpen }) {
+function RepartitionChampErreur({ agent, field, onOpen, variant = "error" }) {
   const dossiers = dossiersDuChamp(agent, field);
   const [open, setOpen] = useState(false);
   const label = `${field.label} : ${field.count}${(field.comments || [])[0] ? ` — ${field.comments[0]}` : ""}`;
-  const chip = "inline-flex mr-2 mb-1 rounded bg-rose-50 text-rose-900 px-2 py-0.5 text-left";
+  const neutral = variant === "neutral";
+  const chip = neutral
+    ? "inline-flex mr-2 mb-1 rounded bg-slate-100 text-slate-800 px-2 py-0.5 text-left"
+    : "inline-flex mr-2 mb-1 rounded bg-rose-50 text-rose-900 px-2 py-0.5 text-left";
+  const chipHover = neutral ? "hover:bg-slate-200 hover:underline" : "hover:bg-rose-100 hover:underline";
+  const multiBtn = neutral
+    ? "inline-flex rounded bg-slate-100 text-slate-800 px-2 py-0.5 hover:bg-slate-200"
+    : "inline-flex rounded bg-rose-50 text-rose-900 px-2 py-0.5 hover:bg-rose-100";
+  const menuBorder = neutral ? "border-slate-200" : "border-rose-100";
   if (dossiers.length <= 1) {
     const demandeId = dossiers[0]?.demande_id;
     if (!demandeId) {
@@ -1254,7 +1306,7 @@ function RepartitionChampErreur({ agent, field, onOpen }) {
     return (
       <button
         type="button"
-        className={`${chip} hover:bg-rose-100 hover:underline`}
+        className={`${chip} ${chipHover}`}
         title="Ouvrir le dossier"
         data-testid="erreur-champ-link"
         onClick={() => onOpen(demandeId)}
@@ -1267,7 +1319,7 @@ function RepartitionChampErreur({ agent, field, onOpen }) {
     <span className="inline-flex flex-col items-start mr-2 mb-1 align-top">
       <button
         type="button"
-        className="inline-flex rounded bg-rose-50 text-rose-900 px-2 py-0.5 hover:bg-rose-100"
+        className={multiBtn}
         title="Choisir le dossier"
         data-testid="erreur-champ-link"
         onClick={() => setOpen((value) => !value)}
@@ -1275,7 +1327,7 @@ function RepartitionChampErreur({ agent, field, onOpen }) {
         {label}
       </button>
       {open && (
-        <span className="mt-1 flex flex-col gap-0.5 rounded border border-rose-100 bg-white p-1 shadow-sm">
+        <span className={`mt-1 flex flex-col gap-0.5 rounded border ${menuBorder} bg-white p-1 shadow-sm`}>
           {dossiers.map((dossier) => (
             <button
               key={dossier.demande_id}

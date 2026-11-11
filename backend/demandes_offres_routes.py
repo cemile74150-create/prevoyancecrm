@@ -4764,7 +4764,8 @@ def attach_demandes_offres_routes(
     async def apply_offre_non_signee(demande_id: str, reason: str, user: User) -> dict:
         """
         Marque l'offre non signée. Ne supprime ni la demande ni ses documents.
-        Une seule erreur (motif) est rattachée au conseiller de la demande.
+        Le motif est conservé (audit / historique) mais n'est pas compté comme
+        erreur de saisie dans les stats « Erreurs sur demandes d'offres ».
         """
         motif = (reason or "").strip()
         if not motif:

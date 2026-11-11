@@ -274,6 +274,24 @@ def erreur_field_key(rec: Any) -> str:
     return str(rec.get("field") or rec.get("code") or "").strip().casefold()
 
 
+def is_non_signee_erreur_record(rec: Any) -> bool:
+    """
+    True si l'entrée est un motif d'« Offre non signée », pas une erreur de saisie.
+    Ces enregistrements restent en base pour l'audit, mais hors du bloc Erreurs.
+    """
+    if not isinstance(rec, dict):
+        return False
+    field = erreur_field_key(rec)
+    if field in {
+        str(ERREUR_FIELD_ANNULATION_OFFRE).casefold(),
+        str(FIELD_OFFRE_NON_SIGNEE).casefold(),
+        "offre_non_signee",
+    }:
+        return True
+    label = str(rec.get("field_label") or rec.get("label") or "").strip().casefold()
+    return label == str(ERREUR_LABEL_ANNULATION_OFFRE).casefold()
+
+
 def erreur_cluster_key(rec: dict, *, demande_id: Optional[str] = None) -> tuple:
     did = str(rec.get("demande_id") or demande_id or "").strip()
     return (did, erreur_field_key(rec))
@@ -429,14 +447,10 @@ def detail_erreur_retiree(rec: dict) -> str:
     return label
 
 
-def compute_erreurs_agent_stats(records: list) -> dict:
-    """
-    Agrège les erreurs champ par agent, après dédoublonnage demande + champ.
-    Retourne total + répartition par champ, plus détail tabulaire.
-    """
+def _aggregate_erreurs_agent_by_field(records: list) -> dict:
+    """Agrège une liste d'enregistrements déjà filtrés : total + répartition par champ."""
     from conseiller_identity import display_conseiller_name, merge_conseiller_display, normalize_conseiller_key
 
-    records, _removed = dedupe_erreur_records(records or [])
     by_agent: dict = {}
     for rec in records or []:
         if not isinstance(rec, dict):
@@ -503,6 +517,20 @@ def compute_erreurs_agent_stats(records: list) -> dict:
         })
     out.sort(key=lambda x: (-x["total"], x["agent"].casefold()))
     return {"by_agent": out, "total": sum(a["total"] for a in out)}
+
+
+def compute_erreurs_agent_stats(records: list) -> dict:
+    """
+    Agrège les erreurs champ par agent, après dédoublonnage demande + champ.
+    Les motifs « Offre non signée » sont exclus du total Erreurs et renvoyés
+    séparément sous ``non_signees`` (pas une erreur de saisie).
+    """
+    records, _removed = dedupe_erreur_records(records or [])
+    erreurs = [r for r in records if not is_non_signee_erreur_record(r)]
+    non_signees = [r for r in records if is_non_signee_erreur_record(r)]
+    stats = _aggregate_erreurs_agent_by_field(erreurs)
+    stats["non_signees"] = _aggregate_erreurs_agent_by_field(non_signees)
+    return stats
 
 
 def can_follow_signature(user, doc: dict) -> bool:
@@ -2559,9 +2587,8 @@ def compute_erreur_stats(rows: list, error_records: Optional[list] = None) -> di
 
     Une demande avec plusieurs champs distincts compte pour 1 incomplète
     et pour autant d'erreurs que de champs. Les brouillons sont exclus.
-    Les demandes annulées restent dans le dénominateur : l'annulation d'offre
-    est elle-même une erreur à afficher, sans compter comme dossier en cours
-    (ce filtre est dans compute_stats).
+    Les motifs « Offre non signée » ne sont pas des erreurs de saisie :
+    ils sont exclus du scoring (visibles ailleurs via statut / non_signees).
     """
     from conseiller_identity import display_conseiller_name, merge_conseiller_display, normalize_conseiller_key
 
@@ -2569,6 +2596,8 @@ def compute_erreur_stats(rows: list, error_records: Optional[list] = None) -> di
     if error_records is not None:
         kept, _removed = dedupe_erreur_records(error_records)
         for rec in kept:
+            if is_non_signee_erreur_record(rec):
+                continue
             did = str(rec.get("demande_id") or "").strip()
             if did:
                 by_demande.setdefault(did, []).append(rec)
@@ -2599,6 +2628,7 @@ def compute_erreur_stats(rows: list, error_records: Optional[list] = None) -> di
                 list(r.get("erreurs_agent") or []),
                 demande_id=r.get("id"),
             )
+            unique = [e for e in unique if not is_non_signee_erreur_record(e)]
         if not unique:
             continue
         agents[key]["incompletes"] += 1

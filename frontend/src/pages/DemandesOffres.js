@@ -805,6 +805,21 @@ export default function DemandesOffres({ mode = "conseiller" }) {
               </div>
             </Card>
           )}
+          {!canProcess && (mesErreurs?.non_signees?.total > 0) && (
+            <Card className="p-4 border-slate-200 bg-slate-50/60" data-testid="mes-offres-non-signees">
+              <p className="text-sm font-semibold text-slate-800">
+                Offres non signées : {mesErreurs.non_signees.total}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(mesErreurs.non_signees.by_agent?.[0]?.by_field || []).map((f) => (
+                  <span key={f.code} className="inline-flex rounded-md bg-white border border-slate-200 px-2 py-1 text-xs text-slate-700">
+                    {f.label} : {f.count}
+                    {(f.comments || [])[0] ? ` — ${f.comments[0]}` : ""}
+                  </span>
+                ))}
+              </div>
+            </Card>
+          )}
         </div>
 
         {/* 4. Formulaires — aérés */}
