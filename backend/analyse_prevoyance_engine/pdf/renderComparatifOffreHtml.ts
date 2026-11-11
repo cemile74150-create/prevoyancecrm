@@ -3,7 +3,8 @@
  * Même mise en page que pageComparatifDesRentes (en-tête, titre, tableau .compare).
  * L'impôt de la rente reste annuel.
  * Sous le revenu net : optionnellement les deux lignes d'impôt fortune,
- * puis le bloc gain sur la durée (cumul, capital, résiduel, gain).
+ * puis le bloc gain sur la durée (cumul, capital investi, gain).
+ * Le capital résiduel reste dans le calcul du gain, sans ligne affichée.
  * Les revenus ajoutés (AVS, rente LPP, autre) entrent dans l'impôt sur le revenu.
  * Pas de calendrier année par année. Pas de notes sous le tableau.
  * Le rapport d'analyse n'est pas modifié et ne reçoit pas ces lignes.
@@ -132,10 +133,6 @@ export function renderComparatifOffreHtml(
           ? esc(money(col.capitalPlace))
           : "—",
       ),
-    )}
-    ${row(
-      "Capital résiduel (fin de période)",
-      cols.map((col) => esc(money(col.capitalResiduel ?? null))),
     )}
     ${row(
       "Gain ou perte",

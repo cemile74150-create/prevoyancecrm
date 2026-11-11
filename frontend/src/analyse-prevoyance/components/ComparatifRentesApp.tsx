@@ -588,39 +588,53 @@ export function ComparatifRentesApp({
           </div>
         </section>
 
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={saveDraft} disabled={pending}>
-            Enregistrer la saisie
-          </Button>
-          <Button
-            type="button"
-            className="bg-[#002FA7] hover:bg-[#00248a]"
-            onClick={calculate}
-            disabled={pending || !input.taxLocationId || rows.length === 0}
-            data-testid="comparatif-calculer"
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={saveDraft} disabled={pending}>
+              Enregistrer la saisie
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#002FA7] hover:bg-[#00248a]"
+              onClick={calculate}
+              disabled={pending || !input.taxLocationId || rows.length === 0}
+              data-testid="comparatif-calculer"
+            >
+              {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+              Calculer le tableau
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={downloadPdf}
+              disabled={pending || columns.length === 0}
+              data-testid="comparatif-pdf"
+            >
+              <FileDown className="size-4" />
+              Télécharger le PDF
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={integrateFolder}
+              disabled={pending || !initialRecord.clientId || columns.length === 0}
+              data-testid="comparatif-integrer-dossier"
+            >
+              Intégrer au dossier client
+            </Button>
+          </div>
+          <label
+            className="inline-flex items-center gap-2 rounded-lg border border-[#002FA7]/35 bg-[#002FA7]/5 px-3 py-2 text-sm font-medium text-slate-900"
+            data-testid="comparatif-inclure-impot-fortune"
           >
-            {pending ? <Loader2 className="size-4 animate-spin" /> : null}
-            Calculer le tableau
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={downloadPdf}
-            disabled={pending || columns.length === 0}
-            data-testid="comparatif-pdf"
-          >
-            <FileDown className="size-4" />
-            Télécharger le PDF
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={integrateFolder}
-            disabled={pending || !initialRecord.clientId || columns.length === 0}
-            data-testid="comparatif-integrer-dossier"
-          >
-            Intégrer au dossier client
-          </Button>
+            <input
+              type="checkbox"
+              className="size-4 accent-[#002FA7]"
+              checked={inclureImpotFortune}
+              onChange={(e) => setInclureImpotFortune(e.target.checked)}
+            />
+            Inclure l&apos;impôt sur la fortune
+          </label>
         </div>
         {folderNote ? (
           <p className="text-sm text-[#255839]" data-testid="comparatif-dossier-note">{folderNote}</p>
@@ -644,17 +658,7 @@ export function ComparatifRentesApp({
 
         {columns.length > 0 && (
           <section className="space-y-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <h2 className="text-lg font-semibold tracking-wide">COMPARATIF DES RENTES</h2>
-              <label className="flex items-center gap-2 text-sm" data-testid="comparatif-inclure-impot-fortune">
-                <input
-                  type="checkbox"
-                  checked={inclureImpotFortune}
-                  onChange={(e) => setInclureImpotFortune(e.target.checked)}
-                />
-                Inclure l&apos;impôt sur la fortune
-              </label>
-            </div>
+            <h2 className="text-lg font-semibold tracking-wide">COMPARATIF DES RENTES</h2>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-sm" data-testid="comparatif-rentes-table">
                 <thead>
@@ -755,12 +759,6 @@ export function ComparatifRentesApp({
                     }
                   />
                   <DataRow
-                    label="Capital résiduel (fin de période)"
-                    columns={columns}
-                    testId="comparatif-capital-residuel"
-                    cell={(col) => money(col.capitalResiduel)}
-                  />
-                  <DataRow
                     label="Gain ou perte"
                     columns={columns}
                     tone="net"
@@ -813,8 +811,8 @@ export function ComparatifRentesApp({
             <p className="text-xs text-slate-600">
               L&apos;impôt de la rente est annuel. Il n&apos;est pas multiplié par la durée.
               Les revenus ajoutés avec + (AVS, rente LPP, autre) entrent dans cet impôt.
-              Gain ou perte = revenus nets cumulés + capital résiduel − capital initial
-              (le résiduel est le capital restant après rente garantie × durée, plancher 0).
+              Gain ou perte = revenus nets cumulés − capital initial
+              (le capital restant après rente garantie × durée, plancher 0, reste pris en compte dans le calcul sans être affiché).
               {inclureImpotFortune
                 ? " Le total d'impôt sur la fortune est la somme des impôts sur le capital qui diminue chaque année de la rente garantie, sans descendre sous 0. L'impôt fortune si capital non affecté garde le capital constant : impôt d'une année × durée."
                 : " Les lignes d'impôt sur la fortune sont masquées."}

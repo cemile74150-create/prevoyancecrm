@@ -83,11 +83,12 @@ describe("PDF comparatif d'offres — fortune optionnelle et gain", () => {
     assert.match(html, /Gain sur la durée/);
     assert.match(html, /Revenus nets cumulés/);
     assert.match(html, /Capital initial investi/);
-    assert.match(html, /Capital résiduel \(fin de période\)/);
+    assert.equal(html.includes("Capital résiduel (fin de période)"), false);
     assert.match(html, /Gain ou perte/);
     assert.match(html, /row-gain/);
     assert.ok(html.includes(formatChf(column.revenusNetsCumules)));
-    assert.ok(html.includes(formatChf(column.capitalResiduel)));
+    // Résiduel gardé dans le calcul du gain, mais plus affiché comme ligne.
+    assert.equal(html.includes(formatChf(column.capitalResiduel)), false);
     assert.ok(html.includes(formatChf(column.gainNet)));
     const revenu = html.indexOf("Revenu net");
     const fortune = html.indexOf("Total impôt fortune sur 20 ans");
