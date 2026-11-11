@@ -1,10 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import api from "@/lib/api";
+import api, { openAuthenticatedBlob } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDateTimeFr } from "@/lib/demandesOffres";
-import { Loader2, MessageSquare, Send } from "lucide-react";
+import {
+  DISCUSSION_ACCEPT,
+  canSendDiscussion,
+  mergeDiscussionFiles,
+} from "@/lib/discussionDemande";
+import { FileText, Loader2, MessageSquare, Paperclip, Send, X } from "lucide-react";
 import { toast } from "sonner";
 
 const ROLE_STYLE = {
@@ -14,16 +19,40 @@ const ROLE_STYLE = {
 
 const MARQUER_LU_APRES_MS = 3000;
 
-/** Fil agent / gestionnaire d'une demande d'offre. */
+function MessageDocs({ documents }) {
+  const list = Array.isArray(documents) ? documents.filter((d) => d?.id) : [];
+  if (!list.length) return null;
+  return (
+    <ul className="mt-2 space-y-1" data-testid="discussion-message-docs">
+      {list.map((doc) => (
+        <li key={doc.id}>
+          <button
+            type="button"
+            className="flex max-w-full items-center gap-1.5 text-left text-xs text-[#002FA7] hover:underline"
+            title="Télécharger"
+            onClick={() => openAuthenticatedBlob(`/demandes-offres/documents/${doc.id}/download`)}
+          >
+            <FileText className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{doc.original_filename || "Document"}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Fil agent / gestionnaire d'une demande d'offre (texte + pièces jointes). */
 export default function DiscussionDemande({ demandeId }) {
   const [messages, setMessages] = useState([]);
   const [nonLus, setNonLus] = useState(0);
   const [peutEcrire, setPeutEcrire] = useState(false);
   const [loading, setLoading] = useState(true);
   const [texte, setTexte] = useState("");
+  const [files, setFiles] = useState([]);
   const [erreur, setErreur] = useState("");
   const [busy, setBusy] = useState(false);
   const listRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -54,18 +83,40 @@ export default function DiscussionDemande({ demandeId }) {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [messages]);
 
+  const onPickFiles = (incoming) => {
+    const { files: next, errors } = mergeDiscussionFiles(files, incoming);
+    setFiles(next);
+    if (errors.length) {
+      toast.error(errors[0]);
+      setErreur(errors[0]);
+    } else if (erreur) {
+      setErreur("");
+    }
+  };
+
   const envoyer = async () => {
     if (busy) return;
-    if (!texte.trim()) {
-      setErreur("Le message est vide.");
+    if (!canSendDiscussion(texte, files)) {
+      setErreur("Écrivez un message ou joignez un document.");
       return;
     }
     setErreur("");
     setBusy(true);
     try {
-      const res = await api.post(`/demandes-offres/${demandeId}/messages`, { contenu: texte });
+      let res;
+      if (files.length > 0) {
+        const fd = new FormData();
+        fd.append("contenu", texte);
+        files.forEach((file) => fd.append("documents", file));
+        res = await api.post(`/demandes-offres/${demandeId}/messages`, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      } else {
+        res = await api.post(`/demandes-offres/${demandeId}/messages`, { contenu: texte });
+      }
       setMessages(res.data?.messages || []);
       setTexte("");
+      setFiles([]);
     } catch (error) {
       const detail = error?.response?.data?.detail;
       toast.error(typeof detail === "string" ? detail : "Envoi impossible");
@@ -100,6 +151,7 @@ export default function DiscussionDemande({ demandeId }) {
                   {m.expediteur_nom} · {m.expediteur_role_label}
                 </p>
                 <p className="mt-1 whitespace-pre-wrap break-words text-slate-900">{m.contenu}</p>
+                <MessageDocs documents={m.documents} />
                 <p className="mt-1 text-[10px] text-slate-500">{formatDateTimeFr(m.created_at)}</p>
               </div>
             </li>
@@ -115,9 +167,62 @@ export default function DiscussionDemande({ demandeId }) {
             placeholder="Écrire un message…"
             data-testid="discussion-saisie"
           />
+          {files.length > 0 && (
+            <ul className="space-y-1" data-testid="discussion-pj-pending">
+              {files.map((file, index) => (
+                <li
+                  key={`${file.name}-${file.size}-${index}`}
+                  className="flex items-center justify-between gap-2 rounded-md border bg-slate-50 px-2 py-1 text-xs"
+                >
+                  <span className="min-w-0 truncate flex items-center gap-1.5">
+                    <Paperclip className="h-3.5 w-3.5 shrink-0 text-[#002FA7]" />
+                    {file.name}
+                  </span>
+                  <button
+                    type="button"
+                    className="shrink-0 text-rose-700 hover:underline"
+                    onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
+                    aria-label={`Retirer ${file.name}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           {erreur && <p className="text-xs text-rose-700" data-testid="discussion-erreur">{erreur}</p>}
-          <div className="flex justify-end">
-            <Button onClick={envoyer} disabled={busy} className="bg-[#002FA7] hover:bg-[#00248a]" data-testid="discussion-envoyer">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={DISCUSSION_ACCEPT}
+                className="hidden"
+                data-testid="discussion-joindre-input"
+                onChange={(e) => {
+                  onPickFiles(Array.from(e.target.files || []));
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                className="border-slate-300"
+                data-testid="discussion-joindre"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip className="h-4 w-4 mr-2 text-[#002FA7]" />
+                Joindre
+              </Button>
+            </div>
+            <Button
+              onClick={envoyer}
+              disabled={busy || !canSendDiscussion(texte, files)}
+              className="bg-[#002FA7] hover:bg-[#00248a]"
+              data-testid="discussion-envoyer"
+            >
               {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
               Envoyer
             </Button>

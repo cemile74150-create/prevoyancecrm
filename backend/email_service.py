@@ -1728,10 +1728,11 @@ def format_fil_discussion_email(
     note: Optional[str] = None,
     author: Optional[str] = None,
     author_role: Optional[str] = None,
+    document_names: Optional[list] = None,
 ) -> Tuple[str, str, str]:
     """
     Nouveau message du fil agent ↔ gestionnaire.
-    Objet clair, aperçu du message, lien Accéder à la demande (PUBLIC_APP_URL).
+    Objet clair, aperçu du message, noms des pièces jointes, lien Accéder à la demande.
     """
     client = _offre_client_name(doc)
     numero = (doc.get("numero") or "").strip() or "—"
@@ -1745,6 +1746,12 @@ def format_fil_discussion_email(
     else:
         role_label = ""
     preview = (note or "").strip() or "—"
+    names = [
+        str(name).strip()
+        for name in (document_names or doc.get("fil_message_document_names") or [])
+        if str(name).strip()
+    ]
+    docs_line = ", ".join(names) if names else None
     url = _demande_offre_url(doc.get("id"))
     link_label = "Accéder à la demande"
     de_line = f"{who} ({role_label})" if role_label else who
@@ -1761,6 +1768,9 @@ def format_fil_discussion_email(
         "Message :",
         preview,
     ]
+    if docs_line:
+        text_lines.extend(["", f"Pièces jointes : {docs_line}"])
+        text_lines.append("Les fichiers sont disponibles sur LeoSoft (fil de discussion).")
     if url:
         text_lines.extend(["", f"{link_label} :", url])
     text_lines.extend(["", "Cordialement,", "LeoSoft"])
@@ -1779,6 +1789,11 @@ def format_fil_discussion_email(
         + html.escape(preview).replace("\n", "<br/>")
         + "</p>",
     ]
+    if docs_line:
+        html_parts.append(
+            f"<p><strong>Pièces jointes</strong> : {html.escape(docs_line)}<br/>"
+            "Les fichiers sont disponibles sur LeoSoft (fil de discussion).</p>"
+        )
     if url:
         html_parts.append(_html_button(url, link_label))
     html_parts.append("<p>Cordialement,<br/>LeoSoft</p></div>")

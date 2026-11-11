@@ -41,7 +41,6 @@ from demandes_offres_ameliorations import (  # noqa: E402
 )
 from demandes_offres_messages import COLLECTION_MESSAGES, clean_message_content  # noqa: E402
 from demandes_offres_routes import (  # noqa: E402
-    MessageDemandeRequest,
     SuiviDemandeRequest,
     UrgenceRequest,
     attach_demandes_offres_routes,
@@ -183,11 +182,21 @@ class FakeDb:
 
 
 class FakeRequest:
-    def __init__(self, items):
-        self._form = FormData(items)
+    def __init__(self, items=None, *, json_body=None):
+        self._form = FormData(items or [])
+        self._json = json_body
+        if json_body is not None:
+            self.headers = Headers({"content-type": "application/json"})
+        else:
+            self.headers = Headers({"content-type": "multipart/form-data"})
 
     async def form(self):
         return self._form
+
+    async def json(self):
+        if self._json is None:
+            raise ValueError("not json")
+        return self._json
 
 
 def _upload(name, data=b"%PDF-1.4 test", content_type="application/pdf"):
@@ -197,6 +206,17 @@ def _upload(name, data=b"%PDF-1.4 test", content_type="application/pdf"):
         size=len(data),
         headers=Headers({"content-type": content_type}),
     )
+
+
+def _message_json(contenu: str) -> FakeRequest:
+    return FakeRequest(json_body={"contenu": contenu})
+
+
+def _message_multipart(contenu: str = "", *files: UploadFile) -> FakeRequest:
+    items = [("contenu", contenu)]
+    for upload in files:
+        items.append(("documents", upload))
+    return FakeRequest(items)
 
 
 # --------------------------------------------------------------------------- fixtures
@@ -663,16 +683,16 @@ def test_agent_envoie_et_gestionnaire_repond(trois_compagnies):
         clean_message_content("   ")
     with pytest.raises(HTTPException) as exc:
         h.call("POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
-               payload=MessageDemandeRequest(contenu="  "), user=AGENT)
+               request=_message_json("  "), user=AGENT)
     assert exc.value.status_code == 422
 
     h.call("POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
-           payload=MessageDemandeRequest(contenu="Le client préfère AXA"), user=AGENT)
+           request=_message_json("Le client préfère AXA"), user=AGENT)
     vu_gestion = h.call("GET", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
                         marquer_lu=True, user=GESTION)
     assert vu_gestion["non_lus"] == 1
     h.call("POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
-           payload=MessageDemandeRequest(contenu="Bien noté, je relance AXA"), user=GESTION)
+           request=_message_json("Bien noté, je relance AXA"), user=GESTION)
 
     thread = h.call("GET", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
                     marquer_lu=True, user=AGENT)
@@ -682,6 +702,7 @@ def test_agent_envoie_et_gestionnaire_repond(trois_compagnies):
     assert second["expediteur_role"] == "gestionnaire" and second["expediteur_nom"] == "Lea Gestion"
     assert first["demande_id"] == "dem-1" and first["created_at"] <= second["created_at"]
     assert first["mine"] is True and second["mine"] is False
+    assert first["documents"] == [] and second["documents"] == []
     assert thread["non_lus"] == 1
     assert thread["peut_ecrire"] is True
     again = h.call("GET", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
@@ -717,6 +738,22 @@ def test_format_fil_discussion_email_contenu_et_lien(monkeypatch):
     assert email_service.offre_notify_role("fil_discussion_agent") == "createur"
     assert email_service.offre_notify_role("fil_discussion_gestionnaire") == "offres_mailbox"
 
+    _, text_pj, html_pj = email_service.format_fil_discussion_email(
+        {
+            "id": "dem-1",
+            "numero": "OFF-2026-0001",
+            "prenom": "Jean",
+            "nom": "Client",
+        },
+        note="(Pièce(s) jointe(s))",
+        author="Camille Durand",
+        author_role="agent",
+        document_names=["scan.pdf", "photo.png"],
+    )
+    assert "Pièces jointes : scan.pdf, photo.png" in text_pj
+    assert "scan.pdf, photo.png" in html_pj
+    assert "disponibles sur LeoSoft" in text_pj
+
 
 def test_message_envoie_email_et_cloche_sans_spammer_lexpediteur(trois_compagnies, monkeypatch):
     h = trois_compagnies
@@ -733,7 +770,7 @@ def test_message_envoie_email_et_cloche_sans_spammer_lexpediteur(trois_compagnie
 
     h.call(
         "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
-        payload=MessageDemandeRequest(contenu="Besoin d'un avis sur Zurich"), user=AGENT,
+        request=_message_json("Besoin d'un avis sur Zurich"), user=AGENT,
     )
     assert len(h.notifications("message")) == 1
     assert len(h.db[COLLECTION_MESSAGES].docs) == 1
@@ -746,7 +783,7 @@ def test_message_envoie_email_et_cloche_sans_spammer_lexpediteur(trois_compagnie
     sent.clear()
     h.call(
         "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
-        payload=MessageDemandeRequest(contenu="Je m'en occupe"), user=GESTION,
+        request=_message_json("Je m'en occupe"), user=GESTION,
     )
     assert len(h.notifications("message")) == 2
     assert len(sent) == 1
@@ -779,7 +816,7 @@ def test_message_agent_va_a_offres_meme_avec_gestionnaire_attribue(trois_compagn
 
     h.call(
         "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
-        payload=MessageDemandeRequest(contenu="Message pour Lea"), user=AGENT,
+        request=_message_json("Message pour Lea"), user=AGENT,
     )
     assert sent == [{"to": "offres@agencemendes.ch", "cc": []}]
     bell = h.notifications("message")[-1]
@@ -815,7 +852,7 @@ def test_message_dun_autre_gestionnaire_ne_copie_pas_le_gestionnaire_attribue(tr
 
     h.call(
         "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
-        payload=MessageDemandeRequest(contenu="Je reprends le dossier"), user=GESTION,
+        request=_message_json("Je reprends le dossier"), user=GESTION,
     )
     assert sent == [{"to": "camille@test.ch", "cc": []}]
     bell = h.notifications("message")[-1]
@@ -841,7 +878,7 @@ def test_message_agent_sans_attribution_va_a_offres_pas_aux_comptes_process(troi
 
     h.call(
         "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
-        payload=MessageDemandeRequest(contenu="Qui peut regarder ?"), user=AGENT,
+        request=_message_json("Qui peut regarder ?"), user=AGENT,
     )
     assert sent == [{"to": "offres@agencemendes.ch", "cc": []}]
     bell = h.notifications("message")[-1]
@@ -859,12 +896,61 @@ def test_message_poste_meme_si_smtp_indisponible(trois_compagnies, monkeypatch):
 
     out = h.call(
         "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
-        payload=MessageDemandeRequest(contenu="Toujours enregistré"), user=AGENT,
+        request=_message_json("Toujours enregistré"), user=AGENT,
     )
     assert len(h.db[COLLECTION_MESSAGES].docs) == 1
     assert h.db[COLLECTION_MESSAGES].docs[0]["contenu"] == "Toujours enregistré"
     assert out["messages"][0]["contenu"] == "Toujours enregistré"
     assert len(h.notifications("message")) == 1
+
+
+def test_message_avec_pieces_jointes_stocke_et_notifie(trois_compagnies, monkeypatch):
+    from demandes_offres_messages import CATEGORY_FIL_DISCUSSION, DEFAULT_ATTACHMENT_MESSAGE
+
+    h = trois_compagnies
+    sent = []
+
+    async def fake_send(to_email, subject, body_text, **kwargs):
+        sent.append({"to": to_email, "body": body_text})
+        return True, None
+
+    monkeypatch.setattr(email_service, "offres_email_enabled", lambda: True)
+    monkeypatch.setattr(email_service, "send_email_async", fake_send)
+    monkeypatch.setattr(email_service, "offres_email_to", lambda: "offres@agencemendes.ch")
+
+    out = h.call(
+        "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
+        request=_message_multipart("Voici le scan", _upload("scan-client.pdf")),
+        user=AGENT,
+    )
+    msg = out["messages"][0]
+    assert msg["contenu"] == "Voici le scan"
+    assert len(msg["documents"]) == 1
+    assert msg["documents"][0]["original_filename"] == "scan-client.pdf"
+    assert msg["documents"][0]["category"] == CATEGORY_FIL_DISCUSSION
+    assert len(h.db[COLLECTION_DOCS].docs) == 1
+    assert h.db[COLLECTION_DOCS].docs[0]["category"] == CATEGORY_FIL_DISCUSSION
+    assert h.db[COLLECTION_DOCS].docs[0]["message_id"] == msg["id"]
+    assert "scan-client.pdf" in sent[0]["body"]
+    assert "Pièces jointes" in sent[0]["body"]
+
+    # Document seul → libellé minimal
+    alone = h.call(
+        "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
+        request=_message_multipart("", _upload("photo.png", data=b"\x89PNG", content_type="image/png")),
+        user=GESTION,
+    )
+    last = alone["messages"][-1]
+    assert last["contenu"] == DEFAULT_ATTACHMENT_MESSAGE
+    assert last["documents"][0]["original_filename"] == "photo.png"
+
+    with pytest.raises(HTTPException) as exc:
+        h.call(
+            "POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
+            request=_message_multipart("x", _upload("virus.exe", data=b"MZ")),
+            user=AGENT,
+        )
+    assert exc.value.status_code == 422
 
 
 def test_utilisateur_non_autorise_recoit_403_sur_le_fil_et_les_documents(trois_compagnies):
@@ -877,7 +963,7 @@ def test_utilisateur_non_autorise_recoit_403_sur_le_fil_et_les_documents(trois_c
         lambda: h.call("GET", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
                        marquer_lu=True, user=AUTRE_AGENT),
         lambda: h.call("POST", "/demandes-offres/{demande_id}/messages", demande_id="dem-1",
-                       payload=MessageDemandeRequest(contenu="Bonjour"), user=AUTRE_AGENT),
+                       request=_message_json("Bonjour"), user=AUTRE_AGENT),
         lambda: h.call("GET", "/demandes-offres/documents/{doc_id}/download", doc_id=doc_id,
                        user=AUTRE_AGENT),
     ):

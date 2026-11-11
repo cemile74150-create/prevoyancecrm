@@ -257,10 +257,6 @@ class UrgenceRequest(BaseModel):
     delai_24h: bool = False
 
 
-class MessageDemandeRequest(BaseModel):
-    contenu: str = ""
-
-
 class OffresCompletesRequest(BaseModel):
     """Note optionnelle destinée à l'agent (e-mail Offres complètes)."""
     message_conseiller: Optional[str] = None
@@ -840,11 +836,13 @@ def attach_demandes_offres_routes(
             "message_gestionnaire",
         }:
             mail_type = MAIL_TYPE_FIL_DISCUSSION
+            names = doc.get("fil_message_document_names")
             subject, body_text, body_html = format_fil_discussion_email(
                 doc,
                 note=note,
                 author=doc.get("fil_message_author"),
                 author_role=doc.get("fil_message_role"),
+                document_names=names if isinstance(names, list) else None,
             )
             to_addr = to_override
             if not to_addr:
@@ -2775,33 +2773,119 @@ def attach_demandes_offres_routes(
         payload["peut_ecrire"] = message_role(user, doc) is not None
         return payload
 
+    async def parse_message_post(request: Request) -> tuple[str, list[UploadFile]]:
+        """JSON ``{contenu}`` (rétrocompat) ou multipart ``contenu`` + fichiers."""
+        content_type = (request.headers.get("content-type") or "").lower()
+        uploads: list[UploadFile] = []
+        if "multipart/form-data" in content_type:
+            form = await request.form()
+            contenu_raw = str(form.get("contenu") or "")
+            for field in ("files", "documents", "file"):
+                for item in form.getlist(field):
+                    if not isinstance(item, (UploadFile, StarletteUploadFile)):
+                        continue
+                    if not (getattr(item, "filename", None) or "").strip():
+                        continue
+                    uploads.append(item)
+            return contenu_raw, uploads
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        if isinstance(body, dict):
+            return str(body.get("contenu") or ""), []
+        return "", []
+
     @api_router.post("/demandes-offres/{demande_id}/messages")
     async def post_demande_message(
+        request: Request,
         demande_id: str,
-        payload: MessageDemandeRequest,
         user: User = Depends(current_user_dependency),
     ):
-        """Ajoute un message au fil. Ne crée pas de demande et ne change pas son statut."""
+        """Ajoute un message (texte et/ou pièces jointes) au fil. Ne change pas le statut."""
         from demandes_offres_messages import (
+            CATEGORY_FIL_DISCUSSION,
             COLLECTION_MESSAGES,
+            MAX_MESSAGE_FILES,
             ROLE_AGENT,
             build_message,
             clean_message_content,
             message_role,
+            public_message_documents,
+            validate_message_attachment,
         )
 
         doc = await require_demande_or_403(demande_id, user)
         role = message_role(user, doc)
         if role is None:
-            raise HTTPException(status_code=403, detail="Seuls l'agent de la demande et les gestionnaires peuvent écrire")
+            raise HTTPException(
+                status_code=403,
+                detail="Seuls l'agent de la demande et les gestionnaires peuvent écrire",
+            )
+        contenu_raw, uploads = await parse_message_post(request)
+        if len(uploads) > MAX_MESSAGE_FILES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Maximum {MAX_MESSAGE_FILES} documents",
+            )
+        for upload in uploads:
+            size_hint = getattr(upload, "size", None)
+            try:
+                validate_message_attachment(upload.filename, size_hint)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
-            contenu = clean_message_content(payload.contenu)
+            contenu = clean_message_content(contenu_raw, has_attachments=bool(uploads))
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        message = build_message(demande_id=demande_id, user=user, role=role, contenu=contenu, at=now_iso())
+
+        stored: list[dict] = []
+        message_id = str(uuid.uuid4())
+        try:
+            for upload in uploads:
+                data = await upload.read()
+                if not data:
+                    raise HTTPException(status_code=400, detail="Fichier vide")
+                try:
+                    validate_message_attachment(upload.filename, len(data))
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+                # Remettre le curseur pour store_doc qui relit le fichier.
+                try:
+                    await upload.seek(0)
+                except Exception:
+                    upload.file.seek(0)
+                stored.append(
+                    await store_doc(
+                        demande_id,
+                        upload,
+                        user,
+                        category=CATEGORY_FIL_DISCUSSION,
+                        extra={"message_id": message_id},
+                    )
+                )
+        except HTTPException:
+            await discard_complement_uploads([item.get("id") for item in stored], user)
+            raise
+        except Exception:
+            await discard_complement_uploads([item.get("id") for item in stored], user)
+            raise
+
+        docs_public = public_message_documents(stored)
+        message = build_message(
+            demande_id=demande_id,
+            user=user,
+            role=role,
+            contenu=contenu,
+            at=now_iso(),
+            documents=docs_public,
+        )
+        message["id"] = message_id
         message["user_id"] = TENANT_USER_ID
         await db[COLLECTION_MESSAGES].insert_one(dict(message))
         apercu = contenu if len(contenu) <= 120 else f"{contenu[:117]}…"
+        if docs_public and apercu == contenu:
+            apercu = f"{apercu} · {len(docs_public)} pièce(s)" if contenu else f"{len(docs_public)} pièce(s)"
         author = actor_name(user)
         if role == ROLE_AGENT:
             await write_offre_notification(
@@ -2830,6 +2914,10 @@ def attach_demandes_offres_routes(
             )
             mail_event = "fil_discussion_agent"
         # E-mail en plus de la cloche ; un échec SMTP ne doit pas faire échouer le POST.
+        # Les binaires restent sur LeoSoft ; le mail cite les noms de fichiers.
+        doc_names = [
+            ref.get("original_filename") for ref in docs_public if ref.get("original_filename")
+        ]
         try:
             recipients = await resolve_fil_discussion_email_to(doc, role=role, sender=user)
             if recipients:
@@ -2837,6 +2925,7 @@ def attach_demandes_offres_routes(
                     **doc,
                     "fil_message_author": author,
                     "fil_message_role": role,
+                    "fil_message_document_names": doc_names,
                 }
                 await try_send_email(
                     mail_doc,
