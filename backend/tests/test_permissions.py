@@ -149,6 +149,7 @@ def test_route_permissions():
     )
     assert permission_for_request("POST", "/api/clients") == (PERM_CLIENTS_CREATE, "dossiers.create")
     assert permission_for_request("PATCH", "/api/clients/abc/statut") == PERM_DOSSIERS_EDIT
+    assert permission_for_request("GET", "/api/dossiers/stats") == PERM_DOSSIERS_VIEW
     assert permission_for_request("PATCH", "/api/clients/abc/lpp-funds/person") == PERM_DOSSIERS_EDIT
     assert permission_for_request("POST", "/api/clients/abc/documents") == PERM_DOCUMENTS_ADD
     assert permission_for_request("GET", "/api/clients/abc/journal") == (

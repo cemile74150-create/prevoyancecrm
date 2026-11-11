@@ -3,9 +3,12 @@ import { useNavigate, useLocation } from "react-router-dom";
 import api from "@/lib/api";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import ClientFormDialog from "@/components/ClientFormDialog";
+import ClotureDossierDialog from "@/components/ClotureDossierDialog";
+import SuiviDossiersStats from "@/components/SuiviDossiersStats";
 import { STATUTS, STATUT_DOT, normalizeStatut } from "@/lib/constants";
-import { Plus, AlertTriangle, MoreHorizontal, Folder, User, UserCheck } from "lucide-react";
+import { Plus, AlertTriangle, MoreHorizontal, Folder, User, UserCheck, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,6 +20,12 @@ import {
   kanbanConseillerOptions,
   sameConseiller,
 } from "@/lib/kanbanConseiller";
+import {
+  clotureCardClass,
+  clotureMotifLabel,
+  groupMatchesSearch,
+  pickGroupCloture,
+} from "@/lib/dossierCloture";
 
 function isMarriedEtat(etat) {
   const v = (etat || "").toLowerCase();
@@ -146,6 +155,9 @@ export default function Kanban() {
   const [dialog, setDialog] = useState(false);
   const [dragId, setDragId] = useState(null);
   const [overCol, setOverCol] = useState(null);
+  const [search, setSearch] = useState("");
+  const [cloturePending, setCloturePending] = useState(null);
+  const [clotureSaving, setClotureSaving] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { hasPerm } = useAuth();
@@ -195,8 +207,38 @@ export default function Kanban() {
     if (selectedStatut && g.statut !== selectedStatut) return false;
     if (selectedPriority && g.priorite !== selectedPriority) return false;
     if (!groupMatchesConseiller(g, selectedConseiller)) return false;
+    if (!groupMatchesSearch(g, search)) return false;
     return true;
   });
+
+  const applyStatut = async (group, statut, cloture = null) => {
+    const payload = cloture
+      ? { statut, cloture_date: cloture.cloture_date, cloture_motif: cloture.cloture_motif }
+      : { statut };
+
+    setClients((prev) => prev.map((x) => (
+      group.memberIds.includes(x.id)
+        ? {
+            ...x,
+            statut,
+            ...(cloture
+              ? { cloture_date: cloture.cloture_date, cloture_motif: cloture.cloture_motif }
+              : {}),
+          }
+        : x
+    )));
+    try {
+      await Promise.all(group.memberIds.map((clientId) => api.patch(`/clients/${clientId}/statut`, payload)));
+      toast.success(
+        cloture
+          ? `Dossier clôturé (${clotureMotifLabel(cloture.cloture_motif)})`
+          : `Dossier déplacé vers « ${statut} »`
+      );
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Erreur lors du déplacement");
+      load();
+    }
+  };
 
   const onDrop = async (statut) => {
     setOverCol(null);
@@ -207,26 +249,48 @@ export default function Kanban() {
     const g = nowGroups.find((x) => x.key === id);
     if (!g || g.statut === statut) return;
 
-    setClients((prev) => prev.map((x) => (g.memberIds.includes(x.id) ? { ...x, statut } : x)));
+    if (statut === "Clôturé") {
+      const existing = pickGroupCloture(g);
+      setCloturePending({ group: g, initialDate: existing.clotureDate, initialMotif: existing.clotureMotif || "" });
+      return;
+    }
+
+    await applyStatut(g, statut);
+  };
+
+  const confirmCloture = async ({ cloture_date, cloture_motif }) => {
+    if (!cloturePending?.group) return;
+    setClotureSaving(true);
     try {
-      await Promise.all(g.memberIds.map((clientId) => api.patch(`/clients/${clientId}/statut`, { statut })));
-      toast.success(`Dossier déplacé vers « ${statut} »`);
-    } catch (e) {
-      toast.error("Erreur lors du déplacement");
-      load();
+      await applyStatut(cloturePending.group, "Clôturé", { cloture_date, cloture_motif });
+      setCloturePending(null);
+    } finally {
+      setClotureSaving(false);
     }
   };
+
+  const hasBoardFilters = selectedStatut || selectedPriority || selectedConseiller || search.trim();
 
   return (
     <Layout>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <div>
-          <h1 className="font-display font-black text-2xl sm:text-3xl tracking-tight">Dossiers</h1>
+          <h1 className="font-display font-black text-2xl sm:text-3xl tracking-tight">Suivi de vos dossiers</h1>
           <p className="text-muted-foreground text-sm mt-0.5">
             Prévoyance uniquement — glissez-déposez pour changer de statut
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher (nom, référence…)"
+              className="h-8 w-[220px] pl-7 text-xs"
+              data-testid="kanban-search"
+            />
+          </div>
           <Select value={conseillerSelectValue} onValueChange={onConseillerChange}>
             <SelectTrigger className="w-[220px] h-8 text-xs" data-testid="kanban-filter-conseiller" aria-label="Conseiller">
               <SelectValue placeholder="Tous les conseillers" />
@@ -247,12 +311,26 @@ export default function Kanban() {
         </div>
       </div>
 
-      {(selectedStatut || selectedPriority || selectedConseiller) && (
+      {hasBoardFilters && (
         <div className="mb-3 rounded-md border border-[#002FA7]/20 bg-[#002FA7]/5 px-3 py-2 text-xs text-[#002FA7] flex items-center justify-between gap-2">
           <span>
-            Affichage filtré : {[selectedConseiller, selectedStatut, selectedPriority ? `priorité ${selectedPriority}` : null].filter(Boolean).join(" · ")}
+            Affichage filtré : {[
+              selectedConseiller,
+              selectedStatut,
+              selectedPriority ? `priorité ${selectedPriority}` : null,
+              search.trim() ? `recherche « ${search.trim()} »` : null,
+            ].filter(Boolean).join(" · ")}
           </span>
-          <button type="button" className="underline" onClick={() => navigate("/dossiers", { replace: true })}>Réinitialiser</button>
+          <button
+            type="button"
+            className="underline"
+            onClick={() => {
+              setSearch("");
+              navigate("/dossiers", { replace: true });
+            }}
+          >
+            Réinitialiser
+          </button>
         </div>
       )}
 
@@ -284,6 +362,8 @@ export default function Kanban() {
                   const title = dossierTitle(c);
                   const createdLabel = formatDossierDate(dossierCreatedAt(c));
                   const conseillerLabel = groupConseillers(c).join(" · ");
+                  const cloture = pickGroupCloture(c);
+                  const colorClass = clotureCardClass(c.statut, cloture.clotureMotif);
                   return (
                     <div
                       key={c.key}
@@ -299,9 +379,10 @@ export default function Kanban() {
                           : `/clients/${c.representativeId}`
                       )}
                       data-testid={`kanban-card-${c.key}`}
+                      data-cloture-motif={c.statut === "Clôturé" ? (cloture.clotureMotif || "non_renseigne") : undefined}
                       className={`group relative bg-card border border-border/80 rounded-md px-2 py-1.5 cursor-pointer select-none
                         hover:border-[#002FA7]/50 hover:bg-white hover:shadow-sm transition-all duration-150
-                        active:cursor-grabbing ${dragId === c.key ? "opacity-40 scale-[0.98]" : ""}`}
+                        active:cursor-grabbing ${dragId === c.key ? "opacity-40 scale-[0.98]" : ""} ${colorClass}`}
                     >
                       <div className="flex items-start gap-1.5">
                         <span className="mt-0.5 text-muted-foreground/70 shrink-0">
@@ -335,6 +416,15 @@ export default function Kanban() {
                           <p className="mt-0.5 text-[11px] text-muted-foreground" data-testid={`kanban-date-${c.key}`}>
                             {createdLabel}
                           </p>
+                          {c.statut === "Clôturé" && (
+                            <p
+                              className="mt-0.5 text-[11px] font-medium"
+                              data-testid={`kanban-cloture-${c.key}`}
+                              title={cloture.clotureDate ? `Clôturé le ${cloture.clotureDate}` : undefined}
+                            >
+                              {cloture.clotureMotifLabel}
+                            </p>
+                          )}
                           <p
                             className={`mt-0.5 flex items-center gap-1 text-[11px] leading-tight ${conseillerLabel ? "text-[#002FA7]/80" : "text-muted-foreground/60 italic"}`}
                             data-testid={`kanban-conseiller-${c.key}`}
@@ -357,42 +447,17 @@ export default function Kanban() {
         })}
       </div>
 
-      <section className="mt-6" data-testid="nouveaux-dossiers">
-        <h2 className="text-sm font-semibold mb-2">Nouveaux dossiers</h2>
-        <div className="overflow-x-auto rounded-md border bg-card">
-          <table className="w-full max-w-xl text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="px-3 py-2 font-medium">Client</th>
-                <th className="px-3 py-2 font-medium">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredGroups
-                .slice()
-                .sort((a, b) => {
-                  const left = dossierCreatedAt(a);
-                  const right = dossierCreatedAt(b);
-                  if (!left && !right) return dossierTitle(a).localeCompare(dossierTitle(b), "fr");
-                  if (!left) return 1;
-                  if (!right) return -1;
-                  return right.localeCompare(left);
-                })
-                .map((group) => (
-                  <tr key={group.key} className="border-b last:border-0">
-                    <td className="px-3 py-2">{dossierTitle(group)}</td>
-                    <td className="px-3 py-2 tabular-nums">{formatDossierDate(dossierCreatedAt(group))}</td>
-                  </tr>
-                ))}
-              {filteredGroups.length === 0 && (
-                <tr>
-                  <td className="px-3 py-3 text-muted-foreground" colSpan={2}>Aucun dossier</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <SuiviDossiersStats conseillerOptions={conseillerOptions} />
+
+      <ClotureDossierDialog
+        open={Boolean(cloturePending)}
+        onOpenChange={(open) => { if (!open && !clotureSaving) setCloturePending(null); }}
+        description={cloturePending?.group ? `Dossier : ${dossierTitle(cloturePending.group)}` : undefined}
+        initialDate={cloturePending?.initialDate}
+        initialMotif={cloturePending?.initialMotif}
+        onConfirm={confirmCloture}
+        saving={clotureSaving}
+      />
 
       <ClientFormDialog
         open={dialog}

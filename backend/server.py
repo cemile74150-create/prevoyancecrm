@@ -554,6 +554,8 @@ class DemandeReporter(BaseModel):
 
 class StatutUpdate(BaseModel):
     statut: str
+    cloture_date: Optional[str] = None  # AAAA-MM-JJ (Europe/Zurich), défaut = aujourd'hui
+    cloture_motif: Optional[str] = None  # affaire_aboutie | affaire_non_aboutie
 
 class DocumentChecklistUpdate(BaseModel):
     document_checklist: dict
@@ -2136,6 +2138,99 @@ async def get_client_modules(client_id: str, user: User = Depends(get_current_us
 
     return await client_modules_activity(db, client_id, user_id=user.user_id)
 
+@api_router.get("/dossiers/stats")
+async def dossiers_suivi_stats(
+    conseiller: Optional[str] = None,
+    statut: Optional[str] = None,
+    period: Optional[str] = Query("all"),
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    user: User = Depends(get_current_user),
+):
+    """Stats filtrées du module « Suivi de vos dossiers » (périmètre permissions)."""
+    from dossier_cloture import (
+        aggregate_dossier_stats,
+        pick_dossier_fields,
+        resolve_period_bounds,
+    )
+    from conseiller_identity import display_conseiller_name, normalize_conseiller_key
+
+    wanted_statut = normalize_statut(statut) if statut else None
+    if wanted_statut and wanted_statut not in STATUTS:
+        raise HTTPException(status_code=400, detail="Statut invalide")
+
+    clients = await db.clients.find(
+        clients_base_query(user, conseiller=conseiller, for_dossiers=True),
+        {"_id": 0},
+    ).to_list(5000)
+
+    dossiers: dict = {}
+    for c in clients:
+        dossier_id = c.get("dossier_id") or c.get("id")
+        if not dossier_id:
+            continue
+        key = str(dossier_id)
+        d = dossiers.setdefault(key, {"members": [], "created_at_min": None, "updated_at_max": None})
+        d["members"].append(c)
+        created_at = c.get("created_at")
+        updated_at = c.get("updated_at")
+        if created_at:
+            d["created_at_min"] = min(filter(None, [d["created_at_min"], created_at])) if d["created_at_min"] else created_at
+        if updated_at:
+            d["updated_at_max"] = max(filter(None, [d["updated_at_max"], updated_at])) if d["updated_at_max"] else updated_at
+
+    def pick_dossier_statut(members: list) -> str:
+        counts = {}
+        for m in members:
+            st = normalize_statut(m.get("statut", "Nouveau"))
+            counts[st] = counts.get(st, 0) + 1
+        best = None
+        best_count = -1
+        for st, count in counts.items():
+            if count > best_count:
+                best = st
+                best_count = count
+            elif count == best_count:
+                if best in STATUTS and st in STATUTS and STATUTS.index(st) < STATUTS.index(best):
+                    best = st
+        return best or "Nouveau"
+
+    def pick_dossier_conseiller(members: list) -> str:
+        names = [(m.get("conseiller") or "").strip() for m in members]
+        names = [n for n in names if n]
+        if not names:
+            return "Non attribué"
+        counts: dict = {}
+        displays: dict = {}
+        for n in names:
+            key = normalize_conseiller_key(n) or n.casefold()
+            counts[key] = counts.get(key, 0) + 1
+            displays[key] = display_conseiller_name(displays.get(key), n)
+        best_key = sorted(counts.items(), key=lambda x: (-x[1], displays[x[0]].lower()))[0][0]
+        return displays[best_key]
+
+    rows = []
+    for _did, d in dossiers.items():
+        members = d.get("members") or []
+        cloture = pick_dossier_fields(members)
+        rows.append({
+            "statut": pick_dossier_statut(members),
+            "created_at": d.get("created_at_min"),
+            "updated_at": d.get("updated_at_max"),
+            "cloture_date": cloture.get("cloture_date"),
+            "cloture_motif": cloture.get("cloture_motif"),
+            "conseiller": pick_dossier_conseiller(members),
+        })
+
+    d_from, d_to = resolve_period_bounds(period, date_from, date_to)
+    return aggregate_dossier_stats(
+        rows,
+        statut_filter=wanted_statut,
+        date_from=d_from,
+        date_to=d_to,
+    )
+
+
 @api_router.get("/dossiers/{dossier_id}")
 async def get_dossier(dossier_id: str, user: User = Depends(get_current_user)):
     members = await db.clients.find(
@@ -2257,6 +2352,8 @@ async def update_client(client_id: str, payload: ClientCreate, user: User = Depe
 
 @api_router.patch("/clients/{client_id}/statut")
 async def update_statut(client_id: str, payload: StatutUpdate, user: User = Depends(get_current_user)):
+    from dossier_cloture import validate_cloture_payload
+
     statut = normalize_statut(payload.statut)
     if statut not in STATUTS:
         raise HTTPException(status_code=400, detail="Statut invalide")
@@ -2268,14 +2365,35 @@ async def update_statut(client_id: str, payload: StatutUpdate, user: User = Depe
     now_iso = datetime.now(timezone.utc).isoformat()
     old_statut = normalize_statut(c.get("statut"))
 
+    fields: dict = {"statut": statut, "updated_at": now_iso}
+    if statut == "Clôturé":
+        # Nouvelle clôture → motif obligatoire. Déjà clôturé → on peut compléter/modifier.
+        existing_motif = c.get("cloture_motif") if old_statut == "Clôturé" else None
+        try:
+            date_iso, motif = validate_cloture_payload(
+                statut=statut,
+                cloture_date=payload.cloture_date or (c.get("cloture_date") if old_statut == "Clôturé" else None),
+                cloture_motif=payload.cloture_motif or existing_motif,
+                require_motif=True,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        fields["cloture_date"] = date_iso
+        fields["cloture_motif"] = motif
+    # Réouverture : on conserve cloture_date / cloture_motif (historique) ;
+    # ils ne comptent dans les stats que si le statut reste Clôturé.
+
     await db.clients.update_many(
         {"user_id": user.user_id, "id": {"$in": member_ids}},
-        {"$set": {"statut": statut, "updated_at": now_iso}},
+        {"$set": fields},
     )
+    log_detail = f"Statut dossier changé: {c.get('statut')} → {statut}"
+    if statut == "Clôturé" and fields.get("cloture_motif"):
+        log_detail += f" ({fields.get('cloture_motif')}, {fields.get('cloture_date')})"
     await log_action(
         user.user_id,
         client_id,
-        f"Statut dossier changé: {c.get('statut')} → {statut}",
+        log_detail,
         dossier_id=scope.get("dossier_id"),
     )
 

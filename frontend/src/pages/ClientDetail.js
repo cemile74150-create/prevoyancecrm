@@ -13,8 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import ClientFormDialog from "@/components/ClientFormDialog";
 import ClientDuplicateDialog from "@/components/ClientDuplicateDialog";
+import ClotureDossierDialog from "@/components/ClotureDossierDialog";
 import { parseClientDuplicateError } from "@/lib/clientDuplicate";
 import { STATUTS, normalizeStatut, DOCUMENT_TYPES_3P, NO_EXPIRY_DOC_TYPES_3P } from "@/lib/constants";
+import { clotureMotifLabel, normalizeClotureMotif } from "@/lib/dossierCloture";
 import { finmaByConseillerName, lookupConseillerFinma } from "@/lib/conseillers";
 import { useAuth } from "@/context/AuthContext";
 import LamalClientHistory from "@/lamal/ClientHistory";
@@ -444,6 +446,8 @@ export default function ClientDetail() {
   const [savingTitleUpload, setSavingTitleUpload] = useState(false);
   const [dragOverChecklist, setDragOverChecklist] = useState(null);
   const [dragOverZone, setDragOverZone] = useState(null);
+  const [clotureOpen, setClotureOpen] = useState(false);
+  const [clotureSaving, setClotureSaving] = useState(false);
 
   const loadAll = async ({ quiet = false } = {}) => {
     if (!quiet) {
@@ -732,11 +736,43 @@ export default function ClientDetail() {
     }
   };
 
-  const changeStatut = async (statut) => {
-    setClient((c) => ({ ...c, statut }));
-    await api.patch(`/clients/${id}/statut`, { statut });
-    toast.success("Statut mis à jour");
-    const h = await api.get(`/clients/${id}/actions`); setActions(h.data);
+  const changeStatut = async (statut, cloture = null) => {
+    if (statut === "Clôturé" && !cloture) {
+      setClotureOpen(true);
+      return;
+    }
+    const payload = cloture
+      ? { statut, cloture_date: cloture.cloture_date, cloture_motif: cloture.cloture_motif }
+      : { statut };
+    setClient((c) => ({
+      ...c,
+      statut,
+      ...(cloture
+        ? { cloture_date: cloture.cloture_date, cloture_motif: cloture.cloture_motif }
+        : {}),
+    }));
+    try {
+      await api.patch(`/clients/${id}/statut`, payload);
+      toast.success(
+        cloture
+          ? `Dossier clôturé (${clotureMotifLabel(cloture.cloture_motif)})`
+          : "Statut mis à jour"
+      );
+      const h = await api.get(`/clients/${id}/actions`); setActions(h.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Impossible de mettre à jour le statut");
+      await loadAll({ quiet: true });
+    }
+  };
+
+  const confirmClotureDetail = async (cloture) => {
+    setClotureSaving(true);
+    try {
+      await changeStatut("Clôturé", cloture);
+      setClotureOpen(false);
+    } finally {
+      setClotureSaving(false);
+    }
   };
 
   const addJournalAction = async () => {
@@ -2401,10 +2437,27 @@ export default function ClientDetail() {
 
             <div className="mt-4">
               <Label className="text-xs text-muted-foreground">Statut du dossier</Label>
-              <Select value={normalizeStatut(client.statut)} onValueChange={changeStatut}>
+              <Select
+                value={normalizeStatut(client.statut)}
+                onValueChange={(value) => changeStatut(value)}
+              >
                 <SelectTrigger data-testid="detail-statut-select" className="mt-1.5"><SelectValue /></SelectTrigger>
                 <SelectContent>{STATUTS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
               </Select>
+              {normalizeStatut(client.statut) === "Clôturé" && (
+                <p className="mt-1.5 text-xs text-muted-foreground" data-testid="detail-cloture-info">
+                  {clotureMotifLabel(client.cloture_motif)}
+                  {client.cloture_date ? ` · ${String(client.cloture_date).slice(0, 10)}` : ""}
+                  {!normalizeClotureMotif(client.cloture_motif) && (
+                    <>
+                      {" · "}
+                      <button type="button" className="underline text-[#002FA7]" onClick={() => setClotureOpen(true)}>
+                        Renseigner le motif
+                      </button>
+                    </>
+                  )}
+                </p>
+              )}
             </div>
 
             <div className="mt-5 space-y-3 border-t border-border pt-5">
@@ -4072,6 +4125,14 @@ export default function ClientDetail() {
         </div>
       </div>
 
+      <ClotureDossierDialog
+        open={clotureOpen}
+        onOpenChange={(open) => { if (!open && !clotureSaving) setClotureOpen(false); }}
+        initialDate={client?.cloture_date ? String(client.cloture_date).slice(0, 10) : undefined}
+        initialMotif={normalizeClotureMotif(client?.cloture_motif) || ""}
+        onConfirm={confirmClotureDetail}
+        saving={clotureSaving}
+      />
       <ClientFormDialog open={editDialog} onOpenChange={setEditDialog} client={client} onSaved={(c) => setClient(c)} />
       <ClientDuplicateDialog
         open={Boolean(duplicateConflict)}
