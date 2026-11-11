@@ -1,3 +1,5 @@
+import { canAccessLeavesModule } from "./emailDomainAccess";
+
 export const PERMISSION_CATALOG = [
   {
     id: "clients",
@@ -84,9 +86,9 @@ export const PERMISSION_CATALOG = [
   },
   {
     id: "conges",
-    label: "Congés & absences",
+    label: "Congés & absences (@agencemendes.ch)",
     items: [
-      { key: "leaves.manage", label: "Gérer les demandes de congés (RH : valider, refuser, annulations)" },
+      { key: "leaves.manage", label: "Gérer les demandes (RH : valider, refuser) — domaine @agencemendes.ch requis" },
     ],
   },
   {
@@ -141,6 +143,13 @@ export function hasPerm(user, key) {
   if (key === "lamal_module_access") {
     const email = (user.email || "").trim().toLowerCase();
     return email === "cdemirtas@agencemendes.ch" || isAlbertoMendes(user);
+  }
+  // Congés : accès module = domaine ; manage = domaine + droit RH (même pour admin hors domaine).
+  if (key === "leaves.access") {
+    return canAccessLeavesModule(user);
+  }
+  if (key === "leaves.manage" && !canAccessLeavesModule(user)) {
+    return false;
   }
   if (isAlbertoMendes(user) && key === "users.manage") return true;
   if (user.permissions && typeof user.permissions === "object" && key in user.permissions) {

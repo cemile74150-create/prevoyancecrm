@@ -59,7 +59,9 @@ PERM_FORMULAIRES_VIEW = "formulaires.view"
 PERM_ANALYSES_VIEW = "analyses.view"
 PERM_ANALYSES_EDIT = "analyses.edit"
 PERM_USERS_MANAGE = "users.manage"
-# Décisions RH sur les demandes de congés. Faire une demande ne demande aucun droit.
+# Accès module Congés : domaine e-mail (voir email_domain_access). Pas assignable en UI.
+PERM_LEAVES_ACCESS = "leaves.access"
+# Décisions RH (valider / refuser) : leaves.manage + domaine obligatoire.
 PERM_LEAVES_MANAGE = "leaves.manage"
 PERM_LAMAL_MODULE_ACCESS = "lamal_module_access"
 # Compte administrateur existant (Cemile Demirtas). Le rôle admin ne suffit pas.
@@ -182,11 +184,11 @@ PERMISSION_CATALOG = [
     },
     {
         "id": "conges",
-        "label": "Congés & absences",
+        "label": "Congés & absences (@agencemendes.ch)",
         "items": [
             {
                 "key": PERM_LEAVES_MANAGE,
-                "label": "Gérer les demandes de congés (RH : valider, refuser, annulations)",
+                "label": "Gérer les demandes (RH : valider, refuser) — domaine @agencemendes.ch requis",
             },
         ],
     },
@@ -632,8 +634,15 @@ def is_lamal_owner(user) -> bool:
 
 
 def has_perm(user: User, key: str) -> bool:
+    from email_domain_access import can_access_leaves_module
+
     if key == PERM_LAMAL_MODULE_ACCESS:
         return is_lamal_owner(user)
+    if key == PERM_LEAVES_ACCESS:
+        return can_access_leaves_module(user)
+    # Congés : le domaine est exigé même pour un admin hors @agencemendes.ch.
+    if key == PERM_LEAVES_MANAGE and not can_access_leaves_module(user):
+        return False
     perms = getattr(user, "permissions", None) or {}
     if key in perms:
         return bool(perms[key])
@@ -784,10 +793,12 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("DELETE",), r"^/documents/", PERM_DOCUMENTS_DELETE),
     (("GET",), r"^/document-templates$", PERM_DOCUMENTS_VIEW),
     (("GET",), r"^/demand-packs$", (PERM_DOSSIERS_VIEW, PERM_DOCUMENTS_VIEW)),
-    # Congés : tout compte connecté gère ses propres demandes (contrôle d'appartenance dans le handler).
+    # Congés : domaine @agencemendes.ch pour tout le module ; leaves.manage pour les décisions RH.
     (None, r"^/leaves/admin(/|$)", PERM_LEAVES_MANAGE),
     (("GET",), r"^/leaves/employees$", PERM_LEAVES_MANAGE),
     (("POST",), r"^/leaves/[^/]+/(approve|reject|resolve-cancellation)$", PERM_LEAVES_MANAGE),
+    (None, r"^/leaves(/|$)", PERM_LEAVES_ACCESS),
+    (None, r"^/notifications/conges(/|$)", PERM_LEAVES_ACCESS),
     # Éligibilité : création de liste vérifiée dans le handler (ELIGIBILITY_MANAGER_USER_ID).
     (("GET",), r"^/eligibility(/|$)", (PERM_CLIENTS_VIEW, PERM_DOSSIERS_VIEW)),
     (("GET",), r"^/clients/[^/]+/eligibility$", (PERM_CLIENTS_VIEW, PERM_DOSSIERS_VIEW)),

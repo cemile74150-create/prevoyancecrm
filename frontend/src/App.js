@@ -86,7 +86,7 @@ function AppRoutes() {
       <Route path="/historique-emails" element={<Protected anyOf={["users.manage"]}><HistoriqueEmails /></Protected>} />
       <Route path="/eligibilite" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
       <Route path="/eligibilite/:listId" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
-      <Route path="/conges" element={<Protected><Conges /></Protected>} />
+      <Route path="/conges" element={<Protected perm="leaves.access"><Conges /></Protected>} />
       <Route path="/rappels" element={<Protected perm="rappels.view"><Rappels /></Protected>} />
       <Route path="/demandes" element={<Navigate to="/rappels" replace />} />
       <Route path="/agenda" element={<Protected perm="agenda.view"><Agenda /></Protected>} />

@@ -1,7 +1,7 @@
 """Routes du module Congés & absences.
 
-Tout compte connecté dépose et suit ses propres demandes.
-Les décisions (valider, refuser, traiter une annulation) exigent leaves.manage :
+Accès réservé aux e-mails @agencemendes.ch (même pour un admin hors domaine).
+Les décisions (valider, refuser, traiter une annulation) exigent en plus leaves.manage :
 contrôle dans access_control._ROUTE_PERMISSIONS et de nouveau ici.
 """
 from __future__ import annotations
@@ -16,9 +16,12 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from access_control import PERM_LEAVES_MANAGE, TENANT_USER_ID, User, has_perm
+from email_domain_access import can_access_leaves_module
 import leaves as lv
 
 logger = logging.getLogger(__name__)
+
+LEAVES_MODULE_FORBIDDEN = "Module Congés réservé aux comptes @agencemendes.ch"
 
 
 class LeaveCreate(BaseModel):
@@ -46,6 +49,11 @@ def can_manage_leaves(user: User) -> bool:
     return has_perm(user, PERM_LEAVES_MANAGE)
 
 
+def require_leaves_module_access(user: User) -> None:
+    if not can_access_leaves_module(user):
+        raise HTTPException(status_code=403, detail=LEAVES_MODULE_FORBIDDEN)
+
+
 def _bad_request(exc: lv.LeaveValidationError) -> HTTPException:
     return HTTPException(status_code=400, detail=str(exc))
 
@@ -71,6 +79,7 @@ def attach_leaves_routes(api_router, *, db, get_current_user: Callable):
     notif_coll = db[lv.NOTIFICATIONS_COLLECTION]
 
     def _require_manager(user: User) -> None:
+        require_leaves_module_access(user)
         if not can_manage_leaves(user):
             raise HTTPException(status_code=403, detail="Réservé aux personnes autorisées à gérer les congés")
 
@@ -173,6 +182,7 @@ def attach_leaves_routes(api_router, *, db, get_current_user: Callable):
     # ---------------- Collaborateur ----------------
     @api_router.get("/leaves/meta")
     async def leaves_meta(user: User = Depends(get_current_user)):
+        require_leaves_module_access(user)
         return {
             "employee": {"id": user.account_id, "name": user.name, "email": user.email},
             "can_manage": can_manage_leaves(user),
@@ -184,6 +194,7 @@ def attach_leaves_routes(api_router, *, db, get_current_user: Callable):
 
     @api_router.post("/leaves/preview")
     async def preview_leave(payload: LeaveCreate, user: User = Depends(get_current_user)):
+        require_leaves_module_access(user)
         try:
             fields = lv.validate_request(payload.model_dump())
         except lv.LeaveValidationError as exc:
@@ -201,6 +212,7 @@ def attach_leaves_routes(api_router, *, db, get_current_user: Callable):
 
     @api_router.post("/leaves", status_code=201)
     async def create_leave(payload: LeaveCreate, user: User = Depends(get_current_user)):
+        require_leaves_module_access(user)
         try:
             fields = lv.validate_request(payload.model_dump())
         except lv.LeaveValidationError as exc:
@@ -282,6 +294,7 @@ def attach_leaves_routes(api_router, *, db, get_current_user: Callable):
         status: Optional[str] = None,
         user: User = Depends(get_current_user),
     ):
+        require_leaves_module_access(user)
         base = {"user_id": TENANT_USER_ID, "employee_id": user.account_id}
         all_mine = await leaves_coll.find(base, {"_id": 0}).sort("created_at", -1).to_list(2000)
         years = sorted({int(d["start_date"][:4]) for d in all_mine if d.get("start_date")}, reverse=True)
@@ -380,6 +393,7 @@ def attach_leaves_routes(api_router, *, db, get_current_user: Callable):
         leave_type: Optional[str] = None,
         user: User = Depends(get_current_user),
     ):
+        require_leaves_module_access(user)
         manager = can_manage_leaves(user)
         try:
             m_start, m_end = lv.month_bounds(month)
@@ -405,6 +419,7 @@ def attach_leaves_routes(api_router, *, db, get_current_user: Callable):
     # ---------------- Détail et transitions ----------------
     @api_router.get("/leaves/{leave_id}")
     async def get_leave(leave_id: str, user: User = Depends(get_current_user)):
+        require_leaves_module_access(user)
         doc = await _get_visible(leave_id, user)
         events = await events_coll.find({"leave_request_id": leave_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
         manager = can_manage_leaves(user)
@@ -422,6 +437,7 @@ def attach_leaves_routes(api_router, *, db, get_current_user: Callable):
 
     @api_router.post("/leaves/{leave_id}/cancel")
     async def cancel_leave(leave_id: str, payload: Optional[LeaveAction] = None, user: User = Depends(get_current_user)):
+        require_leaves_module_access(user)
         payload = payload or LeaveAction()
         doc = await _get_visible(leave_id, user)
         if doc.get("employee_id") != user.account_id:
@@ -444,6 +460,7 @@ def attach_leaves_routes(api_router, *, db, get_current_user: Callable):
 
     @api_router.post("/leaves/{leave_id}/request-cancellation")
     async def request_leave_cancellation(leave_id: str, payload: LeaveAction, user: User = Depends(get_current_user)):
+        require_leaves_module_access(user)
         doc = await _get_visible(leave_id, user)
         if doc.get("employee_id") != user.account_id:
             raise HTTPException(status_code=403, detail="Seul l'auteur de la demande peut demander son annulation")
@@ -546,6 +563,7 @@ def attach_leaves_routes(api_router, *, db, get_current_user: Callable):
     # ---------------- Notifications internes ----------------
     @api_router.get("/notifications/conges")
     async def list_leave_notifications(limit: int = Query(20, ge=1, le=100), user: User = Depends(get_current_user)):
+        require_leaves_module_access(user)
         ors: list[dict] = [{"audience": "employee", "account_ids": user.account_id}]
         if can_manage_leaves(user):
             ors.append({"audience": "managers", "exclude_account_ids": {"$ne": user.account_id}})
@@ -560,6 +578,7 @@ def attach_leaves_routes(api_router, *, db, get_current_user: Callable):
 
     @api_router.post("/notifications/conges/{notif_id}/read")
     async def mark_leave_notification_read(notif_id: str, user: User = Depends(get_current_user)):
+        require_leaves_module_access(user)
         await notif_coll.update_one(
             {"id": notif_id, "user_id": TENANT_USER_ID}, {"$addToSet": {"read_by": user.account_id}}
         )

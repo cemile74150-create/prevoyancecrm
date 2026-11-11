@@ -24,6 +24,7 @@ export default function NotificationBell() {
   const canProcess = hasPerm("demandes_offres.process");
   const canRappels = hasPerm("rappels.view");
   const canOffres = hasPerm("demandes_offres.view");
+  const canConges = hasPerm("leaves.access");
   const [open, setOpen] = useState(false);
   const [rappelCount, setRappelCount] = useState(0);
   const [rappelItems, setRappelItems] = useState([]);
@@ -41,7 +42,9 @@ export default function NotificationBell() {
         canOffres
           ? api.get("/notifications/offres", { params: { limit: 20 } }).catch(() => ({ data: { count: 0, items: [] } }))
           : empty,
-        api.get("/notifications/conges", { params: { limit: 20 } }).catch(() => ({ data: { count: 0, items: [] } })),
+        canConges
+          ? api.get("/notifications/conges", { params: { limit: 20 } }).catch(() => ({ data: { count: 0, items: [] } }))
+          : empty,
       ]);
       setCongeCount(Number(congesRes.data?.count) || 0);
       setCongeItems(Array.isArray(congesRes.data?.items) ? congesRes.data.items : []);
@@ -57,7 +60,7 @@ export default function NotificationBell() {
     } catch {
       // silencieux
     }
-  }, [canRappels, canOffres]);
+  }, [canRappels, canOffres, canConges]);
 
   useEffect(() => {
     load();

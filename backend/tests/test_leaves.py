@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
 
 import leaves as lv  # noqa: E402
 from access_control import (  # noqa: E402
+    PERM_LEAVES_ACCESS,
     PERM_LEAVES_MANAGE,
     ROLE_ADMIN,
     ROLE_CEO,
@@ -29,7 +30,14 @@ from access_control import (  # noqa: E402
     permission_for_request,
     user_from_doc,
 )
+from email_domain_access import (  # noqa: E402
+    LEAVES_EMAIL_DOMAIN,
+    can_access_leaves_module,
+    email_ends_with_domain,
+    normalize_email,
+)
 from leaves_routes import (  # noqa: E402
+    LEAVES_MODULE_FORBIDDEN,
     LeaveAction,
     LeaveCancellationDecision,
     LeaveCreate,
@@ -122,12 +130,50 @@ def test_admin_sort_puts_waiting_first_then_recent():
 
 
 # ---------------- Droits ----------------
-def _account(account_id, role=ROLE_CONSEILLER, name=None, **extra):
+def _account(account_id, role=ROLE_CONSEILLER, name=None, email=None, **extra):
     name = name or account_id
     return {
-        "user_id": account_id, "email": f"{account_id}@test.local", "name": name,
-        "prenom": name, "nom": "", "role": role, **extra,
+        "user_id": account_id,
+        "email": email if email is not None else f"{account_id}@{LEAVES_EMAIL_DOMAIN}",
+        "name": name,
+        "prenom": name,
+        "nom": "",
+        "role": role,
+        **extra,
     }
+
+
+def test_email_domain_normalization_for_leaves():
+    assert normalize_email("  Agent@AgenceMendes.CH ") == "agent@agencemendes.ch"
+    assert email_ends_with_domain("  Agent@AgenceMendes.CH ") is True
+    assert email_ends_with_domain("agent@other.ch") is False
+    assert email_ends_with_domain("") is False
+    assert email_ends_with_domain(None) is False
+    assert can_access_leaves_module({"email": "rh@agencemendes.ch"}) is True
+    assert can_access_leaves_module({"email": "admin@externe.ch"}) is False
+
+
+def test_leaves_access_requires_agencemendes_domain():
+    insider = user_from_doc(_account("agent", email="agent@agencemendes.ch"))
+    assert has_perm(insider, PERM_LEAVES_ACCESS) is True
+    assert has_perm(insider, PERM_LEAVES_MANAGE) is False
+
+    mixed_case = user_from_doc(_account("mixed", email="  RH@AgenceMendes.CH  "))
+    assert has_perm(mixed_case, PERM_LEAVES_ACCESS) is True
+
+    # Admin hors domaine : ni accès module, ni manage — même avec leaves.manage stocké.
+    outsider_admin = user_from_doc(_account(
+        "ext-admin",
+        role=ROLE_ADMIN,
+        email="boss@externe.ch",
+        permissions={PERM_LEAVES_MANAGE: True},
+    ))
+    assert has_perm(outsider_admin, PERM_LEAVES_ACCESS) is False
+    assert has_perm(outsider_admin, PERM_LEAVES_MANAGE) is False
+
+    domain_admin = user_from_doc(_account("in-admin", role=ROLE_ADMIN, email="admin@agencemendes.ch"))
+    assert has_perm(domain_admin, PERM_LEAVES_ACCESS) is True
+    assert has_perm(domain_admin, PERM_LEAVES_MANAGE) is True
 
 
 def test_leaves_manage_defaults_to_admin_only():
@@ -149,9 +195,9 @@ def test_route_permissions_protect_manager_endpoints():
     for method, path in (
         ("POST", "/api/leaves"), ("GET", "/api/leaves/mine"), ("GET", "/api/leaves/calendar"),
         ("POST", "/api/leaves/abc/cancel"), ("POST", "/api/leaves/abc/request-cancellation"),
-        ("GET", "/api/notifications/conges"),
+        ("GET", "/api/notifications/conges"), ("POST", "/api/notifications/conges/n1/read"),
     ):
-        assert permission_for_request(method, path) is None, path
+        assert permission_for_request(method, path) == PERM_LEAVES_ACCESS, path
 
 
 # ---------------- Scénarios API (Mongo local) ----------------
@@ -246,13 +292,36 @@ async def _expect(status, coro):
 
 
 @mongo
+def test_domain_outsider_gets_403_even_as_admin_with_manage():
+    async def s(env):
+        outsider = user_from_doc(_account(
+            "outsider",
+            role=ROLE_ADMIN,
+            email="boss@externe.ch",
+            permissions={PERM_LEAVES_MANAGE: True},
+            name="Boss Externe",
+        ))
+        for coro in (
+            env.call("GET", "/leaves/meta", user=outsider),
+            env.mine(outsider),
+            env.notifs(outsider),
+            env.create(outsider, "2026-11-16"),
+            env.admin(outsider),
+        ):
+            detail = await _expect(403, coro)
+            assert LEAVES_MODULE_FORBIDDEN in str(detail)
+
+    run_scenario(s)
+
+
+@mongo
 def test_s01_create_request_pending_with_account_identity():
     async def s(env):
         created = await env.create(env.alice, "2026-11-16", "2026-11-20", comment="Vacances")
         assert created["status"] == "pending"
         assert created["employee_id"] == "alice"
         assert created["employee_name"] == "Alice Martin"
-        assert created["employee_email"] == "alice@test.local"
+        assert created["employee_email"] == f"alice@{LEAVES_EMAIL_DOMAIN}"
         assert created["days_count"] == 5
         stored = await env.db.leave_requests.find_one({"id": created["id"]})
         assert stored["start_date"] == "2026-11-16" and isinstance(stored["start_date"], str)
