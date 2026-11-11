@@ -128,6 +128,34 @@ def test_prefill_form_payload_from_crm_address_vehicule():
     assert again["input_2.1"] == "Adresse manuelle"
 
 
+def test_prefill_crm_maps_homme_to_monsieur_and_masculin():
+    """Client CRM Homme → Civilité Monsieur + Sexe Masculin (schéma pilier3)."""
+    from offre_form_types import prefill_form_payload_from_crm
+
+    filled = prefill_form_payload_from_crm(
+        "pilier3",
+        {},
+        {"sexe": "Homme", "prenom": "Alessandro", "nom": "COLLORA"},
+    )
+    assert filled.get("input_100") == "Monsieur"
+    assert filled.get("input_47") == "Masculin"
+    assert filled.get("input_46") == "Alessandro"
+    assert filled.get("input_45") == "COLLORA"
+
+
+def test_prefill_crm_does_not_overwrite_manual_civilite_sexe():
+    from offre_form_types import prefill_form_payload_from_crm
+
+    again = prefill_form_payload_from_crm(
+        "pilier3",
+        {"input_100": "Madame", "input_47": "Féminin"},
+        {"sexe": "Homme"},
+        overwrite=False,
+    )
+    assert again["input_100"] == "Madame"
+    assert again["input_47"] == "Féminin"
+
+
 def test_filter_keeps_field_comment_keys():
     payload = empty_form_payload("vehicule")
     # Choisir une clé réelle du schéma

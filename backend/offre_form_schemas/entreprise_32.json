@@ -1084,6 +1084,18 @@
       }
     },
     {
+      "id": "32_35",
+      "gf_field_id": 35,
+      "name": "input_35",
+      "label": "Date du prochain rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "placeholder": "jj.mm.aaaa",
+      "label_bold": true
+    },
+    {
       "id": "32_215",
       "gf_field_id": 215,
       "name": "input_215",
@@ -1120,17 +1132,6 @@
         "Non"
       ],
       "page": 3
-    },
-    {
-      "id": "32_35",
-      "gf_field_id": 35,
-      "name": "input_35",
-      "label": "Date du prochain rendez-vous avec le client",
-      "type": "date",
-      "required": true,
-      "options": [],
-      "page": 3,
-      "placeholder": "jj.mm.aaaa"
     },
     {
       "id": "32_189",

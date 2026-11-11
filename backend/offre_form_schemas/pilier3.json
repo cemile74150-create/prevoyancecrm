@@ -1074,6 +1074,18 @@
       "description": "3 compagnies maximum. Pour les compagnies principales, vous avez vos accès à utiliser pour faire les offres."
     },
     {
+      "id": "6_44",
+      "gf_field_id": 44,
+      "name": "input_44",
+      "label": "Date du prochain rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 2,
+      "placeholder": "jj.mm.aaaa",
+      "label_bold": true
+    },
+    {
       "id": "6_120",
       "gf_field_id": 120,
       "name": "input_120",
@@ -1116,17 +1128,6 @@
       "options": [],
       "page": 2,
       "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document."
-    },
-    {
-      "id": "6_44",
-      "gf_field_id": 44,
-      "name": "input_44",
-      "label": "Date du prochain rendez-vous avec le client",
-      "type": "date",
-      "required": true,
-      "options": [],
-      "page": 2,
-      "placeholder": "jj.mm.aaaa"
     },
     {
       "id": "6_66",

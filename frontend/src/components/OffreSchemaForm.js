@@ -12,6 +12,7 @@ import {
   foldLabel,
   isPermisLockedByNationalite,
 } from "@/lib/offreNationalitePermis";
+import { applyCiviliteSexeRules } from "@/lib/offreCiviliteSexe";
 import { toggleExclusiveCheckboxSelection } from "@/lib/offreExclusiveCheckbox";
 import {
   FIELD_COMMENT_SUFFIX,
@@ -34,14 +35,22 @@ export { isFieldVisible };
 const CHANGED_CONTROL =
   "border-rose-600 bg-rose-50 text-rose-700 placeholder:text-rose-400 focus-visible:ring-rose-400";
 
-function FieldShell({ label, required, changed, description, children, commentSlot }) {
+function FieldShell({ label, required, changed, description, children, commentSlot, labelBold }) {
   return (
     <div
       className={`space-y-1.5 rounded-md ${changed ? "border border-rose-600 bg-rose-50/80 px-2.5 py-2" : ""}`}
       data-changed={changed ? "true" : "false"}
     >
       <div className="flex items-center gap-2">
-        <Label className={`text-xs ${changed ? "text-rose-700 font-semibold" : "text-muted-foreground"}`}>
+        <Label
+          className={`text-xs ${
+            changed
+              ? "text-rose-700 font-semibold"
+              : labelBold
+                ? "font-bold text-foreground"
+                : "text-muted-foreground"
+          }`}
+        >
           {label}
           {required ? <span className="text-rose-600"> *</span> : null}
         </Label>
@@ -390,6 +399,8 @@ export default function OffreSchemaForm({
       next = injectAgentIdentity(schema, next, agentIdentity, { overwrite: lockAgent || Boolean(agentIdentity.prenom || agentIdentity.nom) });
     }
     next = applyNationalitePermisRules(schema, next);
+    // Combler civilité ↔ sexe manquants au chargement (sans écraser une saisie déjà cohérente).
+    next = applyCiviliteSexeRules(schema, next, { fillMissingOnly: true });
     next = omitIncapaciteWhenHidden(schema, next);
     if (!payloadsEqual(next, values)) onChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -401,6 +412,7 @@ export default function OffreSchemaForm({
     if (isPermisLockedByNationalite(schema, values, name)) return;
     let next = { ...(values || {}), [name]: value };
     next = applyNationalitePermisRules(schema, next);
+    next = applyCiviliteSexeRules(schema, next, { sourceFieldName: name });
     next = omitIncapaciteWhenHidden(schema, next);
     if (typeof onManualEdit === "function") onManualEdit(name);
     onChange(next);
@@ -449,6 +461,7 @@ export default function OffreSchemaForm({
       : (field.options || []).filter((o) => o != null && String(o).trim() !== "");
     const required = Boolean(field.required);
     const label = field.label || name;
+    const labelBold = Boolean(field.label_bold);
     const changed = mark(name) || mark(fieldCommentKey(name));
     const description = field.description || "";
     const lockedByNat = isPermisLockedByNationalite(schema, values, name);
@@ -488,7 +501,7 @@ export default function OffreSchemaForm({
 
     if (type === "list") {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold}>
           <ListField
             columns={field.columns}
             value={values?.[name]}
@@ -502,7 +515,7 @@ export default function OffreSchemaForm({
 
     if (!identityText && (type === "checkbox" || (Array.isArray(values?.[name]) && options.length > 2))) {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold}>
           <CheckGrid
             options={options}
             selected={Array.isArray(values?.[name]) ? values[name] : []}
@@ -516,7 +529,7 @@ export default function OffreSchemaForm({
 
     if (!identityText && type === "radio") {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold}>
           <RadioGroup
             name={name}
             value={asText(values?.[name])}
@@ -531,7 +544,7 @@ export default function OffreSchemaForm({
 
     if (!identityText && (type === "select" || (options.length > 0 && type !== "file"))) {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold}>
           <ChoiceSelect
             value={asText(values?.[name])}
             onChange={(v) => setField(name, v)}
@@ -545,7 +558,7 @@ export default function OffreSchemaForm({
 
     if (type === "textarea") {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={null}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={null} labelBold={labelBold}>
           <Textarea
             rows={4}
             value={asText(values?.[name])}
@@ -559,7 +572,7 @@ export default function OffreSchemaForm({
 
     if (type === "file") {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} labelBold={labelBold}>
           {readOnly ? (
             <p className="text-sm">{asText(values?.[name]) || "—"}</p>
           ) : (
@@ -597,6 +610,7 @@ export default function OffreSchemaForm({
         label={label}
         required={required}
         changed={changed}
+        labelBold={labelBold}
         description={
           lockedByAgent
             ? (description ? `${description} ` : "") + "Renseigné automatiquement depuis votre profil (non modifiable)."

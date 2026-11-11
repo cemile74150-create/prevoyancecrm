@@ -1,7 +1,22 @@
 /** Constantes et helpers UI du module Demandes d'offres 3P. */
 import { formatDateFr, toIsoDate, toSwissDate } from "./dates";
+import {
+  applyCiviliteSexeRules,
+  findCiviliteSexePairs,
+  genderKeyFromValue,
+  matchGenderOption,
+  normalizeCrmCiviliteSexe,
+} from "./offreCiviliteSexe";
 
 export { formatDateFr, toIsoDate, toSwissDate };
+export {
+  applyCiviliteSexeRules,
+  findCiviliteSexePairs,
+  genderKeyFromValue,
+  matchGenderOption,
+  normalizeCrmCiviliteSexe,
+  syncLegacyCiviliteSexe,
+} from "./offreCiviliteSexe";
 export const STATUTS = [
   "Brouillon",
   "Demande validée",
@@ -621,15 +636,20 @@ export function fieldAllowsComment(field) {
 
 /**
  * Préremplit identité / adresse du payload schéma depuis un client hub (éditable ensuite).
+ * Civilité/sexe CRM (Homme/Femme, Monsieur/Madame) sont normalisés sur les options du schéma
+ * (ex. Masculin/Féminin), puis synchronisés entre eux au chargement / sélection client.
  */
 export function prefillSchemaPayloadFromClient(schema, payload, client, { overwrite = false } = {}) {
   if (!schema?.fields?.length || !client) return payload || {};
   const next = { ...(payload || {}) };
+  const pairs = findCiviliteSexePairs(schema.fields);
+  const firstPair = pairs[0] || {};
+  const mapped = normalizeCrmCiviliteSexe(client, firstPair.civilite, firstPair.sexe);
   const crm = {
-    civilite: client.civilite || client.sexe || "",
+    civilite: mapped.civilite || client.civilite || "",
     prenom: client.prenom || "",
     nom: client.nom || "",
-    sexe: client.sexe || "",
+    sexe: mapped.sexe || client.sexe || "",
     date_naissance: client.date_naissance || "",
     nationalite: client.nationalite || "",
     permis: client.permis || "",
@@ -675,13 +695,19 @@ export function prefillSchemaPayloadFromClient(schema, payload, client, { overwr
     const isAgent = lab.includes("agent") || lab.includes("conseiller") || lab.includes("votre adresse email") || lab.includes("votre numero finma");
     const role = roleFor(lab, isAgent);
     if (!role) continue;
-    const val = String(crm[role] || "").trim();
+    let val = String(crm[role] || "").trim();
     if (!val) continue;
+    if (role === "civilite" || role === "sexe") {
+      const matched = matchGenderOption(val, field, role);
+      if (matched) val = matched;
+      else if (!genderKeyFromValue(val)) continue;
+    }
     const cur = next[name];
     const empty = cur == null || cur === "" || (Array.isArray(cur) && !cur.length);
     if (empty || overwrite) next[name] = val;
   }
-  return next;
+  // Au chargement / sélection client : combler civilité ↔ sexe depuis la source CRM.
+  return applyCiviliteSexeRules(schema, next, { fillMissingOnly: !overwrite });
 }
 
 function foldPreneurLabel(value) {

@@ -615,6 +615,18 @@
       "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois àr nous communiquer une offre, voire ne pas l'envoyer du tout."
     },
     {
+      "id": "27_66",
+      "gf_field_id": 66,
+      "name": "input_66",
+      "label": "Date du prochain rendez-vous avec le client",
+      "type": "date",
+      "required": true,
+      "options": [],
+      "page": 3,
+      "placeholder": "jj.mm.aaaa",
+      "label_bold": true
+    },
+    {
       "id": "27_99",
       "gf_field_id": 99,
       "name": "input_99",
@@ -671,17 +683,6 @@
         "Non"
       ],
       "page": 3
-    },
-    {
-      "id": "27_66",
-      "gf_field_id": 66,
-      "name": "input_66",
-      "label": "Date du prochain rendez-vous avec le client",
-      "type": "date",
-      "required": true,
-      "options": [],
-      "page": 3,
-      "placeholder": "jj.mm.aaaa"
     },
     {
       "id": "27_85",

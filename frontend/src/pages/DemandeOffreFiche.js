@@ -20,6 +20,7 @@ import {
   preneurIdentityFieldNames, applyNouveauPreneurNames,
   PRIORITE_STYLE, prioriteLabel, erreurLabel, erreurChampLabel, formatDateTimeFr,
   prefillSchemaPayloadFromClient, soumisCompagnieLabel, isSoumisCompagnie,
+  syncLegacyCiviliteSexe, normalizeCrmCiviliteSexe,
   isDemandeAnnuleeStatut, isOffreNonSigneeStatut, isHorsCours, statutLabel, isDemandeAnnuleeFlag,
   compagniesAffichees, compagniesEnregistrementOffre,
   MANDAT_GESTION_DOC_CATEGORY, MANDAT_GESTION_INFO, mandatGestionMissing, hasMandatGestionDocument,
@@ -2320,10 +2321,11 @@ function applyHubClientToOffreForm(client, setValue, form) {
   }
   setValue("client_id", client.id);
   setValue("type_client", "existant");
-  setValue("civilite", client.civilite || client.sexe || form.civilite || "");
+  const mapped = normalizeCrmCiviliteSexe(client, CIVILITES, SEXES);
+  setValue("civilite", mapped.civilite || form.civilite || "");
   setValue("prenom", client.prenom || "");
   setValue("nom", client.nom || "");
-  setValue("sexe", client.sexe || form.sexe || "");
+  setValue("sexe", mapped.sexe || form.sexe || "");
   setValue("date_naissance", toSwissDate(client.date_naissance) || "");
   setValue("nationalite", client.nationalite || form.nationalite || "");
   setValue("adresse", client.adresse || "");
@@ -2611,7 +2613,15 @@ function ClientStep({ form, setValue, onPickClient, finmaWarning, canManageUsers
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Field label="Civilité" required>
-          <Choice value={form.civilite} onChange={(v) => setValue("civilite", v)} options={CIVILITES} />
+          <Choice
+            value={form.civilite}
+            onChange={(v) => {
+              const next = syncLegacyCiviliteSexe(v, form.sexe, "civilite");
+              setValue("civilite", next.civilite);
+              setValue("sexe", next.sexe);
+            }}
+            options={CIVILITES}
+          />
         </Field>
         <Field label="Prénom" required>
           {showSearch ? (
@@ -2654,7 +2664,15 @@ function ClientStep({ form, setValue, onPickClient, finmaWarning, canManageUsers
           )}
         </Field>
         <Field label="Sexe">
-          <Choice value={form.sexe} onChange={(v) => setValue("sexe", v)} options={SEXES} />
+          <Choice
+            value={form.sexe}
+            onChange={(v) => {
+              const next = syncLegacyCiviliteSexe(form.civilite, v, "sexe");
+              setValue("civilite", next.civilite);
+              setValue("sexe", next.sexe);
+            }}
+            options={SEXES}
+          />
         </Field>
         <Field label="Date de naissance" required>
           <Input

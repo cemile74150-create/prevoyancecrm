@@ -356,6 +356,89 @@ def filter_form_payload_to_schema(
     return blank_incapacite_gain_when_hidden(fid, out)
 
 
+def _gender_key(value: Any) -> Optional[str]:
+    """Normalize CRM / form tokens to M or F."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    folded = _norm_label(raw).replace(".", "").replace(" ", "")
+    male = {"monsieur", "mr", "m", "homme", "masculin", "male", "h"}
+    female = {"madame", "mme", "mlle", "mademoiselle", "femme", "feminin", "female", "f"}
+    if folded in male or "masculin" in folded or folded.startswith("monsieur"):
+        return "M"
+    if folded in female or "feminin" in folded or folded.startswith("madame") or folded.startswith("mme"):
+        return "F"
+    return None
+
+
+def _match_gender_option(value: Any, field: Optional[dict], *, kind: str) -> str:
+    gender = _gender_key(value)
+    if not gender:
+        return ""
+    options = [
+        str(o) for o in ((field or {}).get("options") or [])
+        if o is not None and str(o).strip()
+    ]
+    prefs = (
+        (["Monsieur", "M.", "Mr"] if gender == "M" else ["Madame", "Mme", "Mlle"])
+        if kind == "civilite"
+        else (["Masculin", "Homme", "M", "Male"] if gender == "M" else ["Féminin", "Femme", "F", "Female"])
+    )
+    pool = options or prefs
+    for pref in prefs:
+        for opt in pool:
+            if _norm_label(opt) == _norm_label(pref):
+                return opt
+    for opt in pool:
+        if _gender_key(opt) == gender:
+            return opt
+    return pool[0] if pool else ""
+
+
+def _sync_civilite_sexe_payload(schema: dict, payload: dict[str, Any], *, fill_missing_only: bool = True) -> dict[str, Any]:
+    """Fill empty Civilité/Sexe from the other when both fields exist as a pair."""
+    pending = None
+    pairs: list[tuple[dict, dict]] = []
+    for field in schema.get("fields") or []:
+        if not isinstance(field, dict):
+            continue
+        if field.get("type") in {"section", "html"}:
+            continue
+        lab = _norm_label(field.get("label") or "")
+        if lab.startswith("civilite") or lab == "titre":
+            pending = field
+            continue
+        if pending is not None and lab == "sexe":
+            pairs.append((pending, field))
+            pending = None
+    if not pairs:
+        return payload
+    next_payload = dict(payload)
+    changed = False
+    for civ_field, sex_field in pairs:
+        civ_name = civ_field.get("name") or civ_field.get("id")
+        sex_name = sex_field.get("name") or sex_field.get("id")
+        if not civ_name or not sex_name:
+            continue
+        civ_val = next_payload.get(civ_name)
+        sex_val = next_payload.get(sex_name)
+        civ_empty = civ_val is None or str(civ_val).strip() == ""
+        sex_empty = sex_val is None or str(sex_val).strip() == ""
+        civ_g = _gender_key(civ_val)
+        sex_g = _gender_key(sex_val)
+        if civ_g and (sex_empty or (not fill_missing_only and sex_g != civ_g)):
+            desired = _match_gender_option(civ_val, sex_field, kind="sexe")
+            if desired and str(next_payload.get(sex_name) or "") != desired:
+                next_payload[sex_name] = desired
+                changed = True
+        elif sex_g and civ_empty:
+            desired = _match_gender_option(sex_val, civ_field, kind="civilite")
+            if desired and str(next_payload.get(civ_name) or "") != desired:
+                next_payload[civ_name] = desired
+                changed = True
+    return next_payload if changed else payload
+
+
 def prefill_form_payload_from_crm(
     form_type_id: str,
     payload: Optional[dict],
@@ -366,6 +449,8 @@ def prefill_form_payload_from_crm(
     """
     Préremplit identité / adresse du schéma depuis les colonnes CRM (hub client).
     N'écrase pas une valeur déjà saisie sauf si overwrite=True.
+    Civilité/sexe CRM (Homme/Femme) sont normalisés sur les options du schéma
+    (Monsieur/Madame, Masculin/Féminin) puis synchronisés.
     """
     schema = load_form_schema(form_type_id) or {}
     next_payload: dict[str, Any] = dict(payload or {})
@@ -381,11 +466,12 @@ def prefill_form_payload_from_crm(
                 return text
         return ""
 
+    gender = _gender_key(_crm_val("civilite")) or _gender_key(_crm_val("sexe"))
     crm_by_role = {
-        "civilite": _crm_val("civilite"),
+        "civilite": _crm_val("civilite") or _crm_val("sexe"),
         "prenom": _crm_val("prenom"),
         "nom": _crm_val("nom"),
-        "sexe": _crm_val("sexe"),
+        "sexe": _crm_val("sexe") or _crm_val("civilite"),
         "date_naissance": _crm_val("date_naissance"),
         "nationalite": _crm_val("nationalite"),
         "permis": _crm_val("permis"),
@@ -452,12 +538,18 @@ def prefill_form_payload_from_crm(
         val = crm_by_role.get(role) or ""
         if not val:
             continue
+        if role in {"civilite", "sexe"}:
+            matched = _match_gender_option(val if gender is None else ("Homme" if gender == "M" else "Femme"), field, kind=role)
+            if matched:
+                val = matched
+            elif _gender_key(val) is None:
+                continue
         cur = next_payload.get(name)
         empty = cur is None or cur == "" or (isinstance(cur, list) and len(cur) == 0)
         if empty or overwrite:
             next_payload[name] = val
 
-    return next_payload
+    return _sync_civilite_sexe_payload(schema, next_payload, fill_missing_only=not overwrite)
 
 
 # Suivi de « Toutes les personnes assurées sont-elles en pleine capacité de travail ? »
