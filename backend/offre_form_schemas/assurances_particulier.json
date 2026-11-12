@@ -387,7 +387,17 @@
       "required": true,
       "options": [],
       "page": 1,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_59",
+            "op": "is",
+            "value": "Précédent assureur"
+          }
+        ]
+      }
     },
     {
       "id": "11_78",
@@ -402,7 +412,17 @@
       ],
       "page": 1,
       "description": "S'il ne s'agit pas d'une première assurance, nous avons impérativement besoin de connaître les sinistres déclarés chez l'ancien assureur. Comment souhaitez-vous procéder ?",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_59",
+            "op": "is",
+            "value": "Précédent assureur"
+          }
+        ]
+      }
     },
     {
       "id": "11_77",
@@ -414,7 +434,17 @@
       "options": [],
       "page": 1,
       "description": "Merci de joindre la fiche de sinistralité du précédent assureur. Attention : s'il ne s'agit pas du bon document, nous ne serons pas en mesure de réaliser l'offre.",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_78",
+            "op": "is",
+            "value": "Joindre la fiche de sinistralité"
+          }
+        ]
+      }
     },
     {
       "id": "11_20",
@@ -426,7 +456,17 @@
       "options": [],
       "page": 1,
       "description": "Merci d'être le plus précis possible : Dates, causes et montants des sinistres.",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_78",
+            "op": "is",
+            "value": "Indiquer les sinistres manuellement"
+          }
+        ]
+      }
     },
     {
       "id": "11_39",
@@ -670,9 +710,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_44",
+            "field": "input_11",
             "op": "is",
-            "value": "Oui"
+            "value": "Dégâts causés par les animaux"
           }
         ]
       }
@@ -866,5 +906,14 @@
       "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
       "default": "cdemirtas@agencemendes.ch"
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 11,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-7_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 8,
+    "added": 4,
+    "updated": 1,
+    "unchanged": 3
+  }
 }

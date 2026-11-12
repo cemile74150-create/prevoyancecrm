@@ -419,7 +419,7 @@
           {
             "field": "input_79",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -440,7 +440,7 @@
           {
             "field": "input_79",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -462,7 +462,7 @@
           {
             "field": "input_79",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -483,7 +483,7 @@
           {
             "field": "input_79",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -504,7 +504,7 @@
           {
             "field": "input_79",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -525,7 +525,7 @@
           {
             "field": "input_79",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -546,7 +546,7 @@
           {
             "field": "input_79",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -567,7 +567,7 @@
           {
             "field": "input_79",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -797,9 +797,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_56",
+            "field": "input_59",
             "op": "is",
-            "value": "Oui"
+            "value": "Trajets professionnels"
           }
         ]
       }
@@ -1824,7 +1824,17 @@
       "type": "section",
       "required": false,
       "options": [],
-      "page": 6
+      "page": 6,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Smile Direct"
+          }
+        ]
+      }
     },
     {
       "id": "12_146",
@@ -1856,7 +1866,17 @@
       "type": "section",
       "required": false,
       "options": [],
-      "page": 6
+      "page": 6,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Zurich"
+          }
+        ]
+      }
     },
     {
       "id": "12_139",
@@ -1870,7 +1890,17 @@
         "Non"
       ],
       "page": 6,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Zurich"
+          }
+        ]
+      }
     },
     {
       "id": "12_140",
@@ -1884,7 +1914,17 @@
         "Non"
       ],
       "page": 6,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Zurich"
+          }
+        ]
+      }
     },
     {
       "id": "12_160",
@@ -1896,7 +1936,17 @@
       "options": [],
       "page": 6,
       "placeholder": "jj.mm.aaaa",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Zurich"
+          }
+        ]
+      }
     },
     {
       "id": "12_161",
@@ -1908,7 +1958,17 @@
       "options": [],
       "page": 6,
       "placeholder": "jj.mm.aaaa",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Zurich"
+          }
+        ]
+      }
     },
     {
       "id": "12_34",
@@ -1947,7 +2007,17 @@
         "Non"
       ],
       "page": 6,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Zurich"
+          }
+        ]
+      }
     },
     {
       "id": "12_137",
@@ -1987,5 +2057,14 @@
       "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
       "default": "cdemirtas@agencemendes.ch"
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 12,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-6_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 30,
+    "added": 7,
+    "updated": 9,
+    "unchanged": 18
+  }
 }

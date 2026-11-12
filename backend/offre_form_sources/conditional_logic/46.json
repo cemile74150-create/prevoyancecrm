@@ -1,0 +1,112 @@
+{
+  "gravity_form_id": 46,
+  "fields": {
+    "84": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_53",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "68": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_64",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "80": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_79",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "81": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_79",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "83": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_62",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "82": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_66",
+          "op": "is",
+          "value": "Plan amélioré"
+        }
+      ],
+      "enabled": true
+    },
+    "85": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_59",
+          "op": "is",
+          "value": "Allianz"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "84": [
+      84
+    ],
+    "68": [
+      68
+    ],
+    "80": [
+      80
+    ],
+    "81": [
+      81
+    ],
+    "83": [
+      83
+    ],
+    "82": [
+      82
+    ],
+    "85": [
+      85
+    ]
+  },
+  "raw_blob_chars": 1783,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-5_.html",
+  "schema_ids": [
+    "entreprise_46",
+    "gf_46"
+  ]
+}

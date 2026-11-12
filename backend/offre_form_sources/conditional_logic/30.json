@@ -1,0 +1,150 @@
+{
+  "gravity_form_id": 30,
+  "fields": {
+    "58": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_57",
+          "op": "is",
+          "value": "Société en nom collectif"
+        }
+      ],
+      "enabled": true
+    },
+    "204": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_64",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "205": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_204",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "206": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_204",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "202": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_201",
+          "op": "is",
+          "value": "RC spécifique a l'activité"
+        }
+      ],
+      "enabled": true
+    },
+    "191": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_64",
+          "op": "is",
+          "value": "Non"
+        },
+        {
+          "field": "input_64",
+          "op": "isnot",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "207": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "La Mobilière"
+        }
+      ],
+      "enabled": true
+    },
+    "200": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Generali (Romandie Courtage uniquement)"
+        }
+      ],
+      "enabled": true
+    },
+    "212": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Allianz"
+        },
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Vaudoise"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "58": [
+      58
+    ],
+    "204": [
+      204
+    ],
+    "205": [
+      205
+    ],
+    "206": [
+      206
+    ],
+    "202": [
+      202
+    ],
+    "191": [
+      191
+    ],
+    "207": [
+      207
+    ],
+    "200": [
+      200
+    ],
+    "212": [
+      212
+    ]
+  },
+  "raw_blob_chars": 2542,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_responsabilite-civile_.html",
+  "schema_ids": [
+    "gf_30",
+    "rc_entreprise"
+  ]
+}

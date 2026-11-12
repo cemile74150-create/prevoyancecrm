@@ -190,7 +190,17 @@
       "required": true,
       "options": [],
       "page": 1,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_53",
+            "op": "is",
+            "value": "Oui"
+          }
+        ]
+      }
     },
     {
       "id": "46_7",
@@ -308,7 +318,7 @@
           {
             "field": "input_79",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -375,9 +385,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_62",
+            "field": "input_66",
             "op": "is",
-            "value": "Oui"
+            "value": "Plan amélioré"
           }
         ]
       }
@@ -426,7 +436,17 @@
       "options": [],
       "page": 2,
       "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document.",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "any",
+        "rules": [
+          {
+            "field": "input_59",
+            "op": "is",
+            "value": "Allianz"
+          }
+        ]
+      }
     },
     {
       "id": "46_72",
@@ -487,5 +507,14 @@
       "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
       "default": "cdemirtas@agencemendes.ch"
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 46,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-5_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 7,
+    "added": 2,
+    "updated": 2,
+    "unchanged": 3
+  }
 }

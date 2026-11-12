@@ -342,6 +342,11 @@
             "field": "input_15",
             "op": "is",
             "value": "Oui"
+          },
+          {
+            "field": "input_15",
+            "op": "isnot",
+            "value": "Non"
           }
         ]
       }
@@ -396,6 +401,11 @@
             "field": "input_21",
             "op": "is",
             "value": "Oui"
+          },
+          {
+            "field": "input_21",
+            "op": "isnot",
+            "value": "Non"
           }
         ]
       }
@@ -721,5 +731,14 @@
       "options": [],
       "page": 1
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 47,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-8_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 4,
+    "added": 0,
+    "updated": 2,
+    "unchanged": 2
+  }
 }
