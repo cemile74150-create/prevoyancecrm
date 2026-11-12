@@ -8,7 +8,7 @@ import secrets
 import uuid
 from datetime import datetime, timezone, timedelta
 from itertools import permutations, product
-from typing import Optional, List, Dict, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import bcrypt
 from fastapi import HTTPException, Request, Header
@@ -451,22 +451,116 @@ def resolve_access_by_account_id_only_update(
     current: bool,
     incoming: Optional[bool],
     role: str,
+    previous_role: Optional[str] = None,
 ) -> tuple[bool, Optional[str]]:
-    """Retourne (valeur, erreur). False impossible si current=True (verrou nouveaux comptes)."""
+    """Retourne (valeur, erreur). False impossible si current=True (verrou nouveaux comptes).
+
+    Un passage de rôle vers conseiller (admin→conseiller, etc.) force le flag comme à la création.
+    Les conseillers legacy déjà en place restent à False tant qu'on ne l'active pas.
+    """
     if role != ROLE_CONSEILLER:
         if incoming is None:
             return False, None
         return bool(incoming), None
+    became_conseiller = (
+        previous_role is not None
+        and previous_role != ROLE_CONSEILLER
+    )
     # Conseiller
     if current:
         if incoming is False:
             return True, "access_by_account_id_only ne peut pas être désactivé pour ce compte"
+        return True, None
+    if became_conseiller:
+        # Même politique que POST /users : tout nouveau conseiller = account_id only.
+        if incoming is False:
+            return True, "access_by_account_id_only est obligatoire pour un nouveau conseiller"
         return True, None
     if incoming is True:
         return True, None
     if incoming is False:
         return False, None
     return False, None
+
+
+def match_account_id_among_users(
+    conseiller_label: Optional[str],
+    user_docs: Iterable[dict],
+) -> Optional[str]:
+    """Retourne l'account_id si un seul compte conseiller correspond au libellé ; sinon None."""
+    label = (conseiller_label or "").strip()
+    if not label:
+        return None
+    matches: List[str] = []
+    for doc in user_docs or []:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("active") is False:
+            continue
+        role = (doc.get("role") or "").strip() or ROLE_CONSEILLER
+        # Comptes avec libellé conseiller (y compris admin qui a un nom d'agent)
+        candidate_labels = [
+            doc.get("conseiller"),
+            doc.get("name"),
+            display_name(doc.get("prenom") or "", doc.get("nom") or ""),
+        ]
+        if not any(conseiller_labels_match(label, cand) for cand in candidate_labels if cand):
+            continue
+        # Préférer les vrais rôles conseiller ; un admin homonyme ne doit pas voler l'attribution
+        if role != ROLE_CONSEILLER and role not in (ROLE_ADMIN, ROLE_CEO, ROLE_GESTIONNAIRE_OFFRES):
+            continue
+        if role != ROLE_CONSEILLER:
+            continue
+        aid = str(doc.get("user_id") or doc.get("account_id") or "").strip()
+        if aid and aid not in matches:
+            matches.append(aid)
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def resolve_conseiller_account_id_for_write(
+    user: "User",
+    conseiller_label: Optional[str],
+    *,
+    matched_account_id: Optional[str] = None,
+) -> Optional[str]:
+    """Account_id à persister avec le libellé conseiller lors d'une écriture dossier.
+
+    - Conseiller (sans see_all) : toujours son propre account_id.
+    - Superviseur : account_id du conseiller désigné s'il est résolu de façon unique.
+    - Libellé vide / pas de match : None (conserve le mode legacy au nom seul).
+    """
+    if not is_global_viewer(user):
+        aid = str(getattr(user, "account_id", "") or "").strip()
+        return aid or None
+    if not (conseiller_label or "").strip():
+        return None
+    matched = str(matched_account_id or "").strip()
+    return matched or None
+
+
+def should_stamp_conseiller_account_id_on_update(
+    *,
+    user: "User",
+    old_conseiller: Optional[str],
+    new_conseiller: Optional[str],
+    old_account_id: Optional[str],
+) -> bool:
+    """Évite une migration silencieuse des dossiers existants lors d'un simple edit admin.
+
+    - Conseiller : toujours (réaffirme son account_id).
+    - Superviseur : seulement si réattribution (libellé changé) ou déjà stampé (resync).
+    """
+    if not is_global_viewer(user):
+        return True
+    old_c = (old_conseiller or "").strip()
+    new_c = (new_conseiller or "").strip()
+    if old_c != new_c:
+        return True
+    if str(old_account_id or "").strip():
+        return True
+    return False
 
 
 def set_runtime_access_mode_override(mode: Optional[str]) -> None:

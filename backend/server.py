@@ -46,6 +46,10 @@ from access_control import (
     require_settings,
     clients_base_query,
     force_conseiller_on_write,
+    resolve_conseiller_account_id_for_write,
+    should_stamp_conseiller_account_id_on_update,
+    match_account_id_among_users,
+    client_account_id_matches,
     create_session,
     resolve_session_user,
     ensure_bootstrap_admin,
@@ -1093,6 +1097,7 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
             current=bool(doc.get("access_by_account_id_only")),
             incoming=payload.access_by_account_id_only,
             role=role,
+            previous_role=doc.get("role"),
         )
         if flag_err:
             raise HTTPException(status_code=400, detail=flag_err)
@@ -1268,9 +1273,14 @@ async def require_resource_client(resource: dict, user: User, label: str = "Ress
         raise HTTPException(status_code=403, detail=f"Accès non autorisé — {label}")
     if is_global_viewer(user):
         return
-    if labels_match_conseiller(resource.get("conseiller"), user):
+    # Strict / nouveaux conseillers : account_id sur la ressource ou created_by
+    if client_account_id_matches(user, resource):
         return
-    if resource.get("created_by") == user.account_id:
+    if resource.get("created_by") == user.account_id or resource.get("created_by_account_id") == user.account_id:
+        return
+    from access_control import effective_access_mode
+
+    if effective_access_mode(user) != "strict" and labels_match_conseiller(resource.get("conseiller"), user):
         return
     raise HTTPException(status_code=403, detail=f"Accès non autorisé — {label}")
 
@@ -2023,6 +2033,28 @@ async def search_clients_hub(
     matched.sort(key=lambda c: _rank_client_match(c, ql))
     return matched[:limit]
 
+async def _lookup_conseiller_account_id(conseiller_label: Optional[str]) -> Optional[str]:
+    """Résout un account_id unique pour un libellé conseiller (écriture dossiers)."""
+    label = (conseiller_label or "").strip()
+    if not label:
+        return None
+    rows = await db.users.find(
+        {"active": {"$ne": False}, "role": ROLE_CONSEILLER},
+        {"_id": 0, "user_id": 1, "account_id": 1, "role": 1, "conseiller": 1, "name": 1, "prenom": 1, "nom": 1, "active": 1},
+    ).to_list(500)
+    return match_account_id_among_users(label, rows)
+
+
+async def _stamp_conseiller_account_id(
+    user: User,
+    conseiller_label: Optional[str],
+) -> Optional[str]:
+    matched = None
+    if is_global_viewer(user):
+        matched = await _lookup_conseiller_account_id(conseiller_label)
+    return resolve_conseiller_account_id_for_write(user, conseiller_label, matched_account_id=matched)
+
+
 @api_router.post("/clients")
 async def create_client(payload: ClientCreate, user: User = Depends(get_current_user)):
     from client_identity import identity_fields_for_storage, require_unique_identity
@@ -2065,6 +2097,9 @@ async def create_client(payload: ClientCreate, user: User = Depends(get_current_
     doc["id"] = str(uuid.uuid4())
     doc["user_id"] = user.user_id
     doc["conseiller"] = force_conseiller_on_write(user, doc.get("conseiller"))
+    account_stamp = await _stamp_conseiller_account_id(user, doc.get("conseiller"))
+    if account_stamp:
+        doc["conseiller_account_id"] = account_stamp
     doc["statut"] = normalize_statut(doc.get("statut"))
     doc["numero_dossier"] = await next_dossier_number(user.user_id)
     doc["dossier_id"] = doc["id"]
@@ -2130,6 +2165,8 @@ async def create_client(payload: ClientCreate, user: User = Depends(get_current_
                 sexe=doc.get("sexe"),
             )
             suivi_doc["client_id"] = doc["id"]
+            if account_stamp:
+                suivi_doc["conseiller_account_id"] = account_stamp
             to_suivi = _encrypt_client_for_storage(suivi_doc)
             await db[SUIVI_3P_CLIENTS].insert_one(to_suivi)
         except Exception:
@@ -2417,6 +2454,21 @@ async def update_client(client_id: str, payload: ClientCreate, user: User = Depe
     update["nom"] = nom
     update.update(identity_fields_for_storage(prenom, nom, update.get("date_naissance")))
     update["conseiller"] = force_conseiller_on_write(user, update.get("conseiller"))
+    if should_stamp_conseiller_account_id_on_update(
+        user=user,
+        old_conseiller=c.get("conseiller"),
+        new_conseiller=update.get("conseiller"),
+        old_account_id=c.get("conseiller_account_id") or c.get("agent_account_id"),
+    ):
+        stamped = await _stamp_conseiller_account_id(user, update.get("conseiller"))
+        if stamped:
+            update["conseiller_account_id"] = stamped
+        elif is_global_viewer(user) and not (update.get("conseiller") or "").strip():
+            # Réattribution vide : retirer le stamp
+            update["conseiller_account_id"] = None
+        elif is_global_viewer(user):
+            # Réattribution vers un libellé sans compte unique → pas de stamp erroné
+            update["conseiller_account_id"] = None
     update["statut"] = normalize_statut(update.get("statut"))
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     if update.get("conseiller") and finma_in is not None:
@@ -6324,6 +6376,7 @@ async def create_suivi_3p_client(payload: Suivi3PCreate, user: User = Depends(ge
     from client_hub import apply_hub_to_suivi, get_hub_client, upsert_hub_client_from_person
 
     conseiller = force_conseiller_on_write(user, payload.conseiller)
+    account_stamp = await _stamp_conseiller_account_id(user, conseiller)
     hub_id = (payload.client_id or "").strip() or None
     person = payload.model_dump()
 
@@ -6342,6 +6395,7 @@ async def create_suivi_3p_client(payload: Suivi3PCreate, user: User = Depends(ge
             user_id=user.user_id,
             module="suivi_3p",
             conseiller=conseiller,
+            conseiller_account_id=account_stamp,
         )
         if hub:
             hub_id = hub["id"]
@@ -6374,6 +6428,8 @@ async def create_suivi_3p_client(payload: Suivi3PCreate, user: User = Depends(ge
     )
     if hub_id:
         doc["client_id"] = hub_id
+    if account_stamp:
+        doc["conseiller_account_id"] = account_stamp
     if not doc["prenom"] or not doc["nom"]:
         raise HTTPException(status_code=400, detail="Prénom et nom requis")
     to_store = _encrypt_client_for_storage(doc)
@@ -7253,6 +7309,14 @@ async def update_suivi_3p_fiche(
         updates["nombre_enfants"] = int(data["nombre_enfants"])
     if "conseiller" in data:
         updates["conseiller"] = force_conseiller_on_write(user, data.get("conseiller"))
+        if should_stamp_conseiller_account_id_on_update(
+            user=user,
+            old_conseiller=c.get("conseiller"),
+            new_conseiller=updates.get("conseiller"),
+            old_account_id=c.get("conseiller_account_id") or c.get("agent_account_id"),
+        ):
+            stamped = await _stamp_conseiller_account_id(user, updates.get("conseiller"))
+            updates["conseiller_account_id"] = stamped
     if "statut" in data and data["statut"] is not None:
         updates["statut"] = normalize_suivi_statut(data["statut"])
     if "gain_fiscal_estime" in data:

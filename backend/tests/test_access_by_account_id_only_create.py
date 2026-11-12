@@ -41,3 +41,16 @@ def test_admin_can_enable_on_legacy_conseiller():
     )
     assert val is True
     assert err is None
+
+
+def test_promotion_to_conseiller_forces_flag():
+    from access_control import ROLE_ADMIN
+
+    val, err = resolve_access_by_account_id_only_update(
+        current=False,
+        incoming=None,
+        role=ROLE_CONSEILLER,
+        previous_role=ROLE_ADMIN,
+    )
+    assert val is True
+    assert err is None

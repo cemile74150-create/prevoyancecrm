@@ -2323,6 +2323,7 @@ def attach_demandes_offres_routes(
                 "assigned_to_account_id": (payload.assigned_to_account_id if payload else None) or None,
                 "assigned_to_name": (payload.assigned_to_name if payload else None) or "",
                 "created_by_account_id": user.account_id,
+                "agent_account_id": user.account_id,
                 "created_by_name": actor_name(user),
                 "created_at": created_at,
                 "updated_at": created_at,
@@ -2543,6 +2544,11 @@ def attach_demandes_offres_routes(
                     user_id=user.user_id,
                     module="offres",
                     conseiller=normalized.get("agent_label") or user.conseiller,
+                    conseiller_account_id=(
+                        normalized.get("agent_account_id")
+                        or normalized.get("created_by_account_id")
+                        or user.account_id
+                    ),
                 )
                 if hub:
                     updates["client_id"] = hub["id"]
@@ -2610,6 +2616,11 @@ def attach_demandes_offres_routes(
                 hub, _ = await upsert_hub_client_from_person(
                     db, doc, user_id=user.user_id, module="offres",
                     conseiller=doc.get("agent_label") or user.conseiller,
+                    conseiller_account_id=(
+                        doc.get("agent_account_id")
+                        or doc.get("created_by_account_id")
+                        or user.account_id
+                    ),
                 )
                 if hub and hub.get("id") != doc.get("client_id"):
                     await db[COLLECTION].update_one(

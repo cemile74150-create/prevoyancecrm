@@ -1035,17 +1035,17 @@ def attach_computed_age(rows: list, docs_by_client: Optional[dict] = None, *, to
 
 
 def suivi_3p_base_query(user, conseiller: Optional[str] = None) -> dict:
-    """Filtre tenant + scoping conseiller (même logique que la prévoyance)."""
+    """Filtre tenant + scoping conseiller (même logique que la prévoyance / ACCESS_MODE)."""
     from access_control import (
         TENANT_USER_ID,
         is_global_viewer,
-        conseiller_scope_mongo_filter,
+        conseiller_access_mongo_filter,
     )
     import re
 
     q: dict = {"user_id": TENANT_USER_ID}
     if not is_global_viewer(user):
-        q.update(conseiller_scope_mongo_filter(user))
+        q.update(conseiller_access_mongo_filter(user))
     elif conseiller and conseiller != "all":
         if conseiller == "Non attribué":
             q["$and"] = [{
