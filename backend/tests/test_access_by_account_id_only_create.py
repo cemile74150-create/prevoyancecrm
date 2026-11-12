@@ -54,3 +54,16 @@ def test_promotion_to_conseiller_forces_flag():
     )
     assert val is True
     assert err is None
+
+
+def test_demotion_does_not_silently_clear_locked_flag():
+    from access_control import ROLE_ADMIN
+
+    val, err = resolve_access_by_account_id_only_update(
+        current=True,
+        incoming=None,
+        role=ROLE_ADMIN,
+        previous_role=ROLE_CONSEILLER,
+    )
+    assert val is True
+    assert err is None

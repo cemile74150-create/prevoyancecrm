@@ -722,6 +722,13 @@ class TaskCreate(BaseModel):
 
 # ---------------- Auth ----------------
 async def get_current_user(request: Request, authorization: Optional[str] = Header(None)) -> User:
+    # Multi-worker : resynchronise ACCESS_MODE depuis Mongo (~5s) après un PUT distant.
+    try:
+        from access_policy_journal import ensure_access_mode_fresh
+
+        await ensure_access_mode_fresh(db)
+    except Exception:
+        pass
     user = await resolve_session_user(db, request, authorization)
     enforce_route_permission(user, request.method, request.url.path)
     return user
@@ -5752,6 +5759,12 @@ async def create_spouse(client_id: str, payload: CreateSpouseRequest, user: User
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    spouse_aid = (
+        str(c.get("conseiller_account_id") or c.get("agent_account_id") or "").strip()
+        or await _stamp_conseiller_account_id(user, spouse.get("conseiller"))
+    )
+    if spouse_aid:
+        spouse["conseiller_account_id"] = spouse_aid
     spouse.update(identity_fields_for_storage(spouse_prenom, spouse_nom, payload.date_naissance))
     to_store = _encrypt_client_for_storage(spouse)
     try:

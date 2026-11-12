@@ -459,8 +459,10 @@ def resolve_access_by_account_id_only_update(
     Les conseillers legacy déjà en place restent à False tant qu'on ne l'active pas.
     """
     if role != ROLE_CONSEILLER:
+        # Ne pas effacer un verrou existant lors d'un round-trip de rôle
+        # (ex. conseiller→admin→conseiller) si le champ n'est pas explicitement fourni.
         if incoming is None:
-            return False, None
+            return bool(current), None
         return bool(incoming), None
     became_conseiller = (
         previous_role is not None
@@ -596,30 +598,56 @@ def client_account_id_matches(user: User, client: dict) -> bool:
     return False
 
 
-def _missing_conseiller_account_id_clause() -> dict:
+def _missing_field_clause(field: str) -> dict:
     return {
         "$or": [
-            {"conseiller_account_id": {"$exists": False}},
-            {"conseiller_account_id": None},
-            {"conseiller_account_id": ""},
+            {field: {"$exists": False}},
+            {field: None},
+            {field: ""},
+        ]
+    }
+
+
+def _missing_conseiller_account_id_clause() -> dict:
+    """Compat : absence de conseiller_account_id seule (tests / scripts)."""
+    return _missing_field_clause("conseiller_account_id")
+
+
+def _missing_account_attribution_clause() -> dict:
+    """Pas d'attribution account_id (ni conseiller_account_id ni agent_account_id)."""
+    return {
+        "$and": [
+            _missing_field_clause("conseiller_account_id"),
+            _missing_field_clause("agent_account_id"),
         ]
     }
 
 
 def conseiller_access_mongo_filter(user: User) -> dict:
-    """Filtre Mongo dossiers selon ACCESS_MODE / flag compte."""
+    """Filtre Mongo dossiers selon ACCESS_MODE / flag compte.
+
+    Aligné sur can_access_client : strict/dual reconnaissent conseiller_account_id
+    et agent_account_id. En dual, le fallback nom ne s'applique que si les deux
+    champs account_id sont absents.
+    """
     mode = effective_access_mode(user)
     account_id = str(getattr(user, "account_id", "") or "").strip()
     if mode == "strict":
         if not account_id:
             return {"conseiller_account_id": "__aucun__"}
-        return {"conseiller_account_id": account_id}
+        return {
+            "$or": [
+                {"conseiller_account_id": account_id},
+                {"agent_account_id": account_id},
+            ]
+        }
     if mode == "dual":
         name_scope = conseiller_scope_mongo_filter(user)
         ors: List[dict] = []
         if account_id:
             ors.append({"conseiller_account_id": account_id})
-        ors.append({"$and": [_missing_conseiller_account_id_clause(), name_scope]})
+            ors.append({"agent_account_id": account_id})
+        ors.append({"$and": [_missing_account_attribution_clause(), name_scope]})
         return {"$or": ors}
     return conseiller_scope_mongo_filter(user)
 

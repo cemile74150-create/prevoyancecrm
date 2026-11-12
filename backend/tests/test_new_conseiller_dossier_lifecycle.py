@@ -184,7 +184,8 @@ def test_full_lifecycle_create_list_reopen_modify_notes_docs_demande_relogin():
 
     # 2. Tableau de bord / liste
     q = clients_base_query(new, for_dossiers=True)
-    assert q.get("conseiller_account_id") == "u_new"
+    assert {"conseiller_account_id": "u_new"} in q.get("$or", [])
+    assert {"agent_account_id": "u_new"} in q.get("$or", [])
 
     # 3. Rouvrir + modifier (même accès)
     dossier["statut"] = "Documents en attente"
@@ -262,7 +263,8 @@ def test_role_change_cannot_bypass_flag():
 def test_suivi_list_uses_account_filter_for_new_conseiller():
     new = _conseiller("u_new", "Nora", "Nouveau")
     q = suivi_3p_base_query(new)
-    assert q.get("conseiller_account_id") == "u_new"
+    assert {"conseiller_account_id": "u_new"} in q.get("$or", [])
+    assert {"agent_account_id": "u_new"} in q.get("$or", [])
 
 
 def test_flag_stays_true_never_disabled():
@@ -273,3 +275,38 @@ def test_flag_stays_true_never_disabled():
     )
     assert val is True
     assert err
+
+
+def test_role_roundtrip_preserves_locked_flag():
+    # conseiller → admin sans toucher au flag : conserve True
+    val, err = resolve_access_by_account_id_only_update(
+        current=True, incoming=None, role=ROLE_ADMIN, previous_role=ROLE_CONSEILLER
+    )
+    assert val is True
+    assert err is None
+
+
+def test_spouse_inherits_parent_account_stamp():
+    new = _conseiller("u_new", "Nora", "Nouveau")
+    primary = {
+        "conseiller": "Nora Nouveau",
+        "conseiller_account_id": "u_new",
+    }
+    spouse = {
+        "conseiller": primary["conseiller"],
+        "conseiller_account_id": primary.get("conseiller_account_id"),
+    }
+    assert can_access_client(new, primary) is True
+    assert can_access_client(new, spouse) is True
+
+
+def test_strict_list_filter_accepts_agent_account_id():
+    new = _conseiller("u_new", "Nora", "Nouveau")
+    q = clients_base_query(new, for_dossiers=True)
+    assert "$or" in q
+    assert {"conseiller_account_id": "u_new"} in q["$or"]
+    assert {"agent_account_id": "u_new"} in q["$or"]
+    # Dossier stampé via agent_account_id seulement → accessible en GET
+    assert can_access_client(
+        new, {"agent_account_id": "u_new", "conseiller": "Autre"}
+    ) is True
