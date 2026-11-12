@@ -75,28 +75,28 @@ if ($secrets) {
   Fail ("Refus : fichiers sensibles suivis par Git : " + ($secrets -join ", "))
 }
 
-function Test-PlaywrightChromiumPresent {
-  # Docker/CI : PLAYWRIGHT_BROWSERS_PATH=/ms-playwright (installé dans le Dockerfile).
-  # Local : %LOCALAPPDATA%\ms-playwright après `npx playwright install chromium`.
-  $roots = @()
-  if ($env:PLAYWRIGHT_BROWSERS_PATH) { $roots += $env:PLAYWRIGHT_BROWSERS_PATH }
-  if ($env:LOCALAPPDATA) { $roots += (Join-Path $env:LOCALAPPDATA "ms-playwright") }
-  if (Test-Path "/ms-playwright") { $roots += "/ms-playwright" }
-  foreach ($root in $roots) {
+function Find-PlaywrightBrowsersRoot {
+  # Prefer a root that actually contains chrome-headless-shell (usable by PDF tests).
+  $candidates = @()
+  if ($env:LOCALAPPDATA) { $candidates += (Join-Path $env:LOCALAPPDATA "ms-playwright") }
+  if (Test-Path "/ms-playwright") { $candidates += "/ms-playwright" }
+  if ($env:PLAYWRIGHT_BROWSERS_PATH) { $candidates += $env:PLAYWRIGHT_BROWSERS_PATH }
+  foreach ($root in $candidates) {
     if (-not (Test-Path $root)) { continue }
     $hit = Get-ChildItem -Path $root -Recurse -Filter "chrome-headless-shell.exe" -ErrorAction SilentlyContinue |
       Select-Object -First 1
     if (-not $hit) {
       $hit = Get-ChildItem -Path $root -Recurse -Filter "chrome-headless-shell" -ErrorAction SilentlyContinue |
+        Where-Object { -not $_.PSIsContainer } |
         Select-Object -First 1
     }
-    if (-not $hit) {
-      $hit = Get-ChildItem -Path $root -Recurse -Filter "chrome.exe" -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-    }
-    if ($hit) { return $true }
+    if ($hit) { return $root }
   }
-  return $false
+  return $null
+}
+
+function Test-PlaywrightChromiumPresent {
+  return [bool](Find-PlaywrightBrowsersRoot)
 }
 
 if (-not $SansTests) {
@@ -123,14 +123,19 @@ if (-not $SansTests) {
     (Test-Path "/ms-playwright") -or
     $env:FORCE_ANALYSE_PDF_TESTS -eq "1"
   )
-  $playwrightOk = Test-PlaywrightChromiumPresent
-  if (-not $playwrightOk) {
+  $browsersRoot = Find-PlaywrightBrowsersRoot
+  if ($browsersRoot) {
+    # Evite un PLAYWRIGHT_BROWSERS_PATH sandbox vide (Cursor) qui casse le launch alors que
+    # %LOCALAPPDATA%\ms-playwright contient deja Chromium.
+    $env:PLAYWRIGHT_BROWSERS_PATH = $browsersRoot
+    Write-Output "Playwright browsers: $browsersRoot"
+  } else {
     if ($inCiOrDocker) {
-      Fail "Refus : Chromium Playwright introuvable en CI/Docker. Exécutez `npx playwright install --with-deps chromium` (déjà dans le Dockerfile)."
+      Fail "Refus : Chromium Playwright introuvable en CI/Docker. Lancez: npx playwright install --with-deps chromium (deja dans le Dockerfile)."
     }
-    Write-Output "ATTENTION : Chromium Playwright absent en local — exclusion temporaire des tests PDF :"
+    Write-Output "ATTENTION : Chromium Playwright absent en local - exclusion temporaire des tests PDF :"
     foreach ($name in $pdfTestNames) { Write-Output "  - $name" }
-    Write-Output "Les autres tests du moteur tournent. Pour tout exécuter localement : cd backend\analyse_prevoyance_engine ; npx playwright install chromium"
+    Write-Output "Les autres tests du moteur tournent. Pour tout executer localement: cd backend\analyse_prevoyance_engine ; npx playwright install chromium"
     $tests = @($tests | Where-Object {
       $leaf = Split-Path $_ -Leaf
       $pdfTestNames -notcontains $leaf
