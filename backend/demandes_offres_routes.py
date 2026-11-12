@@ -2272,10 +2272,14 @@ def attach_demandes_offres_routes(
         assigned_to = (
             str((payload.assigned_to_account_id if payload else None) or "").strip() or None
         )
+        # Attribution à un autre conseiller : réservée process/admin (anti-usurpation).
+        can_assign_agent = can_process_offres(user) or has_perm(user, PERM_USERS_MANAGE)
+        if assigned_to and not can_assign_agent:
+            assigned_to = None
         creator_id = str(user.account_id or "").strip()
         agent_account_id = resolve_offre_agent_account_id(
             creator_account_id=creator_id,
-            assigned_to_account_id=assigned_to,
+            assigned_to_account_id=assigned_to if can_assign_agent else None,
         )
         # Agent demandeur = conseiller assigné si présent, sinon créateur.
         # created_by reste toujours l'opérateur (traçabilité).

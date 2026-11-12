@@ -535,8 +535,9 @@ def compute_erreurs_agent_stats(records: list) -> dict:
 
 def can_follow_signature(user, doc: dict) -> bool:
     """
-    Suivi Offre signée / non signée : réservé à l'agent créateur (ou conseiller de la demande).
-    Les gestionnaires purs (sans lien agent) ne doivent pas actionner ces boutons.
+    Suivi Offre signée / non signée : réservé à l'agent demandeur.
+    Si agent_account_id est distinct du créateur, seul l'agent (pas l'opérateur) suit.
+    Legacy : sans agent_account_id, le créateur reste autorisé.
     """
     from access_control import (
         email_matches_conseiller,
@@ -544,7 +545,11 @@ def can_follow_signature(user, doc: dict) -> bool:
     )
 
     account_id = getattr(user, "account_id", None)
-    if account_id and doc.get("created_by_account_id") == account_id:
+    agent = str((doc or {}).get("agent_account_id") or "").strip()
+    created = str((doc or {}).get("created_by_account_id") or "").strip()
+    if account_id and agent and account_id == agent:
+        return True
+    if account_id and created and account_id == created and (not agent or agent == created):
         return True
     if labels_match_conseiller(doc.get("agent_label"), user):
         return True

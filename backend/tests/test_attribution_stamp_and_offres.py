@@ -220,3 +220,46 @@ def test_legacy_mendes_untouched_by_stamp_helpers():
     )
     # Pas de migration silencieuse des dossiers sans stamp
     assert write is False
+
+
+def test_creator_save_does_not_overwrite_assigned_agent_identity():
+    from offre_agent_identity import resolve_agent_identity_for_write
+
+    admin = _u(ROLE_ADMIN, "admin1", "Admin", "Mendes")
+    doc = {
+        "created_by_account_id": "admin1",
+        "agent_account_id": "u_new",
+        "agent_prenom": "Nora",
+        "agent_nom": "Nouveau",
+        "agent_email": "nora@test.ch",
+        "agent_label": "Nora Nouveau",
+        "agent_finma": "F-1",
+    }
+    agent_identity = {
+        "prenom": "Nora",
+        "nom": "Nouveau",
+        "email": "nora@test.ch",
+        "finma": "F-1",
+        "label": "Nora Nouveau",
+        "account_id": "u_new",
+    }
+    resolved = resolve_agent_identity_for_write(
+        doc, admin, creator_identity=agent_identity
+    )
+    assert resolved["prenom"] == "Nora"
+    assert resolved["email"] == "nora@test.ch"
+    assert resolved["label"] == "Nora Nouveau"
+
+
+def test_signature_follow_uses_agent_not_operator_creator():
+    nora = _u(ROLE_CONSEILLER, "u_new", "Nora", "Nouveau")
+    admin = _u(ROLE_ADMIN, "admin1", "Admin", "Mendes")
+    doc = {
+        "created_by_account_id": "admin1",
+        "agent_account_id": "u_new",
+        "agent_label": "Nora Nouveau",
+    }
+    from demandes_offres_3p import can_follow_signature
+
+    assert can_follow_signature(nora, doc) is True
+    assert can_follow_signature(admin, doc) is False
