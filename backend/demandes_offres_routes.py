@@ -2266,15 +2266,30 @@ def attach_demandes_offres_routes(
             agent_identity_from_user,
             apply_agent_identity_to_doc,
             apply_agent_identity_to_payload,
+            resolve_offre_agent_account_id,
         )
 
+        assigned_to = (
+            str((payload.assigned_to_account_id if payload else None) or "").strip() or None
+        )
+        creator_id = str(user.account_id or "").strip()
+        agent_account_id = resolve_offre_agent_account_id(
+            creator_account_id=creator_id,
+            assigned_to_account_id=assigned_to,
+        )
+        # Agent demandeur = conseiller assigné si présent, sinon créateur.
+        # created_by reste toujours l'opérateur (traçabilité).
         identity = agent_identity_from_user(user)
+        if agent_account_id and agent_account_id != creator_id:
+            assigned_identity = await identity_from_account_id(agent_account_id)
+            if assigned_identity:
+                identity = assigned_identity
         apply_agent_identity_to_doc(doc, identity, overwrite_payload=False)
 
         agent_label = identity.get("label") or user.conseiller or actor_name(user)
 
         form_payload = empty_form_payload(form_type_id) if form_type_id != "pilier3_legacy" else {}
-        # Préremplir agent (session) + identité client CRM
+        # Préremplir agent (session / conseiller assigné) + identité client CRM
         if isinstance(form_payload, dict) and form_payload:
             form_payload = apply_agent_identity_to_payload(
                 form_type_id, form_payload, identity, overwrite=True
@@ -2312,7 +2327,7 @@ def attach_demandes_offres_routes(
                     (payload.demande_origine if payload else None)
                     or (
                         DEMANDE_ORIGINE_ATTRIBUEE
-                        if can_process_offres(user) and (payload and payload.assigned_to_account_id)
+                        if can_process_offres(user) and assigned_to
                         else DEMANDE_ORIGINE_CONSEILLER
                     )
                 ),
@@ -2320,10 +2335,10 @@ def attach_demandes_offres_routes(
                     (payload.type_client if payload else None),
                     client_id=client_id or doc.get("client_id"),
                 ),
-                "assigned_to_account_id": (payload.assigned_to_account_id if payload else None) or None,
+                "assigned_to_account_id": assigned_to,
                 "assigned_to_name": (payload.assigned_to_name if payload else None) or "",
-                "created_by_account_id": user.account_id,
-                "agent_account_id": user.account_id,
+                "created_by_account_id": creator_id,
+                "agent_account_id": agent_account_id,
                 "created_by_name": actor_name(user),
                 "created_at": created_at,
                 "updated_at": created_at,
@@ -2462,9 +2477,8 @@ def attach_demandes_offres_routes(
             if not assigned or not (assigned.get("prenom") or assigned.get("nom") or assigned.get("email")):
                 raise HTTPException(status_code=400, detail="Agent demandeur introuvable")
             apply_agent_identity_to_doc(normalized, assigned, overwrite_payload=True)
+            # Agent ≠ créateur : on change l'agent sans réécrire l'historique de création.
             normalized["agent_account_id"] = assigned.get("account_id") or assigned_id
-            normalized["created_by_account_id"] = normalized["agent_account_id"]
-            normalized["created_by_name"] = assigned.get("label") or assigned.get("email") or ""
         elif can_set_agent:
             ident = {
                 "prenom": str(normalized.get("agent_prenom") or "").strip(),
@@ -2491,8 +2505,6 @@ def attach_demandes_offres_routes(
         updates["agent_label"] = normalized.get("agent_label")
         if can_set_agent and assigned_id:
             updates["agent_account_id"] = normalized.get("agent_account_id")
-            updates["created_by_account_id"] = normalized.get("created_by_account_id")
-            updates["created_by_name"] = normalized.get("created_by_name")
         elif can_set_agent:
             updates["agent_label"] = normalized.get("agent_label")
         if "form_payload" in raw_updates or isinstance(normalized.get("form_payload"), dict):
@@ -2544,10 +2556,11 @@ def attach_demandes_offres_routes(
                     user_id=user.user_id,
                     module="offres",
                     conseiller=normalized.get("agent_label") or user.conseiller,
+                    # Hub rattaché à l'agent demandeur (conseiller), pas au créateur interne.
                     conseiller_account_id=(
                         normalized.get("agent_account_id")
-                        or normalized.get("created_by_account_id")
-                        or user.account_id
+                        or normalized.get("assigned_to_account_id")
+                        or None
                     ),
                 )
                 if hub:
@@ -2618,8 +2631,8 @@ def attach_demandes_offres_routes(
                     conseiller=doc.get("agent_label") or user.conseiller,
                     conseiller_account_id=(
                         doc.get("agent_account_id")
-                        or doc.get("created_by_account_id")
-                        or user.account_id
+                        or doc.get("assigned_to_account_id")
+                        or None
                     ),
                 )
                 if hub and hub.get("id") != doc.get("client_id"):

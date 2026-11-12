@@ -48,6 +48,7 @@ from access_control import (
     force_conseiller_on_write,
     resolve_conseiller_account_id_for_write,
     should_stamp_conseiller_account_id_on_update,
+    decide_conseiller_account_id_on_update,
     match_account_id_among_users,
     client_account_id_matches,
     create_session,
@@ -2461,28 +2462,44 @@ async def update_client(client_id: str, payload: ClientCreate, user: User = Depe
     update["nom"] = nom
     update.update(identity_fields_for_storage(prenom, nom, update.get("date_naissance")))
     update["conseiller"] = force_conseiller_on_write(user, update.get("conseiller"))
+    old_cons = c.get("conseiller")
+    new_cons = update.get("conseiller")
+    old_aid = c.get("conseiller_account_id") or c.get("agent_account_id")
+    matched_aid = None
     if should_stamp_conseiller_account_id_on_update(
         user=user,
-        old_conseiller=c.get("conseiller"),
-        new_conseiller=update.get("conseiller"),
-        old_account_id=c.get("conseiller_account_id") or c.get("agent_account_id"),
-    ):
-        stamped = await _stamp_conseiller_account_id(user, update.get("conseiller"))
-        if stamped:
-            update["conseiller_account_id"] = stamped
-        elif is_global_viewer(user) and not (update.get("conseiller") or "").strip():
-            # Réattribution vide : retirer le stamp
-            update["conseiller_account_id"] = None
-        elif is_global_viewer(user):
-            # Réattribution vers un libellé sans compte unique → pas de stamp erroné
-            update["conseiller_account_id"] = None
+        old_conseiller=old_cons,
+        new_conseiller=new_cons,
+        old_account_id=old_aid,
+    ) and is_global_viewer(user):
+        matched_aid = await _lookup_conseiller_account_id(new_cons)
+    write_stamp, stamp_val, is_reattrib = decide_conseiller_account_id_on_update(
+        user=user,
+        old_conseiller=old_cons,
+        new_conseiller=new_cons,
+        old_account_id=old_aid,
+        matched_account_id=matched_aid,
+    )
+    if write_stamp:
+        update["conseiller_account_id"] = stamp_val
     update["statut"] = normalize_statut(update.get("statut"))
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     if update.get("conseiller") and finma_in is not None:
         await upsert_conseiller_finma(update["conseiller"], finma_in)
     update = _encrypt_client_patch(update)
     await db.clients.update_one({"id": client_id}, {"$set": update})
-    await log_action(user.user_id, client_id, "Fiche client mise à jour")
+    if is_reattrib:
+        await log_action(
+            user.user_id,
+            client_id,
+            (
+                f"Réattribution conseiller: {(old_cons or '—').strip() or '—'} → "
+                f"{(new_cons or '—').strip() or '—'} "
+                f"(account_id={stamp_val or 'aucun'})"
+            ),
+        )
+    else:
+        await log_action(user.user_id, client_id, "Fiche client mise à jour")
     # Propager l'identité vers Offres + Suivi 3P liés
     try:
         from client_hub import propagate_hub_identity
@@ -7320,16 +7337,34 @@ async def update_suivi_3p_fiche(
         )
     if "nombre_enfants" in data and data["nombre_enfants"] is not None:
         updates["nombre_enfants"] = int(data["nombre_enfants"])
+    reattrib_detail: Optional[str] = None
     if "conseiller" in data:
         updates["conseiller"] = force_conseiller_on_write(user, data.get("conseiller"))
+        old_cons = c.get("conseiller")
+        new_cons = updates.get("conseiller")
+        old_aid = c.get("conseiller_account_id") or c.get("agent_account_id")
+        matched_aid = None
         if should_stamp_conseiller_account_id_on_update(
             user=user,
-            old_conseiller=c.get("conseiller"),
-            new_conseiller=updates.get("conseiller"),
-            old_account_id=c.get("conseiller_account_id") or c.get("agent_account_id"),
-        ):
-            stamped = await _stamp_conseiller_account_id(user, updates.get("conseiller"))
-            updates["conseiller_account_id"] = stamped
+            old_conseiller=old_cons,
+            new_conseiller=new_cons,
+            old_account_id=old_aid,
+        ) and is_global_viewer(user):
+            matched_aid = await _lookup_conseiller_account_id(new_cons)
+        write_stamp, stamp_val, is_reattrib = decide_conseiller_account_id_on_update(
+            user=user,
+            old_conseiller=old_cons,
+            new_conseiller=new_cons,
+            old_account_id=old_aid,
+            matched_account_id=matched_aid,
+        )
+        if write_stamp:
+            updates["conseiller_account_id"] = stamp_val
+            if is_reattrib:
+                reattrib_detail = (
+                    f"Réattribution conseiller Suivi 3P: {(old_cons or '—').strip() or '—'} → "
+                    f"{(new_cons or '—').strip() or '—'} (account_id={stamp_val or 'aucun'})"
+                )
     if "statut" in data and data["statut"] is not None:
         updates["statut"] = normalize_suivi_statut(data["statut"])
     if "gain_fiscal_estime" in data:
@@ -7382,6 +7417,12 @@ async def update_suivi_3p_fiche(
 
     updates = _encrypt_client_patch(updates)
     await db[SUIVI_3P_CLIENTS].update_one({"id": client_id}, {"$set": updates})
+    if reattrib_detail:
+        hub_id = (c.get("client_id") or client_id)
+        try:
+            await log_action(user.user_id, hub_id, reattrib_detail)
+        except Exception:
+            logger.exception("Journal réattribution Suivi 3P échoué client=%s", client_id)
     fresh = await db[SUIVI_3P_CLIENTS].find_one({"id": client_id}, {"_id": 0})
     serialized = serialize_suivi_client(fresh or {**c, **updates})
 

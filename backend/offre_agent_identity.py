@@ -111,6 +111,24 @@ def viewer_is_demande_creator(doc: Optional[dict], user: Any) -> bool:
     return False
 
 
+def resolve_offre_agent_account_id(
+    *,
+    creator_account_id: Optional[str],
+    assigned_to_account_id: Optional[str] = None,
+    explicit_agent_account_id: Optional[str] = None,
+) -> str:
+    """Account_id de l'agent demandeur (pas forcément le créateur).
+
+    Ordre : agent explicite → conseiller assigné → créateur.
+    ``created_by_account_id`` reste distinct pour la traçabilité.
+    """
+    for candidate in (explicit_agent_account_id, assigned_to_account_id, creator_account_id):
+        aid = str(candidate or "").strip()
+        if aid:
+            return aid
+    return ""
+
+
 def _identity_is_populated(identity: Optional[dict]) -> bool:
     if not identity:
         return False

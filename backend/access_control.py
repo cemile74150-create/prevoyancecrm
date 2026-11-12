@@ -549,20 +549,47 @@ def should_stamp_conseiller_account_id_on_update(
     new_conseiller: Optional[str],
     old_account_id: Optional[str],
 ) -> bool:
-    """Évite une migration silencieuse des dossiers existants lors d'un simple edit admin.
+    """True s'il faut écrire conseiller_account_id sur cette mise à jour.
 
     - Conseiller : toujours (réaffirme son account_id).
-    - Superviseur : seulement si réattribution (libellé changé) ou déjà stampé (resync).
+    - Superviseur : uniquement si le libellé conseiller change (réattribution explicite).
+      Un edit sans changement de libellé ne doit jamais toucher un stamp existant.
     """
     if not is_global_viewer(user):
         return True
     old_c = (old_conseiller or "").strip()
     new_c = (new_conseiller or "").strip()
-    if old_c != new_c:
-        return True
-    if str(old_account_id or "").strip():
-        return True
-    return False
+    return old_c != new_c
+
+
+def decide_conseiller_account_id_on_update(
+    *,
+    user: "User",
+    old_conseiller: Optional[str],
+    new_conseiller: Optional[str],
+    old_account_id: Optional[str],
+    matched_account_id: Optional[str] = None,
+) -> tuple[bool, Optional[str], bool]:
+    """Décide l'écriture de conseiller_account_id.
+
+    Retourne ``(should_write, new_account_id, is_reattribution)``.
+
+    - Conseiller : write=True, account=soi.
+    - Admin, libellé inchangé : write=False (conserve l'existant, même si lookup échouerait).
+    - Admin, libellé changé : write=True, account=match unique ou None (réattribution explicite).
+    """
+    old_aid = str(old_account_id or "").strip() or None
+    if not is_global_viewer(user):
+        own = str(getattr(user, "account_id", "") or "").strip() or None
+        return True, own, False
+    old_c = (old_conseiller or "").strip()
+    new_c = (new_conseiller or "").strip()
+    if old_c == new_c:
+        return False, old_aid, False
+    matched = str(matched_account_id or "").strip() or None
+    if not new_c:
+        return True, None, True
+    return True, matched, True
 
 
 def set_runtime_access_mode_override(mode: Optional[str]) -> None:
