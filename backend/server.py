@@ -979,6 +979,9 @@ async def list_users(user: User = Depends(get_current_user)):
 @api_router.post("/users")
 async def create_user(payload: UserCreate, user: User = Depends(get_current_user)):
     require_admin(user)
+    from access_control import force_access_by_account_id_only_on_create
+    from access_policy_journal import log_user_access_flag
+
     role = payload.role if payload.role in ROLES else ROLE_CONSEILLER
     email = payload.email.strip().lower()
     if await db.users.find_one({"email": email}):
@@ -988,6 +991,8 @@ async def create_user(payload: UserCreate, user: User = Depends(get_current_user
     name = display_name(payload.prenom, payload.nom)
     conseiller = (payload.conseiller or "").strip() or (name if role == ROLE_CONSEILLER else None)
     account_id = f"user_{uuid.uuid4().hex[:12]}"
+    # Nouveaux conseillers : toujours account_id only (payload ignoré / forcé).
+    access_only = force_access_by_account_id_only_on_create(role)
     doc = {
         "user_id": account_id,
         "email": email,
@@ -1002,12 +1007,21 @@ async def create_user(payload: UserCreate, user: User = Depends(get_current_user
         "active": True,
         "password_hash": hash_password(payload.password),
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "access_by_account_id_only": access_only,
         "receive_conseiller_rappel_copies": bool(payload.receive_conseiller_rappel_copies)
         if role == ROLE_ADMIN
         else False,
         **permission_storage_fields(role, payload.permissions, payload.see_all_dossiers),
     }
     await db.users.insert_one(doc)
+    if access_only:
+        await log_user_access_flag(
+            db,
+            actor_account_id=user.account_id,
+            actor_email=user.email,
+            target_account_id=account_id,
+            access_by_account_id_only=True,
+        )
     if conseiller:
         await upsert_conseiller_finma(conseiller, doc.get("finma_number"))
     return public_user(doc)
@@ -1071,8 +1085,29 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
                 status_code=400,
                 detail="Vous ne pouvez pas retirer votre propre droit de gérer les utilisateurs",
             )
+    from access_control import resolve_access_by_account_id_only_update
+    from access_policy_journal import log_user_access_flag
+
+    if payload.access_by_account_id_only is not None or payload.role is not None:
+        new_flag, flag_err = resolve_access_by_account_id_only_update(
+            current=bool(doc.get("access_by_account_id_only")),
+            incoming=payload.access_by_account_id_only,
+            role=role,
+        )
+        if flag_err:
+            raise HTTPException(status_code=400, detail=flag_err)
+        if new_flag != bool(doc.get("access_by_account_id_only")):
+            updates["access_by_account_id_only"] = new_flag
     await db.users.update_one({"user_id": account_id}, {"$set": updates})
     fresh = await db.users.find_one({"user_id": account_id}, {"_id": 0})
+    if "access_by_account_id_only" in updates:
+        await log_user_access_flag(
+            db,
+            actor_account_id=user.account_id,
+            actor_email=user.email,
+            target_account_id=account_id,
+            access_by_account_id_only=bool(updates["access_by_account_id_only"]),
+        )
     cons_name = (fresh or {}).get("conseiller") or (fresh or {}).get("name")
     if cons_name and ("finma_number" in updates or "conseiller" in updates):
         await upsert_conseiller_finma(cons_name, (fresh or {}).get("finma_number"))
@@ -1104,6 +1139,54 @@ async def deactivate_user(account_id: str, user: User = Depends(get_current_user
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     await db.user_sessions.delete_many({"user_id": account_id})
     return {"ok": True}
+
+
+class AccessModeUpdate(BaseModel):
+    mode: str
+    reason: str = ""
+
+
+@api_router.get("/access-policy")
+async def get_access_policy(user: User = Depends(get_current_user)):
+    require_admin(user)
+    from access_control import ACCESS_MODE, get_runtime_access_mode
+    from access_policy_journal import load_access_mode_from_db
+
+    mode = await load_access_mode_from_db(db)
+    return {
+        "mode": mode,
+        "env_default": ACCESS_MODE,
+        "runtime": get_runtime_access_mode(),
+    }
+
+
+@api_router.put("/access-policy/mode")
+async def put_access_mode(payload: AccessModeUpdate, user: User = Depends(get_current_user)):
+    """Bascule legacy|dual|strict — réservé admin ; journalisé. Pas d'auto-migration."""
+    require_admin(user)
+    from access_policy_journal import set_access_mode
+
+    try:
+        result = await set_access_mode(
+            db,
+            mode=payload.mode,
+            actor_account_id=user.account_id,
+            actor_email=user.email,
+            reason=payload.reason or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True, **result}
+
+
+@api_router.get("/access-policy/journal")
+async def list_access_policy_journal(user: User = Depends(get_current_user), limit: int = 100):
+    require_admin(user)
+    from access_control import ACCESS_POLICY_JOURNAL
+
+    lim = max(1, min(int(limit or 100), 500))
+    rows = await db[ACCESS_POLICY_JOURNAL].find({}, {"_id": 0}).sort("created_at", -1).to_list(lim)
+    return {"items": rows}
 
 
 # ---------------- Helpers ----------------
@@ -8509,6 +8592,13 @@ async def startup():
         )
     except Exception:
         pass
+    try:
+        from access_policy_journal import load_access_mode_from_db
+
+        mode = await load_access_mode_from_db(db)
+        logger.info("Access policy mode=%s (env ACCESS_MODE=%s)", mode, os.environ.get("ACCESS_MODE") or "legacy")
+    except Exception as e:
+        logger.error("Access policy load failed: %s", e)
     try:
         created = await ensure_bootstrap_admin(db)
         if created:

@@ -15,6 +15,15 @@ from fastapi import HTTPException, Request, Header
 from pydantic import BaseModel, Field, EmailStr
 
 TENANT_USER_ID = os.environ.get("TENANT_USER_ID", "local-dev")
+# legacy (défaut prod) | dual (account_id si présent, sinon nom) | strict (account_id seul)
+ACCESS_MODE = (os.environ.get("ACCESS_MODE") or "legacy").strip().lower()
+if ACCESS_MODE not in ("legacy", "dual", "strict"):
+    ACCESS_MODE = "legacy"
+
+# Surcharge runtime (Mongo app_settings) — None = suivre ACCESS_MODE env / défaut.
+_runtime_access_mode_override: Optional[str] = None
+ACCESS_POLICY_SETTINGS_KEY = "access_policy"
+ACCESS_POLICY_JOURNAL = "access_policy_journal"
 
 ROLE_ADMIN = "admin"
 ROLE_CEO = "ceo"
@@ -222,6 +231,8 @@ class User(BaseModel):
     can_manage_users: bool = False
     can_manage_settings: bool = False
     see_all_dossiers: bool = False
+    # Nouveaux conseillers : jamais de fallback nom, même en mode dual.
+    access_by_account_id_only: bool = False
     permissions: Dict[str, bool] = Field(default_factory=dict)
 
 
@@ -242,6 +253,8 @@ class UserCreate(BaseModel):
     receive_conseiller_rappel_copies: Optional[bool] = False
     see_all_dossiers: Optional[bool] = None
     permissions: Optional[Dict[str, bool]] = None
+    # Ignoré pour les conseillers : toujours True côté serveur.
+    access_by_account_id_only: Optional[bool] = None
 
 
 class UserUpdate(BaseModel):
@@ -256,6 +269,8 @@ class UserUpdate(BaseModel):
     receive_conseiller_rappel_copies: Optional[bool] = None
     see_all_dossiers: Optional[bool] = None
     permissions: Optional[Dict[str, bool]] = None
+    # Seul un admin peut poser True ; False refusé si déjà True (nouveaux conseillers).
+    access_by_account_id_only: Optional[bool] = None
 
 
 class PasswordReset(BaseModel):
@@ -391,6 +406,7 @@ def user_from_doc(doc: dict) -> User:
         can_manage_users=bool(perms.get(PERM_USERS_MANAGE)),
         can_manage_settings=bool(perms.get(PERM_USERS_MANAGE)),
         see_all_dossiers=resolve_see_all_dossiers(see_source),
+        access_by_account_id_only=bool(doc.get("access_by_account_id_only")),
         permissions=perms,
     )
 
@@ -414,6 +430,7 @@ def public_user(doc: dict) -> dict:
         "can_manage_users": u.can_manage_users,
         "can_manage_settings": u.can_manage_settings,
         "see_all_dossiers": u.see_all_dossiers,
+        "access_by_account_id_only": u.access_by_account_id_only,
         "permissions": u.permissions,
         "receive_conseiller_rappel_copies": bool(doc.get("receive_conseiller_rappel_copies")),
         "created_at": doc.get("created_at"),
@@ -422,6 +439,95 @@ def public_user(doc: dict) -> dict:
 
 def is_global_viewer(user: User) -> bool:
     return bool(getattr(user, "see_all_dossiers", False))
+
+
+def force_access_by_account_id_only_on_create(role: str) -> bool:
+    """Nouveaux conseillers : uniquement dossiers expressément attribués (account_id)."""
+    return role == ROLE_CONSEILLER
+
+
+def resolve_access_by_account_id_only_update(
+    *,
+    current: bool,
+    incoming: Optional[bool],
+    role: str,
+) -> tuple[bool, Optional[str]]:
+    """Retourne (valeur, erreur). False impossible si current=True (verrou nouveaux comptes)."""
+    if role != ROLE_CONSEILLER:
+        if incoming is None:
+            return False, None
+        return bool(incoming), None
+    # Conseiller
+    if current:
+        if incoming is False:
+            return True, "access_by_account_id_only ne peut pas être désactivé pour ce compte"
+        return True, None
+    if incoming is True:
+        return True, None
+    if incoming is False:
+        return False, None
+    return False, None
+
+
+def set_runtime_access_mode_override(mode: Optional[str]) -> None:
+    """Cache processus pour éviter un round-trip Mongo à chaque requête."""
+    global _runtime_access_mode_override
+    if mode is None:
+        _runtime_access_mode_override = None
+        return
+    m = str(mode).strip().lower()
+    _runtime_access_mode_override = m if m in ("legacy", "dual", "strict") else None
+
+
+def get_runtime_access_mode() -> str:
+    if _runtime_access_mode_override in ("legacy", "dual", "strict"):
+        return _runtime_access_mode_override
+    return ACCESS_MODE
+
+
+def effective_access_mode(user: User) -> str:
+    """Mode effectif pour ce compte (strict forcé si access_by_account_id_only)."""
+    if bool(getattr(user, "access_by_account_id_only", False)):
+        return "strict"
+    return get_runtime_access_mode()
+
+
+def client_account_id_matches(user: User, client: dict) -> bool:
+    wanted = str(getattr(user, "account_id", "") or "").strip()
+    if not wanted:
+        return False
+    for key in ("conseiller_account_id", "agent_account_id"):
+        if str(client.get(key) or "").strip() == wanted:
+            return True
+    return False
+
+
+def _missing_conseiller_account_id_clause() -> dict:
+    return {
+        "$or": [
+            {"conseiller_account_id": {"$exists": False}},
+            {"conseiller_account_id": None},
+            {"conseiller_account_id": ""},
+        ]
+    }
+
+
+def conseiller_access_mongo_filter(user: User) -> dict:
+    """Filtre Mongo dossiers selon ACCESS_MODE / flag compte."""
+    mode = effective_access_mode(user)
+    account_id = str(getattr(user, "account_id", "") or "").strip()
+    if mode == "strict":
+        if not account_id:
+            return {"conseiller_account_id": "__aucun__"}
+        return {"conseiller_account_id": account_id}
+    if mode == "dual":
+        name_scope = conseiller_scope_mongo_filter(user)
+        ors: List[dict] = []
+        if account_id:
+            ors.append({"conseiller_account_id": account_id})
+        ors.append({"$and": [_missing_conseiller_account_id_clause(), name_scope]})
+        return {"$or": ors}
+    return conseiller_scope_mongo_filter(user)
 
 
 def _norm_label(value: Optional[str]) -> str:
@@ -681,6 +787,14 @@ def require_perm(user: User, key: Union[str, Tuple[str, ...], List[str]], detail
 def can_access_client(user: User, client: dict) -> bool:
     if is_global_viewer(user):
         return True
+    mode = effective_access_mode(user)
+    if mode == "strict":
+        return client_account_id_matches(user, client)
+    if mode == "dual":
+        aid = str(client.get("conseiller_account_id") or client.get("agent_account_id") or "").strip()
+        if aid:
+            return aid == str(getattr(user, "account_id", "") or "").strip()
+        # Pas d'account_id : fallback nom (Pascal, BONVESTING, non migrés)
     if labels_match_conseiller(client.get("conseiller"), user):
         return True
     if labels_match_conseiller(client.get("agent_label"), user):
@@ -712,8 +826,8 @@ def clients_base_query(
     Si for_dossiers=True : uniquement les dossiers de prévoyance
     (exclut les fiches hub créées depuis Offres / Fiscalité, in_dossiers=False).
 
-    Conseiller (sans see_all) : tous les dossiers qui lui sont attribués
-    (libellé conseiller, casse ignorée, ou e-mail agent), y compris créés par un tiers.
+    Conseiller (sans see_all) : dossiers selon ACCESS_MODE
+    (legacy = nom/e-mail ; dual = account_id ou nom si absent ; strict = account_id).
     """
     q: dict = {
         "user_id": TENANT_USER_ID,
@@ -723,7 +837,7 @@ def clients_base_query(
         # Legacy (champ absent) + True → visibles ; False → stubs hub hors Kanban
         q["in_dossiers"] = {"$ne": False}
     if not is_global_viewer(user):
-        q.update(conseiller_scope_mongo_filter(user))
+        q.update(conseiller_access_mongo_filter(user))
     elif conseiller and conseiller != "all":
         if conseiller == "Non attribué":
             q["$and"] = [{
@@ -779,6 +893,7 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("DELETE",), r"^/comparatifs-rentes/", PERM_ANALYSES_EDIT),
     (None, r"^/users/conseillers$", None),
     (None, r"^/users", PERM_USERS_MANAGE),
+    (None, r"^/access-policy", PERM_USERS_MANAGE),
     (None, r"^/admin(/|$)", PERM_USERS_MANAGE),
     (("GET",), r"^/rappel-email-logs$", PERM_USERS_MANAGE),
     (("GET",), r"^/clients/[^/]+/documents", PERM_DOCUMENTS_VIEW),

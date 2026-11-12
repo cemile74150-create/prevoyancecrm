@@ -43,6 +43,11 @@ deploy/infomaniak/.env*
 
 # Migration backups (données clients — ne jamais committer)
 backend/backups/
+
+# Rapports d'attribution / copies locales (PII / données métier)
+backend/rapports_attribution/
+**/leosoft_mendes_attribution*
+**/rapport-attribution*.json
 # Aperçus PDF/PNG locaux — ne pas les déployer
 backend/generated/
 
