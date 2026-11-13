@@ -152,7 +152,32 @@
       "type": "text",
       "required": false,
       "options": [],
-      "page": 1
+      "page": 1,
+      "show_when": {
+        "logic": "any",
+        "rules": [
+          {
+            "field": "input_4",
+            "op": "isnot",
+            "value": "suisse"
+          },
+          {
+            "field": "input_4",
+            "op": "isnot",
+            "value": "Suisse"
+          },
+          {
+            "field": "input_4",
+            "op": "isnot",
+            "value": "CH"
+          },
+          {
+            "field": "input_4",
+            "op": "isnot",
+            "value": "ch"
+          }
+        ]
+      }
     },
     {
       "id": "35_3_1",
@@ -366,9 +391,14 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_29",
+            "field": "input_8",
             "op": "is",
-            "value": "Oui"
+            "value": "d'une famille"
+          },
+          {
+            "field": "input_8",
+            "op": "isnot",
+            "value": "d'une personne seule"
           }
         ]
       }
@@ -401,9 +431,14 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_29",
+            "field": "input_8",
             "op": "is",
-            "value": "Oui"
+            "value": "d'une famille"
+          },
+          {
+            "field": "input_8",
+            "op": "isnot",
+            "value": "d'une personne seule"
           }
         ]
       }
@@ -428,9 +463,14 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_29",
+            "field": "input_8",
             "op": "is",
-            "value": "Oui"
+            "value": "d'une famille"
+          },
+          {
+            "field": "input_8",
+            "op": "isnot",
+            "value": "d'une personne seule"
           }
         ]
       }
@@ -532,7 +572,17 @@
       ],
       "page": 2,
       "description": "Modules souhaités :",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "ARAG (Romandie Courtage uniquement)"
+          }
+        ]
+      }
     },
     {
       "id": "35_40",
@@ -549,7 +599,7 @@
           {
             "field": "input_23",
             "op": "is",
-            "value": "Coop (Privé uniquement)"
+            "value": "Coop"
           }
         ]
       }
@@ -624,9 +674,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_23",
+            "field": "input_44",
             "op": "is",
-            "value": "Coop (Privé uniquement)"
+            "value": "Modules à sélectionner"
           }
         ]
       }
@@ -648,9 +698,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_23",
+            "field": "input_44",
             "op": "is",
-            "value": "Coop (Privé uniquement)"
+            "value": "Modules à sélectionner"
           }
         ]
       }
@@ -717,5 +767,14 @@
       "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
       "default": "cdemirtas@agencemendes.ch"
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 35,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-particulier_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 9,
+    "added": 2,
+    "updated": 6,
+    "unchanged": 1
+  }
 }

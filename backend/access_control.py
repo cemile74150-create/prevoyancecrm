@@ -5,16 +5,63 @@ import logging
 import os
 import re
 import secrets
+import time
 import uuid
 from datetime import datetime, timezone, timedelta
 from itertools import permutations, product
-from typing import Optional, List, Dict, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import bcrypt
 from fastapi import HTTPException, Request, Header
 from pydantic import BaseModel, Field, EmailStr
 
+# Cache court session→User (évite 2 finds Mongo par requête sous charge).
+_SESSION_USER_CACHE: Dict[str, Tuple[float, "User"]] = {}
+_SESSION_USER_CACHE_TTL_S = float(os.environ.get("SESSION_USER_CACHE_TTL_S") or "30")
+_SESSION_USER_CACHE_MAX = int(os.environ.get("SESSION_USER_CACHE_MAX") or "512")
+
+
+def invalidate_session_user_cache(token: Optional[str] = None) -> None:
+    """Invalide une entrée (logout) ou tout le cache."""
+    if token:
+        _SESSION_USER_CACHE.pop(token, None)
+        return
+    _SESSION_USER_CACHE.clear()
+
+
+def _session_cache_get(token: str) -> Optional["User"]:
+    hit = _SESSION_USER_CACHE.get(token)
+    if not hit:
+        return None
+    expires_at, user = hit
+    if expires_at < time.monotonic():
+        _SESSION_USER_CACHE.pop(token, None)
+        return None
+    return user
+
+
+def _session_cache_put(token: str, user: "User") -> None:
+    if _SESSION_USER_CACHE_TTL_S <= 0:
+        return
+    if len(_SESSION_USER_CACHE) >= _SESSION_USER_CACHE_MAX:
+        now = time.monotonic()
+        expired = [k for k, (exp, _) in _SESSION_USER_CACHE.items() if exp < now]
+        for k in expired:
+            _SESSION_USER_CACHE.pop(k, None)
+        while len(_SESSION_USER_CACHE) >= _SESSION_USER_CACHE_MAX:
+            _SESSION_USER_CACHE.pop(next(iter(_SESSION_USER_CACHE)), None)
+    _SESSION_USER_CACHE[token] = (time.monotonic() + _SESSION_USER_CACHE_TTL_S, user)
+
 TENANT_USER_ID = os.environ.get("TENANT_USER_ID", "local-dev")
+# legacy (défaut prod) | dual (account_id si présent, sinon nom) | strict (account_id seul)
+ACCESS_MODE = (os.environ.get("ACCESS_MODE") or "legacy").strip().lower()
+if ACCESS_MODE not in ("legacy", "dual", "strict"):
+    ACCESS_MODE = "legacy"
+
+# Surcharge runtime (Mongo app_settings) — None = suivre ACCESS_MODE env / défaut.
+_runtime_access_mode_override: Optional[str] = None
+ACCESS_POLICY_SETTINGS_KEY = "access_policy"
+ACCESS_POLICY_JOURNAL = "access_policy_journal"
 
 ROLE_ADMIN = "admin"
 ROLE_CEO = "ceo"
@@ -222,6 +269,8 @@ class User(BaseModel):
     can_manage_users: bool = False
     can_manage_settings: bool = False
     see_all_dossiers: bool = False
+    # Nouveaux conseillers : jamais de fallback nom, même en mode dual.
+    access_by_account_id_only: bool = False
     permissions: Dict[str, bool] = Field(default_factory=dict)
 
 
@@ -235,13 +284,18 @@ class UserCreate(BaseModel):
     nom: str
     email: EmailStr
     telephone: Optional[str] = None
-    password: str
+    # Optionnel si send_activation=True (invitation sans MDP initial).
+    password: Optional[str] = None
     role: str = ROLE_CONSEILLER
     conseiller: Optional[str] = None
     finma_number: Optional[str] = None
+    entreprise_id: Optional[str] = None
+    send_activation: Optional[bool] = False
     receive_conseiller_rappel_copies: Optional[bool] = False
     see_all_dossiers: Optional[bool] = None
     permissions: Optional[Dict[str, bool]] = None
+    # Ignoré pour les conseillers : toujours True côté serveur.
+    access_by_account_id_only: Optional[bool] = None
 
 
 class UserUpdate(BaseModel):
@@ -252,10 +306,13 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     conseiller: Optional[str] = None
     finma_number: Optional[str] = None
+    entreprise_id: Optional[str] = None
     active: Optional[bool] = None
     receive_conseiller_rappel_copies: Optional[bool] = None
     see_all_dossiers: Optional[bool] = None
     permissions: Optional[Dict[str, bool]] = None
+    # Seul un admin peut poser True ; False refusé si déjà True (nouveaux conseillers).
+    access_by_account_id_only: Optional[bool] = None
 
 
 class PasswordReset(BaseModel):
@@ -336,13 +393,39 @@ def resolve_see_all_dossiers(doc: dict) -> bool:
     return default_see_all_dossiers(doc.get("role") or ROLE_CONSEILLER)
 
 
+def clamp_see_all_dossiers_for_access_policy(
+    *,
+    role: str,
+    see_all_dossiers: bool,
+    access_by_account_id_only: bool,
+) -> bool:
+    """Compte account_id-only : jamais see_all (sinon is_global_viewer court-circuite le strict).
+
+    Les conseillers legacy sans le flag conservent un éventuel see_all explicite.
+    """
+    if access_by_account_id_only:
+        return False
+    if role == ROLE_CONSEILLER and force_access_by_account_id_only_on_create(role):
+        # Défense en profondeur à la création : nouveau conseiller = pas de vue globale.
+        # Ne s'applique ici que si le flag est déjà True (voir appelants).
+        pass
+    return bool(see_all_dossiers)
+
+
 def permission_storage_fields(
     role: str,
     permissions: Optional[dict] = None,
     see_all_dossiers: Optional[bool] = None,
+    *,
+    access_by_account_id_only: bool = False,
 ) -> dict:
     perms = sanitize_permissions(permissions, role) if permissions is not None else default_permissions(role)
     see_all = default_see_all_dossiers(role) if see_all_dossiers is None else bool(see_all_dossiers)
+    see_all = clamp_see_all_dossiers_for_access_policy(
+        role=role,
+        see_all_dossiers=see_all,
+        access_by_account_id_only=access_by_account_id_only,
+    )
     return {
         "permissions": perms,
         "see_all_dossiers": see_all,
@@ -391,6 +474,7 @@ def user_from_doc(doc: dict) -> User:
         can_manage_users=bool(perms.get(PERM_USERS_MANAGE)),
         can_manage_settings=bool(perms.get(PERM_USERS_MANAGE)),
         see_all_dossiers=resolve_see_all_dossiers(see_source),
+        access_by_account_id_only=bool(doc.get("access_by_account_id_only")),
         permissions=perms,
     )
 
@@ -410,10 +494,18 @@ def public_user(doc: dict) -> dict:
         "role_label": ROLE_LABELS.get(u.role, u.role),
         "conseiller": u.conseiller,
         "finma_number": (doc.get("finma_number") or "").strip() or None,
+        "entreprise_id": (doc.get("entreprise_id") or "").strip() or None,
+        "entreprise_nom": doc.get("entreprise_nom"),
+        "entreprise_finma": doc.get("entreprise_finma"),
+        "must_set_password": bool(doc.get("must_set_password")),
+        "activation_pending": bool(
+            doc.get("activation_pending") or doc.get("must_set_password")
+        ),
         "active": u.active,
         "can_manage_users": u.can_manage_users,
         "can_manage_settings": u.can_manage_settings,
         "see_all_dossiers": u.see_all_dossiers,
+        "access_by_account_id_only": u.access_by_account_id_only,
         "permissions": u.permissions,
         "receive_conseiller_rappel_copies": bool(doc.get("receive_conseiller_rappel_copies")),
         "created_at": doc.get("created_at"),
@@ -422,6 +514,244 @@ def public_user(doc: dict) -> dict:
 
 def is_global_viewer(user: User) -> bool:
     return bool(getattr(user, "see_all_dossiers", False))
+
+
+def force_access_by_account_id_only_on_create(role: str) -> bool:
+    """Nouveaux conseillers : uniquement dossiers expressément attribués (account_id)."""
+    return role == ROLE_CONSEILLER
+
+
+def resolve_access_by_account_id_only_update(
+    *,
+    current: bool,
+    incoming: Optional[bool],
+    role: str,
+    previous_role: Optional[str] = None,
+) -> tuple[bool, Optional[str]]:
+    """Retourne (valeur, erreur). False impossible si current=True (verrou nouveaux comptes).
+
+    Un passage de rôle vers conseiller (admin→conseiller, etc.) force le flag comme à la création.
+    Les conseillers legacy déjà en place restent à False tant qu'on ne l'active pas.
+    """
+    if role != ROLE_CONSEILLER:
+        # Ne pas effacer un verrou existant lors d'un round-trip de rôle
+        # (ex. conseiller→admin→conseiller) si le champ n'est pas explicitement fourni.
+        if incoming is None:
+            return bool(current), None
+        return bool(incoming), None
+    became_conseiller = (
+        previous_role is not None
+        and previous_role != ROLE_CONSEILLER
+    )
+    # Conseiller
+    if current:
+        if incoming is False:
+            return True, "access_by_account_id_only ne peut pas être désactivé pour ce compte"
+        return True, None
+    if became_conseiller:
+        # Même politique que POST /users : tout nouveau conseiller = account_id only.
+        if incoming is False:
+            return True, "access_by_account_id_only est obligatoire pour un nouveau conseiller"
+        return True, None
+    if incoming is True:
+        return True, None
+    if incoming is False:
+        return False, None
+    return False, None
+
+
+def match_account_id_among_users(
+    conseiller_label: Optional[str],
+    user_docs: Iterable[dict],
+) -> Optional[str]:
+    """Retourne l'account_id si un seul compte conseiller correspond au libellé ; sinon None."""
+    label = (conseiller_label or "").strip()
+    if not label:
+        return None
+    matches: List[str] = []
+    for doc in user_docs or []:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("active") is False:
+            continue
+        role = (doc.get("role") or "").strip() or ROLE_CONSEILLER
+        # Comptes avec libellé conseiller (y compris admin qui a un nom d'agent)
+        candidate_labels = [
+            doc.get("conseiller"),
+            doc.get("name"),
+            display_name(doc.get("prenom") or "", doc.get("nom") or ""),
+        ]
+        if not any(conseiller_labels_match(label, cand) for cand in candidate_labels if cand):
+            continue
+        # Préférer les vrais rôles conseiller ; un admin homonyme ne doit pas voler l'attribution
+        if role != ROLE_CONSEILLER and role not in (ROLE_ADMIN, ROLE_CEO, ROLE_GESTIONNAIRE_OFFRES):
+            continue
+        if role != ROLE_CONSEILLER:
+            continue
+        aid = str(doc.get("user_id") or doc.get("account_id") or "").strip()
+        if aid and aid not in matches:
+            matches.append(aid)
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def resolve_conseiller_account_id_for_write(
+    user: "User",
+    conseiller_label: Optional[str],
+    *,
+    matched_account_id: Optional[str] = None,
+) -> Optional[str]:
+    """Account_id à persister avec le libellé conseiller lors d'une écriture dossier.
+
+    - Conseiller (sans see_all) : toujours son propre account_id.
+    - Superviseur : account_id du conseiller désigné s'il est résolu de façon unique.
+    - Libellé vide / pas de match : None (conserve le mode legacy au nom seul).
+    """
+    if not is_global_viewer(user):
+        aid = str(getattr(user, "account_id", "") or "").strip()
+        return aid or None
+    if not (conseiller_label or "").strip():
+        return None
+    matched = str(matched_account_id or "").strip()
+    return matched or None
+
+
+def should_stamp_conseiller_account_id_on_update(
+    *,
+    user: "User",
+    old_conseiller: Optional[str],
+    new_conseiller: Optional[str],
+    old_account_id: Optional[str],
+) -> bool:
+    """True s'il faut écrire conseiller_account_id sur cette mise à jour.
+
+    - Conseiller : toujours (réaffirme son account_id).
+    - Superviseur : uniquement si le libellé conseiller change (réattribution explicite).
+      Un edit sans changement de libellé ne doit jamais toucher un stamp existant.
+    """
+    if not is_global_viewer(user):
+        return True
+    old_c = (old_conseiller or "").strip()
+    new_c = (new_conseiller or "").strip()
+    return old_c != new_c
+
+
+def decide_conseiller_account_id_on_update(
+    *,
+    user: "User",
+    old_conseiller: Optional[str],
+    new_conseiller: Optional[str],
+    old_account_id: Optional[str],
+    matched_account_id: Optional[str] = None,
+) -> tuple[bool, Optional[str], bool]:
+    """Décide l'écriture de conseiller_account_id.
+
+    Retourne ``(should_write, new_account_id, is_reattribution)``.
+
+    - Conseiller : write=True, account=soi.
+    - Admin, libellé inchangé : write=False (conserve l'existant, même si lookup échouerait).
+    - Admin, libellé changé : write=True, account=match unique ou None (réattribution explicite).
+    """
+    old_aid = str(old_account_id or "").strip() or None
+    if not is_global_viewer(user):
+        own = str(getattr(user, "account_id", "") or "").strip() or None
+        return True, own, False
+    old_c = (old_conseiller or "").strip()
+    new_c = (new_conseiller or "").strip()
+    if old_c == new_c:
+        return False, old_aid, False
+    matched = str(matched_account_id or "").strip() or None
+    if not new_c:
+        return True, None, True
+    return True, matched, True
+
+
+def set_runtime_access_mode_override(mode: Optional[str]) -> None:
+    """Cache processus pour éviter un round-trip Mongo à chaque requête."""
+    global _runtime_access_mode_override
+    if mode is None:
+        _runtime_access_mode_override = None
+        return
+    m = str(mode).strip().lower()
+    _runtime_access_mode_override = m if m in ("legacy", "dual", "strict") else None
+
+
+def get_runtime_access_mode() -> str:
+    if _runtime_access_mode_override in ("legacy", "dual", "strict"):
+        return _runtime_access_mode_override
+    return ACCESS_MODE
+
+
+def effective_access_mode(user: User) -> str:
+    """Mode effectif pour ce compte (strict forcé si access_by_account_id_only)."""
+    if bool(getattr(user, "access_by_account_id_only", False)):
+        return "strict"
+    return get_runtime_access_mode()
+
+
+def client_account_id_matches(user: User, client: dict) -> bool:
+    wanted = str(getattr(user, "account_id", "") or "").strip()
+    if not wanted:
+        return False
+    for key in ("conseiller_account_id", "agent_account_id"):
+        if str(client.get(key) or "").strip() == wanted:
+            return True
+    return False
+
+
+def _missing_field_clause(field: str) -> dict:
+    return {
+        "$or": [
+            {field: {"$exists": False}},
+            {field: None},
+            {field: ""},
+        ]
+    }
+
+
+def _missing_conseiller_account_id_clause() -> dict:
+    """Compat : absence de conseiller_account_id seule (tests / scripts)."""
+    return _missing_field_clause("conseiller_account_id")
+
+
+def _missing_account_attribution_clause() -> dict:
+    """Pas d'attribution account_id (ni conseiller_account_id ni agent_account_id)."""
+    return {
+        "$and": [
+            _missing_field_clause("conseiller_account_id"),
+            _missing_field_clause("agent_account_id"),
+        ]
+    }
+
+
+def conseiller_access_mongo_filter(user: User) -> dict:
+    """Filtre Mongo dossiers selon ACCESS_MODE / flag compte.
+
+    Aligné sur can_access_client : strict/dual reconnaissent conseiller_account_id
+    et agent_account_id. En dual, le fallback nom ne s'applique que si les deux
+    champs account_id sont absents.
+    """
+    mode = effective_access_mode(user)
+    account_id = str(getattr(user, "account_id", "") or "").strip()
+    if mode == "strict":
+        if not account_id:
+            return {"conseiller_account_id": "__aucun__"}
+        return {
+            "$or": [
+                {"conseiller_account_id": account_id},
+                {"agent_account_id": account_id},
+            ]
+        }
+    if mode == "dual":
+        name_scope = conseiller_scope_mongo_filter(user)
+        ors: List[dict] = []
+        if account_id:
+            ors.append({"conseiller_account_id": account_id})
+            ors.append({"agent_account_id": account_id})
+        ors.append({"$and": [_missing_account_attribution_clause(), name_scope]})
+        return {"$or": ors}
+    return conseiller_scope_mongo_filter(user)
 
 
 def _norm_label(value: Optional[str]) -> str:
@@ -681,6 +1011,14 @@ def require_perm(user: User, key: Union[str, Tuple[str, ...], List[str]], detail
 def can_access_client(user: User, client: dict) -> bool:
     if is_global_viewer(user):
         return True
+    mode = effective_access_mode(user)
+    if mode == "strict":
+        return client_account_id_matches(user, client)
+    if mode == "dual":
+        aid = str(client.get("conseiller_account_id") or client.get("agent_account_id") or "").strip()
+        if aid:
+            return aid == str(getattr(user, "account_id", "") or "").strip()
+        # Pas d'account_id : fallback nom (Pascal, BONVESTING, non migrés)
     if labels_match_conseiller(client.get("conseiller"), user):
         return True
     if labels_match_conseiller(client.get("agent_label"), user):
@@ -712,8 +1050,8 @@ def clients_base_query(
     Si for_dossiers=True : uniquement les dossiers de prévoyance
     (exclut les fiches hub créées depuis Offres / Fiscalité, in_dossiers=False).
 
-    Conseiller (sans see_all) : tous les dossiers qui lui sont attribués
-    (libellé conseiller, casse ignorée, ou e-mail agent), y compris créés par un tiers.
+    Conseiller (sans see_all) : dossiers selon ACCESS_MODE
+    (legacy = nom/e-mail ; dual = account_id ou nom si absent ; strict = account_id).
     """
     q: dict = {
         "user_id": TENANT_USER_ID,
@@ -723,7 +1061,7 @@ def clients_base_query(
         # Legacy (champ absent) + True → visibles ; False → stubs hub hors Kanban
         q["in_dossiers"] = {"$ne": False}
     if not is_global_viewer(user):
-        q.update(conseiller_scope_mongo_filter(user))
+        q.update(conseiller_access_mongo_filter(user))
     elif conseiller and conseiller != "all":
         if conseiller == "Non attribué":
             q["$and"] = [{
@@ -779,6 +1117,9 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("DELETE",), r"^/comparatifs-rentes/", PERM_ANALYSES_EDIT),
     (None, r"^/users/conseillers$", None),
     (None, r"^/users", PERM_USERS_MANAGE),
+    (None, r"^/users-import(/|$)", PERM_USERS_MANAGE),
+    (None, r"^/entreprises(/|$)", PERM_USERS_MANAGE),
+    (None, r"^/access-policy", PERM_USERS_MANAGE),
     (None, r"^/admin(/|$)", PERM_USERS_MANAGE),
     (("GET",), r"^/rappel-email-logs$", PERM_USERS_MANAGE),
     (("GET",), r"^/clients/[^/]+/documents", PERM_DOCUMENTS_VIEW),
@@ -948,6 +1289,10 @@ async def resolve_session_user(db, request: Request, authorization: Optional[str
     if not token:
         raise HTTPException(status_code=401, detail="Non authentifié")
 
+    cached = _session_cache_get(token)
+    if cached is not None:
+        return cached
+
     session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
     if not session:
         raise HTTPException(status_code=401, detail="Session invalide")
@@ -960,6 +1305,7 @@ async def resolve_session_user(db, request: Request, authorization: Optional[str
                 exp = exp.replace(tzinfo=timezone.utc)
             if exp < datetime.now(timezone.utc):
                 await db.user_sessions.delete_one({"session_token": token})
+                invalidate_session_user_cache(token)
                 raise HTTPException(status_code=401, detail="Session expirée")
         except HTTPException:
             raise
@@ -971,7 +1317,9 @@ async def resolve_session_user(db, request: Request, authorization: Optional[str
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
     if doc.get("active") is False:
         raise HTTPException(status_code=403, detail="Compte désactivé")
-    return user_from_doc(doc)
+    user = user_from_doc(doc)
+    _session_cache_put(token, user)
+    return user
 
 
 async def ensure_bootstrap_admin(db):

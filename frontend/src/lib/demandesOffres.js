@@ -7,6 +7,7 @@ import {
   matchGenderOption,
   normalizeCrmCiviliteSexe,
 } from "./offreCiviliteSexe";
+import { isFieldVisible } from "./offreIncapaciteGain";
 
 export { formatDateFr, toIsoDate, toSwissDate };
 export {
@@ -844,20 +845,7 @@ export function buildDemandeResume(demande, options = {}) {
     for (const field of fields) {
       const name = field.name || field.id;
       if (!name) continue;
-      // Visibilité show_when (même esprit qu'OffreSchemaForm)
-      if (field.show_when?.rules?.length) {
-        const sw = field.show_when;
-        const results = sw.rules.map((rule) => {
-          const raw = payload[rule.field];
-          const expected = rule.value;
-          if (Array.isArray(raw)) return raw.includes(expected);
-          const actual = raw == null ? "" : String(raw);
-          if (rule.op === "isnot") return actual !== expected;
-          return actual === expected;
-        });
-        const ok = (sw.logic || "all") === "any" ? results.some(Boolean) : results.every(Boolean);
-        if (!ok) continue;
-      }
+      if (!isFieldVisible(field, payload)) continue;
       const raw = payload[name];
       if (!filled(raw)) continue;
       const label = (field.label || "").trim() || name;

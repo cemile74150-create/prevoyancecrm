@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
-import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, Menu, Bell, Settings2, KeyRound, Shield, FileSpreadsheet, Activity, Pencil, Mail, UserCircle, Calculator, HeartPulse, Scale, ListChecks, Palmtree } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, Menu, Bell, Settings2, KeyRound, Shield, FileSpreadsheet, Activity, Pencil, Mail, UserCircle, Calculator, HeartPulse, Scale, ListChecks, Palmtree, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import PasswordInput from "@/components/PasswordInput";
@@ -36,6 +36,7 @@ const nav = [
   { to: "/conges", label: "Congés & absences", icon: Palmtree, testid: "nav-conges", perm: "leaves.access" },
   { to: "/lamal", label: "Comparateur LAMal", icon: HeartPulse, testid: "nav-lamal", perm: "lamal_module_access" },
   { to: "/suivi-technique", label: "Suivi technique", icon: Activity, testid: "nav-suivi-technique", perm: "users.manage" },
+  { to: "/entreprises", label: "Entreprises", icon: Building2, testid: "nav-entreprises", perm: "users.manage" },
   { to: "/utilisateurs", label: "Utilisateurs", icon: Settings2, testid: "nav-users", perm: "users.manage" },
 ];
 

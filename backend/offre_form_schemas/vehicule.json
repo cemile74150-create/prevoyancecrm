@@ -892,9 +892,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_56",
+            "field": "input_59",
             "op": "is",
-            "value": "Oui"
+            "value": "Trajets professionnels"
           }
         ]
       }
@@ -1462,9 +1462,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_103",
+            "field": "input_32",
             "op": "is",
-            "value": "Oui"
+            "value": "Smile Direct"
           }
         ]
       }
@@ -1524,9 +1524,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_103",
+            "field": "input_32",
             "op": "is",
-            "value": "Oui"
+            "value": "Zurich"
           }
         ]
       }
@@ -1548,9 +1548,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_103",
+            "field": "input_32",
             "op": "is",
-            "value": "Oui"
+            "value": "Zurich"
           }
         ]
       }
@@ -1572,9 +1572,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_103",
+            "field": "input_32",
             "op": "is",
-            "value": "Oui"
+            "value": "Zurich"
           }
         ]
       }
@@ -1590,12 +1590,12 @@
       "page": 4,
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_103",
+            "field": "input_32",
             "op": "is",
-            "value": "Oui"
+            "value": "Automate"
           }
         ]
       }
@@ -1632,12 +1632,17 @@
       "page": 4,
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_103",
+            "field": "input_32",
             "op": "is",
-            "value": "Oui"
+            "value": "Automate"
+          },
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Smile Direct"
           }
         ]
       }
@@ -1659,9 +1664,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_103",
+            "field": "input_32",
             "op": "is",
-            "value": "Oui"
+            "value": "Zurich"
           }
         ]
       }
@@ -1681,9 +1686,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_103",
+            "field": "input_32",
             "op": "is",
-            "value": "Oui"
+            "value": "Zurich"
           }
         ]
       }
@@ -1736,5 +1741,14 @@
       "options": [],
       "page": 4
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 8,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-5_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 30,
+    "added": 0,
+    "updated": 9,
+    "unchanged": 25
+  }
 }

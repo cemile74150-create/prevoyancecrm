@@ -103,16 +103,20 @@ def reply_is_open(note: Optional[dict]) -> bool:
 
 def user_can_answer_complement(user, doc: Optional[dict]) -> bool:
     """
-    Seul le conseiller propriétaire de la demande peut répondre.
-    Un gestionnaire qui consulte le dossier, ou un autre agent, ne le peut pas.
+    Seul le conseiller agent demandeur peut répondre.
+    Si agent_account_id est posé : pas l'opérateur créateur (gestionnaire/admin).
+    Sans agent_account_id : créateur legacy, puis can_follow_signature.
     """
     if user is None or not isinstance(doc, dict):
         return False
     from demandes_offres_3p import can_follow_signature
 
     account_id = str(getattr(user, "account_id", None) or "").strip()
+    agent = str(doc.get("agent_account_id") or "").strip()
+    if account_id and agent:
+        return account_id == agent
     if account_id:
-        for key in ("created_by_account_id", "created_by", "agent_account_id"):
+        for key in ("created_by_account_id", "created_by"):
             if str(doc.get(key) or "").strip() == account_id:
                 return True
     return bool(can_follow_signature(user, doc))

@@ -75,18 +75,78 @@ if ($secrets) {
   Fail ("Refus : fichiers sensibles suivis par Git : " + ($secrets -join ", "))
 }
 
+function Find-PlaywrightBrowsersRoot {
+  # Prefer a root that actually contains chrome-headless-shell (usable by PDF tests).
+  $candidates = @()
+  if ($env:LOCALAPPDATA) { $candidates += (Join-Path $env:LOCALAPPDATA "ms-playwright") }
+  if (Test-Path "/ms-playwright") { $candidates += "/ms-playwright" }
+  if ($env:PLAYWRIGHT_BROWSERS_PATH) { $candidates += $env:PLAYWRIGHT_BROWSERS_PATH }
+  foreach ($root in $candidates) {
+    if (-not (Test-Path $root)) { continue }
+    $hit = Get-ChildItem -Path $root -Recurse -Filter "chrome-headless-shell.exe" -ErrorAction SilentlyContinue |
+      Select-Object -First 1
+    if (-not $hit) {
+      $hit = Get-ChildItem -Path $root -Recurse -Filter "chrome-headless-shell" -ErrorAction SilentlyContinue |
+        Where-Object { -not $_.PSIsContainer } |
+        Select-Object -First 1
+    }
+    if ($hit) { return $root }
+  }
+  return $null
+}
+
+function Test-PlaywrightChromiumPresent {
+  return [bool](Find-PlaywrightBrowsersRoot)
+}
+
 if (-not $SansTests) {
   $engine = Join-Path $Root "backend\analyse_prevoyance_engine"
   $tsx = Join-Path $engine "node_modules\tsx"
   if (-not (Test-Path $tsx)) {
     Fail "Refus : tsx n'est pas installé dans le moteur d'analyse. Les tests n'ont pas pu tourner."
   }
-  $tests = Get-ChildItem (Join-Path $engine "rules\*.test.ts") | ForEach-Object { $_.FullName }
+  $tests = @(Get-ChildItem (Join-Path $engine "rules\*.test.ts") | ForEach-Object { $_.FullName })
   if (-not $tests) {
     Fail "Refus : aucun test du moteur d'analyse."
   }
+
+  # Tests PDF (Playwright generatePdfBuffer) — exclus seulement si Chromium manque EN LOCAL.
+  # Docker install Playwright (Dockerfile) : ces tests restent obligatoires.
+  $pdfTestNames = @(
+    "cinq-contrats-3p.test.ts",
+    "pdf-route-hypotheses.test.ts"
+  )
+  $inCiOrDocker = (
+    $env:CI -eq "true" -or
+    $env:GITHUB_ACTIONS -eq "true" -or
+    $env:RAILWAY_ENVIRONMENT -or
+    (Test-Path "/ms-playwright") -or
+    $env:FORCE_ANALYSE_PDF_TESTS -eq "1"
+  )
+  $browsersRoot = Find-PlaywrightBrowsersRoot
+  if ($browsersRoot) {
+    # Evite un PLAYWRIGHT_BROWSERS_PATH sandbox vide (Cursor) qui casse le launch alors que
+    # %LOCALAPPDATA%\ms-playwright contient deja Chromium.
+    $env:PLAYWRIGHT_BROWSERS_PATH = $browsersRoot
+    Write-Output "Playwright browsers: $browsersRoot"
+  } else {
+    if ($inCiOrDocker) {
+      Fail "Refus : Chromium Playwright introuvable en CI/Docker. Lancez: npx playwright install --with-deps chromium (deja dans le Dockerfile)."
+    }
+    Write-Output "ATTENTION : Chromium Playwright absent en local - exclusion temporaire des tests PDF :"
+    foreach ($name in $pdfTestNames) { Write-Output "  - $name" }
+    Write-Output "Les autres tests du moteur tournent. Pour tout executer localement: cd backend\analyse_prevoyance_engine ; npx playwright install chromium"
+    $tests = @($tests | Where-Object {
+      $leaf = Split-Path $_ -Leaf
+      $pdfTestNames -notcontains $leaf
+    })
+  }
+
   Push-Location $engine
   try {
+    if ($tests.Count -eq 0) {
+      Fail "Refus : aucun test du moteur d'analyse à exécuter."
+    }
     node --import tsx --test @tests
     if ($LASTEXITCODE -ne 0) {
       Fail "Refus : les tests du moteur d'analyse ont échoué."

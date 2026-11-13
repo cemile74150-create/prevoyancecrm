@@ -138,7 +138,17 @@
       "required": false,
       "options": [],
       "page": 1,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_57",
+            "op": "is",
+            "value": "Société en nom collectif"
+          }
+        ]
+      }
     },
     {
       "id": "32_64",
@@ -328,7 +338,7 @@
           {
             "field": "input_64",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -347,7 +357,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_64",
+            "field": "input_212",
             "op": "is",
             "value": "Oui"
           }
@@ -368,7 +378,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_64",
+            "field": "input_212",
             "op": "is",
             "value": "Oui"
           }
@@ -486,7 +496,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_78",
+            "field": "input_214",
             "op": "is",
             "value": "Oui"
           }
@@ -507,7 +517,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_78",
+            "field": "input_214",
             "op": "is",
             "value": "Oui"
           }
@@ -877,9 +887,14 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_94",
+            "field": "input_206",
             "op": "is",
             "value": "Oui"
+          },
+          {
+            "field": "input_206",
+            "op": "isnot",
+            "value": "Non"
           }
         ]
       }
@@ -898,9 +913,14 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_94",
+            "field": "input_206",
             "op": "is",
             "value": "Oui"
+          },
+          {
+            "field": "input_206",
+            "op": "isnot",
+            "value": "Non"
           }
         ]
       }
@@ -1042,12 +1062,17 @@
       "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois àr nous communiquer une offre, voire ne pas l'envoyer du tout.",
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_94",
+            "field": "input_232",
+            "op": ">",
+            "value": "500000"
+          },
+          {
+            "field": "input_232",
             "op": "is",
-            "value": "Oui"
+            "value": "500000"
           }
         ]
       }
@@ -1073,12 +1098,12 @@
       "page": 3,
       "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois àr nous communiquer une offre, voire ne pas l'envoyer du tout.",
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_94",
-            "op": "is",
-            "value": "Oui"
+            "field": "input_232",
+            "op": "<",
+            "value": "500000"
           }
         ]
       }
@@ -1106,7 +1131,17 @@
       "page": 3,
       "description": "La Mobilière a rendu ce renseignement obligatoire.",
       "placeholder": "jj/mm/aaaa",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "La Mobilière (Romandie Courtage uniquement)"
+          }
+        ]
+      }
     },
     {
       "id": "32_207",
@@ -1118,7 +1153,17 @@
       "options": [],
       "page": 3,
       "description": "Generali a rendu ce renseignement obligatoire. Pour le trouver, rendez-vous sur ce lien : https://links.agencemendes.ch/DmfC",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Generali (Romandie Courtage uniquement)"
+          }
+        ]
+      }
     },
     {
       "id": "32_193",
@@ -1166,12 +1211,27 @@
       "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document.",
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_193",
+            "field": "input_32",
             "op": "is",
-            "value": "Oui"
+            "value": "Vaudoise"
+          },
+          {
+            "field": "input_221",
+            "op": "is",
+            "value": "Vaudoise"
+          },
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Allianz (Romandie Courtage uniquement)"
+          },
+          {
+            "field": "input_221",
+            "op": "is",
+            "value": "Allianz (Romandie Courtage uniquement)"
           }
         ]
       }
@@ -1214,5 +1274,14 @@
       "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
       "default": "cdemirtas@agencemendes.ch"
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 32,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-4_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 32,
+    "added": 3,
+    "updated": 10,
+    "unchanged": 19
+  }
 }

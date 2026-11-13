@@ -46,6 +46,11 @@ from access_control import (
     require_settings,
     clients_base_query,
     force_conseiller_on_write,
+    resolve_conseiller_account_id_for_write,
+    should_stamp_conseiller_account_id_on_update,
+    decide_conseiller_account_id_on_update,
+    match_account_id_among_users,
+    client_account_id_matches,
     create_session,
     resolve_session_user,
     ensure_bootstrap_admin,
@@ -716,8 +721,22 @@ class TaskCreate(BaseModel):
     priorite: Optional[str] = "normale"
     client_id: Optional[str] = None
 
+# Enrichissement public (entreprise / activation) — remplacé à l'attach des routes.
+async def _enrich_user_public(doc: Optional[dict]) -> Optional[dict]:
+    if not doc:
+        return None
+    return public_user(doc)
+
+
 # ---------------- Auth ----------------
 async def get_current_user(request: Request, authorization: Optional[str] = Header(None)) -> User:
+    # Multi-worker : resynchronise ACCESS_MODE depuis Mongo (~5s) après un PUT distant.
+    try:
+        from access_policy_journal import ensure_access_mode_fresh
+
+        await ensure_access_mode_fresh(db)
+    except Exception:
+        pass
     user = await resolve_session_user(db, request, authorization)
     enforce_route_permission(user, request.method, request.url.path)
     return user
@@ -737,16 +756,25 @@ def _set_session_cookie(response: Response, token: str):
 
 @api_router.post("/auth/login")
 async def login(payload: LoginRequest, response: Response):
+    from user_activation import user_needs_activation
+
     email = payload.email.strip().lower()
     doc = await db.users.find_one({"email": email}, {"_id": 0})
     if not doc or not verify_password(payload.password, doc.get("password_hash") or ""):
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
     if doc.get("active") is False:
         raise HTTPException(status_code=403, detail="Compte désactivé")
+    if user_needs_activation(doc) and not (doc.get("password_hash") or "").strip():
+        raise HTTPException(
+            status_code=403,
+            detail="Compte en attente d'activation — utilisez le lien reçu par e-mail",
+        )
     token = await create_session(db, doc["user_id"])
     _set_session_cookie(response, token)
     fresh = await db.users.find_one({"user_id": doc["user_id"]}, {"_id": 0})
-    return {"user": public_user(fresh or doc), "session_token": token}
+    user_payload = await _enrich_user_public(fresh or doc)
+    # Connexion avec MDP provisoire : session OK mais flag must_set_password conservé
+    return {"user": user_payload, "session_token": token, "must_set_password": bool((fresh or doc).get("must_set_password"))}
 
 
 @api_router.get("/auth/me")
@@ -754,7 +782,7 @@ async def auth_me(user: User = Depends(get_current_user)):
     doc = await db.users.find_one({"user_id": user.account_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
-    return public_user(doc)
+    return await _enrich_user_public(doc)
 
 
 @api_router.post("/auth/logout")
@@ -762,6 +790,9 @@ async def logout(response: Response, request: Request):
     token = request.cookies.get("session_token")
     if token:
         await db.user_sessions.delete_one({"session_token": token})
+        from access_control import invalidate_session_user_cache
+
+        invalidate_session_user_cache(token)
     response.delete_cookie("session_token", path="/")
     return {"ok": True}
 
@@ -769,18 +800,27 @@ async def logout(response: Response, request: Request):
 @api_router.post("/auth/change-password")
 async def change_own_password(payload: ChangePasswordRequest, user: User = Depends(get_current_user)):
     """Chaque utilisateur peut modifier son propre mot de passe."""
+    from user_activation import validate_new_password
+
     doc = await db.users.find_one({"user_id": user.account_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     if not verify_password(payload.current_password, doc.get("password_hash") or ""):
         raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
-    if len(payload.new_password or "") < 6:
-        raise HTTPException(status_code=400, detail="Nouveau mot de passe trop court (min. 6)")
+    weak = validate_new_password(payload.new_password or "")
+    if weak:
+        raise HTTPException(status_code=400, detail=weak)
     if payload.current_password == payload.new_password:
         raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit être différent")
     await db.users.update_one(
         {"user_id": user.account_id},
-        {"$set": {"password_hash": hash_password(payload.new_password)}},
+        {
+            "$set": {
+                "password_hash": hash_password(payload.new_password),
+                "must_set_password": False,
+                "activation_pending": False,
+            }
+        },
     )
     # Invalider les autres sessions sauf celle en cours n'est pas simple sans token ici ;
     # on garde la session actuelle pour ne pas déconnecter l'utilisateur.
@@ -973,21 +1013,35 @@ async def list_users(user: User = Depends(get_current_user)):
     require_admin(user)
     rows = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
     rows.sort(key=lambda u: ((u.get("nom") or "").lower(), (u.get("prenom") or "").lower()))
-    return [public_user({**r, "password_hash": ""}) for r in rows]
+    out = []
+    for r in rows:
+        out.append(await _enrich_user_public({**r, "password_hash": ""}))
+    return out
 
 
 @api_router.post("/users")
 async def create_user(payload: UserCreate, user: User = Depends(get_current_user)):
     require_admin(user)
+    from access_control import force_access_by_account_id_only_on_create
+    from access_policy_journal import log_user_access_flag
+    from entreprises import get_entreprise
+    from user_activation import create_activation_token, send_activation_email
+
     role = payload.role if payload.role in ROLES else ROLE_CONSEILLER
     email = payload.email.strip().lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Cet e-mail est déjà utilisé")
-    if len(payload.password or "") < 6:
+    send_activation = bool(payload.send_activation)
+    if not send_activation and len(payload.password or "") < 6:
         raise HTTPException(status_code=400, detail="Mot de passe trop court (min. 6)")
+    entreprise_id = (payload.entreprise_id or "").strip() or None
+    if entreprise_id and not await get_entreprise(db, entreprise_id):
+        raise HTTPException(status_code=400, detail="Entreprise introuvable")
     name = display_name(payload.prenom, payload.nom)
     conseiller = (payload.conseiller or "").strip() or (name if role == ROLE_CONSEILLER else None)
     account_id = f"user_{uuid.uuid4().hex[:12]}"
+    # Nouveaux conseillers : toujours account_id only (payload ignoré / forcé).
+    access_only = force_access_by_account_id_only_on_create(role)
     doc = {
         "user_id": account_id,
         "email": email,
@@ -999,18 +1053,52 @@ async def create_user(payload: UserCreate, user: User = Depends(get_current_user
         "role": role,
         "conseiller": conseiller,
         "finma_number": (payload.finma_number or "").strip() or None,
+        "entreprise_id": entreprise_id,
         "active": True,
-        "password_hash": hash_password(payload.password),
+        "password_hash": "" if send_activation else hash_password(payload.password or ""),
+        "must_set_password": bool(send_activation),
+        "activation_pending": bool(send_activation),
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "access_by_account_id_only": access_only,
         "receive_conseiller_rappel_copies": bool(payload.receive_conseiller_rappel_copies)
         if role == ROLE_ADMIN
         else False,
-        **permission_storage_fields(role, payload.permissions, payload.see_all_dossiers),
+        **permission_storage_fields(
+            role,
+            payload.permissions,
+            payload.see_all_dossiers,
+            access_by_account_id_only=access_only,
+        ),
     }
     await db.users.insert_one(doc)
+    if access_only:
+        await log_user_access_flag(
+            db,
+            actor_account_id=user.account_id,
+            actor_email=user.email,
+            target_account_id=account_id,
+            access_by_account_id_only=True,
+        )
     if conseiller:
         await upsert_conseiller_finma(conseiller, doc.get("finma_number"))
-    return public_user(doc)
+    result = await _enrich_user_public(doc)
+    if send_activation:
+        raw_token, meta = await create_activation_token(
+            db, user_id=account_id, purpose="activate", created_by=user.account_id
+        )
+        public_url = (os.environ.get("PUBLIC_APP_URL") or "https://app.leosoft.ch").rstrip("/")
+        if not public_url.startswith("http"):
+            public_url = f"https://{public_url}"
+        email_ok, err, link = await send_activation_email(
+            db, user=doc, raw_token=raw_token, public_app_url=public_url
+        )
+        result["activation"] = {
+            "email_sent": email_ok,
+            "smtp_error": err,
+            "expires_at": meta.get("expires_at"),
+            "activation_link": None if email_ok else link,
+        }
+    return result
 
 
 @api_router.put("/users/{account_id}")
@@ -1040,6 +1128,13 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
         updates["conseiller"] = payload.conseiller.strip() or None
     if payload.finma_number is not None:
         updates["finma_number"] = payload.finma_number.strip() or None
+    if payload.entreprise_id is not None:
+        from entreprises import get_entreprise
+
+        eid = (payload.entreprise_id or "").strip()
+        if eid and not await get_entreprise(db, eid):
+            raise HTTPException(status_code=400, detail="Entreprise introuvable")
+        updates["entreprise_id"] = eid or None
     if payload.active is not None:
         if account_id == user.account_id and payload.active is False:
             raise HTTPException(status_code=400, detail="Vous ne pouvez pas désactiver votre propre compte")
@@ -1058,6 +1153,23 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
         updates["conseiller"] = updates["name"]
     if role != ROLE_ADMIN and "receive_conseiller_rappel_copies" not in updates:
         updates["receive_conseiller_rappel_copies"] = False
+    from access_control import resolve_access_by_account_id_only_update
+    from access_policy_journal import log_user_access_flag
+
+    access_only_effective = bool(doc.get("access_by_account_id_only"))
+    if payload.access_by_account_id_only is not None or payload.role is not None:
+        new_flag, flag_err = resolve_access_by_account_id_only_update(
+            current=bool(doc.get("access_by_account_id_only")),
+            incoming=payload.access_by_account_id_only,
+            role=role,
+            previous_role=doc.get("role"),
+        )
+        if flag_err:
+            raise HTTPException(status_code=400, detail=flag_err)
+        access_only_effective = bool(new_flag)
+        if new_flag != bool(doc.get("access_by_account_id_only")):
+            updates["access_by_account_id_only"] = new_flag
+
     if payload.permissions is not None or payload.see_all_dossiers is not None or payload.role is not None:
         perms_in = payload.permissions if payload.permissions is not None else (
             None if payload.role is not None else doc.get("permissions")
@@ -1065,18 +1177,36 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
         see_all_in = payload.see_all_dossiers
         if see_all_in is None and payload.role is None:
             see_all_in = doc.get("see_all_dossiers")
-        updates.update(permission_storage_fields(role, perms_in, see_all_in))
+        updates.update(
+            permission_storage_fields(
+                role,
+                perms_in,
+                see_all_in,
+                access_by_account_id_only=access_only_effective,
+            )
+        )
         if account_id == user.account_id and not updates.get("permissions", {}).get(PERM_USERS_MANAGE):
             raise HTTPException(
                 status_code=400,
                 detail="Vous ne pouvez pas retirer votre propre droit de gérer les utilisateurs",
             )
+    elif access_only_effective and bool(doc.get("see_all_dossiers")):
+        # Flag account-only sans round-trip permissions : retirer une vue globale incompatible.
+        updates["see_all_dossiers"] = False
     await db.users.update_one({"user_id": account_id}, {"$set": updates})
     fresh = await db.users.find_one({"user_id": account_id}, {"_id": 0})
+    if "access_by_account_id_only" in updates:
+        await log_user_access_flag(
+            db,
+            actor_account_id=user.account_id,
+            actor_email=user.email,
+            target_account_id=account_id,
+            access_by_account_id_only=bool(updates["access_by_account_id_only"]),
+        )
     cons_name = (fresh or {}).get("conseiller") or (fresh or {}).get("name")
     if cons_name and ("finma_number" in updates or "conseiller" in updates):
         await upsert_conseiller_finma(cons_name, (fresh or {}).get("finma_number"))
-    return public_user(fresh)
+    return await _enrich_user_public(fresh)
 
 
 @api_router.post("/users/{account_id}/reset-password")
@@ -1104,6 +1234,54 @@ async def deactivate_user(account_id: str, user: User = Depends(get_current_user
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     await db.user_sessions.delete_many({"user_id": account_id})
     return {"ok": True}
+
+
+class AccessModeUpdate(BaseModel):
+    mode: str
+    reason: str = ""
+
+
+@api_router.get("/access-policy")
+async def get_access_policy(user: User = Depends(get_current_user)):
+    require_admin(user)
+    from access_control import ACCESS_MODE, get_runtime_access_mode
+    from access_policy_journal import load_access_mode_from_db
+
+    mode = await load_access_mode_from_db(db)
+    return {
+        "mode": mode,
+        "env_default": ACCESS_MODE,
+        "runtime": get_runtime_access_mode(),
+    }
+
+
+@api_router.put("/access-policy/mode")
+async def put_access_mode(payload: AccessModeUpdate, user: User = Depends(get_current_user)):
+    """Bascule legacy|dual|strict — réservé admin ; journalisé. Pas d'auto-migration."""
+    require_admin(user)
+    from access_policy_journal import set_access_mode
+
+    try:
+        result = await set_access_mode(
+            db,
+            mode=payload.mode,
+            actor_account_id=user.account_id,
+            actor_email=user.email,
+            reason=payload.reason or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True, **result}
+
+
+@api_router.get("/access-policy/journal")
+async def list_access_policy_journal(user: User = Depends(get_current_user), limit: int = 100):
+    require_admin(user)
+    from access_control import ACCESS_POLICY_JOURNAL
+
+    lim = max(1, min(int(limit or 100), 500))
+    rows = await db[ACCESS_POLICY_JOURNAL].find({}, {"_id": 0}).sort("created_at", -1).to_list(lim)
+    return {"items": rows}
 
 
 # ---------------- Helpers ----------------
@@ -1185,9 +1363,14 @@ async def require_resource_client(resource: dict, user: User, label: str = "Ress
         raise HTTPException(status_code=403, detail=f"Accès non autorisé — {label}")
     if is_global_viewer(user):
         return
-    if labels_match_conseiller(resource.get("conseiller"), user):
+    # Strict / nouveaux conseillers : account_id sur la ressource ou created_by
+    if client_account_id_matches(user, resource):
         return
-    if resource.get("created_by") == user.account_id:
+    if resource.get("created_by") == user.account_id or resource.get("created_by_account_id") == user.account_id:
+        return
+    from access_control import effective_access_mode
+
+    if effective_access_mode(user) != "strict" and labels_match_conseiller(resource.get("conseiller"), user):
         return
     raise HTTPException(status_code=403, detail=f"Accès non autorisé — {label}")
 
@@ -1898,14 +2081,21 @@ async def list_clients(
         query["statut"] = {"$in": [wanted, *legacy_aliases]} if legacy_aliases else wanted
 
     q_term = (q or "").strip()
-    # Recherche texte : charger toute la base accessible AVANT filtre
-    # (sinon limit=15 ne regardait que les 15 derniers créés → clients manquants)
+    # Recherche texte : charger la population accessible AVANT filtre
+    # (sinon limit=15 ne regardait que les 15 derniers créés → clients manquants).
+    # Sans recherche : pagination Mongo native (skip/limit) pour ~150 conseillers.
     if q_term:
         fetch_cap = 10000
+        clients = await db.clients.find(query, {"_id": 0}).sort("created_at", -1).to_list(fetch_cap)
     else:
-        fetch_cap = min(max(limit + skip, limit), 10000)
-
-    clients = await db.clients.find(query, {"_id": 0}).sort("created_at", -1).to_list(fetch_cap)
+        clients = (
+            await db.clients.find(query, {"_id": 0})
+            .sort("created_at", -1)
+            .skip(skip)
+            .limit(limit)
+            .to_list(limit)
+        )
+        skip = 0  # déjà appliqué côté Mongo
     for c in clients:
         c["statut"] = normalize_statut(c.get("statut"))
     clients = [_decrypt_client_doc(c) for c in clients]
@@ -1939,6 +2129,28 @@ async def search_clients_hub(
     matched = [c for c in clients if _client_matches_q(c, ql)]
     matched.sort(key=lambda c: _rank_client_match(c, ql))
     return matched[:limit]
+
+async def _lookup_conseiller_account_id(conseiller_label: Optional[str]) -> Optional[str]:
+    """Résout un account_id unique pour un libellé conseiller (écriture dossiers)."""
+    label = (conseiller_label or "").strip()
+    if not label:
+        return None
+    rows = await db.users.find(
+        {"active": {"$ne": False}, "role": ROLE_CONSEILLER},
+        {"_id": 0, "user_id": 1, "account_id": 1, "role": 1, "conseiller": 1, "name": 1, "prenom": 1, "nom": 1, "active": 1},
+    ).to_list(500)
+    return match_account_id_among_users(label, rows)
+
+
+async def _stamp_conseiller_account_id(
+    user: User,
+    conseiller_label: Optional[str],
+) -> Optional[str]:
+    matched = None
+    if is_global_viewer(user):
+        matched = await _lookup_conseiller_account_id(conseiller_label)
+    return resolve_conseiller_account_id_for_write(user, conseiller_label, matched_account_id=matched)
+
 
 @api_router.post("/clients")
 async def create_client(payload: ClientCreate, user: User = Depends(get_current_user)):
@@ -1982,6 +2194,9 @@ async def create_client(payload: ClientCreate, user: User = Depends(get_current_
     doc["id"] = str(uuid.uuid4())
     doc["user_id"] = user.user_id
     doc["conseiller"] = force_conseiller_on_write(user, doc.get("conseiller"))
+    account_stamp = await _stamp_conseiller_account_id(user, doc.get("conseiller"))
+    if account_stamp:
+        doc["conseiller_account_id"] = account_stamp
     doc["statut"] = normalize_statut(doc.get("statut"))
     doc["numero_dossier"] = await next_dossier_number(user.user_id)
     doc["dossier_id"] = doc["id"]
@@ -2047,6 +2262,8 @@ async def create_client(payload: ClientCreate, user: User = Depends(get_current_
                 sexe=doc.get("sexe"),
             )
             suivi_doc["client_id"] = doc["id"]
+            if account_stamp:
+                suivi_doc["conseiller_account_id"] = account_stamp
             to_suivi = _encrypt_client_for_storage(suivi_doc)
             await db[SUIVI_3P_CLIENTS].insert_one(to_suivi)
         except Exception:
@@ -2247,7 +2464,8 @@ async def get_dossier(dossier_id: str, user: User = Depends(get_current_user)):
         spouse_id = primary.get("linked_spouse_id")
         if spouse_id:
             spouse = await db.clients.find_one({"id": spouse_id, "user_id": user.user_id}, {"_id": 0})
-            if spouse:
+            # Même filtre que la branche dossier_id partagé : pas de fuite conjoint hors périmètre.
+            if spouse and (is_global_viewer(user) or can_access_client(user, spouse)):
                 members.append(spouse)
         dossier_label = primary.get("dossier_label") or (
             f"Famille {primary.get('nom', '')}" if len(members) > 1 else f"{primary.get('prenom', '')} {primary.get('nom', '')}".strip()
@@ -2334,13 +2552,44 @@ async def update_client(client_id: str, payload: ClientCreate, user: User = Depe
     update["nom"] = nom
     update.update(identity_fields_for_storage(prenom, nom, update.get("date_naissance")))
     update["conseiller"] = force_conseiller_on_write(user, update.get("conseiller"))
+    old_cons = c.get("conseiller")
+    new_cons = update.get("conseiller")
+    old_aid = c.get("conseiller_account_id") or c.get("agent_account_id")
+    matched_aid = None
+    if should_stamp_conseiller_account_id_on_update(
+        user=user,
+        old_conseiller=old_cons,
+        new_conseiller=new_cons,
+        old_account_id=old_aid,
+    ) and is_global_viewer(user):
+        matched_aid = await _lookup_conseiller_account_id(new_cons)
+    write_stamp, stamp_val, is_reattrib = decide_conseiller_account_id_on_update(
+        user=user,
+        old_conseiller=old_cons,
+        new_conseiller=new_cons,
+        old_account_id=old_aid,
+        matched_account_id=matched_aid,
+    )
+    if write_stamp:
+        update["conseiller_account_id"] = stamp_val
     update["statut"] = normalize_statut(update.get("statut"))
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     if update.get("conseiller") and finma_in is not None:
         await upsert_conseiller_finma(update["conseiller"], finma_in)
     update = _encrypt_client_patch(update)
     await db.clients.update_one({"id": client_id}, {"$set": update})
-    await log_action(user.user_id, client_id, "Fiche client mise à jour")
+    if is_reattrib:
+        await log_action(
+            user.user_id,
+            client_id,
+            (
+                f"Réattribution conseiller: {(old_cons or '—').strip() or '—'} → "
+                f"{(new_cons or '—').strip() or '—'} "
+                f"(account_id={stamp_val or 'aucun'})"
+            ),
+        )
+    else:
+        await log_action(user.user_id, client_id, "Fiche client mise à jour")
     # Propager l'identité vers Offres + Suivi 3P liés
     try:
         from client_hub import propagate_hub_identity
@@ -5617,6 +5866,12 @@ async def create_spouse(client_id: str, payload: CreateSpouseRequest, user: User
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    spouse_aid = (
+        str(c.get("conseiller_account_id") or c.get("agent_account_id") or "").strip()
+        or await _stamp_conseiller_account_id(user, spouse.get("conseiller"))
+    )
+    if spouse_aid:
+        spouse["conseiller_account_id"] = spouse_aid
     spouse.update(identity_fields_for_storage(spouse_prenom, spouse_nom, payload.date_naissance))
     to_store = _encrypt_client_for_storage(spouse)
     try:
@@ -6241,6 +6496,7 @@ async def create_suivi_3p_client(payload: Suivi3PCreate, user: User = Depends(ge
     from client_hub import apply_hub_to_suivi, get_hub_client, upsert_hub_client_from_person
 
     conseiller = force_conseiller_on_write(user, payload.conseiller)
+    account_stamp = await _stamp_conseiller_account_id(user, conseiller)
     hub_id = (payload.client_id or "").strip() or None
     person = payload.model_dump()
 
@@ -6259,6 +6515,7 @@ async def create_suivi_3p_client(payload: Suivi3PCreate, user: User = Depends(ge
             user_id=user.user_id,
             module="suivi_3p",
             conseiller=conseiller,
+            conseiller_account_id=account_stamp,
         )
         if hub:
             hub_id = hub["id"]
@@ -6291,6 +6548,8 @@ async def create_suivi_3p_client(payload: Suivi3PCreate, user: User = Depends(ge
     )
     if hub_id:
         doc["client_id"] = hub_id
+    if account_stamp:
+        doc["conseiller_account_id"] = account_stamp
     if not doc["prenom"] or not doc["nom"]:
         raise HTTPException(status_code=400, detail="Prénom et nom requis")
     to_store = _encrypt_client_for_storage(doc)
@@ -7168,8 +7427,34 @@ async def update_suivi_3p_fiche(
         )
     if "nombre_enfants" in data and data["nombre_enfants"] is not None:
         updates["nombre_enfants"] = int(data["nombre_enfants"])
+    reattrib_detail: Optional[str] = None
     if "conseiller" in data:
         updates["conseiller"] = force_conseiller_on_write(user, data.get("conseiller"))
+        old_cons = c.get("conseiller")
+        new_cons = updates.get("conseiller")
+        old_aid = c.get("conseiller_account_id") or c.get("agent_account_id")
+        matched_aid = None
+        if should_stamp_conseiller_account_id_on_update(
+            user=user,
+            old_conseiller=old_cons,
+            new_conseiller=new_cons,
+            old_account_id=old_aid,
+        ) and is_global_viewer(user):
+            matched_aid = await _lookup_conseiller_account_id(new_cons)
+        write_stamp, stamp_val, is_reattrib = decide_conseiller_account_id_on_update(
+            user=user,
+            old_conseiller=old_cons,
+            new_conseiller=new_cons,
+            old_account_id=old_aid,
+            matched_account_id=matched_aid,
+        )
+        if write_stamp:
+            updates["conseiller_account_id"] = stamp_val
+            if is_reattrib:
+                reattrib_detail = (
+                    f"Réattribution conseiller Suivi 3P: {(old_cons or '—').strip() or '—'} → "
+                    f"{(new_cons or '—').strip() or '—'} (account_id={stamp_val or 'aucun'})"
+                )
     if "statut" in data and data["statut"] is not None:
         updates["statut"] = normalize_suivi_statut(data["statut"])
     if "gain_fiscal_estime" in data:
@@ -7222,6 +7507,12 @@ async def update_suivi_3p_fiche(
 
     updates = _encrypt_client_patch(updates)
     await db[SUIVI_3P_CLIENTS].update_one({"id": client_id}, {"$set": updates})
+    if reattrib_detail:
+        hub_id = (c.get("client_id") or client_id)
+        try:
+            await log_action(user.user_id, hub_id, reattrib_detail)
+        except Exception:
+            logger.exception("Journal réattribution Suivi 3P échoué client=%s", client_id)
     fresh = await db[SUIVI_3P_CLIENTS].find_one({"id": client_id}, {"_id": 0})
     serialized = serialize_suivi_client(fresh or {**c, **updates})
 
@@ -7852,11 +8143,22 @@ async def dashboard_stats(
     need_suivi = cat in ("all", "suivi_3p")
     need_offres = cat in ("all", "offres")
 
+    # Projection légère : stats dashboard n'ont pas besoin du dossier chiffré complet.
+    _dash_client_proj = {
+        "_id": 0,
+        "id": 1,
+        "dossier_id": 1,
+        "statut": 1,
+        "priorite": 1,
+        "conseiller": 1,
+        "created_at": 1,
+        "updated_at": 1,
+    }
     clients = []
     if need_prevoyance:
         clients = await db.clients.find(
             clients_base_query(user, conseiller=conseiller, for_dossiers=True),
-            {"_id": 0},
+            _dash_client_proj,
         ).to_list(5000)
     dossiers = {}  # dossier_id -> {members, created_at_min, updated_at_max}
 
@@ -8053,6 +8355,7 @@ async def dashboard_stats(
             demandes_offres_base_query,
         )
         offres_q = demandes_offres_base_query(user, conseiller)
+        # Stats offres : documents complets (KPI pilotage / avancement dépendent de nombreux champs).
         offres_docs = await db[DEMANDES_OFFRES_COLLECTION].find(offres_q, {"_id": 0}).to_list(10000)
         offres_block = compute_demandes_stats(offres_docs)
 
@@ -8201,6 +8504,12 @@ attach_eligibility_routes(
 from leaves_routes import attach_leaves_routes
 
 attach_leaves_routes(api_router, db=db, get_current_user=get_current_user)
+
+from entreprises_routes import attach_entreprises_routes
+
+_enrich_user_public = attach_entreprises_routes(
+    api_router, db=db, get_current_user=get_current_user
+)
 
 app.include_router(api_router)
 
@@ -8396,6 +8705,8 @@ async def _ensure_mongo_indexes():
         (db.clients, [("user_id", 1), ("created_at", -1)]),
         (db.clients, [("user_id", 1), ("statut", 1)]),
         (db.clients, [("user_id", 1), ("conseiller", 1)]),
+        (db.clients, [("user_id", 1), ("conseiller_account_id", 1)]),
+        (db.clients, [("user_id", 1), ("in_dossiers", 1), ("created_at", -1)]),
         (db.clients, [("dossier_id", 1)]),
         (db.documents, [("user_id", 1), ("client_id", 1), ("is_deleted", 1), ("created_at", -1)]),
         (db.documents, [("user_id", 1), ("dossier_id", 1), ("is_deleted", 1)]),
@@ -8409,8 +8720,20 @@ async def _ensure_mongo_indexes():
         (db[SUIVI_3P_CLIENTS], [("user_id", 1), ("conseiller", 1)]),
         (db[SUIVI_3P_DOCS], [("user_id", 1), ("suivi_3p_client_id", 1), ("is_deleted", 1)]),
         (db.users, [("email", 1)]),
+        (db.users, [("entreprise_id", 1)]),
+        (db.entreprises, [("nom", 1)]),
+        (db.entreprises, [("email_domains", 1)]),
+        (db.user_activation_tokens, [("token_hash", 1)]),
+        (db.user_activation_tokens, [("user_id", 1), ("purpose", 1)]),
         (db.user_sessions, [("session_token", 1)]),
         (db.user_sessions, [("user_id", 1)]),
+        (db.user_sessions, [("expires_at", 1)]),
+        (db.demandes_offres_3p, [("user_id", 1), ("updated_at", -1)]),
+        (db.demandes_offres_3p, [("user_id", 1), ("agent_account_id", 1)]),
+        (db.demandes_offres_3p, [("user_id", 1), ("assigned_to_account_id", 1)]),
+        (db.demandes_offres_3p, [("user_id", 1), ("created_by_account_id", 1)]),
+        (db.offre_notifications, [("user_id", 1), ("created_at", -1)]),
+        (db.offre_notifications, [("account_ids", 1), ("created_at", -1)]),
     ]
     for coll, keys in specs:
         try:
@@ -8509,6 +8832,13 @@ async def startup():
         )
     except Exception:
         pass
+    try:
+        from access_policy_journal import load_access_mode_from_db
+
+        mode = await load_access_mode_from_db(db)
+        logger.info("Access policy mode=%s (env ACCESS_MODE=%s)", mode, os.environ.get("ACCESS_MODE") or "legacy")
+    except Exception as e:
+        logger.error("Access policy load failed: %s", e)
     try:
         created = await ensure_bootstrap_admin(db)
         if created:

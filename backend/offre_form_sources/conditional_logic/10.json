@@ -1,0 +1,174 @@
+{
+  "gravity_form_id": 10,
+  "fields": {
+    "4": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_42",
+          "op": "is",
+          "value": "Autre"
+        }
+      ],
+      "enabled": true
+    },
+    "43": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_42",
+          "op": "is",
+          "value": "Autre"
+        }
+      ],
+      "enabled": true
+    },
+    "53": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_17",
+          "op": "is",
+          "value": "Familiale"
+        }
+      ],
+      "enabled": true
+    },
+    "54": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_17",
+          "op": "is",
+          "value": "Familiale"
+        }
+      ],
+      "enabled": true
+    },
+    "46": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_17",
+          "op": "is",
+          "value": "Familiale"
+        }
+      ],
+      "enabled": true
+    },
+    "58": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Smile Direct"
+        }
+      ],
+      "enabled": true
+    },
+    "47": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Axa (Romandie Courtage uniquement)"
+        }
+      ],
+      "enabled": true
+    },
+    "48": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Axa (Romandie Courtage uniquement)"
+        }
+      ],
+      "enabled": true
+    },
+    "49": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Axa (Romandie Courtage uniquement)"
+        }
+      ],
+      "enabled": true
+    },
+    "50": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Axa (Romandie Courtage uniquement)"
+        }
+      ],
+      "enabled": true
+    },
+    "51": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Axa (Romandie Courtage uniquement)"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "4": [
+      4
+    ],
+    "43": [
+      43
+    ],
+    "53": [
+      53
+    ],
+    "54": [
+      54
+    ],
+    "46": [
+      46
+    ],
+    "58": [
+      58,
+      59,
+      60
+    ],
+    "47": [
+      47,
+      48,
+      49,
+      50,
+      51
+    ],
+    "48": [
+      48
+    ],
+    "49": [
+      49
+    ],
+    "50": [
+      50
+    ],
+    "51": [
+      51
+    ]
+  },
+  "raw_blob_chars": 3485,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-4_.html",
+  "schema_ids": [
+    "gf_10",
+    "menage"
+  ]
+}

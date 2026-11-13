@@ -1321,5 +1321,14 @@
       "options": [],
       "page": 4
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 14,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-entreprise-independant-2_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 22,
+    "added": 0,
+    "updated": 0,
+    "unchanged": 22
+  }
 }

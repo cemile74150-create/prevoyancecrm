@@ -1,0 +1,611 @@
+{
+  "generated_by": "extract_gf_conditional_logic.py",
+  "sources": [
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_.html",
+      "gravity_form_ids": [
+        13
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-2_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-2_.html",
+      "gravity_form_ids": [
+        31
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-3_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-3_.html",
+      "gravity_form_ids": [
+        33
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-4_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-4_.html",
+      "gravity_form_ids": [
+        32
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-5_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-5_.html",
+      "gravity_form_ids": [
+        46
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-6_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-6_.html",
+      "gravity_form_ids": [
+        28
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-7_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-7_.html",
+      "gravity_form_ids": [
+        27
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant_.html",
+      "gravity_form_ids": [
+        29
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_responsabilite-civile_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_responsabilite-civile_.html",
+      "gravity_form_ids": [
+        30
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_formulaire-complet_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_formulaire-complet_.html",
+      "gravity_form_ids": [
+        94
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-entreprise-independant-2_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-entreprise-independant-2_.html",
+      "gravity_form_ids": [
+        14
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-entreprise-independant-3_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-entreprise-independant-3_.html",
+      "gravity_form_ids": [
+        50
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-10_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-10_.html",
+      "gravity_form_ids": [
+        41
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-11_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-11_.html",
+      "gravity_form_ids": [
+        42
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-2_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-2_.html",
+      "gravity_form_ids": [
+        58
+      ],
+      "has_gf_form_conditional_logic": false,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-3_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-3_.html",
+      "gravity_form_ids": [
+        1
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-4_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-4_.html",
+      "gravity_form_ids": [
+        10
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-5_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-5_.html",
+      "gravity_form_ids": [
+        8
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-6_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-6_.html",
+      "gravity_form_ids": [
+        12
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-7_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-7_.html",
+      "gravity_form_ids": [
+        11
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-8_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-8_.html",
+      "gravity_form_ids": [
+        47
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier_.html",
+      "gravity_form_ids": [
+        37
+      ],
+      "has_gf_form_conditional_logic": false,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_demande-dattestation-vehicule_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_demande-dattestation-vehicule_.html",
+      "gravity_form_ids": [
+        110
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_motocycle_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_motocycle_.html",
+      "gravity_form_ids": [
+        9
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-entreprise-independant-2_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-entreprise-independant-2_.html",
+      "gravity_form_ids": [
+        38
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-entreprise-independant_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-entreprise-independant_.html",
+      "gravity_form_ids": [
+        36
+      ],
+      "has_gf_form_conditional_logic": false,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-particulier_.html",
+      "name": "view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-particulier_.html",
+      "gravity_form_ids": [
+        35
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\Cemile\\Tableau suivi\\prevoyancecrm\\backend\\scripts\\_tmp_gf14\\gf14_source.html",
+      "name": "gf14_source.html",
+      "gravity_form_ids": [
+        14
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\Cemile\\Tableau suivi\\prevoyancecrm\\backend\\scripts\\_tmp_gf14\\gf14_chat_latest.html",
+      "name": "gf14_chat_latest.html",
+      "gravity_form_ids": [
+        14
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\Cemile\\Tableau suivi\\prevoyancecrm\\backend\\_clean_gf41.html",
+      "name": "_clean_gf41.html",
+      "gravity_form_ids": [
+        41
+      ],
+      "has_gf_form_conditional_logic": true,
+      "data_conditional_logic_count": 0
+    },
+    {
+      "path": "C:\\Users\\offic\\Desktop\\Cemile\\Tableau suivi\\menage_rc_gf_dump.txt",
+      "name": "menage_rc_gf_dump.txt",
+      "gravity_form_ids": [
+        1
+      ],
+      "has_gf_form_conditional_logic": false,
+      "data_conditional_logic_count": 145
+    }
+  ],
+  "gravity_form_ids_extracted": [
+    1,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    35,
+    36,
+    37,
+    38,
+    41,
+    42,
+    46,
+    47,
+    50,
+    58,
+    94,
+    110
+  ],
+  "conditional_logic_dir": "conditional_logic",
+  "schema_coverage": [
+    {
+      "schema_id": "animaux",
+      "gravity_form_id": 47,
+      "fields_count": 52,
+      "existing_show_when": 10,
+      "extracted_conditional_fields": 4,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-8_.html"
+    },
+    {
+      "schema_id": "assurances_particulier",
+      "gravity_form_id": 11,
+      "fields_count": 68,
+      "existing_show_when": 4,
+      "extracted_conditional_fields": 8,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-7_.html"
+    },
+    {
+      "schema_id": "assurances_particulier_var",
+      "gravity_form_id": 47,
+      "fields_count": 26,
+      "existing_show_when": 0,
+      "extracted_conditional_fields": 4,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-8_.html"
+    },
+    {
+      "schema_id": "attestation_vehicule",
+      "gravity_form_id": 110,
+      "fields_count": 31,
+      "existing_show_when": 0,
+      "extracted_conditional_fields": 2,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_demande-dattestation-vehicule_.html"
+    },
+    {
+      "schema_id": "entreprise",
+      "gravity_form_id": 13,
+      "fields_count": 129,
+      "existing_show_when": 87,
+      "extracted_conditional_fields": 81,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_.html"
+    },
+    {
+      "schema_id": "entreprise_27",
+      "gravity_form_id": 27,
+      "fields_count": 52,
+      "existing_show_when": 13,
+      "extracted_conditional_fields": 15,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-7_.html"
+    },
+    {
+      "schema_id": "entreprise_28",
+      "gravity_form_id": 28,
+      "fields_count": 51,
+      "existing_show_when": 15,
+      "extracted_conditional_fields": 14,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-6_.html"
+    },
+    {
+      "schema_id": "entreprise_29",
+      "gravity_form_id": 29,
+      "fields_count": 53,
+      "existing_show_when": 12,
+      "extracted_conditional_fields": 12,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant_.html"
+    },
+    {
+      "schema_id": "entreprise_31",
+      "gravity_form_id": 31,
+      "fields_count": 49,
+      "existing_show_when": 10,
+      "extracted_conditional_fields": 11,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-2_.html"
+    },
+    {
+      "schema_id": "entreprise_32",
+      "gravity_form_id": 32,
+      "fields_count": 74,
+      "existing_show_when": 29,
+      "extracted_conditional_fields": 32,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-4_.html"
+    },
+    {
+      "schema_id": "entreprise_33",
+      "gravity_form_id": 33,
+      "fields_count": 67,
+      "existing_show_when": 8,
+      "extracted_conditional_fields": 11,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-3_.html"
+    },
+    {
+      "schema_id": "entreprise_46",
+      "gravity_form_id": 46,
+      "fields_count": 35,
+      "existing_show_when": 5,
+      "extracted_conditional_fields": 7,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-5_.html"
+    },
+    {
+      "schema_id": "entreprise_50",
+      "gravity_form_id": 50,
+      "fields_count": 131,
+      "existing_show_when": 33,
+      "extracted_conditional_fields": 31,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-entreprise-independant-3_.html"
+    },
+    {
+      "schema_id": "entreprise_offres",
+      "gravity_form_id": 14,
+      "fields_count": 88,
+      "existing_show_when": 24,
+      "extracted_conditional_fields": 22,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-entreprise-independant-2_.html"
+    },
+    {
+      "schema_id": "formulaire_complet",
+      "gravity_form_id": 94,
+      "fields_count": 155,
+      "existing_show_when": 109,
+      "extracted_conditional_fields": 106,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_formulaire-complet_.html"
+    },
+    {
+      "schema_id": "laa_employee_maison",
+      "gravity_form_id": 37,
+      "fields_count": 28,
+      "existing_show_when": 0,
+      "extracted_conditional_fields": 0,
+      "has_js_blob": false,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier_.html"
+    },
+    {
+      "schema_id": "menage_rc",
+      "gravity_form_id": 1,
+      "fields_count": 109,
+      "existing_show_when": 57,
+      "extracted_conditional_fields": 49,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-3_.html"
+    },
+    {
+      "schema_id": "motocycle",
+      "gravity_form_id": 9,
+      "fields_count": 91,
+      "existing_show_when": 20,
+      "extracted_conditional_fields": 17,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_motocycle_.html"
+    },
+    {
+      "schema_id": "pilier3",
+      "gravity_form_id": 6,
+      "fields_count": 104,
+      "existing_show_when": 51,
+      "extracted_conditional_fields": 0,
+      "has_js_blob": false,
+      "html_markers": 0,
+      "source_file": null
+    },
+    {
+      "schema_id": "pilier3_autre",
+      "gravity_form_id": 58,
+      "fields_count": 11,
+      "existing_show_when": 0,
+      "extracted_conditional_fields": 0,
+      "has_js_blob": false,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-2_.html"
+    },
+    {
+      "schema_id": "pilier3_parent_enfant",
+      "gravity_form_id": 41,
+      "fields_count": 78,
+      "existing_show_when": 15,
+      "extracted_conditional_fields": 18,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-10_.html"
+    },
+    {
+      "schema_id": "pilier3_risque_pur",
+      "gravity_form_id": 42,
+      "fields_count": 118,
+      "existing_show_when": 64,
+      "extracted_conditional_fields": 59,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-11_.html"
+    },
+    {
+      "schema_id": "pilier3_standard",
+      "gravity_form_id": 37,
+      "fields_count": 16,
+      "existing_show_when": 0,
+      "extracted_conditional_fields": 0,
+      "has_js_blob": false,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier_.html"
+    },
+    {
+      "schema_id": "protection_juridique_entreprise",
+      "gravity_form_id": 36,
+      "fields_count": 49,
+      "existing_show_when": 0,
+      "extracted_conditional_fields": 0,
+      "has_js_blob": false,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-entreprise-independant_.html"
+    },
+    {
+      "schema_id": "protection_juridique_entreprise_2",
+      "gravity_form_id": 38,
+      "fields_count": 44,
+      "existing_show_when": 1,
+      "extracted_conditional_fields": 1,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-entreprise-independant-2_.html"
+    },
+    {
+      "schema_id": "protection_juridique_particulier",
+      "gravity_form_id": 35,
+      "fields_count": 48,
+      "existing_show_when": 9,
+      "extracted_conditional_fields": 9,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-particulier_.html"
+    },
+    {
+      "schema_id": "rc_entreprise",
+      "gravity_form_id": 30,
+      "fields_count": 50,
+      "existing_show_when": 6,
+      "extracted_conditional_fields": 9,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_responsabilite-civile_.html"
+    },
+    {
+      "schema_id": "vehicule",
+      "gravity_form_id": 8,
+      "fields_count": 110,
+      "existing_show_when": 37,
+      "extracted_conditional_fields": 30,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-5_.html"
+    },
+    {
+      "schema_id": "voyage",
+      "gravity_form_id": 12,
+      "fields_count": 137,
+      "existing_show_when": 27,
+      "extracted_conditional_fields": 30,
+      "has_js_blob": true,
+      "html_markers": 0,
+      "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-6_.html"
+    }
+  ],
+  "notes": [
+    "JS blob gf_form_conditional_logic is the reliable source of rules.",
+    "data-conditional-logic=hidden|visible alone cannot recover parent/value rules.",
+    "Forms with extracted_conditional_fields=0 still need a GF admin JSON export."
+  ]
+}

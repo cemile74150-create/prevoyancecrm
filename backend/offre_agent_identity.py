@@ -111,6 +111,38 @@ def viewer_is_demande_creator(doc: Optional[dict], user: Any) -> bool:
     return False
 
 
+def viewer_is_demande_agent(doc: Optional[dict], user: Any) -> bool:
+    """True si le compte connecté est l'agent demandeur (pas forcément le créateur)."""
+    if not isinstance(doc, dict) or user is None:
+        return False
+    agent = str(doc.get("agent_account_id") or "").strip()
+    viewer_id = _account_id_of(user)
+    if agent and viewer_id:
+        return agent == viewer_id
+    # Legacy : sans agent_account_id, créateur = agent
+    if not agent:
+        return viewer_is_demande_creator(doc, user)
+    return False
+
+
+def resolve_offre_agent_account_id(
+    *,
+    creator_account_id: Optional[str],
+    assigned_to_account_id: Optional[str] = None,
+    explicit_agent_account_id: Optional[str] = None,
+) -> str:
+    """Account_id de l'agent demandeur (pas forcément le créateur).
+
+    Ordre : agent explicite → conseiller assigné → créateur.
+    ``created_by_account_id`` reste distinct pour la traçabilité.
+    """
+    for candidate in (explicit_agent_account_id, assigned_to_account_id, creator_account_id):
+        aid = str(candidate or "").strip()
+        if aid:
+            return aid
+    return ""
+
+
 def _identity_is_populated(identity: Optional[dict]) -> bool:
     if not identity:
         return False
@@ -161,11 +193,27 @@ def resolve_agent_identity_for_write(
     """
     Identité AGENT DEMANDEUR à afficher / persister.
 
-    - Créateur : profil session (anti-spoof).
-    - Autre viewer : identité déjà enregistrée (Sophie, ou agent réassigné par admin).
-    - Si l'identité stockée = le viewer (vol à l'ouverture) : restaurer le créateur.
+    - Agent (agent_account_id) : profil session anti-spoof.
+    - Créateur ≠ agent (admin/gestionnaire ayant attribué) : conserver l'identité agent.
+    - Autre viewer : identité déjà enregistrée.
+    - Si l'identité stockée = le viewer (vol à l'ouverture) : restaurer l'agent.
     """
-    if viewer_is_demande_creator(doc, user) or not isinstance(doc, dict):
+    if not isinstance(doc, dict):
+        return agent_identity_from_user(user)
+
+    agent_aid = str(doc.get("agent_account_id") or "").strip()
+    viewer_id = _account_id_of(user)
+    # Opérateur ≠ agent : conserver l'identité agent (champs stockés, puis lookup).
+    # Ne jamais retomber sur le profil de l'opérateur (vol d'identité).
+    if agent_aid and viewer_id and agent_aid != viewer_id:
+        bound = agent_identity_from_doc(doc)
+        if _identity_is_populated(bound):
+            return bound
+        if _identity_is_populated(creator_identity):
+            return _normalize_identity(creator_identity)
+        return _empty_identity()
+
+    if viewer_is_demande_agent(doc, user):
         return agent_identity_from_user(user)
 
     bound = agent_identity_from_doc(doc)

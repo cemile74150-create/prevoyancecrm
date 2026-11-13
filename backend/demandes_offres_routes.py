@@ -1773,6 +1773,7 @@ def attach_demandes_offres_routes(
         statut_commercial: Optional[str] = Query(None),
         indicateur: Optional[str] = Query(None),
         limit: int = Query(200, ge=1, le=1000),
+        skip: int = Query(0, ge=0),
         user: User = Depends(current_user_dependency),
     ):
         from demandes_offres_pilotage import filtrer_lignes
@@ -1823,15 +1824,34 @@ def attach_demandes_offres_routes(
             )
         if clauses:
             query = {"$and": [query, *clauses]}
+        # Filtres période / priorité / retard / indicateurs : calculés en Python
+        # → sur-échantillonner uniquement si nécessaire.
+        want_prio = (priorite or "").strip().lower()
+        want_retard = en_retard is True or cat == "en_retard"
+        needs_overfetch = bool(
+            (periode and periode not in {"", "all"})
+            or date_de
+            or date_a
+            or (want_prio and want_prio not in {"", "all"})
+            or want_retard
+            or urgente is True
+            or rdv_a_venir is True
+            or (indicateur or "").strip()
+            or (statut_traitement or "").strip()
+            or (statut_commercial or "").strip()
+            or (gestionnaire or "").strip() not in {"", "all"}
+            or perimetre_code(perimetre) == "equipe"
+            or (tri or "").strip()
+        )
+        fetch_n = min((limit + skip) * (5 if needs_overfetch else 1), 5000)
+        fetch_n = max(fetch_n, limit + skip)
         rows = await db[COLLECTION].find(query, {"_id": 0}).sort(
             "updated_at", -1
-        ).to_list(limit * 5)
+        ).to_list(fetch_n)
         rows, _ = filter_rows_by_period(
             rows, periode=periode, date_de=date_de, date_a=date_a
         )
         # Filtres priorité / retard (calculés, pas stockés)
-        want_prio = (priorite or "").strip().lower()
-        want_retard = en_retard is True or cat == "en_retard"
         if want_prio or want_retard:
             filtered = []
             for row in rows:
@@ -1864,6 +1884,8 @@ def attach_demandes_offres_routes(
             statut_commercial=statut_commercial,
         )
         rows = urgentes_en_tete(sort_demandes(rows, tri))
+        if skip:
+            rows = rows[skip:]
         rows = rows[:limit]
         return [serialize_demande(row, viewer=user) for row in rows]
 
@@ -2266,15 +2288,34 @@ def attach_demandes_offres_routes(
             agent_identity_from_user,
             apply_agent_identity_to_doc,
             apply_agent_identity_to_payload,
+            resolve_offre_agent_account_id,
         )
 
+        assigned_to = (
+            str((payload.assigned_to_account_id if payload else None) or "").strip() or None
+        )
+        # Attribution à un autre conseiller : réservée process/admin (anti-usurpation).
+        can_assign_agent = can_process_offres(user) or has_perm(user, PERM_USERS_MANAGE)
+        if assigned_to and not can_assign_agent:
+            assigned_to = None
+        creator_id = str(user.account_id or "").strip()
+        agent_account_id = resolve_offre_agent_account_id(
+            creator_account_id=creator_id,
+            assigned_to_account_id=assigned_to if can_assign_agent else None,
+        )
+        # Agent demandeur = conseiller assigné si présent, sinon créateur.
+        # created_by reste toujours l'opérateur (traçabilité).
         identity = agent_identity_from_user(user)
+        if agent_account_id and agent_account_id != creator_id:
+            assigned_identity = await identity_from_account_id(agent_account_id)
+            if assigned_identity:
+                identity = assigned_identity
         apply_agent_identity_to_doc(doc, identity, overwrite_payload=False)
 
         agent_label = identity.get("label") or user.conseiller or actor_name(user)
 
         form_payload = empty_form_payload(form_type_id) if form_type_id != "pilier3_legacy" else {}
-        # Préremplir agent (session) + identité client CRM
+        # Préremplir agent (session / conseiller assigné) + identité client CRM
         if isinstance(form_payload, dict) and form_payload:
             form_payload = apply_agent_identity_to_payload(
                 form_type_id, form_payload, identity, overwrite=True
@@ -2312,7 +2353,7 @@ def attach_demandes_offres_routes(
                     (payload.demande_origine if payload else None)
                     or (
                         DEMANDE_ORIGINE_ATTRIBUEE
-                        if can_process_offres(user) and (payload and payload.assigned_to_account_id)
+                        if can_process_offres(user) and assigned_to
                         else DEMANDE_ORIGINE_CONSEILLER
                     )
                 ),
@@ -2320,9 +2361,10 @@ def attach_demandes_offres_routes(
                     (payload.type_client if payload else None),
                     client_id=client_id or doc.get("client_id"),
                 ),
-                "assigned_to_account_id": (payload.assigned_to_account_id if payload else None) or None,
+                "assigned_to_account_id": assigned_to,
                 "assigned_to_name": (payload.assigned_to_name if payload else None) or "",
-                "created_by_account_id": user.account_id,
+                "created_by_account_id": creator_id,
+                "agent_account_id": agent_account_id,
                 "created_by_name": actor_name(user),
                 "created_at": created_at,
                 "updated_at": created_at,
@@ -2461,9 +2503,8 @@ def attach_demandes_offres_routes(
             if not assigned or not (assigned.get("prenom") or assigned.get("nom") or assigned.get("email")):
                 raise HTTPException(status_code=400, detail="Agent demandeur introuvable")
             apply_agent_identity_to_doc(normalized, assigned, overwrite_payload=True)
+            # Agent ≠ créateur : on change l'agent sans réécrire l'historique de création.
             normalized["agent_account_id"] = assigned.get("account_id") or assigned_id
-            normalized["created_by_account_id"] = normalized["agent_account_id"]
-            normalized["created_by_name"] = assigned.get("label") or assigned.get("email") or ""
         elif can_set_agent:
             ident = {
                 "prenom": str(normalized.get("agent_prenom") or "").strip(),
@@ -2490,8 +2531,6 @@ def attach_demandes_offres_routes(
         updates["agent_label"] = normalized.get("agent_label")
         if can_set_agent and assigned_id:
             updates["agent_account_id"] = normalized.get("agent_account_id")
-            updates["created_by_account_id"] = normalized.get("created_by_account_id")
-            updates["created_by_name"] = normalized.get("created_by_name")
         elif can_set_agent:
             updates["agent_label"] = normalized.get("agent_label")
         if "form_payload" in raw_updates or isinstance(normalized.get("form_payload"), dict):
@@ -2543,6 +2582,12 @@ def attach_demandes_offres_routes(
                     user_id=user.user_id,
                     module="offres",
                     conseiller=normalized.get("agent_label") or user.conseiller,
+                    # Hub rattaché à l'agent demandeur (conseiller), pas au créateur interne.
+                    conseiller_account_id=(
+                        normalized.get("agent_account_id")
+                        or normalized.get("assigned_to_account_id")
+                        or None
+                    ),
                 )
                 if hub:
                     updates["client_id"] = hub["id"]
@@ -2610,6 +2655,11 @@ def attach_demandes_offres_routes(
                 hub, _ = await upsert_hub_client_from_person(
                     db, doc, user_id=user.user_id, module="offres",
                     conseiller=doc.get("agent_label") or user.conseiller,
+                    conseiller_account_id=(
+                        doc.get("agent_account_id")
+                        or doc.get("assigned_to_account_id")
+                        or None
+                    ),
                 )
                 if hub and hub.get("id") != doc.get("client_id"):
                     await db[COLLECTION].update_one(
@@ -4349,13 +4399,11 @@ def attach_demandes_offres_routes(
     ):
         """Notifications CRM liées aux demandes d'offres pour l'utilisateur courant."""
         account_id = user.account_id
-        or_clauses = [{"audience": "all"}]
+        # Ciblage : toujours prioriser account_ids ; audience large réservée aux gestionnaires.
+        or_clauses: list[dict] = [{"account_ids": account_id}]
         if can_process_offres(user):
             or_clauses.append({"audience": "gestionnaires"})
-            or_clauses.append({"account_ids": account_id})
-        else:
-            or_clauses.append({"account_ids": account_id})
-            or_clauses.append({"audience": "conseiller", "account_ids": account_id})
+            or_clauses.append({"audience": "all"})
         rows = await db.offre_notifications.find(
             {"user_id": TENANT_USER_ID, "$or": or_clauses},
             {"_id": 0},
