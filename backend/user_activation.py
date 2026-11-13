@@ -122,12 +122,31 @@ async def consume_token_and_set_password(
     """
     Valide le jeton, pose le MDP, lève must_set_password.
     Retourne (user_public_fields, error_code).
+    Consommation atomique du jeton (anti double-emploi).
     """
     err = validate_new_password(new_password)
     if err:
         return None, "weak_password"
-    tok = await lookup_valid_token(db, raw_token)
+    th = hash_token(raw_token)
+    if not th or th == hash_token(""):
+        return None, "invalid_or_expired"
+    now_iso = _now_iso()
+    # Claim atomique : un seul consommateur gagne.
+    tok = await db[COLLECTION].find_one_and_update(
+        {
+            "token_hash": th,
+            "used_at": None,
+            "revoked_at": None,
+            "expires_at": {"$gt": now_iso},
+        },
+        {"$set": {"used_at": now_iso}},
+        return_document=True,
+    )
     if not tok:
+        # Distingue expiré / invalide pour l'UX (sans révélation utile)
+        existing = await db[COLLECTION].find_one({"token_hash": th}, {"_id": 0})
+        if existing and existing.get("used_at"):
+            return None, "invalid_or_expired"
         return None, "invalid_or_expired"
     user_id = tok.get("user_id")
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
@@ -140,13 +159,9 @@ async def consume_token_and_set_password(
                 "password_hash": hash_password(new_password),
                 "must_set_password": False,
                 "activation_pending": False,
-                "password_set_at": _now_iso(),
+                "password_set_at": now_iso,
             }
         },
-    )
-    await db[COLLECTION].update_one(
-        {"id": tok["id"]},
-        {"$set": {"used_at": _now_iso()}},
     )
     await db.user_sessions.delete_many({"user_id": user_id})
     fresh = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
@@ -203,25 +218,32 @@ async def send_activation_email(
             user.get("user_id"),
         )
         return False, "smtp_not_configured", link
-    # Ne jamais logger le lien ni le jeton
+    # Ne jamais journaliser le corps (contient le lien d'activation).
     ok, err = send_email(
         user.get("email") or "",
         subject,
         text,
         body_html=html,
         mail_type="user_activation",
-        log_meta={"user_id": user.get("user_id"), "purpose": "activate"},
-        persist_log=True,
+        log_meta={"user_id": user.get("user_id"), "purpose": "activate", "body_redacted": True},
+        persist_log=False,
     )
-    # Redacte le corps (contient le lien) dans le journal e-mail si présent.
+    # Trace minimale sans secret (pas de body / pas de lien).
     if ok:
         try:
-            await db.email_logs.update_many(
-                {"mail_type": "user_activation", "log_meta.user_id": user.get("user_id")},
-                {"$unset": {"body_text": "", "body_html": ""}, "$set": {"body_redacted": True}},
+            await db.email_logs.insert_one(
+                {
+                    "mail_type": "user_activation",
+                    "to_email": (user.get("email") or "").strip(),
+                    "subject": subject,
+                    "status": "sent",
+                    "user_id": user.get("user_id"),
+                    "body_redacted": True,
+                    "created_at": _now_iso(),
+                }
             )
         except Exception:
-            pass
+            logger.exception("Journal activation sans corps impossible user_id=%s", user.get("user_id"))
     return ok, err, link
 
 

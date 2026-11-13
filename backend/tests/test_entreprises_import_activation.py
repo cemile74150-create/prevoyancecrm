@@ -119,3 +119,60 @@ def test_activation_token_hash_and_password_rules():
     p2 = generate_provisional_password()
     assert p1 != p2
     assert len(p1) >= 16
+
+
+def test_activation_email_never_persists_body_with_link(monkeypatch):
+    """Le lien d'activation ne doit pas atterrir dans email_logs.body_*."""
+    import asyncio
+
+    import email_service as es
+    import user_activation as ua
+
+    captured = {}
+
+    def fake_send_email(*args, **kwargs):
+        captured["persist_log"] = kwargs.get("persist_log")
+        captured["body"] = args[2] if len(args) > 2 else kwargs.get("body_text")
+        return True, None
+
+    monkeypatch.setattr(es, "smtp_configured", lambda: True)
+    monkeypatch.setattr(es, "send_email", fake_send_email)
+
+    class FakeDB:
+        def __init__(self):
+            self.inserted = []
+
+        @property
+        def email_logs(self):
+            return self
+
+        async def insert_one(self, doc):
+            self.inserted.append(doc)
+
+    db = FakeDB()
+
+    async def _run():
+        return await ua.send_activation_email(
+            db,
+            user={"user_id": "u1", "email": "a@b.ch", "prenom": "A"},
+            raw_token="tokensecretvalue",
+            public_app_url="https://app.leosoft.ch",
+        )
+
+    ok, err, link = asyncio.run(_run())
+    assert ok is True and err is None
+    assert "tokensecretvalue" in link
+    assert captured.get("persist_log") is False
+    assert db.inserted and db.inserted[0].get("body_redacted") is True
+    assert "body_text" not in db.inserted[0]
+    assert "tokensecretvalue" not in str(db.inserted[0])
+
+
+def test_route_permissions_cover_entreprises_and_import():
+    from access_control import PERM_USERS_MANAGE, permission_for_request
+
+    assert permission_for_request("GET", "/api/entreprises") == PERM_USERS_MANAGE
+    assert permission_for_request("POST", "/api/entreprises") == PERM_USERS_MANAGE
+    assert permission_for_request("GET", "/api/users-import/template.xlsx") == PERM_USERS_MANAGE
+    assert permission_for_request("POST", "/api/users-import/preview") == PERM_USERS_MANAGE
+    assert permission_for_request("GET", "/api/auth/activation/status") is None

@@ -150,9 +150,6 @@ def preview_import(
         if email:
             seen_in_file.add(email)
 
-        counts[status if status in counts else "invalid"] = counts.get(
-            status if status in counts else "invalid", 0
-        ) + (0 if status == "ok" else 0)
         if status == "ok":
             counts["ok"] += 1
         elif status == "duplicate_email_db":

@@ -178,15 +178,28 @@ def attach_entreprises_routes(api_router: APIRouter, db, get_current_user):
 
     @api_router.get("/entreprises/mendes-attachment-preview")
     async def mendes_attachment_preview(user: User = Depends(get_current_user)):
-        """Aperçu des comptes @agencemendes.ch à rattacher (aucune écriture)."""
+        """Aperçu des comptes @agencemendes.ch à rattacher (lecture seule)."""
         require_admin(user)
-        mendes = await ensure_agence_mendes(db)
+        # Pas d'écriture ici : créer Mendes via POST /entreprises/ensure-agence-mendes.
+        mendes = await db[COLLECTION].find_one(
+            {"nom": {"$regex": r"^Agence\s+Mendes$", "$options": "i"}},
+            {"_id": 0},
+        )
+        if not mendes:
+            return {
+                "entreprise": None,
+                "count": 0,
+                "proposals": [],
+                "missing_entreprise": True,
+                "hint": "Appelez POST /entreprises/ensure-agence-mendes avant le rattachement.",
+            }
         users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(2000)
         proposals = propose_mendes_attachments(users, mendes)
         return {
             "entreprise": public_entreprise(mendes),
             "count": len(proposals),
             "proposals": proposals,
+            "missing_entreprise": False,
         }
 
     @api_router.post("/entreprises/mendes-attachment-apply")

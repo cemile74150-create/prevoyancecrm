@@ -1117,6 +1117,8 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("DELETE",), r"^/comparatifs-rentes/", PERM_ANALYSES_EDIT),
     (None, r"^/users/conseillers$", None),
     (None, r"^/users", PERM_USERS_MANAGE),
+    (None, r"^/users-import(/|$)", PERM_USERS_MANAGE),
+    (None, r"^/entreprises(/|$)", PERM_USERS_MANAGE),
     (None, r"^/access-policy", PERM_USERS_MANAGE),
     (None, r"^/admin(/|$)", PERM_USERS_MANAGE),
     (("GET",), r"^/rappel-email-logs$", PERM_USERS_MANAGE),
