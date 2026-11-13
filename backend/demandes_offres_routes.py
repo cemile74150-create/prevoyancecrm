@@ -1773,6 +1773,7 @@ def attach_demandes_offres_routes(
         statut_commercial: Optional[str] = Query(None),
         indicateur: Optional[str] = Query(None),
         limit: int = Query(200, ge=1, le=1000),
+        skip: int = Query(0, ge=0),
         user: User = Depends(current_user_dependency),
     ):
         from demandes_offres_pilotage import filtrer_lignes
@@ -1823,15 +1824,34 @@ def attach_demandes_offres_routes(
             )
         if clauses:
             query = {"$and": [query, *clauses]}
+        # Filtres période / priorité / retard / indicateurs : calculés en Python
+        # → sur-échantillonner uniquement si nécessaire.
+        want_prio = (priorite or "").strip().lower()
+        want_retard = en_retard is True or cat == "en_retard"
+        needs_overfetch = bool(
+            (periode and periode not in {"", "all"})
+            or date_de
+            or date_a
+            or (want_prio and want_prio not in {"", "all"})
+            or want_retard
+            or urgente is True
+            or rdv_a_venir is True
+            or (indicateur or "").strip()
+            or (statut_traitement or "").strip()
+            or (statut_commercial or "").strip()
+            or (gestionnaire or "").strip() not in {"", "all"}
+            or perimetre_code(perimetre) == "equipe"
+            or (tri or "").strip()
+        )
+        fetch_n = min((limit + skip) * (5 if needs_overfetch else 1), 5000)
+        fetch_n = max(fetch_n, limit + skip)
         rows = await db[COLLECTION].find(query, {"_id": 0}).sort(
             "updated_at", -1
-        ).to_list(limit * 5)
+        ).to_list(fetch_n)
         rows, _ = filter_rows_by_period(
             rows, periode=periode, date_de=date_de, date_a=date_a
         )
         # Filtres priorité / retard (calculés, pas stockés)
-        want_prio = (priorite or "").strip().lower()
-        want_retard = en_retard is True or cat == "en_retard"
         if want_prio or want_retard:
             filtered = []
             for row in rows:
@@ -1864,6 +1884,8 @@ def attach_demandes_offres_routes(
             statut_commercial=statut_commercial,
         )
         rows = urgentes_en_tete(sort_demandes(rows, tri))
+        if skip:
+            rows = rows[skip:]
         rows = rows[:limit]
         return [serialize_demande(row, viewer=user) for row in rows]
 
@@ -4377,13 +4399,11 @@ def attach_demandes_offres_routes(
     ):
         """Notifications CRM liées aux demandes d'offres pour l'utilisateur courant."""
         account_id = user.account_id
-        or_clauses = [{"audience": "all"}]
+        # Ciblage : toujours prioriser account_ids ; audience large réservée aux gestionnaires.
+        or_clauses: list[dict] = [{"account_ids": account_id}]
         if can_process_offres(user):
             or_clauses.append({"audience": "gestionnaires"})
-            or_clauses.append({"account_ids": account_id})
-        else:
-            or_clauses.append({"account_ids": account_id})
-            or_clauses.append({"audience": "conseiller", "account_ids": account_id})
+            or_clauses.append({"audience": "all"})
         rows = await db.offre_notifications.find(
             {"user_id": TENANT_USER_ID, "$or": or_clauses},
             {"_id": 0},

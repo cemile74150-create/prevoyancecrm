@@ -254,6 +254,8 @@ def test_creator_save_does_not_overwrite_assigned_agent_identity():
 def test_signature_follow_uses_agent_not_operator_creator():
     nora = _u(ROLE_CONSEILLER, "u_new", "Nora", "Nouveau")
     admin = _u(ROLE_ADMIN, "admin1", "Admin", "Mendes")
+    # Même nom que l'agent : le fallback label ne doit pas autoriser l'opérateur.
+    impostor = _u(ROLE_CONSEILLER, "admin1", "Nora", "Nouveau")
     doc = {
         "created_by_account_id": "admin1",
         "agent_account_id": "u_new",
@@ -263,3 +265,35 @@ def test_signature_follow_uses_agent_not_operator_creator():
 
     assert can_follow_signature(nora, doc) is True
     assert can_follow_signature(admin, doc) is False
+    assert can_follow_signature(impostor, doc) is False
+
+
+def test_operator_save_empty_bound_does_not_steal_agent_identity():
+    from offre_agent_identity import resolve_agent_identity_for_write
+
+    admin = _u(ROLE_ADMIN, "admin1", "Admin", "Mendes")
+    doc = {
+        "created_by_account_id": "admin1",
+        "agent_account_id": "u_new",
+        "agent_prenom": "",
+        "agent_nom": "",
+        "agent_email": "",
+        "agent_label": "",
+    }
+    agent_identity = {
+        "prenom": "Nora",
+        "nom": "Nouveau",
+        "email": "nora@test.ch",
+        "finma": "F-1",
+        "label": "Nora Nouveau",
+        "account_id": "u_new",
+    }
+    resolved = resolve_agent_identity_for_write(
+        doc, admin, creator_identity=agent_identity
+    )
+    assert resolved["prenom"] == "Nora"
+    assert resolved["email"] == "nora@test.ch"
+    empty = resolve_agent_identity_for_write(doc, admin, creator_identity=None)
+    assert empty.get("prenom") in ("", None)
+    assert empty.get("email") in ("", None)
+    assert "Admin" not in (empty.get("label") or "")

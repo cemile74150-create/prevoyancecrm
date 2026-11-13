@@ -204,13 +204,14 @@ def resolve_agent_identity_for_write(
     agent_aid = str(doc.get("agent_account_id") or "").strip()
     viewer_id = _account_id_of(user)
     # Opérateur ≠ agent : conserver l'identité agent (champs stockés, puis lookup).
+    # Ne jamais retomber sur le profil de l'opérateur (vol d'identité).
     if agent_aid and viewer_id and agent_aid != viewer_id:
         bound = agent_identity_from_doc(doc)
         if _identity_is_populated(bound):
             return bound
         if _identity_is_populated(creator_identity):
             return _normalize_identity(creator_identity)
-        return agent_identity_from_user(user)
+        return _empty_identity()
 
     if viewer_is_demande_agent(doc, user):
         return agent_identity_from_user(user)

@@ -1,9 +1,12 @@
 """Migration conseiller_account_id — COPIE LOCALE UNIQUEMENT.
 
-Décisions validées (2026-11-12) :
+Décisions validées (2026-11-12 / précisées 2026-11-13) :
 - Service Fiscal : pas d'account_id (option B) — déjà hors « sure »
 - BONVESTING / Jordy Bonvin : exclus tant que non confirmés
-- Ambiguës / vides / impossibles : aucune écriture
+- Alberto Mendes et Pascal Maret : inclus dans la migration (libellés sure)
+- DOS-0232 / DOS-0235 (couples Pascal+Alberto) : stamp Pascal uniquement ;
+  libellés conseiller de chaque membre inchangés ; Alberto garde l'accès admin
+- Ambiguës / vides / impossibles (hors override couple) : aucune écriture
 - Production : interdite (hôte localhost obligatoire)
 
     python scripts/migrer_attribution_copie.py --local --db leosoft_mendes_migration_sim --dry-run
@@ -30,13 +33,18 @@ from pymongo import MongoClient  # noqa: E402
 
 # Comptes / libellés exclus jusqu'à validation métier
 EXCLUDED_ACCOUNT_IDS = {
-    "user_161136756f02",  # BONVESTING SNC (libellé Jordy Bonvin)
+    "user_161136756f02": "bonvesting_jordy_pending_validation",  # BONVESTING / Jordy Bonvin
 }
 EXCLUDED_LABEL_KEYS = {
-    normalize_conseiller_key("Jordy Bonvin"),
-    normalize_conseiller_key("BONVESTING SNC"),
+    normalize_conseiller_key("Jordy Bonvin"): "bonvesting_jordy_pending_validation",
+    normalize_conseiller_key("BONVESTING SNC"): "bonvesting_jordy_pending_validation",
 }
 SERVICE_FISCAL_KEY = normalize_conseiller_key("Service Fiscal (Impot)")
+
+# Couples Pascal/Alberto : account_id → Pascal ; libellés conservés tels quels.
+PASCAL_ACCOUNT_ID = "user_6c6401fa3365"
+PASCAL_ACCOUNT_LABEL = "Pascal Maret"
+FORCE_PASCAL_DOSSIER_REFS = frozenset({"DOS-0232", "DOS-0235"})
 
 
 def _hote(url: str) -> str:
@@ -54,9 +62,10 @@ def _is_excluded(doc: dict, row: dict) -> tuple[bool, str]:
     if key == SERVICE_FISCAL_KEY or "service fiscal" in key:
         return True, "service_fiscal_option_b"
     if key in EXCLUDED_LABEL_KEYS:
-        return True, "bonvesting_jordy_pending_validation"
-    if row.get("account_id") in EXCLUDED_ACCOUNT_IDS:
-        return True, "bonvesting_jordy_pending_validation"
+        return True, EXCLUDED_LABEL_KEYS[key]
+    aid = str(row.get("account_id") or "").strip()
+    if aid in EXCLUDED_ACCOUNT_IDS:
+        return True, EXCLUDED_ACCOUNT_IDS[aid]
     return False, ""
 
 
@@ -87,14 +96,46 @@ def plan_writes(db) -> dict:
     skipped = []
     for doc in clients:
         row = by_id[doc["id"]]
+        ref = _ref(doc)
         excl, why = _is_excluded(doc, row)
         if excl:
-            skipped.append({"ref": _ref(doc), "reason": why, "match_status": row["status"]})
+            skipped.append({"ref": ref, "reason": why, "match_status": row["status"]})
             continue
+
+        # Override couple : stamp Pascal, ne pas réécrire le libellé conseiller.
+        if ref in FORCE_PASCAL_DOSSIER_REFS:
+            existing = str(doc.get("conseiller_account_id") or "").strip()
+            if existing == PASCAL_ACCOUNT_ID:
+                skipped.append(
+                    {
+                        "ref": ref,
+                        "reason": "deja_a_jour",
+                        "match_status": row["status"],
+                        "note": "force_pascal_couple",
+                        "conseiller_label_preserved": doc.get("conseiller"),
+                    }
+                )
+                continue
+            to_write.append(
+                {
+                    "id": doc["id"],
+                    "ref": ref,
+                    "conseiller": doc.get("conseiller"),
+                    "account_id": PASCAL_ACCOUNT_ID,
+                    "account_label": PASCAL_ACCOUNT_LABEL,
+                    "previous_account_id": existing or None,
+                    "override": "force_pascal_couple",
+                    "match_status_before": row["status"],
+                    "match_reason_before": row.get("reason"),
+                    "label_unchanged": True,
+                }
+            )
+            continue
+
         if row["status"] != "sure" or not row.get("account_id"):
             skipped.append(
                 {
-                    "ref": _ref(doc),
+                    "ref": ref,
                     "reason": f"non_migre_{row['status']}",
                     "match_status": row["status"],
                     "match_reason": row.get("reason"),
@@ -103,12 +144,12 @@ def plan_writes(db) -> dict:
             continue
         existing = str(doc.get("conseiller_account_id") or "").strip()
         if existing == row["account_id"]:
-            skipped.append({"ref": _ref(doc), "reason": "deja_a_jour", "match_status": "sure"})
+            skipped.append({"ref": ref, "reason": "deja_a_jour", "match_status": "sure"})
             continue
         to_write.append(
             {
                 "id": doc["id"],
-                "ref": _ref(doc),
+                "ref": ref,
                 "conseiller": doc.get("conseiller"),
                 "account_id": row["account_id"],
                 "account_label": row.get("account_label"),
@@ -116,6 +157,7 @@ def plan_writes(db) -> dict:
             }
         )
 
+    force_pascal = [w for w in to_write if w.get("override") == "force_pascal_couple"]
     return {
         "clients_total": len(clients),
         "to_write": to_write,
@@ -125,6 +167,13 @@ def plan_writes(db) -> dict:
             "skipped": len(skipped),
             "excluded_bonvesting": sum(1 for s in skipped if s["reason"] == "bonvesting_jordy_pending_validation"),
             "excluded_service_fiscal": sum(1 for s in skipped if s["reason"] == "service_fiscal_option_b"),
+            "force_pascal_couple": len(force_pascal),
+            "alberto_account_writes": sum(
+                1 for w in to_write if w.get("account_id") == "user_8250e6c40fa7"
+            ),
+            "pascal_account_writes": sum(
+                1 for w in to_write if w.get("account_id") == PASCAL_ACCOUNT_ID
+            ),
             "non_sure": sum(1 for s in skipped if str(s["reason"]).startswith("non_migre_")),
         },
     }
@@ -156,9 +205,9 @@ def apply_writes(db, plan: dict) -> dict:
         "exclusions_preserved": [
             "service_fiscal",
             "bonvesting_jordy",
-            "pascal_couple_non_sure",
             "non_attribues",
         ],
+        "overrides": ["force_pascal_couple_DOS-0232_DOS-0235"],
     }
     db["_attribution_migration_log"].delete_many({})
     db["_attribution_migration_log"].insert_one(journal_doc)
@@ -221,6 +270,9 @@ def main(argv=None) -> int:
     print(f"Écritures prévues: {plan['counts']['to_write']}")
     print(f"Exclus BONVESTING: {plan['counts']['excluded_bonvesting']} → {report['excluded_bonvesting_refs']}")
     print(f"Exclus Service Fiscal: {plan['counts']['excluded_service_fiscal']}")
+    print(f"Override couples Pascal (DOS-0232/0235): {plan['counts'].get('force_pascal_couple', 0)}")
+    print(f"Écritures compte Alberto: {plan['counts'].get('alberto_account_writes', 0)}")
+    print(f"Écritures compte Pascal: {plan['counts'].get('pascal_account_writes', 0)}")
     print(f"Non sûrs / autres skips: {plan['counts']['non_sure']}")
 
     if args.json_path:

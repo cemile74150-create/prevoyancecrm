@@ -774,6 +774,9 @@ async def logout(response: Response, request: Request):
     token = request.cookies.get("session_token")
     if token:
         await db.user_sessions.delete_one({"session_token": token})
+        from access_control import invalidate_session_user_cache
+
+        invalidate_session_user_cache(token)
     response.delete_cookie("session_token", path="/")
     return {"ok": True}
 
@@ -1023,7 +1026,12 @@ async def create_user(payload: UserCreate, user: User = Depends(get_current_user
         "receive_conseiller_rappel_copies": bool(payload.receive_conseiller_rappel_copies)
         if role == ROLE_ADMIN
         else False,
-        **permission_storage_fields(role, payload.permissions, payload.see_all_dossiers),
+        **permission_storage_fields(
+            role,
+            payload.permissions,
+            payload.see_all_dossiers,
+            access_by_account_id_only=access_only,
+        ),
     }
     await db.users.insert_one(doc)
     if access_only:
@@ -1084,22 +1092,10 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
         updates["conseiller"] = updates["name"]
     if role != ROLE_ADMIN and "receive_conseiller_rappel_copies" not in updates:
         updates["receive_conseiller_rappel_copies"] = False
-    if payload.permissions is not None or payload.see_all_dossiers is not None or payload.role is not None:
-        perms_in = payload.permissions if payload.permissions is not None else (
-            None if payload.role is not None else doc.get("permissions")
-        )
-        see_all_in = payload.see_all_dossiers
-        if see_all_in is None and payload.role is None:
-            see_all_in = doc.get("see_all_dossiers")
-        updates.update(permission_storage_fields(role, perms_in, see_all_in))
-        if account_id == user.account_id and not updates.get("permissions", {}).get(PERM_USERS_MANAGE):
-            raise HTTPException(
-                status_code=400,
-                detail="Vous ne pouvez pas retirer votre propre droit de gérer les utilisateurs",
-            )
     from access_control import resolve_access_by_account_id_only_update
     from access_policy_journal import log_user_access_flag
 
+    access_only_effective = bool(doc.get("access_by_account_id_only"))
     if payload.access_by_account_id_only is not None or payload.role is not None:
         new_flag, flag_err = resolve_access_by_account_id_only_update(
             current=bool(doc.get("access_by_account_id_only")),
@@ -1109,8 +1105,33 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
         )
         if flag_err:
             raise HTTPException(status_code=400, detail=flag_err)
+        access_only_effective = bool(new_flag)
         if new_flag != bool(doc.get("access_by_account_id_only")):
             updates["access_by_account_id_only"] = new_flag
+
+    if payload.permissions is not None or payload.see_all_dossiers is not None or payload.role is not None:
+        perms_in = payload.permissions if payload.permissions is not None else (
+            None if payload.role is not None else doc.get("permissions")
+        )
+        see_all_in = payload.see_all_dossiers
+        if see_all_in is None and payload.role is None:
+            see_all_in = doc.get("see_all_dossiers")
+        updates.update(
+            permission_storage_fields(
+                role,
+                perms_in,
+                see_all_in,
+                access_by_account_id_only=access_only_effective,
+            )
+        )
+        if account_id == user.account_id and not updates.get("permissions", {}).get(PERM_USERS_MANAGE):
+            raise HTTPException(
+                status_code=400,
+                detail="Vous ne pouvez pas retirer votre propre droit de gérer les utilisateurs",
+            )
+    elif access_only_effective and bool(doc.get("see_all_dossiers")):
+        # Flag account-only sans round-trip permissions : retirer une vue globale incompatible.
+        updates["see_all_dossiers"] = False
     await db.users.update_one({"user_id": account_id}, {"$set": updates})
     fresh = await db.users.find_one({"user_id": account_id}, {"_id": 0})
     if "access_by_account_id_only" in updates:
@@ -1999,14 +2020,21 @@ async def list_clients(
         query["statut"] = {"$in": [wanted, *legacy_aliases]} if legacy_aliases else wanted
 
     q_term = (q or "").strip()
-    # Recherche texte : charger toute la base accessible AVANT filtre
-    # (sinon limit=15 ne regardait que les 15 derniers créés → clients manquants)
+    # Recherche texte : charger la population accessible AVANT filtre
+    # (sinon limit=15 ne regardait que les 15 derniers créés → clients manquants).
+    # Sans recherche : pagination Mongo native (skip/limit) pour ~150 conseillers.
     if q_term:
         fetch_cap = 10000
+        clients = await db.clients.find(query, {"_id": 0}).sort("created_at", -1).to_list(fetch_cap)
     else:
-        fetch_cap = min(max(limit + skip, limit), 10000)
-
-    clients = await db.clients.find(query, {"_id": 0}).sort("created_at", -1).to_list(fetch_cap)
+        clients = (
+            await db.clients.find(query, {"_id": 0})
+            .sort("created_at", -1)
+            .skip(skip)
+            .limit(limit)
+            .to_list(limit)
+        )
+        skip = 0  # déjà appliqué côté Mongo
     for c in clients:
         c["statut"] = normalize_statut(c.get("statut"))
     clients = [_decrypt_client_doc(c) for c in clients]
@@ -2375,7 +2403,8 @@ async def get_dossier(dossier_id: str, user: User = Depends(get_current_user)):
         spouse_id = primary.get("linked_spouse_id")
         if spouse_id:
             spouse = await db.clients.find_one({"id": spouse_id, "user_id": user.user_id}, {"_id": 0})
-            if spouse:
+            # Même filtre que la branche dossier_id partagé : pas de fuite conjoint hors périmètre.
+            if spouse and (is_global_viewer(user) or can_access_client(user, spouse)):
                 members.append(spouse)
         dossier_label = primary.get("dossier_label") or (
             f"Famille {primary.get('nom', '')}" if len(members) > 1 else f"{primary.get('prenom', '')} {primary.get('nom', '')}".strip()
@@ -8053,11 +8082,22 @@ async def dashboard_stats(
     need_suivi = cat in ("all", "suivi_3p")
     need_offres = cat in ("all", "offres")
 
+    # Projection légère : stats dashboard n'ont pas besoin du dossier chiffré complet.
+    _dash_client_proj = {
+        "_id": 0,
+        "id": 1,
+        "dossier_id": 1,
+        "statut": 1,
+        "priorite": 1,
+        "conseiller": 1,
+        "created_at": 1,
+        "updated_at": 1,
+    }
     clients = []
     if need_prevoyance:
         clients = await db.clients.find(
             clients_base_query(user, conseiller=conseiller, for_dossiers=True),
-            {"_id": 0},
+            _dash_client_proj,
         ).to_list(5000)
     dossiers = {}  # dossier_id -> {members, created_at_min, updated_at_max}
 
@@ -8254,6 +8294,7 @@ async def dashboard_stats(
             demandes_offres_base_query,
         )
         offres_q = demandes_offres_base_query(user, conseiller)
+        # Stats offres : documents complets (KPI pilotage / avancement dépendent de nombreux champs).
         offres_docs = await db[DEMANDES_OFFRES_COLLECTION].find(offres_q, {"_id": 0}).to_list(10000)
         offres_block = compute_demandes_stats(offres_docs)
 
@@ -8597,6 +8638,8 @@ async def _ensure_mongo_indexes():
         (db.clients, [("user_id", 1), ("created_at", -1)]),
         (db.clients, [("user_id", 1), ("statut", 1)]),
         (db.clients, [("user_id", 1), ("conseiller", 1)]),
+        (db.clients, [("user_id", 1), ("conseiller_account_id", 1)]),
+        (db.clients, [("user_id", 1), ("in_dossiers", 1), ("created_at", -1)]),
         (db.clients, [("dossier_id", 1)]),
         (db.documents, [("user_id", 1), ("client_id", 1), ("is_deleted", 1), ("created_at", -1)]),
         (db.documents, [("user_id", 1), ("dossier_id", 1), ("is_deleted", 1)]),
@@ -8612,6 +8655,13 @@ async def _ensure_mongo_indexes():
         (db.users, [("email", 1)]),
         (db.user_sessions, [("session_token", 1)]),
         (db.user_sessions, [("user_id", 1)]),
+        (db.user_sessions, [("expires_at", 1)]),
+        (db.demandes_offres_3p, [("user_id", 1), ("updated_at", -1)]),
+        (db.demandes_offres_3p, [("user_id", 1), ("agent_account_id", 1)]),
+        (db.demandes_offres_3p, [("user_id", 1), ("assigned_to_account_id", 1)]),
+        (db.demandes_offres_3p, [("user_id", 1), ("created_by_account_id", 1)]),
+        (db.offre_notifications, [("user_id", 1), ("created_at", -1)]),
+        (db.offre_notifications, [("account_ids", 1), ("created_at", -1)]),
     ]
     for coll, keys in specs:
         try:

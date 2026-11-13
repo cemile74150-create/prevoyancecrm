@@ -536,21 +536,25 @@ def compute_erreurs_agent_stats(records: list) -> dict:
 def can_follow_signature(user, doc: dict) -> bool:
     """
     Suivi Offre signée / non signée : réservé à l'agent demandeur.
-    Si agent_account_id est distinct du créateur, seul l'agent (pas l'opérateur) suit.
-    Legacy : sans agent_account_id, le créateur reste autorisé.
+    Si agent_account_id est posé : seul ce compte (pas l'opérateur créateur, pas de fallback nom).
+    Sans agent_account_id : créateur, puis fallback nom/e-mail en legacy/dual uniquement.
     """
     from access_control import (
         email_matches_conseiller,
+        effective_access_mode,
         labels_match_conseiller,
     )
 
     account_id = getattr(user, "account_id", None)
     agent = str((doc or {}).get("agent_account_id") or "").strip()
     created = str((doc or {}).get("created_by_account_id") or "").strip()
-    if account_id and agent and account_id == agent:
+    if agent:
+        return bool(account_id and account_id == agent)
+    if account_id and created and account_id == created:
         return True
-    if account_id and created and account_id == created and (not agent or agent == created):
-        return True
+    mode = effective_access_mode(user)
+    if mode == "strict" or bool(getattr(user, "access_by_account_id_only", False)):
+        return False
     if labels_match_conseiller(doc.get("agent_label"), user):
         return True
     if email_matches_conseiller(doc, user):

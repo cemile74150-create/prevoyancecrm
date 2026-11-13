@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import secrets
+import time
 import uuid
 from datetime import datetime, timezone, timedelta
 from itertools import permutations, product
@@ -13,6 +14,43 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 import bcrypt
 from fastapi import HTTPException, Request, Header
 from pydantic import BaseModel, Field, EmailStr
+
+# Cache court session→User (évite 2 finds Mongo par requête sous charge).
+_SESSION_USER_CACHE: Dict[str, Tuple[float, "User"]] = {}
+_SESSION_USER_CACHE_TTL_S = float(os.environ.get("SESSION_USER_CACHE_TTL_S") or "30")
+_SESSION_USER_CACHE_MAX = int(os.environ.get("SESSION_USER_CACHE_MAX") or "512")
+
+
+def invalidate_session_user_cache(token: Optional[str] = None) -> None:
+    """Invalide une entrée (logout) ou tout le cache."""
+    if token:
+        _SESSION_USER_CACHE.pop(token, None)
+        return
+    _SESSION_USER_CACHE.clear()
+
+
+def _session_cache_get(token: str) -> Optional["User"]:
+    hit = _SESSION_USER_CACHE.get(token)
+    if not hit:
+        return None
+    expires_at, user = hit
+    if expires_at < time.monotonic():
+        _SESSION_USER_CACHE.pop(token, None)
+        return None
+    return user
+
+
+def _session_cache_put(token: str, user: "User") -> None:
+    if _SESSION_USER_CACHE_TTL_S <= 0:
+        return
+    if len(_SESSION_USER_CACHE) >= _SESSION_USER_CACHE_MAX:
+        now = time.monotonic()
+        expired = [k for k, (exp, _) in _SESSION_USER_CACHE.items() if exp < now]
+        for k in expired:
+            _SESSION_USER_CACHE.pop(k, None)
+        while len(_SESSION_USER_CACHE) >= _SESSION_USER_CACHE_MAX:
+            _SESSION_USER_CACHE.pop(next(iter(_SESSION_USER_CACHE)), None)
+    _SESSION_USER_CACHE[token] = (time.monotonic() + _SESSION_USER_CACHE_TTL_S, user)
 
 TENANT_USER_ID = os.environ.get("TENANT_USER_ID", "local-dev")
 # legacy (défaut prod) | dual (account_id si présent, sinon nom) | strict (account_id seul)
@@ -351,13 +389,39 @@ def resolve_see_all_dossiers(doc: dict) -> bool:
     return default_see_all_dossiers(doc.get("role") or ROLE_CONSEILLER)
 
 
+def clamp_see_all_dossiers_for_access_policy(
+    *,
+    role: str,
+    see_all_dossiers: bool,
+    access_by_account_id_only: bool,
+) -> bool:
+    """Compte account_id-only : jamais see_all (sinon is_global_viewer court-circuite le strict).
+
+    Les conseillers legacy sans le flag conservent un éventuel see_all explicite.
+    """
+    if access_by_account_id_only:
+        return False
+    if role == ROLE_CONSEILLER and force_access_by_account_id_only_on_create(role):
+        # Défense en profondeur à la création : nouveau conseiller = pas de vue globale.
+        # Ne s'applique ici que si le flag est déjà True (voir appelants).
+        pass
+    return bool(see_all_dossiers)
+
+
 def permission_storage_fields(
     role: str,
     permissions: Optional[dict] = None,
     see_all_dossiers: Optional[bool] = None,
+    *,
+    access_by_account_id_only: bool = False,
 ) -> dict:
     perms = sanitize_permissions(permissions, role) if permissions is not None else default_permissions(role)
     see_all = default_see_all_dossiers(role) if see_all_dossiers is None else bool(see_all_dossiers)
+    see_all = clamp_see_all_dossiers_for_access_policy(
+        role=role,
+        see_all_dossiers=see_all,
+        access_by_account_id_only=access_by_account_id_only,
+    )
     return {
         "permissions": perms,
         "see_all_dossiers": see_all,
@@ -1212,6 +1276,10 @@ async def resolve_session_user(db, request: Request, authorization: Optional[str
     if not token:
         raise HTTPException(status_code=401, detail="Non authentifié")
 
+    cached = _session_cache_get(token)
+    if cached is not None:
+        return cached
+
     session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
     if not session:
         raise HTTPException(status_code=401, detail="Session invalide")
@@ -1224,6 +1292,7 @@ async def resolve_session_user(db, request: Request, authorization: Optional[str
                 exp = exp.replace(tzinfo=timezone.utc)
             if exp < datetime.now(timezone.utc):
                 await db.user_sessions.delete_one({"session_token": token})
+                invalidate_session_user_cache(token)
                 raise HTTPException(status_code=401, detail="Session expirée")
         except HTTPException:
             raise
@@ -1235,7 +1304,9 @@ async def resolve_session_user(db, request: Request, authorization: Optional[str
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
     if doc.get("active") is False:
         raise HTTPException(status_code=403, detail="Compte désactivé")
-    return user_from_doc(doc)
+    user = user_from_doc(doc)
+    _session_cache_put(token, user)
+    return user
 
 
 async def ensure_bootstrap_admin(db):
