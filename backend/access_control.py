@@ -284,10 +284,13 @@ class UserCreate(BaseModel):
     nom: str
     email: EmailStr
     telephone: Optional[str] = None
-    password: str
+    # Optionnel si send_activation=True (invitation sans MDP initial).
+    password: Optional[str] = None
     role: str = ROLE_CONSEILLER
     conseiller: Optional[str] = None
     finma_number: Optional[str] = None
+    entreprise_id: Optional[str] = None
+    send_activation: Optional[bool] = False
     receive_conseiller_rappel_copies: Optional[bool] = False
     see_all_dossiers: Optional[bool] = None
     permissions: Optional[Dict[str, bool]] = None
@@ -303,6 +306,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     conseiller: Optional[str] = None
     finma_number: Optional[str] = None
+    entreprise_id: Optional[str] = None
     active: Optional[bool] = None
     receive_conseiller_rappel_copies: Optional[bool] = None
     see_all_dossiers: Optional[bool] = None
@@ -490,6 +494,13 @@ def public_user(doc: dict) -> dict:
         "role_label": ROLE_LABELS.get(u.role, u.role),
         "conseiller": u.conseiller,
         "finma_number": (doc.get("finma_number") or "").strip() or None,
+        "entreprise_id": (doc.get("entreprise_id") or "").strip() or None,
+        "entreprise_nom": doc.get("entreprise_nom"),
+        "entreprise_finma": doc.get("entreprise_finma"),
+        "must_set_password": bool(doc.get("must_set_password")),
+        "activation_pending": bool(
+            doc.get("activation_pending") or doc.get("must_set_password")
+        ),
         "active": u.active,
         "can_manage_users": u.can_manage_users,
         "can_manage_settings": u.can_manage_settings,

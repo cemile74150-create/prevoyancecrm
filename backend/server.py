@@ -721,6 +721,13 @@ class TaskCreate(BaseModel):
     priorite: Optional[str] = "normale"
     client_id: Optional[str] = None
 
+# Enrichissement public (entreprise / activation) — remplacé à l'attach des routes.
+async def _enrich_user_public(doc: Optional[dict]) -> Optional[dict]:
+    if not doc:
+        return None
+    return public_user(doc)
+
+
 # ---------------- Auth ----------------
 async def get_current_user(request: Request, authorization: Optional[str] = Header(None)) -> User:
     # Multi-worker : resynchronise ACCESS_MODE depuis Mongo (~5s) après un PUT distant.
@@ -749,16 +756,25 @@ def _set_session_cookie(response: Response, token: str):
 
 @api_router.post("/auth/login")
 async def login(payload: LoginRequest, response: Response):
+    from user_activation import user_needs_activation
+
     email = payload.email.strip().lower()
     doc = await db.users.find_one({"email": email}, {"_id": 0})
     if not doc or not verify_password(payload.password, doc.get("password_hash") or ""):
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
     if doc.get("active") is False:
         raise HTTPException(status_code=403, detail="Compte désactivé")
+    if user_needs_activation(doc) and not (doc.get("password_hash") or "").strip():
+        raise HTTPException(
+            status_code=403,
+            detail="Compte en attente d'activation — utilisez le lien reçu par e-mail",
+        )
     token = await create_session(db, doc["user_id"])
     _set_session_cookie(response, token)
     fresh = await db.users.find_one({"user_id": doc["user_id"]}, {"_id": 0})
-    return {"user": public_user(fresh or doc), "session_token": token}
+    user_payload = await _enrich_user_public(fresh or doc)
+    # Connexion avec MDP provisoire : session OK mais flag must_set_password conservé
+    return {"user": user_payload, "session_token": token, "must_set_password": bool((fresh or doc).get("must_set_password"))}
 
 
 @api_router.get("/auth/me")
@@ -766,7 +782,7 @@ async def auth_me(user: User = Depends(get_current_user)):
     doc = await db.users.find_one({"user_id": user.account_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
-    return public_user(doc)
+    return await _enrich_user_public(doc)
 
 
 @api_router.post("/auth/logout")
@@ -784,18 +800,27 @@ async def logout(response: Response, request: Request):
 @api_router.post("/auth/change-password")
 async def change_own_password(payload: ChangePasswordRequest, user: User = Depends(get_current_user)):
     """Chaque utilisateur peut modifier son propre mot de passe."""
+    from user_activation import validate_new_password
+
     doc = await db.users.find_one({"user_id": user.account_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     if not verify_password(payload.current_password, doc.get("password_hash") or ""):
         raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
-    if len(payload.new_password or "") < 6:
-        raise HTTPException(status_code=400, detail="Nouveau mot de passe trop court (min. 6)")
+    weak = validate_new_password(payload.new_password or "")
+    if weak:
+        raise HTTPException(status_code=400, detail=weak)
     if payload.current_password == payload.new_password:
         raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit être différent")
     await db.users.update_one(
         {"user_id": user.account_id},
-        {"$set": {"password_hash": hash_password(payload.new_password)}},
+        {
+            "$set": {
+                "password_hash": hash_password(payload.new_password),
+                "must_set_password": False,
+                "activation_pending": False,
+            }
+        },
     )
     # Invalider les autres sessions sauf celle en cours n'est pas simple sans token ici ;
     # on garde la session actuelle pour ne pas déconnecter l'utilisateur.
@@ -988,7 +1013,10 @@ async def list_users(user: User = Depends(get_current_user)):
     require_admin(user)
     rows = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
     rows.sort(key=lambda u: ((u.get("nom") or "").lower(), (u.get("prenom") or "").lower()))
-    return [public_user({**r, "password_hash": ""}) for r in rows]
+    out = []
+    for r in rows:
+        out.append(await _enrich_user_public({**r, "password_hash": ""}))
+    return out
 
 
 @api_router.post("/users")
@@ -996,13 +1024,19 @@ async def create_user(payload: UserCreate, user: User = Depends(get_current_user
     require_admin(user)
     from access_control import force_access_by_account_id_only_on_create
     from access_policy_journal import log_user_access_flag
+    from entreprises import get_entreprise
+    from user_activation import create_activation_token, send_activation_email
 
     role = payload.role if payload.role in ROLES else ROLE_CONSEILLER
     email = payload.email.strip().lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Cet e-mail est déjà utilisé")
-    if len(payload.password or "") < 6:
+    send_activation = bool(payload.send_activation)
+    if not send_activation and len(payload.password or "") < 6:
         raise HTTPException(status_code=400, detail="Mot de passe trop court (min. 6)")
+    entreprise_id = (payload.entreprise_id or "").strip() or None
+    if entreprise_id and not await get_entreprise(db, entreprise_id):
+        raise HTTPException(status_code=400, detail="Entreprise introuvable")
     name = display_name(payload.prenom, payload.nom)
     conseiller = (payload.conseiller or "").strip() or (name if role == ROLE_CONSEILLER else None)
     account_id = f"user_{uuid.uuid4().hex[:12]}"
@@ -1019,8 +1053,11 @@ async def create_user(payload: UserCreate, user: User = Depends(get_current_user
         "role": role,
         "conseiller": conseiller,
         "finma_number": (payload.finma_number or "").strip() or None,
+        "entreprise_id": entreprise_id,
         "active": True,
-        "password_hash": hash_password(payload.password),
+        "password_hash": "" if send_activation else hash_password(payload.password or ""),
+        "must_set_password": bool(send_activation),
+        "activation_pending": bool(send_activation),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "access_by_account_id_only": access_only,
         "receive_conseiller_rappel_copies": bool(payload.receive_conseiller_rappel_copies)
@@ -1044,7 +1081,24 @@ async def create_user(payload: UserCreate, user: User = Depends(get_current_user
         )
     if conseiller:
         await upsert_conseiller_finma(conseiller, doc.get("finma_number"))
-    return public_user(doc)
+    result = await _enrich_user_public(doc)
+    if send_activation:
+        raw_token, meta = await create_activation_token(
+            db, user_id=account_id, purpose="activate", created_by=user.account_id
+        )
+        public_url = (os.environ.get("PUBLIC_APP_URL") or "https://app.leosoft.ch").rstrip("/")
+        if not public_url.startswith("http"):
+            public_url = f"https://{public_url}"
+        email_ok, err, link = await send_activation_email(
+            db, user=doc, raw_token=raw_token, public_app_url=public_url
+        )
+        result["activation"] = {
+            "email_sent": email_ok,
+            "smtp_error": err,
+            "expires_at": meta.get("expires_at"),
+            "activation_link": None if email_ok else link,
+        }
+    return result
 
 
 @api_router.put("/users/{account_id}")
@@ -1074,6 +1128,13 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
         updates["conseiller"] = payload.conseiller.strip() or None
     if payload.finma_number is not None:
         updates["finma_number"] = payload.finma_number.strip() or None
+    if payload.entreprise_id is not None:
+        from entreprises import get_entreprise
+
+        eid = (payload.entreprise_id or "").strip()
+        if eid and not await get_entreprise(db, eid):
+            raise HTTPException(status_code=400, detail="Entreprise introuvable")
+        updates["entreprise_id"] = eid or None
     if payload.active is not None:
         if account_id == user.account_id and payload.active is False:
             raise HTTPException(status_code=400, detail="Vous ne pouvez pas désactiver votre propre compte")
@@ -1145,7 +1206,7 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
     cons_name = (fresh or {}).get("conseiller") or (fresh or {}).get("name")
     if cons_name and ("finma_number" in updates or "conseiller" in updates):
         await upsert_conseiller_finma(cons_name, (fresh or {}).get("finma_number"))
-    return public_user(fresh)
+    return await _enrich_user_public(fresh)
 
 
 @api_router.post("/users/{account_id}/reset-password")
@@ -8444,6 +8505,12 @@ from leaves_routes import attach_leaves_routes
 
 attach_leaves_routes(api_router, db=db, get_current_user=get_current_user)
 
+from entreprises_routes import attach_entreprises_routes
+
+_enrich_user_public = attach_entreprises_routes(
+    api_router, db=db, get_current_user=get_current_user
+)
+
 app.include_router(api_router)
 
 cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
@@ -8653,6 +8720,11 @@ async def _ensure_mongo_indexes():
         (db[SUIVI_3P_CLIENTS], [("user_id", 1), ("conseiller", 1)]),
         (db[SUIVI_3P_DOCS], [("user_id", 1), ("suivi_3p_client_id", 1), ("is_deleted", 1)]),
         (db.users, [("email", 1)]),
+        (db.users, [("entreprise_id", 1)]),
+        (db.entreprises, [("nom", 1)]),
+        (db.entreprises, [("email_domains", 1)]),
+        (db.user_activation_tokens, [("token_hash", 1)]),
+        (db.user_activation_tokens, [("user_id", 1), ("purpose", 1)]),
         (db.user_sessions, [("session_token", 1)]),
         (db.user_sessions, [("user_id", 1)]),
         (db.user_sessions, [("expires_at", 1)]),
