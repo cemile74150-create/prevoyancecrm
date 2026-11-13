@@ -28,15 +28,19 @@ Sinon variable d’environnement `ACCESS_MODE`.
 - Pascal : accès dual/nom conservés pendant la transition
 - Non attribués : superviseurs only
 
-## Étapes (chacune = accord Cemile)
+## État au 2026-11-13
 
-1. **Sauvegarde fraîche** vérifiée (`verify_backup.py` → `ok=true`) + restore isolé `--mongo-only`
-2. **Déployer le code** avec `ACCESS_MODE` non défini ou `legacy` (comportement identique)
-3. **Migrer les 239** attributions validées (script local-gated / procédure prod dédiée après accord) — journal `_attribution_migration_log` + `access_policy_journal`
-4. **Contrôles smoke** (login, dossier migré, collègue bloqué, Fiscal invisible conseiller)
-5. **`ACCESS_MODE=dual`** (API ou env) — journaliser la bascule
-6. Contrôles dual (Pascal/BONVESTING encore OK ; nouveaux comptes = 0 dossier sans attribution)
-7. **`strict`** seulement après décisions Pascal + BONVESTING
+- Code perf + permissions offres : déployé `c166089` en **legacy**
+- Migration attributions : **245** en prod (journal `prod_243_2026-11-13`)
+- Dual / strict / 150 comptes : **en attente GO explicite**
+
+## Étapes restantes (chacune = accord Cemile)
+
+1. Smoke post-deploy legacy (login + dossier + offres) — si pas déjà fait
+2. **`ACCESS_MODE=dual`** via `PUT /api/access-policy/mode` (préféré) ou env — journaliser ; **ne pas créer les 150 comptes**
+3. Contrôles dual ciblés : Pascal couples, Alberto, BONVESTING (nom), Fiscal protégé, collègue isolé
+4. Création progressive des 150 comptes (`access_by_account_id_only=true`) — GO séparé
+5. **`strict`** seulement après décisions métier Pascal + BONVESTING
 
 ## Retour arrière rapide (préserve le travail utilisateurs)
 
