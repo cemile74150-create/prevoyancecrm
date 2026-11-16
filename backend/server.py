@@ -8594,6 +8594,12 @@ async def _ensure_mongo_indexes():
         except Exception as e:
             logger.warning("Index %s %s: %s", getattr(coll, "name", coll), keys, e)
 
+    # RBAC Phase 1 — id de rôle unique
+    try:
+        await db.roles.create_index([("id", 1)], unique=True, background=True)
+    except Exception as e:
+        logger.warning("Index unique roles.id: %s", e)
+
     # Index unique partiel sur identity_key (prénom+nom+DOB normalisés).
     # Si des doublons existent déjà, on retombe sur un index non-unique + garde applicative.
     try:
@@ -8698,6 +8704,17 @@ async def startup():
             logger.info("Bootstrap admin créé (%s)", os.environ.get("ADMIN_EMAIL") or "cdemirtas@agencemendes.ch")
     except Exception as e:
         logger.error("Bootstrap admin failed: %s", e)
+    try:
+        from access_control import ensure_roles_seeded
+
+        roles_seed = await ensure_roles_seeded(db)
+        logger.info(
+            "Roles seed created=%s skipped=%s",
+            roles_seed.get("created"),
+            roles_seed.get("skipped"),
+        )
+    except Exception as e:
+        logger.error("Roles seed failed: %s", e)
     try:
         backend = init_storage()
         logger.info("Storage initialized backend=%s", backend or "none")

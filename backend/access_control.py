@@ -142,6 +142,39 @@ PERMISSION_KEYS = [
     PERM_LAMAL_MODULE_ACCESS,
 ]
 
+# Catalogue historique figé Phase 1 RBAC.
+# - Clé du catalogue absente du snapshot user.permissions → default-allow (comportement legacy).
+# - Clé hors catalogue (nouvelle / inconnue) → deny-by-default via has_perm.
+LEGACY_PERMISSION_KEYS = frozenset(PERMISSION_KEYS)
+
+# Collection Mongo des templates de rôle (seed Phase 1 ; CRUD UI = Phase 3).
+ROLES_COLLECTION = "roles"
+
+# Actions canoniques module×action (métadonnées ; pas encore de scission admin Phase 2).
+PERMISSION_ACTIONS = (
+    "view",
+    "create",
+    "edit",
+    "delete",
+    "add",
+    "process",
+    "manage",
+    "access",
+)
+
+
+def split_permission_key(key: str) -> Dict[str, str]:
+    """Convention de nommage module.action pour évolutions Phase 2+.
+
+    Ex. ``clients.view`` → module=clients, action=view.
+    Clés plates (ex. ``lamal_module_access``) → module=clé, action=access.
+    """
+    raw = (key or "").strip()
+    if "." in raw:
+        module, action = raw.split(".", 1)
+        return {"module": module, "action": action or "access"}
+    return {"module": raw, "action": "access"}
+
 PERMISSION_CATALOG = [
     {
         "id": "clients",
@@ -250,6 +283,13 @@ PERMISSION_CATALOG = [
         ],
     },
 ]
+
+# Métadonnées module×action sur chaque item (sans changer labels / clés).
+for _group in PERMISSION_CATALOG:
+    for _item in _group.get("items") or []:
+        _meta = split_permission_key(_item.get("key") or "")
+        _item.setdefault("module", _meta["module"])
+        _item.setdefault("action", _meta["action"])
 
 
 class User(BaseModel):
@@ -373,18 +413,113 @@ def sanitize_permissions(raw: Optional[dict], role: str) -> Dict[str, bool]:
     return base
 
 
-def resolve_permissions(doc: dict) -> Dict[str, bool]:
+def role_template_permissions(
+    role: str,
+    *,
+    role_doc: Optional[dict] = None,
+) -> Dict[str, bool]:
+    """Template de permissions pour un rôle (code ou document Mongo ``roles``)."""
+    if isinstance(role_doc, dict):
+        stored = role_doc.get("permissions")
+        if isinstance(stored, dict) and stored:
+            return sanitize_permissions(stored, role_doc.get("id") or role)
+    return default_permissions(role)
+
+
+def role_seed_document(role_id: str, *, updated_at: Optional[str] = None) -> dict:
+    """Document seed collection ``roles`` (ids / labels / défauts actuels)."""
+    if role_id not in ROLES:
+        role_id = ROLE_CONSEILLER
+    return {
+        "id": role_id,
+        "label": ROLE_LABELS.get(role_id, role_id),
+        "active": True,
+        "permissions": default_permissions(role_id),
+        "see_all_dossiers_default": default_see_all_dossiers(role_id),
+        "updated_at": updated_at or datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def ensure_roles_seeded(db) -> dict:
+    """Insère les 4 rôles s'ils manquent. Ne réécrit pas un rôle déjà présent.
+
+    Retourne ``{created, skipped, role_ids}``. Journal optionnel si au moins un insert.
+    """
+    created = 0
+    skipped = 0
+    now = datetime.now(timezone.utc).isoformat()
+    for role_id in ROLES:
+        existing = await db[ROLES_COLLECTION].find_one({"id": role_id}, {"_id": 1})
+        if existing:
+            skipped += 1
+            continue
+        await db[ROLES_COLLECTION].insert_one(role_seed_document(role_id, updated_at=now))
+        created += 1
+    if created:
+        try:
+            from access_policy_journal import log_access_event
+
+            await log_access_event(
+                db,
+                event_type="roles_seed",
+                detail={"created": created, "skipped": skipped, "role_ids": list(ROLES)},
+            )
+        except Exception:
+            logging.getLogger("access_control").warning(
+                "Journal roles_seed indisponible (seed OK : created=%s)", created
+            )
+    return {"created": created, "skipped": skipped, "role_ids": list(ROLES)}
+
+
+def resolve_effective_permissions(
+    doc: dict,
+    *,
+    role_template: Optional[Dict[str, bool]] = None,
+) -> Dict[str, bool]:
+    """Résolution effective Phase 1 RBAC — résultat identique au comportement historique.
+
+    Ordre :
+    1. Template rôle (``default_permissions`` / seed ``roles`` / ``role_template``)
+    2. Snapshot ``user.permissions`` s'il est présent (compat UI actuelle)
+    3. Overlay ``permission_overrides`` (champ préparé Phase 4 ; vide = no-op)
+    4. Règles système non contournables (LAMal owner / Alberto)
+
+    Les clés hors ``LEGACY_PERMISSION_KEYS`` ne sont pas injectées ici :
+    ``has_perm`` les refuse (deny-by-default nouvelles clés).
+    """
     role = doc.get("role") or ROLE_CONSEILLER
-    stored = doc.get("permissions")
-    if isinstance(stored, dict) and stored:
-        perms = sanitize_permissions(stored, role)
+    if role not in ROLES:
+        role = ROLE_CONSEILLER
+    if role_template is not None:
+        perms = sanitize_permissions(role_template, role)
     else:
         perms = default_permissions(role)
-        if doc.get("can_manage_users"):
-            perms[PERM_USERS_MANAGE] = True
+
+    stored = doc.get("permissions")
+    if isinstance(stored, dict) and stored:
+        for key in PERMISSION_KEYS:
+            if key in stored:
+                perms[key] = bool(stored[key])
+        perms[PERM_LAMAL_MODULE_ACCESS] = False
+    elif doc.get("can_manage_users"):
+        perms[PERM_USERS_MANAGE] = True
+
+    overrides = doc.get("permission_overrides")
+    if isinstance(overrides, dict) and overrides:
+        for key in PERMISSION_KEYS:
+            if key in overrides:
+                perms[key] = bool(overrides[key])
+        # LAMal reste non assignable via override utilisateur.
+        perms[PERM_LAMAL_MODULE_ACCESS] = False
+
     email = (doc.get("email") or "").strip().lower()
     perms[PERM_LAMAL_MODULE_ACCESS] = email == LAMAL_OWNER_EMAIL or is_named_alberto_mendes(doc)
     return perms
+
+
+def resolve_permissions(doc: dict) -> Dict[str, bool]:
+    """Compat historique : délègue à ``resolve_effective_permissions``."""
+    return resolve_effective_permissions(doc)
 
 
 def resolve_see_all_dossiers(doc: dict) -> bool:
@@ -964,6 +1099,13 @@ def is_lamal_owner(user) -> bool:
 
 
 def has_perm(user: User, key: str) -> bool:
+    """Vérifie une permission effective.
+
+    Deny-by-default **uniquement** pour les clés hors ``LEGACY_PERMISSION_KEYS``
+    (catalogue historique Phase 1). Les clés du catalogue absentes du snapshot
+    restent default-allow, comme avant (pas de perte involontaire).
+    ``leaves.access`` reste special-case (domaine e-mail).
+    """
     from email_domain_access import can_access_leaves_module
 
     if key == PERM_LAMAL_MODULE_ACCESS:
@@ -980,8 +1122,11 @@ def has_perm(user: User, key: str) -> bool:
         return bool(getattr(user, "can_manage_users", False)) or getattr(user, "role", None) == ROLE_ADMIN
     if key == PERM_LEAVES_MANAGE:
         return getattr(user, "role", None) == ROLE_ADMIN
-    # Clés absentes (ex. nouveaux modules) : autorisées par défaut, comme le front.
-    return True
+    # Catalogue historique : clé absente du snapshot → allow (legacy).
+    if key in LEGACY_PERMISSION_KEYS:
+        return True
+    # Nouvelle clé / hors catalogue → deny.
+    return False
 
 
 def can_process_offres(user: User) -> bool:

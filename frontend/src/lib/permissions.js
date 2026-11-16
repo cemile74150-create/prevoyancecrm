@@ -156,11 +156,13 @@ export function hasPerm(user, key) {
     return Boolean(user.permissions[key]);
   }
   const defaults = defaultPermissions(user.role);
+  // Catalogue historique : clé connue absente du snapshot → défaut rôle (legacy allow).
   if (key in defaults) return Boolean(defaults[key]);
   if (key === "users.manage") {
     return user.role === "admin" || Boolean(user.can_manage_users);
   }
-  return true;
+  // Phase 1 RBAC : clé hors catalogue historique → deny (aligné backend has_perm).
+  return false;
 }
 
 export function canSeeAllDossiers(user) {
