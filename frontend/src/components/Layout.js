@@ -28,7 +28,7 @@ const nav = [
   { to: "/demandes-offres", label: "Demandes d'offres", icon: FileSpreadsheet, testid: "nav-demandes-offres", perm: "demandes_offres.view" },
   { to: "/modifier-offre", label: "Modifier une offre", icon: Pencil, testid: "nav-modifier-offre", perm: "demandes_offres.edit" },
   { to: "/gestion-reponses-offres", label: "Gestion réponses offres", icon: FileSpreadsheet, testid: "nav-gestion-offres", perm: "demandes_offres.process" },
-  { to: "/historique-emails", label: "Historique des e-mails", icon: Mail, testid: "nav-historique-emails", anyOf: ["users.manage"] },
+  { to: "/messagerie", label: "Messagerie", icon: Mail, testid: "nav-messagerie", anyOf: ["users.manage"] },
   { to: "/eligibilite", label: "Éligibilité", icon: ListChecks, testid: "nav-eligibilite", anyOf: ["clients.view", "dossiers.view"] },
   { to: "/rappels", label: "Rappels", icon: Bell, testid: "nav-rappels", perm: "rappels.view" },
   { to: "/agenda", label: "Ordre du jour", icon: CalendarDays, testid: "nav-agenda", perm: "agenda.view" },

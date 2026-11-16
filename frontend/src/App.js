@@ -22,7 +22,7 @@ import DemandesOffres from "@/pages/DemandesOffres";
 import GestionReponsesOffres from "@/pages/GestionReponsesOffres";
 import DemandeOffreFiche from "@/pages/DemandeOffreFiche";
 import ModifierOffre from "@/pages/ModifierOffre";
-import HistoriqueEmails from "@/pages/HistoriqueEmails";
+import Messagerie from "@/pages/Messagerie";
 import SuiviTechnique from "@/pages/SuiviTechnique";
 import EffectuerAnalyse from "@/pages/EffectuerAnalyse";
 import EffectuerAnalyseEditor from "@/pages/EffectuerAnalyseEditor";
@@ -86,7 +86,8 @@ function AppRoutes() {
       <Route path="/gestion-reponses-offres" element={<Protected perm="demandes_offres.process"><GestionReponsesOffres /></Protected>} />
       <Route path="/modifier-offre" element={<Protected perm="demandes_offres.edit"><ModifierOffre /></Protected>} />
       <Route path="/demandes-offres/:demandeId" element={<Protected perm="demandes_offres.view"><DemandeOffreFiche /></Protected>} />
-      <Route path="/historique-emails" element={<Protected anyOf={["users.manage"]}><HistoriqueEmails /></Protected>} />
+      <Route path="/messagerie" element={<Protected anyOf={["users.manage"]}><Messagerie /></Protected>} />
+      <Route path="/historique-emails" element={<Navigate to="/messagerie" replace />} />
       <Route path="/eligibilite" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
       <Route path="/eligibilite/:listId" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
       <Route path="/conges" element={<Protected perm="leaves.access"><Conges /></Protected>} />

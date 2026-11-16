@@ -3934,63 +3934,30 @@ async def list_rappel_email_logs(
 
 
 def _public_email_row(row: dict, *, detail: bool = False) -> dict:
-    """Projection list/détail pour l'historique e-mails CRM."""
-    from email_service import normalize_email_status
+    """Projection list/détail Messagerie (délègue à messagerie.public_email_row)."""
+    from messagerie import public_email_row
 
-    extra = row.get("extra") if isinstance(row.get("extra"), dict) else {}
-    status_raw = (row.get("status") or "").strip().lower()
-    if status_raw in {"sent", "ok", "success", "pending", "en_cours", "in_progress", "processing", "skipped", "skip", "error", "failed", "fail"}:
-        status = normalize_email_status(status_raw)
-    else:
-        status = status_raw or ""
-
-    client_label = row.get("client_label") or extra.get("client_label") or ""
-    if not client_label and row.get("rappel_count") and int(row.get("rappel_count") or 0) > 1:
-        client_label = f"{row.get('rappel_count')} clients"
-
-    out = {
-        "id": row.get("id"),
-        "type": row.get("type") or row.get("mail_type") or "",
-        "to": row.get("to") or row.get("to_email") or "",
-        "from": row.get("from") or row.get("from_email") or "",
-        "cc": list(row.get("cc") or []),
-        "bcc": list(row.get("bcc") or []),
-        "subject": row.get("subject") or row.get("email_subject") or "",
-        "status": status,
-        "error": row.get("error"),
-        "client_id": row.get("client_id"),
-        "client_label": client_label,
-        "numero": row.get("numero") or "",
-        "numero_dossier": row.get("numero_dossier") or "",
-        "ref_id": row.get("ref_id"),
-        "agent_label": row.get("agent_label") or "",
-        "module": row.get("module") or extra.get("module") or "",
-        "sent_at": row.get("sent_at") or row.get("created_at"),
-        "created_at": row.get("created_at"),
-        "attachments": list(row.get("attachments") or []),
-        "kind": row.get("kind") or extra.get("kind") or "",
-        "rappel_count": row.get("rappel_count") or extra.get("rappel_count"),
-        "message_id": row.get("message_id") or "",
-        "created_by": row.get("created_by") or "",
-    }
-    if detail:
-        out["body_preview"] = row.get("body_preview") or ""
-        out["body_text"] = row.get("body_text") or row.get("body_preview") or ""
-        out["body_html"] = row.get("body_html") or None
-        out["form_type_label"] = row.get("form_type_label") or ""
-        out["event"] = row.get("event") or ""
-        out["dossier_id"] = row.get("dossier_id")
-    return out
+    return public_email_row(row, detail=detail)
 
 
 @api_router.get("/emails")
 async def list_crm_emails(
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=200),
+    skip: int = Query(0, ge=0),
     mail_type: Optional[str] = Query(None, alias="type"),
     status: Optional[str] = Query(None),
+    category: Optional[str] = Query(
+        None,
+        description="all | sent | automatic | error — catégories Messagerie",
+    ),
     q: Optional[str] = Query(None),
+    agent: Optional[str] = Query(None, description="Filtre agent / déclencheur"),
     date_from: Optional[str] = Query(None, description="ISO date début (inclus) — ex. 2026-09-01"),
     date_to: Optional[str] = Query(None, description="ISO date fin (inclus) — ex. 2026-09-22"),
+    folder: str = Query(
+        "outbox",
+        description="outbox = journal d'envoi (email_logs) ; inbox = IMAP futur (désactivé)",
+    ),
     include_old_errors: bool = Query(
         False,
         description="Inclure les anciens échecs rappels (Resend/SMTP d'avant le 10/09/2026)",
@@ -3998,148 +3965,30 @@ async def list_crm_emails(
     user: User = Depends(get_current_user),
 ):
     """
-    Historique des e-mails CRM — réservé à l'administrateur (users.manage).
-    Tous types : offres, rappels, dossiers présentés, tests SMTP, notifications…
+    Messagerie admin — journal outbound email_logs (pagination serveur).
+    Réservé users.manage / admin. Pas d'envoi SMTP ici.
     """
-    from email_service import EMAIL_LOGS_COLLECTION, normalize_email_status
+    from messagerie import fetch_email_page
 
     require_admin(user)
-
-    # Coupe nette : avant cette date, ~15k échecs Resend polluent l'historique
-    LEGACY_ERROR_CUTOFF = "2026-09-10T00:00:00"
-
-    query: dict = {}
-    if mail_type and mail_type.strip() and mail_type != "all":
-        query["type"] = mail_type.strip()
     try:
-        rows = await db[EMAIL_LOGS_COLLECTION].find(query, {"_id": 0}).to_list(limit * 5)
+        return await fetch_email_page(
+            db,
+            limit=limit,
+            skip=skip,
+            category=category,
+            mail_type=mail_type,
+            status=status,
+            q=q,
+            date_from=date_from,
+            date_to=date_to,
+            agent=agent,
+            include_old_errors=include_old_errors,
+            folder=folder,
+        )
     except Exception:
-        logger.exception("email_logs find failed")
-        rows = []
-    if not mail_type or mail_type in ("all", "rappel", None):
-        try:
-            legacy = await db.rappel_email_logs.find({}, {"_id": 0}).to_list(limit * 2)
-        except Exception:
-            legacy = []
-        for row in legacy:
-            row.setdefault("type", "rappel")
-            if row.get("status") == "failed":
-                row["status"] = "error"
-            row.setdefault("to", row.get("to_email"))
-            row.setdefault("subject", row.get("subject") or "")
-            rows.append(row)
-
-    by_id = {}
-    for r in rows:
-        rid = r.get("id")
-        if rid:
-            # Préférer email_logs (déjà dans by_id) à un doublon legacy
-            if rid not in by_id:
-                by_id[rid] = r
-        else:
-            by_id[f"_noid_{len(by_id)}"] = r
-    out = list(by_id.values())
-
-    if not include_old_errors:
-        filtered_old = []
-        for r in out:
-            st = (r.get("status") or "").strip().lower()
-            when = str(r.get("sent_at") or r.get("created_at") or "")
-            is_error = st in {"error", "failed", "fail"}
-            if is_error and when and when < LEGACY_ERROR_CUTOFF:
-                continue
-            filtered_old.append(r)
-        out = filtered_old
-
-    # Dédupliquer envois récents loggés 2× (email_logs + rappel_email_logs)
-    def _dedupe_key(r: dict) -> str:
-        to_v = (r.get("to") or r.get("to_email") or "").strip().lower()
-        subj = (r.get("subject") or "").strip().casefold()
-        when = str(r.get("sent_at") or r.get("created_at") or "")[:16]  # à la minute
-        return f"{to_v}|{subj}|{when}"
-
-    def _rank(r: dict) -> tuple:
-        st = (r.get("status") or "").strip().lower()
-        # Préférer sent, puis email_logs (provider smtp), puis id stable
-        sent_rank = 0 if st in {"sent", "ok", "success"} else 1
-        provider = 0 if (r.get("provider") or "") == "smtp_infomaniak" else 1
-        has_body = 0 if (r.get("body_text") or r.get("body_html") or r.get("body_preview")) else 1
-        return (sent_rank, provider, has_body)
-
-    deduped: dict = {}
-    for r in out:
-        key = _dedupe_key(r)
-        prev = deduped.get(key)
-        if prev is None or _rank(r) < _rank(prev):
-            deduped[key] = r
-    out = list(deduped.values())
-
-    status_filter = (status or "").strip().lower()
-    if status_filter and status_filter != "all":
-        if status_filter in {"error", "failed", "echec", "échec"}:
-            want = "error"
-        elif status_filter in {"pending", "en_cours", "encours", "in_progress"}:
-            want = "pending"
-        elif status_filter in {"sent", "envoye", "envoyé", "ok"}:
-            want = "sent"
-        else:
-            want = normalize_email_status(status_filter) if status_filter else status_filter
-        filtered_status = []
-        for r in out:
-            st = normalize_email_status(r.get("status") or "") if (r.get("status") or "").strip() else ""
-            # pending bruts non normalisés (legacy)
-            raw = (r.get("status") or "").strip().lower()
-            if want == "pending" and raw in {"pending", "en_cours", "in_progress", "processing"}:
-                filtered_status.append(r)
-            elif want == "sent" and st == "sent":
-                filtered_status.append(r)
-            elif want == "error" and st == "error":
-                filtered_status.append(r)
-            elif st == want:
-                filtered_status.append(r)
-        out = filtered_status
-
-    # Filtre période (comparaison lexicographique ISO)
-    df = (date_from or "").strip()[:10]
-    dt = (date_to or "").strip()[:10]
-    if df or dt:
-        period_filtered = []
-        for r in out:
-            when = str(r.get("sent_at") or r.get("created_at") or "")[:10]
-            if not when:
-                continue
-            if df and when < df:
-                continue
-            if dt and when > dt:
-                continue
-            period_filtered.append(r)
-        out = period_filtered
-
-    needle = (q or "").strip().casefold()
-    if needle:
-        filtered = []
-        for r in out:
-            hay = " ".join(
-                str(x or "")
-                for x in (
-                    r.get("to"),
-                    r.get("to_email"),
-                    r.get("from"),
-                    r.get("client_label"),
-                    r.get("numero"),
-                    r.get("numero_dossier"),
-                    r.get("subject"),
-                    r.get("type"),
-                    r.get("agent_label"),
-                    r.get("module"),
-                    r.get("created_by"),
-                )
-            ).casefold()
-            if needle in hay:
-                filtered.append(r)
-        out = filtered
-    out.sort(key=lambda x: x.get("sent_at") or x.get("created_at") or "", reverse=True)
-    return [_public_email_row(r) for r in out[:limit]]
+        logger.exception("emails list failed")
+        raise HTTPException(status_code=500, detail="Impossible de charger la messagerie")
 
 
 @api_router.get("/emails/{email_id}")
@@ -4149,6 +3998,7 @@ async def get_crm_email(
 ):
     """Détail / aperçu d'un e-mail du journal CRM — admin uniquement."""
     from email_service import EMAIL_LOGS_COLLECTION
+    from messagerie import normalize_legacy_rappel_row, public_email_row
 
     require_admin(user)
 
@@ -4160,12 +4010,10 @@ async def get_crm_email(
     if not row:
         row = await db.rappel_email_logs.find_one({"id": email_id}, {"_id": 0})
         if row:
-            row.setdefault("type", "rappel")
-            row.setdefault("to", row.get("to_email"))
-            row.setdefault("subject", row.get("subject") or "")
+            row = normalize_legacy_rappel_row(row)
     if not row:
         raise HTTPException(status_code=404, detail="E-mail introuvable")
-    return _public_email_row(row, detail=True)
+    return public_email_row(row, detail=True)
 
 
 @api_router.get("/admin/email-logs")
@@ -8734,6 +8582,11 @@ async def _ensure_mongo_indexes():
         (db.demandes_offres_3p, [("user_id", 1), ("created_by_account_id", 1)]),
         (db.offre_notifications, [("user_id", 1), ("created_at", -1)]),
         (db.offre_notifications, [("account_ids", 1), ("created_at", -1)]),
+        # Messagerie (email_logs) — pagination / filtres admin
+        (db.email_logs, [("sent_at", -1)]),
+        (db.email_logs, [("status", 1), ("sent_at", -1)]),
+        (db.email_logs, [("type", 1), ("sent_at", -1)]),
+        (db.email_logs, [("id", 1)]),
     ]
     for coll, keys in specs:
         try:

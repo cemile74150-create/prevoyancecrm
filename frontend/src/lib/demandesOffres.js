@@ -579,18 +579,27 @@ export function formatDateTimeFr(iso) {
   }
 }
 
-/** Libellés des types d'e-mails CRM. */
+/** Libellés des types d'e-mails CRM / Messagerie. */
 export const EMAIL_TYPE_LABELS = {
   demande_offre: "Demande d'offre",
+  demande_offre_recap: "Récap demande d'offre",
   offre_recue: "Offre reçue",
   offres_completes: "Offres complètes",
   offre_incomplete: "Offre incomplète",
   offre_signee: "Offre signée",
   offre_modifiee: "Modification",
+  note_externe: "Note externe",
+  complement_demande: "Complément demandé",
+  complement_reponse: "Réponse complément",
+  fil_discussion: "Fil de discussion",
   rappel: "Rappel",
+  relance_agent_14j: "Relance agent J+14",
+  relance_agent_21j: "Relance agent J+21",
+  rdv_suivi_relance: "Relance RDV suivi",
   dossier_presente: "Dossier présenté",
   smtp_test: "Test SMTP",
   notification: "Notification",
+  user_activation: "Activation compte",
 };
 
 export function emailTypeLabel(type) {
