@@ -83,7 +83,7 @@ export default function Utilisateurs() {
     [entreprises, form.entreprise_id],
   );
 
-  // roles.manage : catalogue prêt Phase 3, pas d'exposition dans l'éditeur utilisateur.
+  // Phase 4 : exceptions individuelles — roles.manage se gère via page Rôles (pas ici).
   const editableCatalog = useMemo(
     () => (catalog || []).filter((g) => g.id !== "roles"),
     [catalog],
@@ -293,8 +293,8 @@ export default function Utilisateurs() {
 
   const roleOptions = useMemo(() => roles.length ? roles : [
     { id: "admin", label: "Administrateur" },
-    { id: "ceo", label: "CEO / Direction" },
-    { id: "gestionnaire_offres", label: "Gestionnaire d'offres" },
+    { id: "ceo", label: "Direction" },
+    { id: "gestionnaire_offres", label: "Gestionnaire offres" },
     { id: "conseiller", label: "Conseiller" },
   ], [roles]);
 

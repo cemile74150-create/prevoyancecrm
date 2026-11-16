@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
-import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, Menu, Bell, Settings2, KeyRound, Shield, FileSpreadsheet, Activity, Pencil, Mail, UserCircle, Calculator, HeartPulse, Scale, ListChecks, Palmtree, Building2 } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Files, Search, LogOut, Menu, Bell, Settings2, KeyRound, Shield, FileSpreadsheet, Activity, Pencil, Mail, UserCircle, Calculator, HeartPulse, Scale, ListChecks, Palmtree, Building2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import PasswordInput from "@/components/PasswordInput";
@@ -38,6 +38,13 @@ const nav = [
   { to: "/suivi-technique", label: "Suivi technique", icon: Activity, testid: "nav-suivi-technique", perm: "suivi_technique.view" },
   { to: "/entreprises", label: "Entreprises", icon: Building2, testid: "nav-entreprises", perm: "entreprises.view" },
   { to: "/utilisateurs", label: "Utilisateurs", icon: Settings2, testid: "nav-users", perm: "users.manage" },
+  {
+    to: "/roles-permissions",
+    label: "Rôles et permissions",
+    icon: ShieldCheck,
+    testid: "nav-roles",
+    anyOf: ["roles.manage", "users.manage"],
+  },
 ];
 
 export default function Layout({ children }) {

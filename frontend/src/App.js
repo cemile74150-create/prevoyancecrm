@@ -13,6 +13,7 @@ import Agenda from "@/pages/Agenda";
 import Rappels from "@/pages/Rappels";
 import Formulaires from "@/pages/Formulaires";
 import Utilisateurs from "@/pages/Utilisateurs";
+import RolesPermissions from "@/pages/RolesPermissions";
 import Entreprises from "@/pages/Entreprises";
 import ActiverCompte from "@/pages/ActiverCompte";
 import Echeances3P from "@/pages/Echeances3P";
@@ -97,6 +98,7 @@ function AppRoutes() {
       <Route path="/echeances-3p" element={<Protected anyOf={["agenda.view", "suivi_3p.view", "dossiers.view"]}><Echeances3P /></Protected>} />
       <Route path="/formulaires" element={<Protected perm="formulaires.view"><Formulaires /></Protected>} />
       <Route path="/utilisateurs" element={<Protected perm="users.manage"><Utilisateurs /></Protected>} />
+      <Route path="/roles-permissions" element={<Protected anyOf={["roles.manage", "users.manage"]}><RolesPermissions /></Protected>} />
       <Route path="/entreprises" element={<Protected perm="entreprises.view"><Entreprises /></Protected>} />
       <Route path="/suivi-technique" element={<Protected perm="suivi_technique.view"><SuiviTechnique /></Protected>} />
       <Route path="/lamal" element={<Protected perm="lamal_module_access"><LamalDashboard /></Protected>} />

@@ -39,6 +39,7 @@ from access_control import (
     PERMISSION_CATALOG,
     PERM_MESSAGERIE_VIEW,
     PERM_USERS_MANAGE,
+    PERM_ROLES_MANAGE,
     public_user,
     is_global_viewer,
     can_access_client,
@@ -833,33 +834,104 @@ async def change_own_password(payload: ChangePasswordRequest, user: User = Depen
 @api_router.get("/users/roles")
 async def list_roles(user: User = Depends(get_current_user)):
     require_admin(user)
-    return [{"id": r, "label": ROLE_LABELS[r]} for r in ROLES]
+    from roles_service import list_assignable_role_options
+
+    return await list_assignable_role_options(db)
 
 
 @api_router.get("/users/permissions-catalog")
 async def permissions_catalog(user: User = Depends(get_current_user)):
     require_admin(user)
-    return {
-        "catalog": PERMISSION_CATALOG,
-        "defaults": {
-            ROLE_ADMIN: {
-                "see_all_dossiers": default_see_all_dossiers(ROLE_ADMIN),
-                "permissions": default_permissions(ROLE_ADMIN),
-            },
-            ROLE_CEO: {
-                "see_all_dossiers": default_see_all_dossiers(ROLE_CEO),
-                "permissions": default_permissions(ROLE_CEO),
-            },
-            ROLE_GESTIONNAIRE_OFFRES: {
-                "see_all_dossiers": default_see_all_dossiers(ROLE_GESTIONNAIRE_OFFRES),
-                "permissions": default_permissions(ROLE_GESTIONNAIRE_OFFRES),
-            },
-            ROLE_CONSEILLER: {
-                "see_all_dossiers": default_see_all_dossiers(ROLE_CONSEILLER),
-                "permissions": default_permissions(ROLE_CONSEILLER),
-            },
+    from roles_service import list_roles_with_counts
+
+    defaults = {
+        ROLE_ADMIN: {
+            "see_all_dossiers": default_see_all_dossiers(ROLE_ADMIN),
+            "permissions": default_permissions(ROLE_ADMIN),
+        },
+        ROLE_CEO: {
+            "see_all_dossiers": default_see_all_dossiers(ROLE_CEO),
+            "permissions": default_permissions(ROLE_CEO),
+        },
+        ROLE_GESTIONNAIRE_OFFRES: {
+            "see_all_dossiers": default_see_all_dossiers(ROLE_GESTIONNAIRE_OFFRES),
+            "permissions": default_permissions(ROLE_GESTIONNAIRE_OFFRES),
+        },
+        ROLE_CONSEILLER: {
+            "see_all_dossiers": default_see_all_dossiers(ROLE_CONSEILLER),
+            "permissions": default_permissions(ROLE_CONSEILLER),
         },
     }
+    try:
+        for row in await list_roles_with_counts(db):
+            rid = row.get("id")
+            if not rid:
+                continue
+            defaults[rid] = {
+                "see_all_dossiers": bool(row.get("see_all_dossiers_default")),
+                "permissions": row.get("permissions") or default_permissions(
+                    rid if rid in ROLES else ROLE_CONSEILLER
+                ),
+            }
+    except Exception:
+        logger.exception("permissions-catalog: lecture roles Mongo échouée — fallback code")
+    return {
+        "catalog": PERMISSION_CATALOG,
+        "defaults": defaults,
+    }
+
+
+# ---------------- Roles & permissions (Phase 3 admin) ----------------
+@api_router.get("/roles")
+async def admin_list_roles(user: User = Depends(get_current_user)):
+    require_perm(user, PERM_ROLES_MANAGE)
+    from roles_service import catalog_for_roles_ui, list_roles_with_counts
+
+    roles = await list_roles_with_counts(db)
+    return {"roles": roles, "catalog": catalog_for_roles_ui()}
+
+
+@api_router.get("/roles/{role_id}")
+async def admin_get_role(role_id: str, user: User = Depends(get_current_user)):
+    require_perm(user, PERM_ROLES_MANAGE)
+    from roles_service import count_users_for_role, get_role_doc, role_public_dict
+
+    doc = await get_role_doc(db, role_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Rôle introuvable")
+    return role_public_dict(doc, user_count=await count_users_for_role(db, role_id))
+
+
+@api_router.post("/roles")
+async def admin_create_role(payload: dict, user: User = Depends(get_current_user)):
+    require_perm(user, PERM_ROLES_MANAGE)
+    from roles_service import RoleCreate, create_role
+
+    try:
+        body = RoleCreate(**(payload or {}))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return await create_role(db, body, actor=user)
+
+
+@api_router.put("/roles/{role_id}")
+async def admin_update_role(role_id: str, payload: dict, user: User = Depends(get_current_user)):
+    require_perm(user, PERM_ROLES_MANAGE)
+    from roles_service import RoleUpdate, update_role
+
+    try:
+        body = RoleUpdate(**(payload or {}))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return await update_role(db, role_id, body, actor=user)
+
+
+@api_router.delete("/roles/{role_id}")
+async def admin_delete_role(role_id: str, user: User = Depends(get_current_user)):
+    require_perm(user, PERM_ROLES_MANAGE)
+    from roles_service import delete_or_disable_role
+
+    return await delete_or_disable_role(db, role_id, actor=user)
 
 
 def _conseiller_name_key(name: Optional[str]) -> str:
@@ -1029,7 +1101,12 @@ async def create_user(payload: UserCreate, user: User = Depends(get_current_user
     from entreprises import get_entreprise
     from user_activation import create_activation_token, send_activation_email
 
-    role = payload.role if payload.role in ROLES else ROLE_CONSEILLER
+    from roles_service import role_id_is_assignable
+
+    requested_role = (payload.role or ROLE_CONSEILLER).strip()
+    if not await role_id_is_assignable(db, requested_role):
+        raise HTTPException(status_code=400, detail="Rôle invalide ou inactif")
+    role = requested_role
     email = payload.email.strip().lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Cet e-mail est déjà utilisé")
@@ -1123,8 +1200,10 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
     if payload.telephone is not None:
         updates["telephone"] = payload.telephone.strip() or None
     if payload.role is not None:
-        if payload.role not in ROLES:
-            raise HTTPException(status_code=400, detail="Rôle invalide")
+        from roles_service import role_id_is_assignable
+
+        if not await role_id_is_assignable(db, payload.role):
+            raise HTTPException(status_code=400, detail="Rôle invalide ou inactif")
         updates["role"] = payload.role
     if payload.conseiller is not None:
         updates["conseiller"] = payload.conseiller.strip() or None
@@ -8707,13 +8786,18 @@ async def startup():
     except Exception as e:
         logger.error("Bootstrap admin failed: %s", e)
     try:
-        from access_control import backfill_phase2_admin_module_permissions, ensure_roles_seeded
+        from access_control import (
+            backfill_phase2_admin_module_permissions,
+            backfill_phase3_roles_manage,
+            ensure_roles_seeded,
+        )
 
         roles_seed = await ensure_roles_seeded(db)
         logger.info(
-            "Roles seed created=%s skipped=%s",
+            "Roles seed created=%s skipped=%s system_flags=%s",
             roles_seed.get("created"),
             roles_seed.get("skipped"),
+            roles_seed.get("system_flags_set"),
         )
         phase2 = await backfill_phase2_admin_module_permissions(db)
         logger.info(
@@ -8721,8 +8805,14 @@ async def startup():
             phase2.get("users_updated"),
             phase2.get("roles_updated"),
         )
+        phase3 = await backfill_phase3_roles_manage(db)
+        logger.info(
+            "Phase3 roles.manage backfill users=%s roles=%s",
+            phase3.get("users_updated"),
+            phase3.get("roles_updated"),
+        )
     except Exception as e:
-        logger.error("Roles seed / Phase2 backfill failed: %s", e)
+        logger.error("Roles seed / Phase2-3 backfill failed: %s", e)
     try:
         backend = init_storage()
         logger.info("Storage initialized backend=%s", backend or "none")

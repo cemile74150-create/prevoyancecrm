@@ -68,11 +68,13 @@ ROLE_CEO = "ceo"
 ROLE_GESTIONNAIRE_OFFRES = "gestionnaire_offres"
 ROLE_CONSEILLER = "conseiller"
 ROLES = [ROLE_ADMIN, ROLE_CEO, ROLE_GESTIONNAIRE_OFFRES, ROLE_CONSEILLER]
+# Rôles seedés Phase 1 — non supprimables (Phase 3).
+SYSTEM_ROLE_IDS = frozenset(ROLES)
 
 ROLE_LABELS = {
     ROLE_ADMIN: "Administrateur",
-    ROLE_CEO: "CEO / Direction",
-    ROLE_GESTIONNAIRE_OFFRES: "Gestionnaire d'offres",
+    ROLE_CEO: "Direction",
+    ROLE_GESTIONNAIRE_OFFRES: "Gestionnaire offres",
     ROLE_CONSEILLER: "Conseiller",
 }
 
@@ -315,7 +317,7 @@ PERMISSION_CATALOG = [
         "items": [
             {
                 "key": PERM_ROLES_MANAGE,
-                "label": "Gérer les rôles et permissions (Phase 3 — non exposé UI)",
+                "label": "Gérer les rôles et permissions",
             },
         ],
     },
@@ -454,8 +456,8 @@ def default_permissions(role: str) -> Dict[str, bool]:
         perms[PERM_DEMANDES_OFFRES_PROCESS] = True
     perms[PERM_LEAVES_MANAGE] = role == ROLE_ADMIN
     perms[PERM_LAMAL_MODULE_ACCESS] = False
-    # Phase 3 : seeded false partout (pas d'héritage users.manage).
-    perms[PERM_ROLES_MANAGE] = False
+    # Phase 3 : roles.manage uniquement pour le template Administrateur (pas d'héritage users.manage).
+    perms[PERM_ROLES_MANAGE] = role == ROLE_ADMIN
     return perms
 
 
@@ -524,6 +526,7 @@ def role_seed_document(role_id: str, *, updated_at: Optional[str] = None) -> dic
         "id": role_id,
         "label": ROLE_LABELS.get(role_id, role_id),
         "active": True,
+        "system": True,
         "permissions": default_permissions(role_id),
         "see_all_dossiers_default": default_see_all_dossiers(role_id),
         "updated_at": updated_at or datetime.now(timezone.utc).isoformat(),
@@ -533,15 +536,28 @@ def role_seed_document(role_id: str, *, updated_at: Optional[str] = None) -> dic
 async def ensure_roles_seeded(db) -> dict:
     """Insère les 4 rôles s'ils manquent. Ne réécrit pas un rôle déjà présent.
 
-    Retourne ``{created, skipped, role_ids}``. Journal optionnel si au moins un insert.
+    Pose ``system: true`` sur les 4 ids seedés s'il manque (idempotent).
+    Retourne ``{created, skipped, role_ids, system_flags_set}``. Journal optionnel si au moins un insert.
     """
     created = 0
     skipped = 0
+    system_flags_set = 0
     now = datetime.now(timezone.utc).isoformat()
     for role_id in ROLES:
-        existing = await db[ROLES_COLLECTION].find_one({"id": role_id}, {"_id": 1})
+        existing = await db[ROLES_COLLECTION].find_one({"id": role_id}, {"_id": 1, "system": 1, "label": 1})
         if existing:
             skipped += 1
+            patch: Dict[str, Any] = {}
+            if not existing.get("system"):
+                patch["system"] = True
+            # Aligner les libellés Phase 3 sans toucher aux permissions.
+            wanted_label = ROLE_LABELS.get(role_id)
+            if wanted_label and existing.get("label") != wanted_label:
+                patch["label"] = wanted_label
+            if patch:
+                patch["updated_at"] = now
+                await db[ROLES_COLLECTION].update_one({"id": role_id}, {"$set": patch})
+                system_flags_set += 1
             continue
         await db[ROLES_COLLECTION].insert_one(role_seed_document(role_id, updated_at=now))
         created += 1
@@ -558,7 +574,12 @@ async def ensure_roles_seeded(db) -> dict:
             logging.getLogger("access_control").warning(
                 "Journal roles_seed indisponible (seed OK : created=%s)", created
             )
-    return {"created": created, "skipped": skipped, "role_ids": list(ROLES)}
+    return {
+        "created": created,
+        "skipped": skipped,
+        "role_ids": list(ROLES),
+        "system_flags_set": system_flags_set,
+    }
 
 
 def merge_phase2_permission_keys(
@@ -645,6 +666,92 @@ async def backfill_phase2_admin_module_permissions(db) -> dict:
     return {"users_updated": users_updated, "roles_updated": roles_updated}
 
 
+def merge_phase3_roles_manage_key(
+    stored: Optional[dict],
+    *,
+    users_manage: bool,
+) -> Tuple[Dict[str, bool], bool]:
+    """Backfill ``roles.manage`` : true seulement si ``users.manage`` déjà true.
+
+    Idempotent. N'accorde pas d'autres flags sensibles. Si ``users.manage`` false,
+    pose ``roles.manage=false`` uniquement lorsque la clé est absente.
+    """
+    perms = dict(stored) if isinstance(stored, dict) else {}
+    changed = False
+    if users_manage:
+        if perms.get(PERM_ROLES_MANAGE) is not True:
+            perms[PERM_ROLES_MANAGE] = True
+            changed = True
+    elif PERM_ROLES_MANAGE not in perms:
+        perms[PERM_ROLES_MANAGE] = False
+        changed = True
+    return perms, changed
+
+
+async def backfill_phase3_roles_manage(db) -> dict:
+    """Backfill ``roles.manage=true`` pour users/rôles ayant déjà ``users.manage=true``.
+
+    Ne touche pas les non-admins (users.manage false). Idempotent.
+    Retourne ``{users_updated, roles_updated}``.
+    """
+    users_updated = 0
+    roles_updated = 0
+    now = datetime.now(timezone.utc).isoformat()
+
+    users_coll = db.users
+    cursor = users_coll.find({}, {"_id": 1, "user_id": 1, "permissions": 1, "role": 1, "can_manage_users": 1})
+    async for doc in cursor:
+        stored = doc.get("permissions") if isinstance(doc.get("permissions"), dict) else {}
+        if PERM_USERS_MANAGE in stored:
+            manage = bool(stored[PERM_USERS_MANAGE])
+        else:
+            manage = bool(doc.get("can_manage_users")) or doc.get("role") == ROLE_ADMIN
+        merged, changed = merge_phase3_roles_manage_key(stored, users_manage=manage)
+        if not changed:
+            continue
+        filter_q = {"_id": doc["_id"]} if doc.get("_id") is not None else {"user_id": doc.get("user_id")}
+        await users_coll.update_one(
+            filter_q,
+            {"$set": {"permissions": merged, "permissions_phase3_backfill_at": now}},
+        )
+        users_updated += 1
+
+    roles_coll = db[ROLES_COLLECTION]
+    role_cursor = roles_coll.find({}, {"_id": 1, "id": 1, "permissions": 1})
+    async for doc in role_cursor:
+        stored = doc.get("permissions") if isinstance(doc.get("permissions"), dict) else {}
+        if PERM_USERS_MANAGE in stored:
+            manage = bool(stored[PERM_USERS_MANAGE])
+        else:
+            manage = doc.get("id") == ROLE_ADMIN
+        merged, changed = merge_phase3_roles_manage_key(stored, users_manage=manage)
+        if not changed:
+            continue
+        filter_q = {"_id": doc["_id"]} if doc.get("_id") is not None else {"id": doc.get("id")}
+        await roles_coll.update_one(
+            filter_q,
+            {"$set": {"permissions": merged, "updated_at": now}},
+        )
+        roles_updated += 1
+
+    if users_updated or roles_updated:
+        try:
+            from access_policy_journal import log_access_event
+
+            await log_access_event(
+                db,
+                event_type="permissions_phase3_backfill",
+                detail={"users_updated": users_updated, "roles_updated": roles_updated},
+            )
+        except Exception:
+            logging.getLogger("access_control").warning(
+                "Journal phase3 backfill indisponible (backfill OK : users=%s roles=%s)",
+                users_updated,
+                roles_updated,
+            )
+    return {"users_updated": users_updated, "roles_updated": roles_updated}
+
+
 def resolve_effective_permissions(
     doc: dict,
     *,
@@ -663,12 +770,11 @@ def resolve_effective_permissions(
     ``has_perm`` les refuse (deny-by-default nouvelles clés).
     """
     role = doc.get("role") or ROLE_CONSEILLER
-    if role not in ROLES:
-        role = ROLE_CONSEILLER
+    template_role = role if role in ROLES else ROLE_CONSEILLER
     if role_template is not None:
-        perms = sanitize_permissions(role_template, role)
+        perms = sanitize_permissions(role_template, template_role)
     else:
-        perms = default_permissions(role)
+        perms = default_permissions(template_role)
 
     stored = doc.get("permissions")
     if isinstance(stored, dict) and stored:
@@ -756,8 +862,7 @@ def permissions_for_role(role: str) -> dict:
 
 def user_from_doc(doc: dict) -> User:
     role = doc.get("role") or ROLE_CONSEILLER
-    if role not in ROLES:
-        role = ROLE_CONSEILLER
+    # Conserver les rôles custom Phase 3 ; Alberto reste forcé admin.
     named_admin = is_named_alberto_mendes(doc)
     if named_admin:
         role = ROLE_ADMIN
@@ -766,6 +871,8 @@ def user_from_doc(doc: dict) -> User:
         perms[PERM_USERS_MANAGE] = True
         for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
             perms[key] = True
+        # Bootstrap Alberto : même capacité rôles que users.manage.
+        perms[PERM_ROLES_MANAGE] = True
         perms[PERM_LAMAL_MODULE_ACCESS] = True
     prenom = doc.get("prenom") or ""
     nom = doc.get("nom") or ""
@@ -1446,6 +1553,8 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (None, r"^/users/conseillers$", None),
     (None, r"^/users", PERM_USERS_MANAGE),
     (None, r"^/users-import(/|$)", PERM_USERS_MANAGE),
+    # Phase 3 — admin Rôles et permissions (toutes méthodes).
+    (None, r"^/roles(/|$)", PERM_ROLES_MANAGE),
     # Entreprises : droits fins Phase 2 (avant le catch-all admin).
     (("POST",), r"^/entreprises/ensure-agence-mendes$", PERM_ENTREPRISES_CREATE),
     (("GET",), r"^/entreprises", PERM_ENTREPRISES_VIEW),

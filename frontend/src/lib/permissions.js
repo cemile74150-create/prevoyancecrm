@@ -111,7 +111,7 @@ export const PERMISSION_CATALOG = [
     id: "roles",
     label: "Rôles et permissions",
     items: [
-      { key: "roles.manage", label: "Gérer les rôles et permissions (Phase 3 — non exposé UI)" },
+      { key: "roles.manage", label: "Gérer les rôles et permissions" },
     ],
   },
   {
@@ -157,7 +157,8 @@ export function defaultPermissions(role) {
   }
   perms["leaves.manage"] = role === "admin";
   perms["lamal_module_access"] = false;
-  perms["roles.manage"] = false;
+  // Phase 3 : roles.manage pour le template Administrateur uniquement (pas d'héritage users.manage).
+  perms["roles.manage"] = role === "admin";
   return perms;
 }
 
@@ -196,7 +197,7 @@ export function hasPerm(user, key) {
   }
   if (
     isAlbertoMendes(user) &&
-    (key === "users.manage" || PHASE2_USERS_MANAGE_INHERITED_KEYS.includes(key))
+    (key === "users.manage" || key === "roles.manage" || PHASE2_USERS_MANAGE_INHERITED_KEYS.includes(key))
   ) {
     return true;
   }

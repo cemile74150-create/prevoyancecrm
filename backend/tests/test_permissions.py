@@ -46,7 +46,9 @@ from access_control import (  # noqa: E402
     role_template_permissions,
     ensure_roles_seeded,
     backfill_phase2_admin_module_permissions,
+    backfill_phase3_roles_manage,
     merge_phase2_permission_keys,
+    merge_phase3_roles_manage_key,
     split_permission_key,
     user_from_doc,
     is_global_viewer,
@@ -56,6 +58,7 @@ from access_control import (  # noqa: E402
     permission_for_request,
     has_perm,
     require_perm,
+    SYSTEM_ROLE_IDS,
 )
 
 
@@ -89,10 +92,11 @@ def test_admin_defaults_see_all_and_manage_users():
     assert perms[PERM_USERS_MANAGE] is True
     for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
         assert perms[key] is True
-    assert perms[PERM_ROLES_MANAGE] is False
+    assert perms[PERM_ROLES_MANAGE] is True
     assert default_see_all_dossiers(ROLE_ADMIN) is True
     assert default_see_all_dossiers(ROLE_CEO) is True
     assert default_permissions(ROLE_CEO)[PERM_USERS_MANAGE] is False
+    assert default_permissions(ROLE_CEO)[PERM_ROLES_MANAGE] is False
     for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
         assert default_permissions(ROLE_CEO)[key] is False
 
@@ -239,11 +243,13 @@ def test_permission_catalog_has_module_action_metadata():
 
 
 def test_role_seed_document_matches_default_permissions():
+    assert SYSTEM_ROLE_IDS == frozenset(ROLES)
     for role_id in ROLES:
         doc = role_seed_document(role_id, updated_at="2026-01-01T00:00:00+00:00")
         assert doc["id"] == role_id
         assert doc["label"] == ROLE_LABELS[role_id]
         assert doc["active"] is True
+        assert doc["system"] is True
         assert doc["permissions"] == default_permissions(role_id)
         assert doc["see_all_dossiers_default"] == default_see_all_dossiers(role_id)
         assert doc["updated_at"] == "2026-01-01T00:00:00+00:00"
@@ -257,10 +263,21 @@ def test_role_template_from_seed_doc():
 
 
 def _historical_resolve_permissions(doc: dict):
-    """Comportement pré-Phase 1 (snapshot + LAMal), pour non-régression."""
-    from access_control import sanitize_permissions, is_named_alberto_mendes, LAMAL_OWNER_EMAIL
+    """Comportement pré-Phase 1 (snapshot + LAMal), pour non-régression.
+
+    Aligne aussi l'héritage Phase 2 / force ``roles.manage`` absent → false
+    (backfill Phase 3 écrit la clé explicitement pour les admins).
+    """
+    from access_control import (
+        sanitize_permissions,
+        is_named_alberto_mendes,
+        LAMAL_OWNER_EMAIL,
+        apply_phase2_users_manage_inheritance,
+    )
 
     role = doc.get("role") or ROLE_CONSEILLER
+    if role not in ROLES:
+        role = ROLE_CONSEILLER
     stored = doc.get("permissions")
     if isinstance(stored, dict) and stored:
         perms = sanitize_permissions(stored, role)
@@ -268,6 +285,7 @@ def _historical_resolve_permissions(doc: dict):
         perms = default_permissions(role)
         if doc.get("can_manage_users"):
             perms[PERM_USERS_MANAGE] = True
+        apply_phase2_users_manage_inheritance(perms, stored=None)
     email = (doc.get("email") or "").strip().lower()
     perms[PERM_LAMAL_MODULE_ACCESS] = email == LAMAL_OWNER_EMAIL or is_named_alberto_mendes(doc)
     return perms
@@ -327,7 +345,7 @@ def test_admin_effective_permissions_unchanged():
     assert has_perm(user, PERM_MESSAGERIE_VIEW) is True
     assert has_perm(user, PERM_ENTREPRISES_VIEW) is True
     assert has_perm(user, PERM_SUIVI_TECHNIQUE_VIEW) is True
-    assert has_perm(user, PERM_ROLES_MANAGE) is False
+    assert has_perm(user, PERM_ROLES_MANAGE) is True
     assert has_perm(user, PERM_CLIENTS_VIEW) is True
     assert has_perm(user, PERM_DEMANDES_OFFRES_PROCESS) is True
     assert is_global_viewer(user) is True
@@ -340,6 +358,7 @@ def test_conseiller_effective_permissions_unchanged():
     assert has_perm(user, PERM_MESSAGERIE_VIEW) is False
     assert has_perm(user, PERM_ENTREPRISES_VIEW) is False
     assert has_perm(user, PERM_SUIVI_TECHNIQUE_VIEW) is False
+    assert has_perm(user, PERM_ROLES_MANAGE) is False
     assert has_perm(user, PERM_CLIENTS_VIEW) is True
     assert has_perm(user, PERM_DEMANDES_OFFRES_PROCESS) is False
     assert is_global_viewer(user) is False
@@ -351,6 +370,7 @@ def test_unknown_permission_key_is_denied():
     assert has_perm(user, PERM_MESSAGERIE_VIEW) is True
     assert has_perm(user, "totally.unknown.flag") is False
     assert has_perm(user, PERM_USERS_MANAGE) is True
+    # Sans snapshot permissions : apply_phase2 force roles.manage=false tant que non backfillé.
     assert has_perm(user, PERM_ROLES_MANAGE) is False
 
 
@@ -385,7 +405,29 @@ class _FakeRolesColl:
     async def find_one(self, query, projection=None):
         for row in self.rows:
             if row.get("id") == query.get("id"):
-                return {"_id": "x"} if projection else dict(row)
+                copy = dict(row)
+                copy.setdefault("_id", copy.get("_id") or "x")
+                if not projection:
+                    return copy
+                # Projection Mongo simplifiée.
+                only_exclude = all(v == 0 for v in projection.values())
+                if only_exclude:
+                    out = dict(copy)
+                    if projection.get("_id") == 0:
+                        out.pop("_id", None)
+                    return out
+                out = {}
+                include_id = projection.get("_id", 1) != 0
+                for key, val in projection.items():
+                    if key == "_id":
+                        continue
+                    if val and key in copy:
+                        out[key] = copy[key]
+                if include_id:
+                    out["_id"] = copy.get("_id", "x")
+                if not out:
+                    out = {"_id": copy.get("_id", "x")}
+                return out
         return None
 
     def find(self, query=None, projection=None):
@@ -415,12 +457,24 @@ class _FakeUsersColl:
         self.rows = list(rows or [])
 
     def find(self, query=None, projection=None):
+        query = query or {}
         out = []
         for i, row in enumerate(self.rows):
+            if "role" in query and row.get("role") != query.get("role"):
+                continue
             copy = dict(row)
             copy.setdefault("_id", f"user_{i}")
             out.append(copy)
         return _FakeFindCursor(out)
+
+    async def count_documents(self, query=None):
+        query = query or {}
+        n = 0
+        for row in self.rows:
+            if "role" in query and row.get("role") != query.get("role"):
+                continue
+            n += 1
+        return n
 
     async def update_one(self, query, update):
         for row in self.rows:
@@ -590,3 +644,250 @@ def test_phase2_backfill_users_and_roles():
     second = asyncio.run(backfill_phase2_admin_module_permissions(db))
     assert second["users_updated"] == 0
     assert second["roles_updated"] == 0
+
+
+# ---------- Phase 3 RBAC : roles.manage + CRUD / propagation / garde-fous ----------
+
+
+def test_phase3_route_roles_requires_roles_manage():
+    assert permission_for_request("GET", "/api/roles") == PERM_ROLES_MANAGE
+    assert permission_for_request("POST", "/api/roles") == PERM_ROLES_MANAGE
+    assert permission_for_request("PUT", "/api/roles/admin") == PERM_ROLES_MANAGE
+    assert permission_for_request("DELETE", "/api/roles/custom") == PERM_ROLES_MANAGE
+    # Users restent users.manage
+    assert permission_for_request("GET", "/api/users") == PERM_USERS_MANAGE
+
+
+def test_phase3_merge_roles_manage_only_for_users_manage_true():
+    merged, changed = merge_phase3_roles_manage_key(
+        {PERM_USERS_MANAGE: True, PERM_ROLES_MANAGE: False},
+        users_manage=True,
+    )
+    assert changed is True
+    assert merged[PERM_ROLES_MANAGE] is True
+    merged2, changed2 = merge_phase3_roles_manage_key(merged, users_manage=True)
+    assert changed2 is False
+
+    other, changed_other = merge_phase3_roles_manage_key(
+        {PERM_USERS_MANAGE: False},
+        users_manage=False,
+    )
+    assert changed_other is True
+    assert other[PERM_ROLES_MANAGE] is False
+
+
+def test_phase3_backfill_roles_manage_admins_only():
+    admin_perms = default_permissions(ROLE_ADMIN)
+    admin_perms[PERM_ROLES_MANAGE] = False
+    conseil_perms = default_permissions(ROLE_CONSEILLER)
+    assert conseil_perms[PERM_ROLES_MANAGE] is False
+
+    db = _FakeRolesDb(
+        users=[
+            {
+                "_id": "u1",
+                "user_id": "admin1",
+                "role": ROLE_ADMIN,
+                "permissions": dict(admin_perms),
+            },
+            {
+                "_id": "u2",
+                "user_id": "c1",
+                "role": ROLE_CONSEILLER,
+                "permissions": dict(conseil_perms),
+            },
+        ]
+    )
+    db.roles.rows = [
+        {"_id": "r1", "id": ROLE_ADMIN, "permissions": dict(admin_perms)},
+        {"_id": "r2", "id": ROLE_CONSEILLER, "permissions": dict(conseil_perms)},
+    ]
+    result = asyncio.run(backfill_phase3_roles_manage(db))
+    assert result["users_updated"] == 1
+    assert result["roles_updated"] == 1
+    admin_user = next(u for u in db.users.rows if u["user_id"] == "admin1")
+    conseil_user = next(u for u in db.users.rows if u["user_id"] == "c1")
+    assert admin_user["permissions"][PERM_ROLES_MANAGE] is True
+    assert conseil_user["permissions"][PERM_ROLES_MANAGE] is False
+    admin_role = next(r for r in db.roles.rows if r["id"] == ROLE_ADMIN)
+    conseil_role = next(r for r in db.roles.rows if r["id"] == ROLE_CONSEILLER)
+    assert admin_role["permissions"][PERM_ROLES_MANAGE] is True
+    assert conseil_role["permissions"][PERM_ROLES_MANAGE] is False
+    second = asyncio.run(backfill_phase3_roles_manage(db))
+    assert second["users_updated"] == 0
+    assert second["roles_updated"] == 0
+    assert any(e.get("event_type") == "permissions_phase3_backfill" for e in db.access_policy_journal.rows)
+
+
+def test_phase3_roles_manage_403_without_perm():
+    user = user_from_doc(_doc(permissions=default_permissions(ROLE_CONSEILLER)))
+    try:
+        require_perm(user, PERM_ROLES_MANAGE)
+        assert False, "expected 403"
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 403
+
+
+def test_phase3_roles_manage_ok_for_admin_template():
+    user = user_from_doc(
+        _doc(role=ROLE_ADMIN, permissions=default_permissions(ROLE_ADMIN), see_all_dossiers=True)
+    )
+    require_perm(user, PERM_ROLES_MANAGE)
+    require_perm(user, PERM_USERS_MANAGE)
+
+
+def test_phase3_propagate_respects_permission_overrides():
+    from roles_service import propagate_role_permissions_to_users
+
+    conseil_perms = default_permissions(ROLE_CONSEILLER)
+    # Snapshot déjà False pour clients.view ; override False aussi (exception Phase 4).
+    u1_perms = dict(conseil_perms)
+    u1_perms[PERM_CLIENTS_VIEW] = False
+    u1_perms[PERM_DEMANDES_OFFRES_PROCESS] = False
+    u2_perms = dict(conseil_perms)
+    u2_perms[PERM_CLIENTS_VIEW] = False
+    u2_perms[PERM_DEMANDES_OFFRES_PROCESS] = False
+
+    db = _FakeRolesDb(
+        users=[
+            {
+                "_id": "u1",
+                "user_id": "c1",
+                "role": ROLE_CONSEILLER,
+                "active": True,
+                "permissions": u1_perms,
+                "permission_overrides": {PERM_CLIENTS_VIEW: False},
+            },
+            {
+                "_id": "u2",
+                "user_id": "c2",
+                "role": ROLE_CONSEILLER,
+                "active": True,
+                "permissions": u2_perms,
+            },
+        ]
+    )
+    new_perms = dict(conseil_perms)
+    new_perms[PERM_CLIENTS_VIEW] = True
+    new_perms[PERM_DEMANDES_OFFRES_PROCESS] = True
+    result = asyncio.run(propagate_role_permissions_to_users(db, ROLE_CONSEILLER, new_perms))
+    assert result["users_updated"] == 2
+    assert result["override_keys_skipped"] >= 1
+    u1 = next(u for u in db.users.rows if u["user_id"] == "c1")
+    u2 = next(u for u in db.users.rows if u["user_id"] == "c2")
+    # Clé overridée : snapshot non écrasé (reste False)
+    assert u1["permissions"][PERM_CLIENTS_VIEW] is False
+    # Autres clés : propagées
+    assert u1["permissions"][PERM_DEMANDES_OFFRES_PROCESS] is True
+    # Sans override : tout propagé
+    assert u2["permissions"][PERM_CLIENTS_VIEW] is True
+    assert u2["permissions"][PERM_DEMANDES_OFFRES_PROCESS] is True
+
+
+def test_phase3_system_roles_not_deletable():
+    from fastapi import HTTPException
+    from roles_service import delete_or_disable_role
+    from access_control import User as ACUser
+
+    db = _FakeRolesDb()
+    asyncio.run(ensure_roles_seeded(db))
+    actor = ACUser(
+        user_id="t",
+        account_id="admin1",
+        email="a@x.ch",
+        name="Admin",
+        role=ROLE_ADMIN,
+        permissions=default_permissions(ROLE_ADMIN),
+    )
+    for rid in ROLES:
+        try:
+            asyncio.run(delete_or_disable_role(db, rid, actor=actor))
+            assert False, f"expected block for {rid}"
+        except HTTPException as exc:
+            assert exc.status_code == 400
+
+
+def test_phase3_admin_template_cannot_drop_critical_flags():
+    from fastapi import HTTPException
+    from roles_service import RoleUpdate, update_role
+    from access_control import User as ACUser
+
+    db = _FakeRolesDb(
+        users=[
+            {
+                "_id": "u1",
+                "user_id": "admin1",
+                "email": "a@x.ch",
+                "role": ROLE_ADMIN,
+                "active": True,
+                "permissions": default_permissions(ROLE_ADMIN),
+            }
+        ]
+    )
+    asyncio.run(ensure_roles_seeded(db))
+    # Aligner template admin avec defaults Phase 3
+    for row in db.roles.rows:
+        if row["id"] == ROLE_ADMIN:
+            row["permissions"] = default_permissions(ROLE_ADMIN)
+    actor = ACUser(
+        user_id="t",
+        account_id="admin1",
+        email="a@x.ch",
+        name="Admin",
+        role=ROLE_ADMIN,
+        permissions=default_permissions(ROLE_ADMIN),
+    )
+    bad = dict(default_permissions(ROLE_ADMIN))
+    bad[PERM_ROLES_MANAGE] = False
+    try:
+        asyncio.run(
+            update_role(db, ROLE_ADMIN, RoleUpdate(permissions=bad), actor=actor)
+        )
+        assert False, "expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert "roles.manage" in str(exc.detail) or "Administrateur" in str(exc.detail)
+
+
+def test_phase3_create_custom_role_and_disable_when_empty():
+    from roles_service import RoleCreate, create_role, delete_or_disable_role
+    from access_control import User as ACUser
+
+    db = _FakeRolesDb(
+        users=[
+            {
+                "_id": "u1",
+                "user_id": "admin1",
+                "email": "a@x.ch",
+                "role": ROLE_ADMIN,
+                "active": True,
+                "permissions": default_permissions(ROLE_ADMIN),
+            }
+        ]
+    )
+    asyncio.run(ensure_roles_seeded(db))
+    actor = ACUser(
+        user_id="t",
+        account_id="admin1",
+        email="a@x.ch",
+        name="Admin",
+        role=ROLE_ADMIN,
+        permissions=default_permissions(ROLE_ADMIN),
+    )
+    created = asyncio.run(
+        create_role(db, RoleCreate(label="Assistant commercial"), actor=actor)
+    )
+    assert created["id"] == "assistant_commercial"
+    assert created["system"] is False
+    assert created["permissions"][PERM_ROLES_MANAGE] is False
+    assert created["permissions"][PERM_USERS_MANAGE] is False
+    disabled = asyncio.run(delete_or_disable_role(db, created["id"], actor=actor))
+    assert disabled["active"] is False
+    assert any(e.get("event_type") == "role_create" for e in db.access_policy_journal.rows)
+    assert any(e.get("event_type") == "role_disable" for e in db.access_policy_journal.rows)
+
+
+def test_phase3_labels_direction_and_gestionnaire():
+    assert ROLE_LABELS[ROLE_CEO] == "Direction"
+    assert ROLE_LABELS[ROLE_GESTIONNAIRE_OFFRES] == "Gestionnaire offres"
+    assert ROLE_LABELS[ROLE_ADMIN] == "Administrateur"
