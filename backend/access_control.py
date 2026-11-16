@@ -410,6 +410,11 @@ class UserUpdate(BaseModel):
     receive_conseiller_rappel_copies: Optional[bool] = None
     see_all_dossiers: Optional[bool] = None
     permissions: Optional[Dict[str, bool]] = None
+    # Phase 4 : exceptions individuelles (overlay sur le template rôle).
+    # PUT /users/{id} — seuls users.manage peuvent les modifier (require_admin).
+    permission_overrides: Optional[Dict[str, bool]] = None
+    # True → vide permission_overrides et réaligne le snapshot permissions sur le template rôle.
+    reset_permission_overrides: Optional[bool] = None
     # Seul un admin peut poser True ; False refusé si déjà True (nouveaux conseillers).
     access_by_account_id_only: Optional[bool] = None
 
@@ -809,6 +814,86 @@ def resolve_permissions(doc: dict) -> Dict[str, bool]:
     return resolve_effective_permissions(doc)
 
 
+# Phase 4 — origines UI (fiche utilisateur).
+PERM_ORIGIN_INHERITED = "inherited"  # Hérité du rôle
+PERM_ORIGIN_GRANTED = "granted"  # Accès supplémentaire (override true)
+PERM_ORIGIN_REVOKED = "revoked"  # Accès retiré (override false)
+
+
+def sanitize_permission_overrides(raw: Optional[dict]) -> Dict[str, bool]:
+    """Ne conserve que les clés catalogue ; LAMal non assignable via override."""
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, bool] = {}
+    for key in PERMISSION_KEYS:
+        if key == PERM_LAMAL_MODULE_ACCESS:
+            continue
+        if key in raw:
+            out[key] = bool(raw[key])
+    return out
+
+
+def prune_redundant_overrides(
+    overrides: Optional[dict],
+    role_permissions: Dict[str, bool],
+) -> Dict[str, bool]:
+    """Conserve les overrides qui diffèrent encore du template rôle (changement de rôle)."""
+    cleaned = sanitize_permission_overrides(overrides)
+    out: Dict[str, bool] = {}
+    for key, value in cleaned.items():
+        if bool(value) != bool(role_permissions.get(key)):
+            out[key] = bool(value)
+    return out
+
+
+def permission_origin_for_key(
+    *,
+    inherited: bool,
+    override: Optional[bool],
+) -> str:
+    if override is None:
+        return PERM_ORIGIN_INHERITED
+    if bool(override) == bool(inherited):
+        return PERM_ORIGIN_INHERITED
+    if bool(override):
+        return PERM_ORIGIN_GRANTED
+    return PERM_ORIGIN_REVOKED
+
+
+def build_permissions_rbac_view(
+    doc: dict,
+    *,
+    role_template: Optional[Dict[str, bool]] = None,
+) -> dict:
+    """Vue héritage / override / effectif pour l'UI (source de vérité backend)."""
+    role = doc.get("role") or ROLE_CONSEILLER
+    template_role = role if role in ROLES else ROLE_CONSEILLER
+    if role_template is not None:
+        inherited = sanitize_permissions(role_template, template_role)
+    else:
+        inherited = default_permissions(template_role)
+
+    overrides = sanitize_permission_overrides(doc.get("permission_overrides"))
+    # Doc simulé avec template explicite pour l'effectif (rôles custom Mongo).
+    effective = resolve_effective_permissions(
+        {**doc, "permission_overrides": overrides},
+        role_template=inherited,
+    )
+    origins: Dict[str, str] = {}
+    for key in PERMISSION_KEYS:
+        ov: Optional[bool] = overrides[key] if key in overrides else None
+        origins[key] = permission_origin_for_key(
+            inherited=bool(inherited.get(key)),
+            override=ov,
+        )
+    return {
+        "role_permissions": inherited,
+        "permission_overrides": overrides,
+        "permission_origins": origins,
+        "permissions_effective": effective,
+    }
+
+
 def resolve_see_all_dossiers(doc: dict) -> bool:
     if "see_all_dossiers" in doc and doc.get("see_all_dossiers") is not None:
         return bool(doc.get("see_all_dossiers"))
@@ -904,8 +989,18 @@ def user_from_doc(doc: dict) -> User:
     )
 
 
-def public_user(doc: dict) -> dict:
+def public_user(doc: dict, *, role_doc: Optional[dict] = None) -> dict:
     u = user_from_doc(doc)
+    role_template = None
+    role_label = ROLE_LABELS.get(u.role, u.role)
+    if isinstance(role_doc, dict):
+        if role_doc.get("label"):
+            role_label = str(role_doc.get("label"))
+        if isinstance(role_doc.get("permissions"), dict) and role_doc.get("permissions"):
+            role_template = role_doc.get("permissions")
+    view = build_permissions_rbac_view(doc, role_template=role_template)
+    # Effectif : préféer la vue (template Mongo) si fournie ; sinon user_from_doc.
+    effective = view["permissions_effective"] if role_template is not None else u.permissions
     return {
         "user_id": u.account_id,
         "account_id": u.account_id,
@@ -916,7 +1011,7 @@ def public_user(doc: dict) -> dict:
         "telephone": u.telephone,
         "picture": u.picture,
         "role": u.role,
-        "role_label": ROLE_LABELS.get(u.role, u.role),
+        "role_label": role_label,
         "conseiller": u.conseiller,
         "finma_number": (doc.get("finma_number") or "").strip() or None,
         "entreprise_id": (doc.get("entreprise_id") or "").strip() or None,
@@ -927,11 +1022,15 @@ def public_user(doc: dict) -> dict:
             doc.get("activation_pending") or doc.get("must_set_password")
         ),
         "active": u.active,
-        "can_manage_users": u.can_manage_users,
-        "can_manage_settings": u.can_manage_settings,
+        "can_manage_users": bool(effective.get(PERM_USERS_MANAGE)),
+        "can_manage_settings": bool(effective.get(PERM_USERS_MANAGE)),
         "see_all_dossiers": u.see_all_dossiers,
         "access_by_account_id_only": u.access_by_account_id_only,
-        "permissions": u.permissions,
+        "permissions": effective,
+        # Phase 4 — héritage vs exceptions (indépendant de see_all_dossiers / dual-strict).
+        "role_permissions": view["role_permissions"],
+        "permission_overrides": view["permission_overrides"],
+        "permission_origins": view["permission_origins"],
         "receive_conseiller_rappel_copies": bool(doc.get("receive_conseiller_rappel_copies")),
         "created_at": doc.get("created_at"),
     }

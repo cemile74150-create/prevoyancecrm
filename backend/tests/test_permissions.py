@@ -891,3 +891,260 @@ def test_phase3_labels_direction_and_gestionnaire():
     assert ROLE_LABELS[ROLE_CEO] == "Direction"
     assert ROLE_LABELS[ROLE_GESTIONNAIRE_OFFRES] == "Gestionnaire offres"
     assert ROLE_LABELS[ROLE_ADMIN] == "Administrateur"
+
+
+# ---------- Phase 4 RBAC : exceptions individuelles (overrides) ----------
+
+
+def test_phase4_build_permissions_rbac_view_origins():
+    from access_control import (
+        PERM_ORIGIN_GRANTED,
+        PERM_ORIGIN_INHERITED,
+        PERM_ORIGIN_REVOKED,
+        build_permissions_rbac_view,
+        public_user,
+    )
+
+    role_perms = default_permissions(ROLE_CONSEILLER)
+    doc = _doc(
+        role=ROLE_CONSEILLER,
+        permissions=dict(role_perms),
+        permission_overrides={
+            PERM_DEMANDES_OFFRES_PROCESS: True,
+            PERM_CLIENTS_VIEW: False,
+        },
+    )
+    view = build_permissions_rbac_view(doc, role_template=role_perms)
+    assert view["permission_origins"][PERM_DEMANDES_OFFRES_PROCESS] == PERM_ORIGIN_GRANTED
+    assert view["permission_origins"][PERM_CLIENTS_VIEW] == PERM_ORIGIN_REVOKED
+    assert view["permission_origins"][PERM_RAPPELS_VIEW] == PERM_ORIGIN_INHERITED
+    assert view["permissions_effective"][PERM_DEMANDES_OFFRES_PROCESS] is True
+    assert view["permissions_effective"][PERM_CLIENTS_VIEW] is False
+
+    pub = public_user(doc, role_doc={"id": ROLE_CONSEILLER, "label": "Conseiller", "permissions": role_perms})
+    assert pub["permission_overrides"][PERM_CLIENTS_VIEW] is False
+    assert pub["role_permissions"][PERM_CLIENTS_VIEW] is True
+    assert pub["permission_origins"][PERM_CLIENTS_VIEW] == PERM_ORIGIN_REVOKED
+    assert pub["see_all_dossiers"] is False  # indépendant de la matrice
+
+
+def test_phase4_prune_and_sanitize_overrides():
+    from access_control import prune_redundant_overrides, sanitize_permission_overrides
+
+    role_perms = default_permissions(ROLE_CONSEILLER)
+    raw = {
+        PERM_CLIENTS_VIEW: False,
+        PERM_DEMANDES_OFFRES_PROCESS: False,  # égal au template conseiller → redondant
+        PERM_LAMAL_MODULE_ACCESS: True,  # interdit
+        "unknown.perm": True,
+    }
+    cleaned = sanitize_permission_overrides(raw)
+    assert PERM_LAMAL_MODULE_ACCESS not in cleaned
+    assert "unknown.perm" not in cleaned
+    assert cleaned[PERM_CLIENTS_VIEW] is False
+    pruned = prune_redundant_overrides(cleaned, role_perms)
+    assert PERM_CLIENTS_VIEW in pruned
+    assert PERM_DEMANDES_OFFRES_PROCESS not in pruned
+
+
+def test_phase4_role_change_keeps_meaningful_overrides():
+    from roles_service import prepare_overrides_for_role_change
+
+    conseil = default_permissions(ROLE_CONSEILLER)
+    admin = default_permissions(ROLE_ADMIN)
+    current = {
+        PERM_CLIENTS_VIEW: False,  # reste significatif même en admin
+        PERM_USERS_MANAGE: True,  # redondant sur admin (déjà true)
+        PERM_DEMANDES_OFFRES_PROCESS: True,  # redondant sur admin
+    }
+    kept = prepare_overrides_for_role_change(current, admin)
+    assert kept.get(PERM_CLIENTS_VIEW) is False
+    assert PERM_USERS_MANAGE not in kept
+    assert PERM_DEMANDES_OFFRES_PROCESS not in kept
+    # Vers conseiller : users.manage true reste une exception
+    kept2 = prepare_overrides_for_role_change({PERM_USERS_MANAGE: True}, conseil)
+    assert kept2.get(PERM_USERS_MANAGE) is True
+
+
+def test_phase4_apply_override_state_realigns_snapshot():
+    from roles_service import apply_override_state_to_user_fields
+
+    role_perms = default_permissions(ROLE_CONSEILLER)
+    fields = apply_override_state_to_user_fields(
+        role=ROLE_CONSEILLER,
+        role_permissions=role_perms,
+        overrides={PERM_CLIENTS_VIEW: False},
+        see_all_dossiers=False,
+        access_by_account_id_only=True,
+    )
+    assert fields["permission_overrides"][PERM_CLIENTS_VIEW] is False
+    assert fields["permissions"][PERM_CLIENTS_VIEW] is True  # snapshot = template
+    assert fields["see_all_dossiers"] is False
+    assert fields["permissions"][PERM_USERS_MANAGE] is False
+
+
+def test_phase4_propagate_still_respects_overrides():
+    """Non-régression Phase 3 : propagation ignore les clés overridées."""
+    from roles_service import propagate_role_permissions_to_users
+
+    base = default_permissions(ROLE_CONSEILLER)
+    snap = dict(base)
+    snap[PERM_CLIENTS_VIEW] = False
+    db = _FakeRolesDb(
+        users=[
+            {
+                "_id": "u1",
+                "user_id": "c1",
+                "role": ROLE_CONSEILLER,
+                "active": True,
+                "permissions": snap,
+                "permission_overrides": {PERM_CLIENTS_VIEW: False},
+            }
+        ]
+    )
+    new_perms = dict(base)
+    new_perms[PERM_CLIENTS_VIEW] = True
+    new_perms[PERM_RAPPELS_EDIT] = False
+    result = asyncio.run(propagate_role_permissions_to_users(db, ROLE_CONSEILLER, new_perms))
+    assert result["override_keys_skipped"] >= 1
+    u1 = db.users.rows[0]
+    assert u1["permissions"][PERM_CLIENTS_VIEW] is False
+    assert u1["permissions"][PERM_RAPPELS_EDIT] is False
+
+
+def test_phase4_garde_fou_last_admin_via_override():
+    from fastapi import HTTPException
+    from roles_service import assert_critical_admin_after_user_change
+
+    admin_perms = default_permissions(ROLE_ADMIN)
+    db = _FakeRolesDb(
+        users=[
+            {
+                "_id": "u1",
+                "user_id": "admin1",
+                "email": "a@x.ch",
+                "role": ROLE_ADMIN,
+                "active": True,
+                "permissions": admin_perms,
+                "permission_overrides": {},
+            }
+        ]
+    )
+    proposed = {
+        "user_id": "admin1",
+        "role": ROLE_ADMIN,
+        "active": True,
+        "permissions": admin_perms,
+        "permission_overrides": {
+            PERM_USERS_MANAGE: False,
+            PERM_ROLES_MANAGE: False,
+        },
+    }
+    try:
+        asyncio.run(
+            assert_critical_admin_after_user_change(
+                db, target_user_id="admin1", proposed_doc=proposed
+            )
+        )
+        assert False, "expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert PERM_USERS_MANAGE in str(exc.detail) or PERM_ROLES_MANAGE in str(exc.detail)
+
+
+def test_phase4_garde_fou_ok_when_second_admin_exists():
+    from roles_service import assert_critical_admin_after_user_change
+
+    admin_perms = default_permissions(ROLE_ADMIN)
+    db = _FakeRolesDb(
+        users=[
+            {
+                "_id": "u1",
+                "user_id": "admin1",
+                "role": ROLE_ADMIN,
+                "active": True,
+                "permissions": admin_perms,
+            },
+            {
+                "_id": "u2",
+                "user_id": "admin2",
+                "role": ROLE_ADMIN,
+                "active": True,
+                "permissions": admin_perms,
+            },
+        ]
+    )
+    proposed = {
+        "user_id": "admin1",
+        "role": ROLE_ADMIN,
+        "active": True,
+        "permissions": admin_perms,
+        "permission_overrides": {PERM_USERS_MANAGE: False, PERM_ROLES_MANAGE: False},
+    }
+    asyncio.run(
+        assert_critical_admin_after_user_change(
+            db, target_user_id="admin1", proposed_doc=proposed
+        )
+    )
+
+
+def test_phase4_users_manage_required_for_user_routes():
+    assert permission_for_request("PUT", "/api/users/abc") == PERM_USERS_MANAGE
+    assert permission_for_request("GET", "/api/users") == PERM_USERS_MANAGE
+    user = user_from_doc(_doc(permissions=default_permissions(ROLE_CONSEILLER)))
+    try:
+        require_perm(user, PERM_USERS_MANAGE)
+        assert False, "expected 403"
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 403
+
+
+def test_phase4_effective_with_overrides_enforced_by_has_perm():
+    role_perms = default_permissions(ROLE_CONSEILLER)
+    user = user_from_doc(
+        _doc(
+            permissions=role_perms,
+            permission_overrides={PERM_DEMANDES_OFFRES_PROCESS: True},
+        )
+    )
+    assert has_perm(user, PERM_DEMANDES_OFFRES_PROCESS) is True
+    user2 = user_from_doc(
+        _doc(
+            role=ROLE_ADMIN,
+            permissions=default_permissions(ROLE_ADMIN),
+            permission_overrides={PERM_MESSAGERIE_VIEW: False},
+            see_all_dossiers=True,
+        )
+    )
+    assert has_perm(user2, PERM_MESSAGERIE_VIEW) is False
+    assert has_perm(user2, PERM_USERS_MANAGE) is True
+
+
+def test_phase4_dual_strict_unaffected_by_module_overrides():
+    """Overrides modules ≠ see_all_dossiers / dual-strict / account_id."""
+    from access_control import set_runtime_access_mode_override
+
+    set_runtime_access_mode_override("dual")
+    try:
+        user = user_from_doc(
+            _doc(
+                see_all_dossiers=False,
+                access_by_account_id_only=True,
+                permissions=default_permissions(ROLE_CONSEILLER),
+                permission_overrides={PERM_CLIENTS_VIEW: True, PERM_USERS_MANAGE: False},
+            )
+        )
+        assert is_global_viewer(user) is False
+        assert user.access_by_account_id_only is True
+        assert can_access_client(
+            user,
+            {"conseiller_account_id": user.account_id, "conseiller": "Autre"},
+        ) is True
+        assert can_access_client(
+            user,
+            {"conseiller_account_id": "other", "conseiller": "Valentin Lugnier"},
+        ) is False
+        # Sans account_id : compte account_id-only = strict → pas de fallback nom
+        assert can_access_client(user, {"conseiller": "Valentin Lugnier"}) is False
+    finally:
+        set_runtime_access_mode_override(None)

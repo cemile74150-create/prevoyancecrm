@@ -24,7 +24,9 @@ from access_control import (
     User,
     default_permissions,
     default_see_all_dossiers,
+    prune_redundant_overrides,
     resolve_effective_permissions,
+    sanitize_permission_overrides,
     sanitize_permissions,
 )
 
@@ -179,6 +181,17 @@ def _effective_critical_flags(doc: dict, *, role_perms_override: Optional[Dict[s
     }
 
 
+def _raise_missing_critical_admin(missing: List[str]) -> None:
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Garde-fou admin : cette modification laisserait le système sans aucun utilisateur "
+            f"actif capable de « {' » / « '.join(missing)} ». "
+            "Conservez ces droits sur le rôle Administrateur ou sur au moins un compte."
+        ),
+    )
+
+
 async def assert_critical_admin_access_remains(
     db,
     *,
@@ -218,14 +231,96 @@ async def assert_critical_admin_access_remains(
         missing.append(PERM_USERS_MANAGE)
     if not has_roles_manage:
         missing.append(PERM_ROLES_MANAGE)
-    raise HTTPException(
-        status_code=400,
-        detail=(
-            "Garde-fou admin : cette modification laisserait le système sans aucun utilisateur "
-            f"actif capable de « {' » / « '.join(missing)} ». "
-            "Conservez ces droits sur le rôle Administrateur ou sur au moins un compte."
-        ),
+    _raise_missing_critical_admin(missing)
+
+
+async def assert_critical_admin_after_user_change(
+    db,
+    *,
+    target_user_id: str,
+    proposed_doc: dict,
+) -> None:
+    """Garde-fou Phase 4 : overrides / rôle / désactivation ne doivent pas retirer les derniers admins."""
+    users = await _iter_active_users(db)
+    has_users_manage = False
+    has_roles_manage = False
+    target_seen = False
+    for doc in users:
+        if doc.get("user_id") == target_user_id:
+            target_seen = True
+            if proposed_doc.get("active") is False:
+                continue
+            flags = _effective_critical_flags(proposed_doc, role_perms_override=None)
+        else:
+            flags = _effective_critical_flags(doc, role_perms_override=None)
+        if flags[PERM_USERS_MANAGE]:
+            has_users_manage = True
+        if flags[PERM_ROLES_MANAGE]:
+            has_roles_manage = True
+        if has_users_manage and has_roles_manage:
+            return
+
+    # Cible inactive dans la boucle (déjà désactivée) : évaluer quand même la proposition.
+    if not target_seen and proposed_doc.get("active") is not False:
+        flags = _effective_critical_flags(proposed_doc, role_perms_override=None)
+        if flags[PERM_USERS_MANAGE]:
+            has_users_manage = True
+        if flags[PERM_ROLES_MANAGE]:
+            has_roles_manage = True
+        if has_users_manage and has_roles_manage:
+            return
+
+    missing = []
+    if not has_users_manage:
+        missing.append(PERM_USERS_MANAGE)
+    if not has_roles_manage:
+        missing.append(PERM_ROLES_MANAGE)
+    _raise_missing_critical_admin(missing)
+
+
+async def resolve_role_template_permissions(db, role_id: str) -> Dict[str, bool]:
+    """Template permissions Mongo (sinon défauts code)."""
+    doc = await get_role_doc(db, role_id)
+    base = role_id if role_id in ROLES else ROLE_CONSEILLER
+    if doc and isinstance(doc.get("permissions"), dict) and doc.get("permissions"):
+        return sanitize_role_permissions(doc.get("permissions"), base_role=base)
+    return default_permissions(base)
+
+
+def prepare_overrides_for_role_change(
+    current_overrides: Optional[dict],
+    new_role_permissions: Dict[str, bool],
+) -> Dict[str, bool]:
+    """Changement de rôle : conserve les overrides encore significatifs (≠ nouveau template).
+
+    Les overrides redondants (égale au nouvel héritage) sont retirés. Pas de reset forcé.
+    """
+    return prune_redundant_overrides(current_overrides, new_role_permissions)
+
+
+def apply_override_state_to_user_fields(
+    *,
+    role: str,
+    role_permissions: Dict[str, bool],
+    overrides: Dict[str, bool],
+    see_all_dossiers: Optional[bool],
+    access_by_account_id_only: bool,
+) -> Dict[str, Any]:
+    """Réaligne le snapshot ``permissions`` sur le template ; stocke les overrides à part.
+
+    ``see_all_dossiers`` / dual-strict restent hors matrice modules.
+    """
+    from access_control import permission_storage_fields
+
+    cleaned = sanitize_permission_overrides(overrides)
+    fields = permission_storage_fields(
+        role if role in ROLES else ROLE_CONSEILLER,
+        role_permissions,
+        see_all_dossiers,
+        access_by_account_id_only=access_by_account_id_only,
     )
+    fields["permission_overrides"] = cleaned
+    return fields
 
 
 async def propagate_role_permissions_to_users(

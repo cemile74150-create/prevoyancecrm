@@ -26,6 +26,42 @@ import {
   PERMISSION_KEYS,
 } from "@/lib/permissions";
 
+const ORIGIN_LABELS = {
+  inherited: "Hérité du rôle",
+  granted: "Accès supplémentaire",
+  revoked: "Accès retiré",
+};
+
+const ORIGIN_BADGE_CLASS = {
+  inherited: "bg-slate-100 text-slate-700",
+  granted: "bg-emerald-100 text-emerald-800",
+  revoked: "bg-amber-100 text-amber-900",
+};
+
+function pruneOverridesForRole(overrides, rolePermissions) {
+  const next = {};
+  Object.entries(overrides || {}).forEach(([key, value]) => {
+    if (Boolean(value) !== Boolean(rolePermissions?.[key])) {
+      next[key] = value === true;
+    }
+  });
+  return next;
+}
+
+function originForKey(key, rolePermissions, overrides) {
+  if (!(key in (overrides || {}))) return "inherited";
+  const inherited = Boolean(rolePermissions?.[key]);
+  const ov = Boolean(overrides[key]);
+  if (ov === inherited) return "inherited";
+  return ov ? "granted" : "revoked";
+}
+
+function effectivePerm(key, rolePermissions, overrides, fallbackPermissions) {
+  if (key in (overrides || {})) return overrides[key] === true;
+  if (rolePermissions && key in rolePermissions) return rolePermissions[key] === true;
+  return Boolean(fallbackPermissions?.[key]);
+}
+
 const emptyForm = () => ({
   prenom: "",
   nom: "",
@@ -40,9 +76,33 @@ const emptyForm = () => ({
   receive_conseiller_rappel_copies: false,
   see_all_dossiers: false,
   permissions: defaultPermissions("conseiller"),
+  role_permissions: defaultPermissions("conseiller"),
+  permission_overrides: {},
 });
 
-function formFromUser(u) {
+function formFromUser(u, roleDefaultsMap) {
+  const role = u.role || "conseiller";
+  const fromDefaults = roleDefaultsMap?.[role]?.permissions;
+  const rolePermissions = {
+    ...defaultPermissions(role),
+    ...(fromDefaults || {}),
+    ...(u.role_permissions || {}),
+  };
+  let permission_overrides = { ...(u.permission_overrides || {}) };
+  // Compat pré-Phase 4 : si pas d'overrides stockés, dériver les écarts snapshot ↔ rôle.
+  if (Object.keys(permission_overrides).length === 0 && u.permissions) {
+    PERMISSION_KEYS.forEach((key) => {
+      if (key === "lamal_module_access") return;
+      if (!(key in u.permissions)) return;
+      const inherited = Boolean(rolePermissions[key]);
+      const snap = Boolean(u.permissions[key]);
+      if (snap !== inherited) permission_overrides[key] = snap;
+    });
+  }
+  const permissions = { ...rolePermissions };
+  Object.entries(permission_overrides).forEach(([key, value]) => {
+    permissions[key] = value === true;
+  });
   return {
     prenom: u.prenom || "",
     nom: u.nom || "",
@@ -50,13 +110,15 @@ function formFromUser(u) {
     telephone: u.telephone || "",
     password: "",
     send_activation: false,
-    role: u.role || "conseiller",
+    role,
     conseiller: u.conseiller || "",
     finma_number: u.finma_number || "",
     entreprise_id: u.entreprise_id || "",
     receive_conseiller_rappel_copies: !!u.receive_conseiller_rappel_copies,
     see_all_dossiers: u.see_all_dossiers === true || (u.see_all_dossiers == null && defaultSeeAllDossiers(u.role)),
-    permissions: { ...defaultPermissions(u.role || "conseiller"), ...(u.permissions || {}) },
+    permissions,
+    role_permissions: rolePermissions,
+    permission_overrides,
   };
 }
 
@@ -83,10 +145,15 @@ export default function Utilisateurs() {
     [entreprises, form.entreprise_id],
   );
 
-  // Phase 4 : exceptions individuelles — roles.manage se gère via page Rôles (pas ici).
+  // Phase 4 : exceptions individuelles — roles.manage / LAMal hors matrice user.
   const editableCatalog = useMemo(
-    () => (catalog || []).filter((g) => g.id !== "roles"),
+    () => (catalog || []).filter((g) => g.id !== "roles" && g.id !== "lamal"),
     [catalog],
+  );
+
+  const overrideCount = useMemo(
+    () => Object.keys(form.permission_overrides || {}).length,
+    [form.permission_overrides],
   );
 
   const load = async () => {
@@ -116,13 +183,19 @@ export default function Utilisateurs() {
     if (isAdmin) load();
   }, [isAdmin]);
 
-  const applyRoleDefaults = (role, current) => {
+  const applyRoleDefaults = (role, current, { keepOverrides = true } = {}) => {
     const d = roleDefaults?.[role];
+    const rolePermissions = d?.permissions ? { ...d.permissions } : defaultPermissions(role);
+    const permission_overrides = keepOverrides
+      ? pruneOverridesForRole(current.permission_overrides, rolePermissions)
+      : {};
     return {
       ...current,
       role,
       see_all_dossiers: d ? !!d.see_all_dossiers : defaultSeeAllDossiers(role),
-      permissions: d?.permissions ? { ...d.permissions } : defaultPermissions(role),
+      role_permissions: rolePermissions,
+      permissions: { ...rolePermissions },
+      permission_overrides,
     };
   };
 
@@ -134,24 +207,60 @@ export default function Utilisateurs() {
 
   const openEdit = (u) => {
     setEditing(u);
-    setForm(formFromUser(u));
+    setForm(formFromUser(u, roleDefaults));
     setDialog(true);
   };
 
   const setPerm = (key, value) => {
-    setForm((prev) => ({
-      ...prev,
-      permissions: { ...prev.permissions, [key]: value === true },
-    }));
+    setForm((prev) => {
+      const inherited = Boolean(prev.role_permissions?.[key]);
+      const desired = value === true;
+      const nextOverrides = { ...(prev.permission_overrides || {}) };
+      if (desired === inherited) {
+        delete nextOverrides[key];
+      } else {
+        nextOverrides[key] = desired;
+      }
+      return {
+        ...prev,
+        permission_overrides: nextOverrides,
+        permissions: {
+          ...prev.permissions,
+          [key]: desired,
+        },
+      };
+    });
   };
 
   const setGroup = (group, value) => {
-    const next = { ...form.permissions };
-    group.items.forEach((item) => {
-      if (editingSelf && item.key === "users.manage") return;
-      next[item.key] = value;
+    setForm((prev) => {
+      const nextOverrides = { ...(prev.permission_overrides || {}) };
+      const nextPermissions = { ...prev.permissions };
+      group.items.forEach((item) => {
+        if (editingSelf && item.key === "users.manage") return;
+        const inherited = Boolean(prev.role_permissions?.[item.key]);
+        const desired = value === true;
+        nextPermissions[item.key] = desired;
+        if (desired === inherited) {
+          delete nextOverrides[item.key];
+        } else {
+          nextOverrides[item.key] = desired;
+        }
+      });
+      return {
+        ...prev,
+        permission_overrides: nextOverrides,
+        permissions: nextPermissions,
+      };
     });
-    setForm({ ...form, permissions: next });
+  };
+
+  const resetExceptions = () => {
+    setForm((prev) => ({
+      ...prev,
+      permission_overrides: {},
+      permissions: { ...(prev.role_permissions || defaultPermissions(prev.role)) },
+    }));
   };
 
   const save = async () => {
@@ -179,14 +288,24 @@ export default function Utilisateurs() {
         receive_conseiller_rappel_copies:
           form.role === "admin" ? !!form.receive_conseiller_rappel_copies : false,
         see_all_dossiers: !!form.see_all_dossiers,
-        permissions: form.permissions,
       };
       if (editing) {
-        await api.put(`/users/${editing.user_id || editing.account_id}`, payload);
+        // Phase 4 : exceptions via permission_overrides (snapshot réeligné côté backend).
+        // see_all_dossiers reste indépendant de la matrice modules.
+        const overridesPayload = form.permission_overrides || {};
+        const hadServerOverrides = Object.keys(editing.permission_overrides || {}).length > 0;
+        await api.put(`/users/${editing.user_id || editing.account_id}`, {
+          ...payload,
+          permission_overrides: overridesPayload,
+          // Journal dédié si on vide toutes les exceptions (bouton reset ou retour au template).
+          reset_permission_overrides:
+            Object.keys(overridesPayload).length === 0 && hadServerOverrides,
+        });
         toast.success("Accès enregistrés");
       } else {
         const res = await api.post("/users", {
           ...payload,
+          permissions: form.permissions,
           password: form.send_activation ? undefined : form.password,
           send_activation: !!form.send_activation,
         });
@@ -485,7 +604,7 @@ export default function Utilisateurs() {
             </DialogTitle>
             <DialogDescription>
               {editing
-                ? "Consultez et modifiez exactement les dossiers et fonctionnalités auxquels cette personne a accès."
+                ? "Rôle, droits hérités et exceptions individuelles (sans changer le template du rôle). L'accès dossiers reste séparé."
                 : "Créez le compte, puis définissez le périmètre dossiers et les permissions."}
             </DialogDescription>
           </DialogHeader>
@@ -636,18 +755,44 @@ export default function Utilisateurs() {
             )}
 
             <div className="col-span-2 space-y-3 pt-1">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold">Permissions par fonctionnalité</p>
-                <button
-                  type="button"
-                  className="text-xs text-[#002FA7] underline underline-offset-2"
-                  onClick={() => setForm((prev) => applyRoleDefaults(prev.role, prev))}
-                >
-                  Réinitialiser selon le rôle
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold">Permissions par fonctionnalité</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Héritées du rôle
+                    {form.role ? ` « ${roleOptions.find((r) => r.id === form.role)?.label || form.role} »` : ""}
+                    {editing && overrideCount > 0
+                      ? ` — ${overrideCount} exception(s) individuelle(s)`
+                      : " — cochez pour ajouter ou retirer une exception"}
+                    . L&apos;accès dossiers (ci-dessus) est indépendant.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {editing && (
+                    <button
+                      type="button"
+                      className="text-xs text-[#002FA7] underline underline-offset-2"
+                      onClick={resetExceptions}
+                      disabled={overrideCount === 0}
+                    >
+                      Réinitialiser les exceptions
+                    </button>
+                  )}
+                  {!editing && (
+                    <button
+                      type="button"
+                      className="text-xs text-[#002FA7] underline underline-offset-2"
+                      onClick={() => setForm((prev) => applyRoleDefaults(prev.role, prev, { keepOverrides: false }))}
+                    >
+                      Réinitialiser selon le rôle
+                    </button>
+                  )}
+                </div>
               </div>
               {editableCatalog.map((group) => {
-                const allOn = group.items.every((i) => form.permissions?.[i.key]);
+                const allOn = group.items.every((i) =>
+                  effectivePerm(i.key, form.role_permissions, form.permission_overrides, form.permissions),
+                );
                 return (
                   <div key={group.id} className="rounded-lg border border-border p-3">
                     <div className="flex items-center justify-between mb-2">
@@ -663,17 +808,34 @@ export default function Utilisateurs() {
                     <div className="grid sm:grid-cols-2 gap-2">
                       {group.items.map((item) => {
                         const locked = editingSelf && item.key === "users.manage";
+                        const checked = effectivePerm(
+                          item.key,
+                          form.role_permissions,
+                          form.permission_overrides,
+                          form.permissions,
+                        );
+                        const origin = originForKey(item.key, form.role_permissions, form.permission_overrides);
                         return (
                           <label
                             key={item.key}
-                            className={`flex items-center gap-2 text-sm cursor-pointer select-none ${locked ? "opacity-70" : ""}`}
+                            className={`flex items-start gap-2 text-sm cursor-pointer select-none ${locked ? "opacity-70" : ""}`}
                           >
                             <Checkbox
-                              checked={!!form.permissions?.[item.key]}
+                              checked={checked}
                               disabled={locked}
                               onCheckedChange={(v) => setPerm(item.key, v === true)}
+                              className="mt-0.5"
                             />
-                            <span>{item.label}</span>
+                            <span className="min-w-0">
+                              <span className="block leading-snug">{item.label}</span>
+                              {editing && (
+                                <span
+                                  className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${ORIGIN_BADGE_CLASS[origin]}`}
+                                >
+                                  {ORIGIN_LABELS[origin]}
+                                </span>
+                              )}
+                            </span>
                           </label>
                         );
                       })}

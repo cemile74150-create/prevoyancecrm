@@ -728,7 +728,16 @@ class TaskCreate(BaseModel):
 async def _enrich_user_public(doc: Optional[dict]) -> Optional[dict]:
     if not doc:
         return None
-    return public_user(doc)
+    role_doc = None
+    role_id = doc.get("role")
+    if role_id:
+        try:
+            from roles_service import get_role_doc
+
+            role_doc = await get_role_doc(db, role_id)
+        except Exception:
+            role_doc = None
+    return public_user(doc, role_doc=role_doc)
 
 
 # ---------------- Auth ----------------
@@ -1234,8 +1243,18 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
         updates["conseiller"] = updates["name"]
     if role != ROLE_ADMIN and "receive_conseiller_rappel_copies" not in updates:
         updates["receive_conseiller_rappel_copies"] = False
-    from access_control import resolve_access_by_account_id_only_update
-    from access_policy_journal import log_user_access_flag
+    from access_control import (
+        resolve_access_by_account_id_only_update,
+        resolve_effective_permissions,
+        sanitize_permission_overrides,
+    )
+    from access_policy_journal import log_access_event, log_user_access_flag
+    from roles_service import (
+        apply_override_state_to_user_fields,
+        assert_critical_admin_after_user_change,
+        prepare_overrides_for_role_change,
+        resolve_role_template_permissions,
+    )
 
     access_only_effective = bool(doc.get("access_by_account_id_only"))
     if payload.access_by_account_id_only is not None or payload.role is not None:
@@ -1251,12 +1270,66 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
         if new_flag != bool(doc.get("access_by_account_id_only")):
             updates["access_by_account_id_only"] = new_flag
 
-    if payload.permissions is not None or payload.see_all_dossiers is not None or payload.role is not None:
-        perms_in = payload.permissions if payload.permissions is not None else (
-            None if payload.role is not None else doc.get("permissions")
-        )
+    role_changed = payload.role is not None and payload.role != doc.get("role")
+    reset_overrides = bool(payload.reset_permission_overrides)
+    overrides_in_payload = payload.permission_overrides is not None
+    # Phase 4 : matrice modules via overrides (indépendante de see_all_dossiers / dual-strict).
+    phase4_perm_touch = reset_overrides or overrides_in_payload or role_changed
+
+    before_overrides = sanitize_permission_overrides(doc.get("permission_overrides"))
+    journal_events: list = []
+
+    if phase4_perm_touch:
+        role_template = await resolve_role_template_permissions(db, role)
         see_all_in = payload.see_all_dossiers
-        if see_all_in is None and payload.role is None:
+        if see_all_in is None:
+            see_all_in = doc.get("see_all_dossiers")
+        if reset_overrides:
+            new_overrides = {}
+        elif overrides_in_payload:
+            new_overrides = sanitize_permission_overrides(payload.permission_overrides)
+        else:
+            # Changement de rôle sans payload overrides : garder les exceptions encore valides.
+            new_overrides = prepare_overrides_for_role_change(before_overrides, role_template)
+        updates.update(
+            apply_override_state_to_user_fields(
+                role=role,
+                role_permissions=role_template,
+                overrides=new_overrides,
+                see_all_dossiers=see_all_in,
+                access_by_account_id_only=access_only_effective,
+            )
+        )
+        cleared_all = (not new_overrides) and bool(before_overrides)
+        if reset_overrides or cleared_all:
+            journal_events.append(
+                ("user_overrides_reset", {"before": before_overrides, "role": role})
+            )
+        elif overrides_in_payload and new_overrides != before_overrides:
+            journal_events.append(
+                (
+                    "user_permission_override",
+                    {"before": before_overrides, "after": new_overrides, "role": role},
+                )
+            )
+        if role_changed:
+            journal_events.append(
+                (
+                    "user_role_change",
+                    {
+                        "from": doc.get("role"),
+                        "to": role,
+                        "overrides_before": before_overrides,
+                        "overrides_after": new_overrides,
+                        "policy": "keep_meaningful_overrides",
+                    },
+                )
+            )
+    elif payload.permissions is not None or payload.see_all_dossiers is not None:
+        # Compat : snapshot permissions sans toucher aux overrides.
+        perms_in = payload.permissions if payload.permissions is not None else doc.get("permissions")
+        see_all_in = payload.see_all_dossiers
+        if see_all_in is None:
             see_all_in = doc.get("see_all_dossiers")
         updates.update(
             permission_storage_fields(
@@ -1266,14 +1339,26 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
                 access_by_account_id_only=access_only_effective,
             )
         )
-        if account_id == user.account_id and not updates.get("permissions", {}).get(PERM_USERS_MANAGE):
+    elif access_only_effective and bool(doc.get("see_all_dossiers")):
+        # Flag account-only sans round-trip permissions : retirer une vue globale incompatible.
+        updates["see_all_dossiers"] = False
+
+    proposed = {**doc, **updates}
+    if phase4_perm_touch or payload.permissions is not None or payload.active is False:
+        await assert_critical_admin_after_user_change(
+            db,
+            target_user_id=account_id,
+            proposed_doc=proposed,
+        )
+
+    if account_id == user.account_id:
+        proposed_effective = resolve_effective_permissions(proposed)
+        if not proposed_effective.get(PERM_USERS_MANAGE):
             raise HTTPException(
                 status_code=400,
                 detail="Vous ne pouvez pas retirer votre propre droit de gérer les utilisateurs",
             )
-    elif access_only_effective and bool(doc.get("see_all_dossiers")):
-        # Flag account-only sans round-trip permissions : retirer une vue globale incompatible.
-        updates["see_all_dossiers"] = False
+
     await db.users.update_one({"user_id": account_id}, {"$set": updates})
     fresh = await db.users.find_one({"user_id": account_id}, {"_id": 0})
     if "access_by_account_id_only" in updates:
@@ -1284,6 +1369,17 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
             target_account_id=account_id,
             access_by_account_id_only=bool(updates["access_by_account_id_only"]),
         )
+    for event_type, detail in journal_events:
+        try:
+            await log_access_event(
+                db,
+                event_type=event_type,
+                actor_account_id=user.account_id,
+                actor_email=user.email,
+                detail={"target_account_id": account_id, **detail},
+            )
+        except Exception:
+            logger.warning("Journal %s indisponible (update user OK : %s)", event_type, account_id)
     cons_name = (fresh or {}).get("conseiller") or (fresh or {}).get("name")
     if cons_name and ("finma_number" in updates or "conseiller" in updates):
         await upsert_conseiller_finma(cons_name, (fresh or {}).get("finma_number"))
