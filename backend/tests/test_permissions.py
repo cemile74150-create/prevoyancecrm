@@ -17,7 +17,14 @@ from access_control import (  # noqa: E402
     LEGACY_PERMISSION_KEYS,
     PERMISSION_KEYS,
     PERMISSION_CATALOG,
+    PHASE2_USERS_MANAGE_INHERITED_KEYS,
     PERM_USERS_MANAGE,
+    PERM_MESSAGERIE_VIEW,
+    PERM_ENTREPRISES_VIEW,
+    PERM_ENTREPRISES_CREATE,
+    PERM_ENTREPRISES_UPDATE,
+    PERM_SUIVI_TECHNIQUE_VIEW,
+    PERM_ROLES_MANAGE,
     PERM_CLIENTS_VIEW,
     PERM_CLIENTS_EDIT,
     PERM_CLIENTS_CREATE,
@@ -38,6 +45,8 @@ from access_control import (  # noqa: E402
     role_seed_document,
     role_template_permissions,
     ensure_roles_seeded,
+    backfill_phase2_admin_module_permissions,
+    merge_phase2_permission_keys,
     split_permission_key,
     user_from_doc,
     is_global_viewer,
@@ -46,6 +55,7 @@ from access_control import (  # noqa: E402
     force_conseiller_on_write,
     permission_for_request,
     has_perm,
+    require_perm,
 )
 
 
@@ -68,15 +78,23 @@ def test_conseiller_defaults_hide_user_admin_and_other_dossiers():
     perms = default_permissions(ROLE_CONSEILLER)
     assert perms[PERM_CLIENTS_VIEW] is True
     assert perms[PERM_USERS_MANAGE] is False
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        assert perms[key] is False
+    assert perms[PERM_ROLES_MANAGE] is False
     assert default_see_all_dossiers(ROLE_CONSEILLER) is False
 
 
 def test_admin_defaults_see_all_and_manage_users():
     perms = default_permissions(ROLE_ADMIN)
     assert perms[PERM_USERS_MANAGE] is True
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        assert perms[key] is True
+    assert perms[PERM_ROLES_MANAGE] is False
     assert default_see_all_dossiers(ROLE_ADMIN) is True
     assert default_see_all_dossiers(ROLE_CEO) is True
     assert default_permissions(ROLE_CEO)[PERM_USERS_MANAGE] is False
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        assert default_permissions(ROLE_CEO)[key] is False
 
 
 def test_stored_permission_override():
@@ -306,6 +324,10 @@ def test_admin_effective_permissions_unchanged():
         )
     )
     assert has_perm(user, PERM_USERS_MANAGE) is True
+    assert has_perm(user, PERM_MESSAGERIE_VIEW) is True
+    assert has_perm(user, PERM_ENTREPRISES_VIEW) is True
+    assert has_perm(user, PERM_SUIVI_TECHNIQUE_VIEW) is True
+    assert has_perm(user, PERM_ROLES_MANAGE) is False
     assert has_perm(user, PERM_CLIENTS_VIEW) is True
     assert has_perm(user, PERM_DEMANDES_OFFRES_PROCESS) is True
     assert is_global_viewer(user) is True
@@ -315,6 +337,9 @@ def test_admin_effective_permissions_unchanged():
 def test_conseiller_effective_permissions_unchanged():
     user = user_from_doc(_doc())
     assert has_perm(user, PERM_USERS_MANAGE) is False
+    assert has_perm(user, PERM_MESSAGERIE_VIEW) is False
+    assert has_perm(user, PERM_ENTREPRISES_VIEW) is False
+    assert has_perm(user, PERM_SUIVI_TECHNIQUE_VIEW) is False
     assert has_perm(user, PERM_CLIENTS_VIEW) is True
     assert has_perm(user, PERM_DEMANDES_OFFRES_PROCESS) is False
     assert is_global_viewer(user) is False
@@ -322,13 +347,11 @@ def test_conseiller_effective_permissions_unchanged():
 
 def test_unknown_permission_key_is_denied():
     user = user_from_doc(_doc(role=ROLE_ADMIN, see_all_dossiers=True))
-    assert "messagerie.view" not in LEGACY_PERMISSION_KEYS
-    assert has_perm(user, "messagerie.view") is False
-    assert has_perm(user, "entreprises.view") is False
-    assert has_perm(user, "suivi_technique.view") is False
+    assert PERM_MESSAGERIE_VIEW in LEGACY_PERMISSION_KEYS
+    assert has_perm(user, PERM_MESSAGERIE_VIEW) is True
     assert has_perm(user, "totally.unknown.flag") is False
-    # Catalogue legacy toujours OK
     assert has_perm(user, PERM_USERS_MANAGE) is True
+    assert has_perm(user, PERM_ROLES_MANAGE) is False
 
 
 def test_legacy_missing_catalog_key_still_allowed():
@@ -338,6 +361,21 @@ def test_legacy_missing_catalog_key_still_allowed():
     user.permissions = {PERM_CLIENTS_VIEW: True}
     assert has_perm(user, PERM_CLIENTS_CREATE) is True
     assert has_perm(user, "future_module.view") is False
+
+
+class _FakeFindCursor:
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def __aiter__(self):
+        self._iter = iter(self._rows)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._iter)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
 
 
 class _FakeRolesColl:
@@ -350,14 +388,54 @@ class _FakeRolesColl:
                 return {"_id": "x"} if projection else dict(row)
         return None
 
+    def find(self, query=None, projection=None):
+        out = []
+        for i, row in enumerate(self.rows):
+            copy = dict(row)
+            copy.setdefault("_id", f"role_{i}")
+            out.append(copy)
+        return _FakeFindCursor(out)
+
     async def insert_one(self, doc):
         self.rows.append(dict(doc))
         return None
 
+    async def update_one(self, query, update):
+        for row in self.rows:
+            if query.get("_id") is not None and row.get("_id") == query.get("_id"):
+                row.update(update.get("$set") or {})
+                return
+            if query.get("id") is not None and row.get("id") == query.get("id"):
+                row.update(update.get("$set") or {})
+                return
+
+
+class _FakeUsersColl:
+    def __init__(self, rows=None):
+        self.rows = list(rows or [])
+
+    def find(self, query=None, projection=None):
+        out = []
+        for i, row in enumerate(self.rows):
+            copy = dict(row)
+            copy.setdefault("_id", f"user_{i}")
+            out.append(copy)
+        return _FakeFindCursor(out)
+
+    async def update_one(self, query, update):
+        for row in self.rows:
+            if query.get("_id") is not None and row.get("_id") == query.get("_id"):
+                row.update(update.get("$set") or {})
+                return
+            if query.get("user_id") is not None and row.get("user_id") == query.get("user_id"):
+                row.update(update.get("$set") or {})
+                return
+
 
 class _FakeRolesDb:
-    def __init__(self):
+    def __init__(self, users=None):
         self.roles = _FakeRolesColl()
+        self.users = _FakeUsersColl(users)
         self.access_policy_journal = _FakeJournalColl()
 
     def __getitem__(self, name):
@@ -394,3 +472,121 @@ def test_ensure_roles_seeded_inserts_four_roles_once():
     assert len(db.roles.rows) == 4
     # Journal minimal au premier seed
     assert any(e.get("event_type") == "roles_seed" for e in db.access_policy_journal.rows)
+
+
+# ---------- Phase 2 RBAC : modules admin indépendants ----------
+
+
+def test_phase2_route_permissions_split_admin_modules():
+    assert permission_for_request("GET", "/api/emails") == PERM_MESSAGERIE_VIEW
+    assert permission_for_request("GET", "/api/admin/email-logs") == PERM_MESSAGERIE_VIEW
+    assert permission_for_request("GET", "/api/rappel-email-logs") == PERM_MESSAGERIE_VIEW
+    assert permission_for_request("GET", "/api/entreprises") == PERM_ENTREPRISES_VIEW
+    assert permission_for_request("POST", "/api/entreprises") == PERM_ENTREPRISES_CREATE
+    assert permission_for_request("PUT", "/api/entreprises/abc") == PERM_ENTREPRISES_UPDATE
+    assert permission_for_request("POST", "/api/entreprises/ensure-agence-mendes") == PERM_ENTREPRISES_CREATE
+    assert permission_for_request("GET", "/api/admin/tech-status") == PERM_SUIVI_TECHNIQUE_VIEW
+    assert permission_for_request("POST", "/api/admin/tech-status/run-audit") == PERM_SUIVI_TECHNIQUE_VIEW
+    # Autres routes admin / users restent users.manage
+    assert permission_for_request("GET", "/api/users") == PERM_USERS_MANAGE
+    assert permission_for_request("POST", "/api/admin/smtp-test") == PERM_USERS_MANAGE
+
+
+def test_phase2_users_manage_true_inherits_missing_flags():
+    # Snapshot pré-Phase 2 : users.manage true, nouvelles clés absentes.
+    old_admin = default_permissions(ROLE_ADMIN)
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        old_admin.pop(key, None)
+    old_admin.pop(PERM_ROLES_MANAGE, None)
+    perms = resolve_effective_permissions(_doc(role=ROLE_ADMIN, permissions=old_admin))
+    assert perms[PERM_USERS_MANAGE] is True
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        assert perms[key] is True
+    assert perms[PERM_ROLES_MANAGE] is False
+
+
+def test_phase2_users_manage_false_inherits_false():
+    old = default_permissions(ROLE_CONSEILLER)
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        old.pop(key, None)
+    old.pop(PERM_ROLES_MANAGE, None)
+    perms = resolve_effective_permissions(_doc(permissions=old))
+    assert perms[PERM_USERS_MANAGE] is False
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        assert perms[key] is False
+
+
+def test_phase2_explicit_messagerie_only_keeps_independence():
+    base = default_permissions(ROLE_CONSEILLER)
+    base[PERM_MESSAGERIE_VIEW] = True
+    base[PERM_USERS_MANAGE] = False
+    user = user_from_doc(_doc(permissions=base))
+    assert has_perm(user, PERM_MESSAGERIE_VIEW) is True
+    assert has_perm(user, PERM_USERS_MANAGE) is False
+    assert has_perm(user, PERM_ENTREPRISES_VIEW) is False
+    assert has_perm(user, PERM_SUIVI_TECHNIQUE_VIEW) is False
+    require_perm(user, PERM_MESSAGERIE_VIEW)
+    try:
+        require_perm(user, PERM_USERS_MANAGE)
+        assert False, "expected 403"
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 403
+
+
+def test_phase2_merge_backfill_keys():
+    merged, changed = merge_phase2_permission_keys(
+        {PERM_USERS_MANAGE: True, PERM_CLIENTS_VIEW: True},
+        manage=True,
+    )
+    assert changed is True
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        assert merged[key] is True
+    assert merged[PERM_ROLES_MANAGE] is False
+    merged2, changed2 = merge_phase2_permission_keys(merged, manage=True)
+    assert changed2 is False
+
+
+def test_phase2_backfill_users_and_roles():
+    # Rôles seed Phase 1 sans clés Phase 2.
+    admin_perms = default_permissions(ROLE_ADMIN)
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        admin_perms.pop(key, None)
+    admin_perms.pop(PERM_ROLES_MANAGE, None)
+    conseil_perms = default_permissions(ROLE_CONSEILLER)
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        conseil_perms.pop(key, None)
+    conseil_perms.pop(PERM_ROLES_MANAGE, None)
+
+    db = _FakeRolesDb(
+        users=[
+            {
+                "_id": "u1",
+                "user_id": "admin1",
+                "role": ROLE_ADMIN,
+                "permissions": dict(admin_perms),
+            },
+            {
+                "_id": "u2",
+                "user_id": "c1",
+                "role": ROLE_CONSEILLER,
+                "permissions": dict(conseil_perms),
+            },
+        ]
+    )
+    db.roles.rows = [
+        {"_id": "r1", "id": ROLE_ADMIN, "permissions": dict(admin_perms)},
+        {"_id": "r2", "id": ROLE_CONSEILLER, "permissions": dict(conseil_perms)},
+    ]
+    result = asyncio.run(backfill_phase2_admin_module_permissions(db))
+    assert result["users_updated"] == 2
+    assert result["roles_updated"] == 2
+    admin_user = next(u for u in db.users.rows if u["user_id"] == "admin1")
+    conseil_user = next(u for u in db.users.rows if u["user_id"] == "c1")
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        assert admin_user["permissions"][key] is True
+        assert conseil_user["permissions"][key] is False
+    assert admin_user["permissions"][PERM_ROLES_MANAGE] is False
+    # Idempotent
+    second = asyncio.run(backfill_phase2_admin_module_permissions(db))
+    assert second["users_updated"] == 0
+    assert second["roles_updated"] == 0

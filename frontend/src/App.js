@@ -86,7 +86,7 @@ function AppRoutes() {
       <Route path="/gestion-reponses-offres" element={<Protected perm="demandes_offres.process"><GestionReponsesOffres /></Protected>} />
       <Route path="/modifier-offre" element={<Protected perm="demandes_offres.edit"><ModifierOffre /></Protected>} />
       <Route path="/demandes-offres/:demandeId" element={<Protected perm="demandes_offres.view"><DemandeOffreFiche /></Protected>} />
-      <Route path="/messagerie" element={<Protected anyOf={["users.manage"]}><Messagerie /></Protected>} />
+      <Route path="/messagerie" element={<Protected perm="messagerie.view"><Messagerie /></Protected>} />
       <Route path="/historique-emails" element={<Navigate to="/messagerie" replace />} />
       <Route path="/eligibilite" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
       <Route path="/eligibilite/:listId" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
@@ -97,8 +97,8 @@ function AppRoutes() {
       <Route path="/echeances-3p" element={<Protected anyOf={["agenda.view", "suivi_3p.view", "dossiers.view"]}><Echeances3P /></Protected>} />
       <Route path="/formulaires" element={<Protected perm="formulaires.view"><Formulaires /></Protected>} />
       <Route path="/utilisateurs" element={<Protected perm="users.manage"><Utilisateurs /></Protected>} />
-      <Route path="/entreprises" element={<Protected perm="users.manage"><Entreprises /></Protected>} />
-      <Route path="/suivi-technique" element={<Protected perm="users.manage"><SuiviTechnique /></Protected>} />
+      <Route path="/entreprises" element={<Protected perm="entreprises.view"><Entreprises /></Protected>} />
+      <Route path="/suivi-technique" element={<Protected perm="suivi_technique.view"><SuiviTechnique /></Protected>} />
       <Route path="/lamal" element={<Protected perm="lamal_module_access"><LamalDashboard /></Protected>} />
       <Route path="/lamal/comparaison" element={<Protected perm="lamal_module_access"><LamalCompare /></Protected>} />
       <Route path="/lamal/clients" element={<Protected perm="lamal_module_access"><LamalClients /></Protected>} />

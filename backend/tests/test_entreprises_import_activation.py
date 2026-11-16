@@ -169,10 +169,15 @@ def test_activation_email_never_persists_body_with_link(monkeypatch):
 
 
 def test_route_permissions_cover_entreprises_and_import():
-    from access_control import PERM_USERS_MANAGE, permission_for_request
+    from access_control import (
+        PERM_ENTREPRISES_CREATE,
+        PERM_ENTREPRISES_VIEW,
+        PERM_USERS_MANAGE,
+        permission_for_request,
+    )
 
-    assert permission_for_request("GET", "/api/entreprises") == PERM_USERS_MANAGE
-    assert permission_for_request("POST", "/api/entreprises") == PERM_USERS_MANAGE
+    assert permission_for_request("GET", "/api/entreprises") == PERM_ENTREPRISES_VIEW
+    assert permission_for_request("POST", "/api/entreprises") == PERM_ENTREPRISES_CREATE
     assert permission_for_request("GET", "/api/users-import/template.xlsx") == PERM_USERS_MANAGE
     assert permission_for_request("POST", "/api/users-import/preview") == PERM_USERS_MANAGE
     assert permission_for_request("GET", "/api/auth/activation/status") is None

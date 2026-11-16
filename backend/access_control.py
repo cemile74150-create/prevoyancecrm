@@ -106,6 +106,14 @@ PERM_FORMULAIRES_VIEW = "formulaires.view"
 PERM_ANALYSES_VIEW = "analyses.view"
 PERM_ANALYSES_EDIT = "analyses.edit"
 PERM_USERS_MANAGE = "users.manage"
+# Phase 2 RBAC — modules admin autrefois couverts uniquement par users.manage.
+PERM_MESSAGERIE_VIEW = "messagerie.view"
+PERM_ENTREPRISES_VIEW = "entreprises.view"
+PERM_ENTREPRISES_CREATE = "entreprises.create"
+PERM_ENTREPRISES_UPDATE = "entreprises.update"
+PERM_SUIVI_TECHNIQUE_VIEW = "suivi_technique.view"
+# Réservé Phase 3 (UI Rôles) — catalogue deny-by-default, pas d'héritage users.manage.
+PERM_ROLES_MANAGE = "roles.manage"
 # Accès module Congés : domaine e-mail (voir email_domain_access). Pas assignable en UI.
 PERM_LEAVES_ACCESS = "leaves.access"
 # Décisions RH (valider / refuser) : leaves.manage + domaine obligatoire.
@@ -113,6 +121,15 @@ PERM_LEAVES_MANAGE = "leaves.manage"
 PERM_LAMAL_MODULE_ACCESS = "lamal_module_access"
 # Compte administrateur existant (Cemile Demirtas). Le rôle admin ne suffit pas.
 LAMAL_OWNER_EMAIL = "cdemirtas@agencemendes.ch"
+
+# Flags admin scindés : hérités de users.manage si absents du snapshot (compat Phase 2).
+PHASE2_USERS_MANAGE_INHERITED_KEYS = (
+    PERM_MESSAGERIE_VIEW,
+    PERM_ENTREPRISES_VIEW,
+    PERM_ENTREPRISES_CREATE,
+    PERM_ENTREPRISES_UPDATE,
+    PERM_SUIVI_TECHNIQUE_VIEW,
+)
 
 PERMISSION_KEYS = [
     PERM_CLIENTS_VIEW,
@@ -138,11 +155,17 @@ PERMISSION_KEYS = [
     PERM_ANALYSES_VIEW,
     PERM_ANALYSES_EDIT,
     PERM_USERS_MANAGE,
+    PERM_MESSAGERIE_VIEW,
+    PERM_ENTREPRISES_VIEW,
+    PERM_ENTREPRISES_CREATE,
+    PERM_ENTREPRISES_UPDATE,
+    PERM_SUIVI_TECHNIQUE_VIEW,
+    PERM_ROLES_MANAGE,
     PERM_LEAVES_MANAGE,
     PERM_LAMAL_MODULE_ACCESS,
 ]
 
-# Catalogue historique figé Phase 1 RBAC.
+# Catalogue actif (Phase 1 historique + Phase 2 modules admin).
 # - Clé du catalogue absente du snapshot user.permissions → default-allow (comportement legacy).
 # - Clé hors catalogue (nouvelle / inconnue) → deny-by-default via has_perm.
 LEGACY_PERMISSION_KEYS = frozenset(PERMISSION_KEYS)
@@ -150,11 +173,12 @@ LEGACY_PERMISSION_KEYS = frozenset(PERMISSION_KEYS)
 # Collection Mongo des templates de rôle (seed Phase 1 ; CRUD UI = Phase 3).
 ROLES_COLLECTION = "roles"
 
-# Actions canoniques module×action (métadonnées ; pas encore de scission admin Phase 2).
+# Actions canoniques module×action (métadonnées catalogue).
 PERMISSION_ACTIONS = (
     "view",
     "create",
     "edit",
+    "update",
     "delete",
     "add",
     "process",
@@ -257,9 +281,42 @@ PERMISSION_CATALOG = [
     },
     {
         "id": "users",
-        "label": "Administration",
+        "label": "Utilisateurs",
         "items": [
-            {"key": PERM_USERS_MANAGE, "label": "Gérer les utilisateurs"},
+            {"key": PERM_USERS_MANAGE, "label": "Gérer les utilisateurs (CRUD / import)"},
+        ],
+    },
+    {
+        "id": "messagerie",
+        "label": "Messagerie",
+        "items": [
+            {"key": PERM_MESSAGERIE_VIEW, "label": "Consulter la messagerie (journal e-mails)"},
+        ],
+    },
+    {
+        "id": "entreprises",
+        "label": "Entreprises",
+        "items": [
+            {"key": PERM_ENTREPRISES_VIEW, "label": "Voir les entreprises"},
+            {"key": PERM_ENTREPRISES_CREATE, "label": "Créer une entreprise"},
+            {"key": PERM_ENTREPRISES_UPDATE, "label": "Modifier une entreprise"},
+        ],
+    },
+    {
+        "id": "suivi_technique",
+        "label": "Suivi technique",
+        "items": [
+            {"key": PERM_SUIVI_TECHNIQUE_VIEW, "label": "Consulter le suivi technique"},
+        ],
+    },
+    {
+        "id": "roles",
+        "label": "Rôles et permissions",
+        "items": [
+            {
+                "key": PERM_ROLES_MANAGE,
+                "label": "Gérer les rôles et permissions (Phase 3 — non exposé UI)",
+            },
         ],
     },
     {
@@ -388,6 +445,8 @@ def default_permissions(role: str) -> Dict[str, bool]:
     perms = {key: True for key in PERMISSION_KEYS}
     if role != ROLE_ADMIN:
         perms[PERM_USERS_MANAGE] = False
+        for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+            perms[key] = False
     # Traitement interne des offres : réservé admin / CEO / gestionnaire
     if role == ROLE_CONSEILLER:
         perms[PERM_DEMANDES_OFFRES_PROCESS] = False
@@ -395,6 +454,36 @@ def default_permissions(role: str) -> Dict[str, bool]:
         perms[PERM_DEMANDES_OFFRES_PROCESS] = True
     perms[PERM_LEAVES_MANAGE] = role == ROLE_ADMIN
     perms[PERM_LAMAL_MODULE_ACCESS] = False
+    # Phase 3 : seeded false partout (pas d'héritage users.manage).
+    perms[PERM_ROLES_MANAGE] = False
+    return perms
+
+
+def apply_phase2_users_manage_inheritance(
+    perms: Dict[str, bool],
+    *,
+    stored: Optional[dict] = None,
+    overrides: Optional[dict] = None,
+) -> Dict[str, bool]:
+    """Si une clé Phase 2 admin est absente du snapshot/overrides, calquer users.manage.
+
+    users.manage true → flags hérités true ; false → false.
+    Une valeur explicite dans snapshot ou overrides est conservée (indépendance Phase 2).
+    ``roles.manage`` n'est jamais hérité.
+    """
+    manage = bool(perms.get(PERM_USERS_MANAGE))
+    explicit: set = set()
+    if isinstance(stored, dict):
+        explicit.update(k for k in PHASE2_USERS_MANAGE_INHERITED_KEYS if k in stored)
+    if isinstance(overrides, dict):
+        explicit.update(k for k in PHASE2_USERS_MANAGE_INHERITED_KEYS if k in overrides)
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        if key not in explicit:
+            perms[key] = manage
+    if not (isinstance(stored, dict) and PERM_ROLES_MANAGE in stored) and not (
+        isinstance(overrides, dict) and PERM_ROLES_MANAGE in overrides
+    ):
+        perms[PERM_ROLES_MANAGE] = False
     return perms
 
 
@@ -404,12 +493,13 @@ def default_see_all_dossiers(role: str) -> bool:
 
 def sanitize_permissions(raw: Optional[dict], role: str) -> Dict[str, bool]:
     base = default_permissions(role)
-    if not isinstance(raw, dict):
-        return base
-    for key in PERMISSION_KEYS:
-        if key in raw:
-            base[key] = bool(raw[key])
+    stored = raw if isinstance(raw, dict) else None
+    if stored:
+        for key in PERMISSION_KEYS:
+            if key in stored:
+                base[key] = bool(stored[key])
     base[PERM_LAMAL_MODULE_ACCESS] = False
+    apply_phase2_users_manage_inheritance(base, stored=stored)
     return base
 
 
@@ -471,18 +561,103 @@ async def ensure_roles_seeded(db) -> dict:
     return {"created": created, "skipped": skipped, "role_ids": list(ROLES)}
 
 
+def merge_phase2_permission_keys(
+    stored: Optional[dict],
+    *,
+    manage: bool,
+) -> Tuple[Dict[str, bool], bool]:
+    """Ajoute les clés Phase 2 manquantes (héritage users.manage). Retourne (perms, changed)."""
+    perms = dict(stored) if isinstance(stored, dict) else {}
+    changed = False
+    for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+        if key not in perms:
+            perms[key] = bool(manage)
+            changed = True
+    if PERM_ROLES_MANAGE not in perms:
+        perms[PERM_ROLES_MANAGE] = False
+        changed = True
+    return perms, changed
+
+
+async def backfill_phase2_admin_module_permissions(db) -> dict:
+    """Backfill snapshots users + templates roles : users.manage → flags Phase 2.
+
+    Idempotent : n'écrit que les clés absentes. ``roles.manage`` seeded false.
+    Retourne ``{users_updated, roles_updated}``.
+    """
+    users_updated = 0
+    roles_updated = 0
+    now = datetime.now(timezone.utc).isoformat()
+
+    users_coll = db.users
+    cursor = users_coll.find({}, {"_id": 1, "user_id": 1, "permissions": 1, "role": 1, "can_manage_users": 1})
+    async for doc in cursor:
+        stored = doc.get("permissions") if isinstance(doc.get("permissions"), dict) else {}
+        if PERM_USERS_MANAGE in stored:
+            manage = bool(stored[PERM_USERS_MANAGE])
+        else:
+            manage = bool(doc.get("can_manage_users")) or doc.get("role") == ROLE_ADMIN
+        merged, changed = merge_phase2_permission_keys(stored, manage=manage)
+        if not changed:
+            continue
+        if PERM_USERS_MANAGE not in merged and manage:
+            merged[PERM_USERS_MANAGE] = True
+        filter_q = {"_id": doc["_id"]} if doc.get("_id") is not None else {"user_id": doc.get("user_id")}
+        await users_coll.update_one(
+            filter_q,
+            {"$set": {"permissions": merged, "permissions_phase2_backfill_at": now}},
+        )
+        users_updated += 1
+
+    roles_coll = db[ROLES_COLLECTION]
+    role_cursor = roles_coll.find({}, {"_id": 1, "id": 1, "permissions": 1})
+    async for doc in role_cursor:
+        stored = doc.get("permissions") if isinstance(doc.get("permissions"), dict) else {}
+        if PERM_USERS_MANAGE in stored:
+            manage = bool(stored[PERM_USERS_MANAGE])
+        else:
+            manage = doc.get("id") == ROLE_ADMIN
+        merged, changed = merge_phase2_permission_keys(stored, manage=manage)
+        if not changed:
+            continue
+        filter_q = {"_id": doc["_id"]} if doc.get("_id") is not None else {"id": doc.get("id")}
+        await roles_coll.update_one(
+            filter_q,
+            {"$set": {"permissions": merged, "updated_at": now}},
+        )
+        roles_updated += 1
+
+    if users_updated or roles_updated:
+        try:
+            from access_policy_journal import log_access_event
+
+            await log_access_event(
+                db,
+                event_type="permissions_phase2_backfill",
+                detail={"users_updated": users_updated, "roles_updated": roles_updated},
+            )
+        except Exception:
+            logging.getLogger("access_control").warning(
+                "Journal phase2 backfill indisponible (backfill OK : users=%s roles=%s)",
+                users_updated,
+                roles_updated,
+            )
+    return {"users_updated": users_updated, "roles_updated": roles_updated}
+
+
 def resolve_effective_permissions(
     doc: dict,
     *,
     role_template: Optional[Dict[str, bool]] = None,
 ) -> Dict[str, bool]:
-    """Résolution effective Phase 1 RBAC — résultat identique au comportement historique.
+    """Résolution effective RBAC — accès effectif inchangé vs Phase 1 pour les 4 modules admin.
 
     Ordre :
     1. Template rôle (``default_permissions`` / seed ``roles`` / ``role_template``)
     2. Snapshot ``user.permissions`` s'il est présent (compat UI actuelle)
     3. Overlay ``permission_overrides`` (champ préparé Phase 4 ; vide = no-op)
-    4. Règles système non contournables (LAMal owner / Alberto)
+    4. Héritage Phase 2 : clés admin absentes du snapshot → calquer ``users.manage``
+    5. Règles système non contournables (LAMal owner / Alberto)
 
     Les clés hors ``LEGACY_PERMISSION_KEYS`` ne sont pas injectées ici :
     ``has_perm`` les refuse (deny-by-default nouvelles clés).
@@ -511,6 +686,12 @@ def resolve_effective_permissions(
                 perms[key] = bool(overrides[key])
         # LAMal reste non assignable via override utilisateur.
         perms[PERM_LAMAL_MODULE_ACCESS] = False
+
+    apply_phase2_users_manage_inheritance(
+        perms,
+        stored=stored if isinstance(stored, dict) else None,
+        overrides=overrides if isinstance(overrides, dict) else None,
+    )
 
     email = (doc.get("email") or "").strip().lower()
     perms[PERM_LAMAL_MODULE_ACCESS] = email == LAMAL_OWNER_EMAIL or is_named_alberto_mendes(doc)
@@ -583,6 +764,8 @@ def user_from_doc(doc: dict) -> User:
     perms = resolve_permissions({**doc, "role": role})
     if named_admin:
         perms[PERM_USERS_MANAGE] = True
+        for key in PHASE2_USERS_MANAGE_INHERITED_KEYS:
+            perms[key] = True
         perms[PERM_LAMAL_MODULE_ACCESS] = True
     prenom = doc.get("prenom") or ""
     nom = doc.get("nom") or ""
@@ -1263,10 +1446,18 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (None, r"^/users/conseillers$", None),
     (None, r"^/users", PERM_USERS_MANAGE),
     (None, r"^/users-import(/|$)", PERM_USERS_MANAGE),
-    (None, r"^/entreprises(/|$)", PERM_USERS_MANAGE),
+    # Entreprises : droits fins Phase 2 (avant le catch-all admin).
+    (("POST",), r"^/entreprises/ensure-agence-mendes$", PERM_ENTREPRISES_CREATE),
+    (("GET",), r"^/entreprises", PERM_ENTREPRISES_VIEW),
+    (("POST",), r"^/entreprises$", PERM_ENTREPRISES_CREATE),
+    (("POST",), r"^/entreprises/", PERM_ENTREPRISES_UPDATE),
+    (("PUT",), r"^/entreprises/", PERM_ENTREPRISES_UPDATE),
     (None, r"^/access-policy", PERM_USERS_MANAGE),
+    # Tech status / messagerie admin : avant le catch-all /admin → users.manage.
+    (None, r"^/admin/tech-status", PERM_SUIVI_TECHNIQUE_VIEW),
+    (("GET",), r"^/admin/email-logs$", PERM_MESSAGERIE_VIEW),
     (None, r"^/admin(/|$)", PERM_USERS_MANAGE),
-    (("GET",), r"^/rappel-email-logs$", PERM_USERS_MANAGE),
+    (("GET",), r"^/rappel-email-logs$", PERM_MESSAGERIE_VIEW),
     (("GET",), r"^/clients/[^/]+/documents", PERM_DOCUMENTS_VIEW),
     (("POST",), r"^/clients/[^/]+/documents", PERM_DOCUMENTS_ADD),
     (("POST",), r"^/clients/[^/]+/offres/", PERM_DOCUMENTS_VIEW),
@@ -1339,7 +1530,7 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("PUT",), r"^/suivi-3p", PERM_SUIVI_3P_EDIT),
     (("PATCH",), r"^/suivi-3p", PERM_SUIVI_3P_EDIT),
     (("DELETE",), r"^/suivi-3p", PERM_SUIVI_3P_EDIT),
-    (("GET",), r"^/emails", PERM_USERS_MANAGE),
+    (("GET",), r"^/emails", PERM_MESSAGERIE_VIEW),
     # Quotas d'urgence : administrateur uniquement, avant le GET/PUT générique.
     (("GET",), r"^/demandes-offres/parametres-urgence$", PERM_USERS_MANAGE),
     (("PUT",), r"^/demandes-offres/parametres-urgence$", PERM_USERS_MANAGE),

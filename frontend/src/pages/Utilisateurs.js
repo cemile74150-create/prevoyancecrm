@@ -83,6 +83,12 @@ export default function Utilisateurs() {
     [entreprises, form.entreprise_id],
   );
 
+  // roles.manage : catalogue prêt Phase 3, pas d'exposition dans l'éditeur utilisateur.
+  const editableCatalog = useMemo(
+    () => (catalog || []).filter((g) => g.id !== "roles"),
+    [catalog],
+  );
+
   const load = async () => {
     setLoading(true);
     try {
@@ -640,7 +646,7 @@ export default function Utilisateurs() {
                   Réinitialiser selon le rôle
                 </button>
               </div>
-              {catalog.map((group) => {
+              {editableCatalog.map((group) => {
                 const allOn = group.items.every((i) => form.permissions?.[i.key]);
                 return (
                   <div key={group.id} className="rounded-lg border border-border p-3">

@@ -28,15 +28,15 @@ const nav = [
   { to: "/demandes-offres", label: "Demandes d'offres", icon: FileSpreadsheet, testid: "nav-demandes-offres", perm: "demandes_offres.view" },
   { to: "/modifier-offre", label: "Modifier une offre", icon: Pencil, testid: "nav-modifier-offre", perm: "demandes_offres.edit" },
   { to: "/gestion-reponses-offres", label: "Gestion réponses offres", icon: FileSpreadsheet, testid: "nav-gestion-offres", perm: "demandes_offres.process" },
-  { to: "/messagerie", label: "Messagerie", icon: Mail, testid: "nav-messagerie", anyOf: ["users.manage"] },
+  { to: "/messagerie", label: "Messagerie", icon: Mail, testid: "nav-messagerie", perm: "messagerie.view" },
   { to: "/eligibilite", label: "Éligibilité", icon: ListChecks, testid: "nav-eligibilite", anyOf: ["clients.view", "dossiers.view"] },
   { to: "/rappels", label: "Rappels", icon: Bell, testid: "nav-rappels", perm: "rappels.view" },
   { to: "/agenda", label: "Ordre du jour", icon: CalendarDays, testid: "nav-agenda", perm: "agenda.view" },
   { to: "/formulaires", label: "Formulaires", icon: Files, testid: "nav-formulaires", perm: "formulaires.view" },
   { to: "/conges", label: "Congés & absences", icon: Palmtree, testid: "nav-conges", perm: "leaves.access" },
   { to: "/lamal", label: "Comparateur LAMal", icon: HeartPulse, testid: "nav-lamal", perm: "lamal_module_access" },
-  { to: "/suivi-technique", label: "Suivi technique", icon: Activity, testid: "nav-suivi-technique", perm: "users.manage" },
-  { to: "/entreprises", label: "Entreprises", icon: Building2, testid: "nav-entreprises", perm: "users.manage" },
+  { to: "/suivi-technique", label: "Suivi technique", icon: Activity, testid: "nav-suivi-technique", perm: "suivi_technique.view" },
+  { to: "/entreprises", label: "Entreprises", icon: Building2, testid: "nav-entreprises", perm: "entreprises.view" },
   { to: "/utilisateurs", label: "Utilisateurs", icon: Settings2, testid: "nav-users", perm: "users.manage" },
 ];
 

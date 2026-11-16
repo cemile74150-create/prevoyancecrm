@@ -15,7 +15,10 @@ import { Building2, Plus, Pencil } from "lucide-react";
 const empty = () => ({ nom: "", finma_number: "", email_domains: "" });
 
 export default function Entreprises() {
-  const { isAdmin } = useAuth();
+  const { hasPerm } = useAuth();
+  const canView = hasPerm("entreprises.view");
+  const canCreate = hasPerm("entreprises.create");
+  const canUpdate = hasPerm("entreprises.update");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialog, setDialog] = useState(false);
@@ -41,8 +44,8 @@ export default function Entreprises() {
   };
 
   useEffect(() => {
-    if (isAdmin) load();
-  }, [isAdmin]);
+    if (canView) load();
+  }, [canView]);
 
   const openCreate = () => {
     setEditing(null);
@@ -69,6 +72,14 @@ export default function Entreprises() {
   const save = async () => {
     if (!form.nom.trim() || !form.finma_number.trim()) {
       toast.error("Nom et numéro FINMA obligatoires");
+      return;
+    }
+    if (editing && !canUpdate) {
+      toast.error("Modification non autorisée");
+      return;
+    }
+    if (!editing && !canCreate) {
+      toast.error("Création non autorisée");
       return;
     }
     setSaving(true);
@@ -104,7 +115,7 @@ export default function Entreprises() {
     }
   };
 
-  if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  if (!canView) return <Navigate to="/dashboard" replace />;
 
   return (
     <Layout>
@@ -119,12 +130,16 @@ export default function Entreprises() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={ensureMendes}>
-              Assurer Agence Mendes
-            </Button>
-            <Button onClick={openCreate} className="bg-[#002FA7] hover:bg-[#00248a] gap-2">
-              <Plus className="h-4 w-4" /> Nouvelle entreprise
-            </Button>
+            {canCreate && (
+              <Button variant="outline" onClick={ensureMendes}>
+                Assurer Agence Mendes
+              </Button>
+            )}
+            {canCreate && (
+              <Button onClick={openCreate} className="bg-[#002FA7] hover:bg-[#00248a] gap-2">
+                <Plus className="h-4 w-4" /> Nouvelle entreprise
+              </Button>
+            )}
           </div>
         </div>
 
@@ -162,9 +177,11 @@ export default function Entreprises() {
                       {(r.email_domains || []).map((d) => `@${d}`).join(", ") || "—"}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button type="button" className="p-2 rounded-md hover:bg-secondary" onClick={() => openEdit(r)}>
-                        <Pencil className="h-4 w-4" />
-                      </button>
+                      {canUpdate && (
+                        <button type="button" className="p-2 rounded-md hover:bg-secondary" onClick={() => openEdit(r)}>
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

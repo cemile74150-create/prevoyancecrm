@@ -79,9 +79,39 @@ export const PERMISSION_CATALOG = [
   },
   {
     id: "users",
-    label: "Administration",
+    label: "Utilisateurs",
     items: [
-      { key: "users.manage", label: "Gérer les utilisateurs" },
+      { key: "users.manage", label: "Gérer les utilisateurs (CRUD / import)" },
+    ],
+  },
+  {
+    id: "messagerie",
+    label: "Messagerie",
+    items: [
+      { key: "messagerie.view", label: "Consulter la messagerie (journal e-mails)" },
+    ],
+  },
+  {
+    id: "entreprises",
+    label: "Entreprises",
+    items: [
+      { key: "entreprises.view", label: "Voir les entreprises" },
+      { key: "entreprises.create", label: "Créer une entreprise" },
+      { key: "entreprises.update", label: "Modifier une entreprise" },
+    ],
+  },
+  {
+    id: "suivi_technique",
+    label: "Suivi technique",
+    items: [
+      { key: "suivi_technique.view", label: "Consulter le suivi technique" },
+    ],
+  },
+  {
+    id: "roles",
+    label: "Rôles et permissions",
+    items: [
+      { key: "roles.manage", label: "Gérer les rôles et permissions (Phase 3 — non exposé UI)" },
     ],
   },
   {
@@ -100,12 +130,24 @@ export const PERMISSION_CATALOG = [
   },
 ];
 
+/** Modules admin Phase 2 : hérités de users.manage si absents du snapshot. */
+export const PHASE2_USERS_MANAGE_INHERITED_KEYS = [
+  "messagerie.view",
+  "entreprises.view",
+  "entreprises.create",
+  "entreprises.update",
+  "suivi_technique.view",
+];
+
 export const PERMISSION_KEYS = PERMISSION_CATALOG.flatMap((g) => g.items.map((i) => i.key));
 
 export function defaultPermissions(role) {
   const perms = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
   if (role !== "admin") {
     perms["users.manage"] = false;
+    for (const key of PHASE2_USERS_MANAGE_INHERITED_KEYS) {
+      perms[key] = false;
+    }
   }
   // Traitement offres : pas pour les conseillers par défaut
   if (role === "conseiller") {
@@ -115,6 +157,7 @@ export function defaultPermissions(role) {
   }
   perms["leaves.manage"] = role === "admin";
   perms["lamal_module_access"] = false;
+  perms["roles.manage"] = false;
   return perms;
 }
 
@@ -151,17 +194,29 @@ export function hasPerm(user, key) {
   if (key === "leaves.manage" && !canAccessLeavesModule(user)) {
     return false;
   }
-  if (isAlbertoMendes(user) && key === "users.manage") return true;
+  if (
+    isAlbertoMendes(user) &&
+    (key === "users.manage" || PHASE2_USERS_MANAGE_INHERITED_KEYS.includes(key))
+  ) {
+    return true;
+  }
   if (user.permissions && typeof user.permissions === "object" && key in user.permissions) {
     return Boolean(user.permissions[key]);
   }
+  // Phase 2 : clé admin absente du snapshot → calquer users.manage (sauf roles.manage).
+  if (PHASE2_USERS_MANAGE_INHERITED_KEYS.includes(key)) {
+    if (user.permissions && typeof user.permissions === "object" && "users.manage" in user.permissions) {
+      return Boolean(user.permissions["users.manage"]);
+    }
+    return user.role === "admin" || Boolean(user.can_manage_users);
+  }
   const defaults = defaultPermissions(user.role);
-  // Catalogue historique : clé connue absente du snapshot → défaut rôle (legacy allow).
+  // Catalogue : clé connue absente du snapshot → défaut rôle (legacy allow).
   if (key in defaults) return Boolean(defaults[key]);
   if (key === "users.manage") {
     return user.role === "admin" || Boolean(user.can_manage_users);
   }
-  // Phase 1 RBAC : clé hors catalogue historique → deny (aligné backend has_perm).
+  // Clé hors catalogue → deny (aligné backend has_perm).
   return false;
 }
 

@@ -10,6 +10,9 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from access_control import (
+    PERM_ENTREPRISES_CREATE,
+    PERM_ENTREPRISES_UPDATE,
+    PERM_ENTREPRISES_VIEW,
     PERM_USERS_MANAGE,
     ROLE_CONSEILLER,
     User,
@@ -98,14 +101,14 @@ def attach_entreprises_routes(api_router: APIRouter, db, get_current_user):
     # ---------- Entreprises ----------
     @api_router.get("/entreprises")
     async def list_entreprises(user: User = Depends(get_current_user)):
-        require_perm(user, PERM_USERS_MANAGE)
+        require_perm(user, PERM_ENTREPRISES_VIEW)
         rows = await db[COLLECTION].find({}, {"_id": 0}).to_list(500)
         rows.sort(key=lambda e: (e.get("nom") or "").casefold())
         return [public_entreprise(r) for r in rows]
 
     @api_router.post("/entreprises")
     async def create_entreprise(payload: EntrepriseCreate, user: User = Depends(get_current_user)):
-        require_admin(user)
+        require_perm(user, PERM_ENTREPRISES_CREATE)
         nom = (payload.nom or "").strip()
         finma = (payload.finma_number or "").strip()
         if not nom or not finma:
@@ -131,7 +134,7 @@ def attach_entreprises_routes(api_router: APIRouter, db, get_current_user):
         payload: EntrepriseUpdate,
         user: User = Depends(get_current_user),
     ):
-        require_admin(user)
+        require_perm(user, PERM_ENTREPRISES_UPDATE)
         doc = await db[COLLECTION].find_one({"id": entreprise_id}, {"_id": 0})
         if not doc:
             raise HTTPException(status_code=404, detail="Entreprise introuvable")
@@ -172,14 +175,14 @@ def attach_entreprises_routes(api_router: APIRouter, db, get_current_user):
     @api_router.post("/entreprises/ensure-agence-mendes")
     async def api_ensure_mendes(user: User = Depends(get_current_user)):
         """Crée/complète Agence Mendes (sans rattacher les utilisateurs)."""
-        require_admin(user)
+        require_perm(user, PERM_ENTREPRISES_CREATE)
         doc = await ensure_agence_mendes(db)
         return public_entreprise(doc)
 
     @api_router.get("/entreprises/mendes-attachment-preview")
     async def mendes_attachment_preview(user: User = Depends(get_current_user)):
         """Aperçu des comptes @agencemendes.ch à rattacher (lecture seule)."""
-        require_admin(user)
+        require_perm(user, PERM_ENTREPRISES_VIEW)
         # Pas d'écriture ici : créer Mendes via POST /entreprises/ensure-agence-mendes.
         mendes = await db[COLLECTION].find_one(
             {"nom": {"$regex": r"^Agence\s+Mendes$", "$options": "i"}},
@@ -208,7 +211,7 @@ def attach_entreprises_routes(api_router: APIRouter, db, get_current_user):
         user: User = Depends(get_current_user),
     ):
         """Rattache les user_ids listés à Agence Mendes. dry_run=true par défaut."""
-        require_admin(user)
+        require_perm(user, PERM_ENTREPRISES_UPDATE)
         mendes = await ensure_agence_mendes(db)
         wanted = {str(x).strip() for x in (payload.user_ids or []) if str(x).strip()}
         users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(2000)

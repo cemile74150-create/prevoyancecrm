@@ -117,7 +117,9 @@ function cellStatus(row, key) {
 }
 
 export default function SuiviTechnique() {
-  const { isAdmin, user } = useAuth();
+  const { hasPerm, user } = useAuth();
+  const canView = hasPerm("suivi_technique.view");
+  const canSmtpTest = hasPerm("users.manage");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -150,11 +152,11 @@ export default function SuiviTechnique() {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) {
+    if (canView) {
       load();
       loadMailStatus();
     }
-  }, [isAdmin, load, loadMailStatus]);
+  }, [canView, load, loadMailStatus]);
 
   useEffect(() => {
     if (user?.email && !testEmailTo) {
@@ -289,7 +291,7 @@ export default function SuiviTechnique() {
     }
   };
 
-  if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  if (!canView) return <Navigate to="/dashboard" replace />;
 
   const global = resolveGlobalStatus(data);
   const storage = data?.storage || {};
@@ -405,11 +407,18 @@ export default function SuiviTechnique() {
               </p>
             </div>
 
+            {canSmtpTest ? (
             <p className="text-sm text-muted-foreground">
               Envoie un véritable e-mail de test depuis la boîte professionnelle Infomaniak.
               Le mot de passe SMTP n&apos;est jamais affiché.
             </p>
+            ) : (
+            <p className="text-sm text-muted-foreground">
+              État SMTP en lecture seule — le test d&apos;envoi reste réservé à la gestion utilisateurs.
+            </p>
+            )}
 
+            {canSmtpTest && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="flex-1 space-y-1.5 min-w-0">
                 <Label htmlFor="smtp-test-to">Adresse destinataire</Label>
@@ -434,6 +443,7 @@ export default function SuiviTechnique() {
                 {smtpTesting ? "Envoi…" : "Tester l'envoi d'e-mail"}
               </Button>
             </div>
+            )}
 
             {smtpTestResult && (
               <div

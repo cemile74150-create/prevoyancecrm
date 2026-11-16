@@ -37,12 +37,14 @@ from access_control import (
     default_permissions,
     default_see_all_dossiers,
     PERMISSION_CATALOG,
+    PERM_MESSAGERIE_VIEW,
     PERM_USERS_MANAGE,
     public_user,
     is_global_viewer,
     can_access_client,
     labels_match_conseiller,
     require_admin,
+    require_perm,
     require_settings,
     clients_base_query,
     force_conseiller_on_write,
@@ -3912,10 +3914,10 @@ async def list_rappel_email_logs(
     limit: int = Query(100, ge=1, le=500),
     user: User = Depends(get_current_user),
 ):
-    """Historique des e-mails rappels — réservé à l'administrateur."""
+    """Historique des e-mails rappels — messagerie.view."""
     from email_service import EMAIL_LOGS_COLLECTION
 
-    require_admin(user)
+    require_perm(user, PERM_MESSAGERIE_VIEW)
     query: dict = {}
     # Préférer le journal unifié ; compléter avec l'ancien rappel_email_logs
     unified = await db[EMAIL_LOGS_COLLECTION].find(query, {"_id": 0}).to_list(limit * 2)
@@ -3966,11 +3968,11 @@ async def list_crm_emails(
 ):
     """
     Messagerie admin — journal outbound email_logs (pagination serveur).
-    Réservé users.manage / admin. Pas d'envoi SMTP ici.
+    Réservé messagerie.view. Pas d'envoi SMTP ici.
     """
     from messagerie import fetch_email_page
 
-    require_admin(user)
+    require_perm(user, PERM_MESSAGERIE_VIEW)
     try:
         return await fetch_email_page(
             db,
@@ -3996,11 +3998,11 @@ async def get_crm_email(
     email_id: str,
     user: User = Depends(get_current_user),
 ):
-    """Détail / aperçu d'un e-mail du journal CRM — admin uniquement."""
+    """Détail / aperçu d'un e-mail du journal CRM — messagerie.view."""
     from email_service import EMAIL_LOGS_COLLECTION
     from messagerie import normalize_legacy_rappel_row, public_email_row
 
-    require_admin(user)
+    require_perm(user, PERM_MESSAGERIE_VIEW)
 
     row = None
     try:
@@ -4023,10 +4025,10 @@ async def admin_email_logs(
     include_old_errors: bool = Query(False),
     user: User = Depends(get_current_user),
 ):
-    """Journal unifié des e-mails CRM (admin / users.manage)."""
+    """Journal unifié des e-mails CRM (messagerie.view)."""
     from email_service import EMAIL_LOGS_COLLECTION
 
-    require_admin(user)
+    require_perm(user, PERM_MESSAGERIE_VIEW)
     LEGACY_ERROR_CUTOFF = "2026-09-10T00:00:00"
     query: dict = {}
     if mail_type and mail_type.strip() and mail_type != "all":
@@ -8705,7 +8707,7 @@ async def startup():
     except Exception as e:
         logger.error("Bootstrap admin failed: %s", e)
     try:
-        from access_control import ensure_roles_seeded
+        from access_control import backfill_phase2_admin_module_permissions, ensure_roles_seeded
 
         roles_seed = await ensure_roles_seeded(db)
         logger.info(
@@ -8713,8 +8715,14 @@ async def startup():
             roles_seed.get("created"),
             roles_seed.get("skipped"),
         )
+        phase2 = await backfill_phase2_admin_module_permissions(db)
+        logger.info(
+            "Phase2 admin perms backfill users=%s roles=%s",
+            phase2.get("users_updated"),
+            phase2.get("roles_updated"),
+        )
     except Exception as e:
-        logger.error("Roles seed failed: %s", e)
+        logger.error("Roles seed / Phase2 backfill failed: %s", e)
     try:
         backend = init_storage()
         logger.info("Storage initialized backend=%s", backend or "none")

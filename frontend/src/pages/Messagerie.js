@@ -79,7 +79,7 @@ function normalizeListPayload(data) {
 
 export default function Messagerie() {
   const { hasPerm } = useAuth();
-  const canView = hasPerm("users.manage");
+  const canView = hasPerm("messagerie.view");
 
   const [folder, setFolder] = useState("outbox");
   const [category, setCategory] = useState("all");
