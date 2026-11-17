@@ -83,6 +83,8 @@ def _role_for_label(lab: str, ftype: str) -> Optional[str]:
         return "sexe"
     if "date de naissance" in lab and "permis" not in lab:
         return "date_naissance"
+    if "date du permis de conduire" in lab or lab in {"date du permis"}:
+        return "date_permis_conduire"
     if lab.startswith("nationalite"):
         return "nationalite"
     if lab in {"permis"} or lab.startswith("permis de sejour") or lab.startswith("permis"):
@@ -112,7 +114,7 @@ def _role_for_label(lab: str, ftype: str) -> Optional[str]:
         or lab in {"prime", "prime annuelle", "prime mensuelle", "cotisation", "cotisation annuelle"}
     ):
         return "montant_prime"
-    if "periodicite" in lab and "prime" in lab:
+    if "periodicite" in lab and ("prime" in lab or "paiement" in lab):
         return "periodicite"
     if ("duree" in lab and "contrat" in lab) or lab == "duree":
         return "duree"
@@ -352,6 +354,7 @@ def _canonical(extracted: dict) -> dict[str, Any]:
         "nom": extracted.get("nom"),
         "sexe": sexe,
         "date_naissance": extracted.get("date_naissance"),
+        "date_permis_conduire": extracted.get("date_permis_conduire"),
         "nationalite": extracted.get("nationalite"),
         "permis": extracted.get("permis"),
         "adresse": extracted.get("adresse"),

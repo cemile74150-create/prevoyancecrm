@@ -106,12 +106,14 @@ def empty_structured_extraction() -> Dict[str, Any]:
             "permis_sejour": _field(),
             "telephone": _field(),
             "email": _field(),
+            "date_permis_conduire": _field(),
         },
         "objets": [],
         "primes": {
             "annuelle_brute": _field(),
             "annuelle_avec_taxes": _field(),
             "globale": _field(),  # une seule prime à préremplir
+            "periodicite": _field(),
             "detail_risques": [],
         },
         "garanties": [],
@@ -225,14 +227,38 @@ def _extract_preneur_block(text: str) -> Dict[str, Any]:
             out["npa"] = _field(m2.group(3), page=_page_of(text, m2.start()), confidence=0.9, status=STATUS_FOUND, source="detenteur")
             out["ville"] = _field(m2.group(4).strip(), page=_page_of(text, m2.start()), confidence=0.9, status=STATUS_FOUND, source="detenteur")
 
-    # Civilité lettre
-    m_civ = re.search(r"(?:^|\n)\s*(Monsieur|Madame|Mademoiselle)\s*\n\s*([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][^\n]{1,40})", text, re.M)
-    if m_civ and out["prenom"]["status"] != STATUS_FOUND:
-        out["civilite"] = _field(m_civ.group(1), page=_page_of(text, m_civ.start()), confidence=0.8, status=STATUS_FOUND, source="letter")
-        parts = m_civ.group(2).split()
-        if len(parts) >= 2:
-            out["prenom"] = _field(parts[0], page=_page_of(text, m_civ.start()), confidence=0.75, status=STATUS_FOUND, source="letter")
-            out["nom"] = _field(" ".join(parts[1:]), page=_page_of(text, m_civ.start()), confidence=0.75, status=STATUS_FOUND, source="letter")
+    # Civilité lettre (même si prénom déjà trouvé via bloc PRENEUR)
+    m_civ = re.search(
+        r"(?:^|\n)\s*(Monsieur|Madame|Mademoiselle)\s*\n\s*([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][^\n]{1,40})",
+        text,
+        re.M,
+    )
+    if m_civ:
+        if out["civilite"]["status"] != STATUS_FOUND:
+            out["civilite"] = _field(
+                m_civ.group(1),
+                page=_page_of(text, m_civ.start()),
+                confidence=0.8,
+                status=STATUS_FOUND,
+                source="letter",
+            )
+        if out["prenom"]["status"] != STATUS_FOUND:
+            parts = m_civ.group(2).split()
+            if len(parts) >= 2:
+                out["prenom"] = _field(
+                    parts[0],
+                    page=_page_of(text, m_civ.start()),
+                    confidence=0.75,
+                    status=STATUS_FOUND,
+                    source="letter",
+                )
+                out["nom"] = _field(
+                    " ".join(parts[1:]),
+                    page=_page_of(text, m_civ.start()),
+                    confidence=0.75,
+                    status=STATUS_FOUND,
+                    source="letter",
+                )
 
     # DOB : Né(e) le
     m_dob = re.search(
@@ -252,6 +278,22 @@ def _extract_preneur_block(text: str) -> Dict[str, Any]:
     m_perm = re.search(r"Permis\s+de\s+s[ée]jour\s*[:：]\s*([A-Za-z0-9]{1,20})", text, re.I)
     if m_perm:
         out["permis_sejour"] = _field(m_perm.group(1).strip(), page=_page_of(text, m_perm.start()), confidence=0.9, status=STATUS_FOUND, source="label")
+
+    m_permis_cond = re.search(
+        r"Date\s+du\s+permis\s+de\s+conduire\s*[:：]?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        text,
+        re.I,
+    )
+    if m_permis_cond:
+        d = _normalize_date(m_permis_cond.group(1))
+        if d:
+            out["date_permis_conduire"] = _field(
+                d,
+                page=_page_of(text, m_permis_cond.start()),
+                confidence=0.95,
+                status=STATUS_FOUND,
+                source="label",
+            )
 
     # Tél / email preneur uniquement — jamais service assureur
     for m_tel in re.finditer(
@@ -356,6 +398,24 @@ def _extract_primes(text: str) -> Dict[str, Any]:
         primes["globale"] = dict(primes["annuelle_avec_taxes"])
     elif primes["annuelle_brute"]["status"] == STATUS_FOUND:
         primes["globale"] = dict(primes["annuelle_brute"])
+
+    m_per = re.search(
+        r"Mode\s+de\s+paiement\s+(annuel|semestriel|trimestriel|mensuel)|"
+        r"P[ée]riodicit[ée]\s*(?:de\s+(?:paiement|la\s+prime))?\s*[:：]?\s*"
+        r"(Annuel|Semestriel|Trimestriel|Mensuel|annuel|semestriel|trimestriel|mensuel)",
+        text,
+        re.I,
+    )
+    if m_per:
+        raw_per = (m_per.group(1) or m_per.group(2) or "").strip()
+        if raw_per:
+            primes["periodicite"] = _field(
+                raw_per[:1].upper() + raw_per[1:].lower(),
+                page=_page_of(text, m_per.start()),
+                confidence=0.9,
+                status=STATUS_FOUND,
+                source="paiement",
+            )
     return primes
 
 
@@ -414,6 +474,20 @@ def _extract_vehicules(text: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, 
         m_prix = re.search(r"Prix\s+catalogue\s*[:：]?\s*([0-9][0-9'’\u00a0\u202f ]*)", chunk, re.I)
         if m_prix:
             prix = _compact_money_token(m_prix.group(1))
+        prix_options = None
+        m_opt = re.search(
+            r"(?:[ÉE]quipements?\s+et\s+accessoires|Prix\s+des\s+options)\s*[:：]?\s*([0-9][0-9'’\u00a0\u202f ]*)",
+            chunk,
+            re.I,
+        )
+        if m_opt:
+            prix_options = _compact_money_token(m_opt.group(1))
+        km_annuel = None
+        m_km = re.search(r"Kilom[ée]trage\s+annuel\s*[:：]?\s*([0-9][0-9'’\u00a0\u202f ]*)", chunk, re.I)
+        if m_km:
+            km_annuel = _compact_money_token(m_km.group(1))
+            if km_annuel is not None:
+                km_annuel = int(km_annuel) if abs(km_annuel - round(km_annuel)) < 0.001 else km_annuel
         usage = None
         m_u = re.search(r"Utilisation\s*[:：]?\s*([^\n\r]{3,40})", chunk, re.I)
         if m_u:
@@ -422,6 +496,19 @@ def _extract_vehicules(text: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, 
         m_t = re.search(r"(Voiture\s+de\s+tourisme|Camionnette|Motocycle)", chunk, re.I)
         if m_t:
             typ = m_t.group(1)
+        leasing = None
+        if re.search(r"\bSans\s+leasing\b", chunk, re.I):
+            leasing = "Non"
+        elif re.search(r"(?:^|\n)\s*Leasing\s*(?:\n|$)", chunk, re.I) or re.search(
+            r"\bAvec\s+leasing\b|\bEn\s+leasing\b", chunk, re.I
+        ):
+            leasing = "Oui"
+        garage_dispo = None
+        m_g = re.search(r"Place\s+de\s+garage\s+[àa]\s+disposition\s*[:：]?\s*(Oui|Non)", chunk, re.I)
+        if m_g:
+            garage_dispo = m_g.group(1).title()
+
+        cov = _extract_vehicule_couvertures(chunk, page=page)
 
         plaque_status = STATUS_FOUND if plaque else STATUS_NOT_FOUND
         plaque_conf = 0.85 if plaque else 0.0
@@ -436,23 +523,106 @@ def _extract_vehicules(text: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, 
             "no_matricule": _field(immat, page=page, confidence=0.9 if immat else 0.0, status=STATUS_FOUND if immat else STATUS_NOT_FOUND, source="vehicule_block"),
             "mise_en_circulation": _field(mise, page=page, confidence=0.9 if mise else 0.0, status=STATUS_FOUND if mise else STATUS_NOT_FOUND, source="vehicule_block"),
             "prix_catalogue": _field(prix, page=page, confidence=0.85 if prix else 0.0, status=STATUS_FOUND if prix else STATUS_NOT_FOUND, source="vehicule_block"),
+            "prix_options": _field(prix_options, page=page, confidence=0.85 if prix_options else 0.0, status=STATUS_FOUND if prix_options else STATUS_NOT_FOUND, source="vehicule_block"),
+            "km_annuel": _field(km_annuel, page=page, confidence=0.9 if km_annuel else 0.0, status=STATUS_FOUND if km_annuel else STATUS_NOT_FOUND, source="vehicule_block"),
             "utilisation": _field(usage, page=page, confidence=0.8 if usage else 0.0, status=STATUS_FOUND if usage else STATUS_NOT_FOUND, source="vehicule_block"),
             "categorie": _field(typ, page=page, confidence=0.8 if typ else 0.0, status=STATUS_FOUND if typ else STATUS_NOT_FOUND, source="vehicule_block"),
+            "leasing": _field(leasing, page=page, confidence=0.9 if leasing else 0.0, status=STATUS_FOUND if leasing else STATUS_NOT_FOUND, source="vehicule_block"),
+            "garage_disponibilite": _field(
+                garage_dispo,
+                page=page,
+                confidence=0.85 if garage_dispo else 0.0,
+                status=STATUS_FOUND if garage_dispo else STATUS_NOT_FOUND,
+                source="vehicule_block",
+            ),
+            "couvertures": cov,
         }
         objets.append(obj)
+        for g in cov.get("garanties_list") or []:
+            garanties.append({**g, "objet_index": i + 1})
 
-    # Garanties globales (pas par véhicule dans ce PDF)
-    for label in ("Responsabilité civile", "Casco partielle", "Collision (Casco complète)", "Assistance"):
-        if re.search(re.escape(label.split("(")[0].strip()), text, re.I):
-            garanties.append(
-                {
-                    "label": label,
-                    "scope": "police",
-                    "status": STATUS_FOUND,
-                    "confidence": 0.8,
-                }
-            )
+    if not garanties:
+        for label in ("Responsabilité civile", "Casco partielle", "Collision (Casco complète)", "Assistance"):
+            if re.search(re.escape(label.split("(")[0].strip()), text, re.I):
+                garanties.append(
+                    {
+                        "label": label,
+                        "scope": "police",
+                        "status": STATUS_FOUND,
+                        "confidence": 0.8,
+                    }
+                )
     return objets, garanties
+
+
+def _extract_vehicule_couvertures(chunk: str, *, page: Optional[int] = None) -> Dict[str, Any]:
+    """Garanties / franchises dans le bloc véhicule (adaptateur générique, golden ELVIA)."""
+    flat = _norm(chunk)
+    has_detail = bool(re.search(r"votre\s+assurance\s+en\s+d[ée]tail|risques\s+assur[ée]s", flat))
+
+    def yn(present: bool, *, conf: float = 0.85) -> Dict[str, Any]:
+        if not has_detail:
+            return _field()
+        return _field(
+            "Oui" if present else "Non",
+            page=page,
+            confidence=conf if present else 0.55,
+            status=STATUS_FOUND if present else STATUS_TO_VERIFY,
+            source="couverture_bloc",
+        )
+
+    rc = bool(re.search(r"\brc\b|responsabilit[ée]\s+civile", flat))
+    casco_part = bool(re.search(r"casco\s+partielle", flat))
+    casco_coll = bool(re.search(r"casco\s+collision|collision\s*\(casco|casco\s+compl[eè]te", flat))
+    assistance = bool(re.search(r"\bassistance\b", flat))
+    bonus_rc = bool(re.search(r"protection\s+du\s+bonus", flat)) and rc
+    bonus_coll = bool(re.search(r"casco\s+collision[\s\S]{0,400}protection\s+du\s+bonus", flat))
+
+    franchise = None
+    m_fr = re.search(
+        r"Casco\s+collision[\s\S]{0,500}?Conducteurs?\s+d[eè]s\s+26\s+ans\s*[:：]?\s*([0-9][0-9'’\u00a0\u202f ]*)",
+        chunk,
+        re.I,
+    )
+    if not m_fr:
+        m_fr = re.search(
+            r"franchise\s+collision\s*[:：]?\s*([0-9][0-9'’\u00a0\u202f ]*)",
+            chunk,
+            re.I,
+        )
+    if m_fr:
+        franchise = _compact_money_token(m_fr.group(1))
+        if franchise is not None and abs(franchise - round(franchise)) < 0.001:
+            franchise = int(franchise)
+
+    garanties_list = []
+    for label, present in (
+        ("Responsabilité civile", rc),
+        ("Casco partielle", casco_part),
+        ("Collision (Casco complète)", casco_coll),
+        ("Assistance", assistance),
+    ):
+        if present:
+            garanties_list.append(
+                {"label": label, "scope": "vehicule", "status": STATUS_FOUND, "confidence": 0.85}
+            )
+
+    return {
+        "rc": yn(rc),
+        "rc_protection_bonus": yn(bonus_rc, conf=0.8),
+        "casco_integrale": yn(casco_coll),
+        "casco_partielle": yn(casco_part),
+        "assistance": yn(assistance),
+        "protection_bonus_collision": yn(bonus_coll, conf=0.8),
+        "franchise_collision": _field(
+            franchise,
+            page=page,
+            confidence=0.9 if franchise is not None else 0.0,
+            status=STATUS_FOUND if franchise is not None else STATUS_NOT_FOUND,
+            source="couverture_bloc",
+        ),
+        "garanties_list": garanties_list,
+    }
 
 
 def _vehicule_from_resume_line(item: str, *, index: int, page: Optional[int]) -> Dict[str, Any]:
@@ -473,8 +643,13 @@ def _vehicule_from_resume_line(item: str, *, index: int, page: Optional[int]) ->
         "no_matricule": _field(),
         "mise_en_circulation": _field(),
         "prix_catalogue": _field(),
+        "prix_options": _field(),
+        "km_annuel": _field(),
         "utilisation": _field(),
         "categorie": _field(),
+        "leasing": _field(),
+        "garage_disponibilite": _field(),
+        "couvertures": {},
     }
 
 
@@ -621,6 +796,8 @@ def structured_to_flat_extracted(structured: Dict[str, Any]) -> Dict[str, Any]:
         "date_debut": _value_or_none(police.get("date_debut")),
         "date_fin": _value_or_none(police.get("date_fin")),
         "montant_prime": _value_or_none(primes.get("globale")),
+        "periodicite": _value_or_none(primes.get("periodicite")),
+        "date_permis_conduire": _value_or_none(preneur.get("date_permis_conduire")),
         "numero_offre": None,
         "objets": structured.get("objets") or [],
         "structured": structured,
@@ -636,7 +813,7 @@ def structured_to_flat_extracted(structured: Dict[str, Any]) -> Dict[str, Any]:
 def map_objets_to_voyage_hints(objets: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Couche mapping (sans toucher aux JSON) : indices véhicule 1 / 2 pour voyage.
-    Les clés restent sémantiques ; fill_form_payload_from_pdf lit encore le texte.
+    Clés sémantiques consommées par offre_pdf_form_map.
     """
     hints: Dict[str, Any] = {}
     for obj in objets:
@@ -644,8 +821,35 @@ def map_objets_to_voyage_hints(objets: List[Dict[str, Any]]) -> Dict[str, Any]:
             continue
         idx = int(obj.get("index") or 0)
         prefix = f"vehicule_{idx}"
-        for key in ("marque", "modele", "plaque", "no_matricule", "mise_en_circulation", "prix_catalogue", "utilisation", "categorie", "designation"):
+        for key in (
+            "marque",
+            "modele",
+            "plaque",
+            "no_matricule",
+            "mise_en_circulation",
+            "prix_catalogue",
+            "prix_options",
+            "km_annuel",
+            "utilisation",
+            "categorie",
+            "designation",
+            "leasing",
+            "garage_disponibilite",
+        ):
             val = _value_or_none(obj.get(key))
             if val is not None:
                 hints[f"{prefix}_{key}"] = val
+        cov = obj.get("couvertures") or {}
+        for ckey in (
+            "rc",
+            "rc_protection_bonus",
+            "casco_integrale",
+            "casco_partielle",
+            "assistance",
+            "protection_bonus_collision",
+            "franchise_collision",
+        ):
+            val = _value_or_none(cov.get(ckey))
+            if val is not None:
+                hints[f"{prefix}_{ckey}"] = val
     return hints

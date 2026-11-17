@@ -780,10 +780,11 @@ def extract_offre_fields(
         "email": email,
         "telephone": telephone,
         "permis": permis,
+        "date_permis_conduire": structured_flat.get("date_permis_conduire"),
         "sexe": _find_labeled_value(text, (r"sexe", r"geschlecht"), max_len=20),
         "statut_professionnel": _find_labeled_value(text, (r"statut\s+professionnel",), max_len=40),
         "fumeur": _find_labeled_value(text, (r"fumeur",), max_len=20),
-        "periodicite": _find_periodicite(text),
+        "periodicite": structured_flat.get("periodicite") or _find_periodicite(text),
         "type_pilier": _find_type_pilier(text),
         "objets": structured_flat.get("objets") or [],
         "form_type_suggere": structured_flat.get("form_type_suggere"),
@@ -824,32 +825,38 @@ def map_extract_to_form(
 
     # Wizard CRM historique : aliases génériques. Les autres types reçoivent
     # le payload du schéma réel (input_*), identique à une demande classique.
+    field_statuses: Dict[str, Any] = {}
+    skipped_existing_keys: List[str] = []
     if form_type == "pilier3_legacy":
         payload = _legacy_alias_payload(extracted)
         filled_keys: List[str] = []
-    else:
-        from offre_pdf_form_fill import fill_form_payload_from_pdf
+        objet_hints: Dict[str, Any] = {}
+        try:
+            from offre_extract_structured import map_objets_to_voyage_hints
 
-        filled = fill_form_payload_from_pdf(
+            objet_hints = map_objets_to_voyage_hints(list(extracted.get("objets") or []))
+        except Exception:
+            objet_hints = {}
+    else:
+        from offre_pdf_form_map import map_structured_to_form_payload
+
+        filled = map_structured_to_form_payload(
             form_type,
             extracted,
             text=str(extracted.get("_text") or ""),
         )
         payload = filled.get("form_payload") or {}
         filled_keys = list(filled.get("filled_keys") or [])
-
-    objet_hints: Dict[str, Any] = {}
-    try:
-        from offre_extract_structured import map_objets_to_voyage_hints
-
-        objet_hints = map_objets_to_voyage_hints(list(extracted.get("objets") or []))
-    except Exception:
-        objet_hints = {}
+        field_statuses = filled.get("field_statuses") or {}
+        objet_hints = filled.get("objet_hints") or {}
+        skipped_existing_keys = list(filled.get("skipped_existing_keys") or [])
 
     return {
         "fields": fields,
         "form_payload": payload,
         "filled_keys": filled_keys,
+        "field_statuses": field_statuses,
+        "skipped_existing_keys": skipped_existing_keys,
         "numero_offre": extracted.get("numero_offre"),
         "reference_police": extracted.get("reference_police"),
         "objets": extracted.get("objets") or [],

@@ -36,13 +36,64 @@ export { isFieldVisible, isRenderableField };
 const CHANGED_CONTROL =
   "border-rose-600 bg-rose-50 text-rose-700 placeholder:text-rose-400 focus-visible:ring-rose-400";
 
-function FieldShell({ label, required, changed, description, children, commentSlot, labelBold }) {
+function PdfStatusBadge({ status }) {
+  if (!status || status === "found") {
+    if (status === "found") {
+      return (
+        <span
+          className="inline-flex rounded-full bg-emerald-500/15 text-emerald-800 ring-1 ring-inset ring-emerald-500/30 px-1.5 py-0.5 text-[10px] font-semibold"
+          title="Valeur lue dans le PDF"
+          data-testid="pdf-status-found"
+        >
+          PDF
+        </span>
+      );
+    }
+    return null;
+  }
+  if (status === "to_verify") {
+    return (
+      <span
+        className="inline-flex rounded-full bg-amber-500/15 text-amber-900 ring-1 ring-inset ring-amber-500/40 px-1.5 py-0.5 text-[10px] font-semibold"
+        title="Valeur proposée — à vérifier"
+        data-testid="pdf-status-to-verify"
+      >
+        À vérifier
+      </span>
+    );
+  }
+  if (status === "not_found") {
+    return (
+      <span
+        className="inline-flex rounded-full bg-slate-400/15 text-slate-600 ring-1 ring-inset ring-slate-400/40 px-1.5 py-0.5 text-[10px] font-semibold"
+        title="Non trouvé dans le PDF"
+        data-testid="pdf-status-not-found"
+      >
+        Absent PDF
+      </span>
+    );
+  }
+  return null;
+}
+
+function FieldShell({ label, required, changed, description, children, commentSlot, labelBold, pdfStatus }) {
+  const highlightVerify = !changed && pdfStatus === "to_verify";
+  const highlightMissing = !changed && pdfStatus === "not_found";
   return (
     <div
-      className={`space-y-1.5 rounded-md ${changed ? "border border-rose-600 bg-rose-50/80 px-2.5 py-2" : ""}`}
+      className={`space-y-1.5 rounded-md ${
+        changed
+          ? "border border-rose-600 bg-rose-50/80 px-2.5 py-2"
+          : highlightVerify
+            ? "border border-amber-400/70 bg-amber-50/50 px-2.5 py-2"
+            : highlightMissing
+              ? "border border-dashed border-slate-300 px-2.5 py-2"
+              : ""
+      }`}
       data-changed={changed ? "true" : "false"}
+      data-pdf-status={pdfStatus || undefined}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Label
           className={`text-xs ${
             changed
@@ -59,7 +110,9 @@ function FieldShell({ label, required, changed, description, children, commentSl
           <span className="inline-flex rounded-full bg-rose-500/15 text-rose-800 ring-1 ring-inset ring-rose-500/30 px-1.5 py-0.5 text-[10px] font-semibold">
             Modifié
           </span>
-        ) : null}
+        ) : (
+          <PdfStatusBadge status={pdfStatus} />
+        )}
       </div>
       {children}
       {description ? <p className={`text-[11px] leading-snug ${changed ? "text-rose-800/80" : "text-muted-foreground"}`}>{description}</p> : null}
@@ -314,6 +367,7 @@ export default function OffreSchemaForm({
   lockAgent = true,
   onManualEdit = null,
   skipDefaults = false,
+  pdfFieldStatuses = null,
 }) {
   const fields = useMemo(() => schema?.fields || [], [schema?.fields]);
   const pages = useMemo(() => schema?.pages || [], [schema?.pages]);
@@ -365,6 +419,19 @@ export default function OffreSchemaForm({
     if (changedKeys instanceof Set) return changedKeys;
     return new Set(Array.isArray(changedKeys) ? changedKeys : []);
   }, [changedKeys]);
+
+  const pdfStatusMap = useMemo(() => {
+    if (!pdfFieldStatuses || typeof pdfFieldStatuses !== "object") return {};
+    return pdfFieldStatuses;
+  }, [pdfFieldStatuses]);
+
+  const pdfStatusFor = (name) => {
+    if (!name) return undefined;
+    const meta = pdfStatusMap[name];
+    if (!meta) return undefined;
+    if (typeof meta === "string") return meta;
+    return meta.status || undefined;
+  };
 
   const natPermisPairs = useMemo(
     () => findNationalitePermisPairs(fields),
@@ -464,6 +531,7 @@ export default function OffreSchemaForm({
     const label = field.label || name;
     const labelBold = Boolean(field.label_bold);
     const changed = mark(name) || mark(fieldCommentKey(name));
+    const pdfStatus = pdfStatusFor(name);
     const description = field.description || "";
     const lockedByNat = isPermisLockedByNationalite(schema, values, name);
     const lockedByAgent = lockAgent && (lockedAgentNames.has(name) || isAgentIdentityField(field));
@@ -502,7 +570,7 @@ export default function OffreSchemaForm({
 
     if (type === "list") {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold} pdfStatus={pdfStatus}>
           <ListField
             columns={field.columns}
             value={values?.[name]}
@@ -516,7 +584,7 @@ export default function OffreSchemaForm({
 
     if (!identityText && (type === "checkbox" || (Array.isArray(values?.[name]) && options.length > 2))) {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold} pdfStatus={pdfStatus}>
           <CheckGrid
             options={options}
             selected={Array.isArray(values?.[name]) ? values[name] : []}
@@ -530,7 +598,7 @@ export default function OffreSchemaForm({
 
     if (!identityText && type === "radio") {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold} pdfStatus={pdfStatus}>
           <RadioGroup
             name={name}
             value={asText(values?.[name])}
@@ -545,7 +613,7 @@ export default function OffreSchemaForm({
 
     if (!identityText && (type === "select" || (options.length > 0 && type !== "file"))) {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={commentSlot} labelBold={labelBold} pdfStatus={pdfStatus}>
           <ChoiceSelect
             value={asText(values?.[name])}
             onChange={(v) => setField(name, v)}
@@ -559,7 +627,7 @@ export default function OffreSchemaForm({
 
     if (type === "textarea") {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={null} labelBold={labelBold}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} commentSlot={null} labelBold={labelBold} pdfStatus={pdfStatus}>
           <Textarea
             rows={4}
             value={asText(values?.[name])}
@@ -573,7 +641,7 @@ export default function OffreSchemaForm({
 
     if (type === "file") {
       return (
-        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} labelBold={labelBold}>
+        <FieldShell key={field.id || name} label={label} required={required} changed={changed} description={description} labelBold={labelBold} pdfStatus={pdfStatus}>
           {readOnly ? (
             <p className="text-sm">{asText(values?.[name]) || "—"}</p>
           ) : (
@@ -612,6 +680,7 @@ export default function OffreSchemaForm({
         required={required}
         changed={changed}
         labelBold={labelBold}
+        pdfStatus={pdfStatus}
         description={
           lockedByAgent
             ? (description ? `${description} ` : "") + "Renseigné automatiquement depuis votre profil (non modifiable)."

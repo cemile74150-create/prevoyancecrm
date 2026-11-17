@@ -1396,6 +1396,8 @@ def attach_demandes_offres_routes(
             "fields": fields,
             "form_payload": form_payload,
             "filled_keys": mapped.get("filled_keys") or [],
+            "field_statuses": mapped.get("field_statuses") or {},
+            "skipped_existing_keys": mapped.get("skipped_existing_keys") or [],
             "extracted": extracted_ui,
             "objets": mapped.get("objets") or raw.get("objets") or [],
             "objet_hints": mapped.get("objet_hints") or {},
@@ -5164,6 +5166,8 @@ def attach_demandes_offres_routes(
         form_payload: dict = {}
         extracted_ui: dict = {}
         filled_keys: list = []
+        field_statuses: dict = {}
+        skipped_existing_keys: list = []
         chosen_type = (form_type or doc.get("form_type") or "pilier3_legacy").strip() or "pilier3_legacy"
         if data:
             try:
@@ -5174,6 +5178,8 @@ def attach_demandes_offres_routes(
                 fields = mapped.get("fields") or {}
                 form_payload = mapped.get("form_payload") or {}
                 filled_keys = list(mapped.get("filled_keys") or [])
+                field_statuses = mapped.get("field_statuses") or {}
+                skipped_existing_keys = list(mapped.get("skipped_existing_keys") or [])
                 storage = offre_fields_for_storage(raw)
                 oe = (storage or {}).get("offre_extract") or {}
                 extracted_ui = {
@@ -5219,6 +5225,8 @@ def attach_demandes_offres_routes(
             "fields": fields,
             "form_payload": form_payload,
             "filled_keys": filled_keys,
+            "field_statuses": field_statuses,
+            "skipped_existing_keys": skipped_existing_keys,
             "numero": doc.get("numero"),
             "email_subject": doc.get("email_subject") or "",
             "form_type": chosen_type,

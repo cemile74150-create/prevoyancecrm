@@ -125,6 +125,8 @@ export default function ModifierOffre() {
   const [uploading, setUploading] = useState(false);
   const [manualKeys, setManualKeys] = useState(() => new Set());
   const [prefilledCount, setPrefilledCount] = useState(0);
+  const [pdfFieldStatuses, setPdfFieldStatuses] = useState(null);
+  const [pendingOverwrite, setPendingOverwrite] = useState(null); // { payload, statuses, filledKeys, skipped }
 
   useEffect(() => {
     let cancelled = false;
@@ -158,7 +160,30 @@ export default function ModifierOffre() {
     setPdfReady(false);
     setManualKeys(new Set());
     setPrefilledCount(0);
+    setPdfFieldStatuses(null);
+    setPendingOverwrite(null);
     userTouchedRef.current = false;
+  };
+
+  const isPayloadValueEmpty = (val) => {
+    if (val == null) return true;
+    if (typeof val === "string" && !val.trim()) return true;
+    if (Array.isArray(val) && val.length === 0) return true;
+    return false;
+  };
+
+  const mergePayloadPreserve = (existing, incoming) => {
+    const base = { ...(existing || {}) };
+    const skipped = [];
+    Object.entries(incoming || {}).forEach(([key, val]) => {
+      if (val == null) return;
+      if (isPayloadValueEmpty(base[key])) {
+        base[key] = val;
+      } else if (JSON.stringify(base[key]) !== JSON.stringify(val)) {
+        skipped.push(key);
+      }
+    });
+    return { merged: base, skipped };
   };
 
   const openFormType = async (item) => {
@@ -183,9 +208,34 @@ export default function ModifierOffre() {
     resetWorkspace();
   };
 
-  const applyPrefill = (data) => {
+  const applyPrefill = (data, { overwriteExisting = false } = {}) => {
     const fields = data.fields || {};
-    const payload = data.form_payload || {};
+    const incomingPayload = data.form_payload || {};
+    const statuses = data.field_statuses || null;
+    const hadExisting =
+      formOrigin === "stored" ||
+      Object.keys(formPayload || {}).some((k) => !isPayloadValueEmpty(formPayload[k]));
+
+    let payload = incomingPayload;
+    let skipped = [];
+    if (hadExisting && !overwriteExisting) {
+      const merged = mergePayloadPreserve(formPayload, incomingPayload);
+      payload = merged.merged;
+      skipped = merged.skipped;
+      if (skipped.length > 0) {
+        setPendingOverwrite({
+          data,
+          skipped,
+          incomingPayload,
+          statuses,
+        });
+      } else {
+        setPendingOverwrite(null);
+      }
+    } else {
+      setPendingOverwrite(null);
+    }
+
     const nextForm = { ...emptyForm(), ...fields };
     if (fields.date_naissance) nextForm.date_naissance = toSwissDate(fields.date_naissance) || "";
     if (fields.date_debut) nextForm.date_debut = toSwissDate(fields.date_debut) || String(fields.date_debut).slice(0, 10);
@@ -193,17 +243,32 @@ export default function ModifierOffre() {
       nextForm.montant_prime = fields.montant_prime;
     }
     if (Array.isArray(fields.compagnies)) nextForm.compagnies = fields.compagnies;
+    // Ne pas écraser les champs CRM déjà saisis (hors overwrite)
+    if (hadExisting && !overwriteExisting) {
+      Object.keys(form).forEach((k) => {
+        if (k === "compagnies") return;
+        if (!isPayloadValueEmpty(form[k]) && isPayloadValueEmpty(nextForm[k])) {
+          nextForm[k] = form[k];
+        } else if (!isPayloadValueEmpty(form[k]) && !overwriteExisting && nextForm[k] !== form[k] && !isPayloadValueEmpty(nextForm[k])) {
+          nextForm[k] = form[k];
+        }
+      });
+      if ((form.compagnies || []).length && !overwriteExisting) {
+        nextForm.compagnies = form.compagnies;
+      }
+    }
     setForm(nextForm);
     setFormPayload(payload);
-    // Snapshot = valeurs PDF → seuls les changements manuels sont marqués « Modifié »
+    // Snapshot = valeurs après import → seuls les changements manuels sont marqués « Modifié »
     setSnapshot({ ...nextForm, compagnies: [...(nextForm.compagnies || [])] });
     setPayloadSnapshot({ ...payload });
     setExtracted(data.extracted || null);
+    setPdfFieldStatuses(statuses);
     setPdfReady(true);
-    setFormOrigin("pdf");
+    setFormOrigin(hadExisting && formOrigin === "stored" ? "stored" : "pdf");
     userTouchedRef.current = false;
     setManualKeys(new Set());
-    setPrefilledCount(Array.isArray(data.filled_keys) ? data.filled_keys.length : 0);
+    setPrefilledCount(Array.isArray(data.filled_keys) ? data.filled_keys.length : Object.keys(incomingPayload).length);
     const action = data.action || (data.demande?.id ? "rattacher" : "creer");
     if (action === "rattacher" && data.demande?.id) {
       const keptNumero = data.demande.numero || data.numero || "";
@@ -234,6 +299,12 @@ export default function ModifierOffre() {
     setDraftId(null);
   };
 
+  const confirmOverwriteFromPdf = () => {
+    if (!pendingOverwrite?.data) return;
+    applyPrefill(pendingOverwrite.data, { overwriteExisting: true });
+    toast.success("Champs existants remplacés par les valeurs du PDF");
+  };
+
   const uploadPdf = async (event) => {
     const file = event.target.files?.[0];
     if (!file || !selectedType) return;
@@ -251,6 +322,16 @@ export default function ModifierOffre() {
       const action = data.action || (data.demande?.id ? "rattacher" : "creer");
       if (action === "creer" && source === "leosoft") {
         toast.message("PDF hors LeoSoft : une nouvelle demande sera créée. L'offre déjà enregistrée n'est pas modifiée.");
+      }
+      if (
+        data.form_type_suggere &&
+        selectedType?.form_type &&
+        data.form_type_suggere !== selectedType.form_type &&
+        ["voyage", "vehicule"].includes(data.form_type_suggere)
+      ) {
+        toast.message(
+          `Le PDF suggère le type « ${data.form_type_suggere} » (sélection actuelle : ${selectedType.form_type}).`,
+        );
       }
       applyPrefill(data);
       const nFilled = Array.isArray(data.filled_keys)
@@ -828,12 +909,53 @@ export default function ModifierOffre() {
 
             {(source === "leosoft" || source === "off" || pdfReady) && (
               <Card className="p-5 space-y-5">
+                {pendingOverwrite?.skipped?.length > 0 && (
+                  <div
+                    className="rounded-md border border-amber-400/60 bg-amber-50 px-3 py-2 text-sm text-amber-950 space-y-2"
+                    data-testid="pdf-overwrite-banner"
+                  >
+                    <p>
+                      {pendingOverwrite.skipped.length} champ(s) déjà renseigné(s) n&apos;ont pas été
+                      écrasés par le PDF. Vérifiez le formulaire, ou remplacez explicitement.
+                    </p>
+                    <Button type="button" size="sm" variant="outline" onClick={confirmOverwriteFromPdf}>
+                      Remplacer les champs existants par le PDF
+                    </Button>
+                  </div>
+                )}
+                {pdfReady && pdfFieldStatuses && (
+                  <div
+                    className="rounded-md border bg-slate-50 px-3 py-2 text-xs text-slate-700 flex flex-wrap gap-3"
+                    data-testid="pdf-status-legend"
+                  >
+                    <span className="font-semibold uppercase tracking-wide text-slate-500">Import PDF</span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="rounded-full bg-emerald-500/15 text-emerald-800 ring-1 ring-inset ring-emerald-500/30 px-1.5 py-0.5 font-semibold">
+                        PDF
+                      </span>
+                      {Object.values(pdfFieldStatuses).filter((s) => (s?.status || s) === "found").length}{" "}
+                      trouvé(s)
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="rounded-full bg-amber-500/15 text-amber-900 ring-1 ring-inset ring-amber-500/40 px-1.5 py-0.5 font-semibold">
+                        À vérifier
+                      </span>
+                      {Object.values(pdfFieldStatuses).filter((s) => (s?.status || s) === "to_verify").length}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="rounded-full bg-slate-400/15 text-slate-600 ring-1 ring-inset ring-slate-400/40 px-1.5 py-0.5 font-semibold">
+                        Absent PDF
+                      </span>
+                      {Object.values(pdfFieldStatuses).filter((s) => (s?.status || s) === "not_found").length}
+                    </span>
+                  </div>
+                )}
                 <div>
                   <h2 className="font-display font-bold text-[#002FA7]">Formulaire prérempli</h2>
                   <p className="text-xs text-muted-foreground mt-1">
                     {formOrigin === "stored"
                       ? "Même formulaire que celui enregistré pour cette demande. Seuls les champs que vous changez s'affichent en rouge. Le numéro OFF et l'objet e-mail sont conservés."
-                      : "Champs remplis depuis le PDF. Ceux que vous changez s'affichent en rouge. Les autres restent tels quels."}
+                      : "Champs remplis depuis le PDF (badges PDF / À vérifier / Absent). Ceux que vous changez s'affichent en rouge. Les autres restent tels quels."}
                   </p>
                 </div>
 
@@ -905,6 +1027,7 @@ export default function ModifierOffre() {
                     agentIdentity={formOrigin === "stored" ? null : agentIdentity}
                     lockAgent={formOrigin === "stored" ? false : !isAdmin}
                     skipDefaults
+                    pdfFieldStatuses={pdfFieldStatuses}
                   />
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
