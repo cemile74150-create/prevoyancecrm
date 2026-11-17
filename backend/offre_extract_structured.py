@@ -140,17 +140,52 @@ def _page_of(text: str, pos: int) -> Optional[int]:
     return None
 
 
-def _detect_branche(text: str) -> Dict[str, Any]:
+def _pilier3_signals(text: str, filename: str = "") -> bool:
+    """Signaux 3e pilier / prévoyance (texte + nom de fichier)."""
+    hay = _norm(f"{filename}\n{text}")
+    return bool(
+        re.search(
+            r"\b3\s*[ab]\b|"
+            r"\b3[pab]\b|"
+            r"pilier\s*3|"
+            r"3e?\s*pilier|"
+            r"pr[ée]voyance(?:\s+li[ée]e)?|"
+            r"säule\s*3|"
+            r"serenity\s+benefit|"
+            r"dynamix\s*3|"
+            r"cocontractant|"
+            r"versements?\s+r[ée]guliers?\s+garantis|"
+            r"police\s+de\s+pr[ée]voyance|"
+            r"prime\s+unique",
+            hay,
+        )
+    )
+
+
+def _detect_branche(text: str, filename: str = "") -> Dict[str, Any]:
+    """
+    Détection générique de branche.
+    Priorité prévoyance/3P quand les signaux sont clairs ; RC/casco seuls
+    ne forcent le véhicule que hors contexte 3P (évite Serenity « RC »).
+    """
     flat = _norm(text)
-    if re.search(
-        r"assurance\s+v[ée]hicules?\s+[àa]\s+moteur|"
-        r"v[ée]hicules?\s+assur[ée]s|"
-        r"fahrzeugversicherung|motorfahrzeug|"
-        r"casco|kasko|"
-        r"responsabilit[ée]\s+civile|"
-        r"haftpflicht",
-        flat,
-    ):
+    pilier3 = _pilier3_signals(text, filename)
+
+    vehicle_strong = bool(
+        re.search(
+            r"assurance\s+v[ée]hicules?\s+[àa]\s+moteur|"
+            r"v[ée]hicules?\s+assur[ée]s|"
+            r"fahrzeugversicherung|motorfahrzeug|"
+            r"casco|kasko|"
+            r"plaque\s+de\s+contr[ôo]le|"
+            r"kennzeichen|"
+            r"plaques?\s+interchangeables",
+            flat,
+        )
+    )
+    vehicle_rc_loose = bool(re.search(r"responsabilit[ée]\s+civile|haftpflicht", flat))
+
+    if vehicle_strong or (vehicle_rc_loose and not pilier3):
         multi = bool(
             re.search(
                 r"plaques?\s+interchangeables|"
@@ -166,8 +201,8 @@ def _detect_branche(text: str) -> Dict[str, Any]:
             status=STATUS_FOUND,
             source="keyword",
         )
-    if re.search(r"\b3\s*a\b|pilier\s*3|pr[ée]voyance|säule\s*3", flat):
-        return _field("pilier3", confidence=0.7, status=STATUS_FOUND, source="keyword")
+    if pilier3:
+        return _field("pilier3", confidence=0.85, status=STATUS_FOUND, source="keyword")
     if re.search(r"\bm[ée]nage\b|\brc\s+priv|hausrat", flat):
         return _field("menage_rc", confidence=0.65, status=STATUS_TO_VERIFY, source="keyword")
     return _field()
@@ -780,10 +815,20 @@ def extract_structured_offre(
             result["meta"]["pages"] = None
 
     if not (text or "").strip():
-        result["meta"]["notes"].append("Texte PDF vide — aucune invention.")
+        result["meta"]["notes"].append("Texte PDF vide / OCR indisponible — aucune invention de champs.")
+        # Indices nom de fichier uniquement (compagnie / branche), pas de données personne.
+        result["branche"] = _detect_branche("", filename)
+        result["marque"] = _detect_marque(filename)
+        compagnie_fn = _find_compagnie("", filename)
+        if compagnie_fn:
+            result["assureur"] = _field(
+                compagnie_fn, confidence=0.6, status=STATUS_TO_VERIFY, source="filename"
+            )
+        suggested_empty = suggest_form_type(result)
+        result["meta"]["form_type_suggere"] = suggested_empty
         return result
 
-    result["branche"] = _detect_branche(text)
+    result["branche"] = _detect_branche(text, filename)
     result["marque"] = _detect_marque(text)
     compagnie = _find_compagnie(text, filename)
     if compagnie:
@@ -793,8 +838,8 @@ def extract_structured_offre(
     result["preneur"] = _extract_preneur_block(text)
     result["primes"] = _extract_primes(text)
 
-    if (result["branche"].get("value") or "").startswith("vehicule") or re.search(
-        r"v[ée]hicule", _norm(text)
+    if (result["branche"].get("value") or "").startswith("vehicule") or (
+        re.search(r"v[ée]hicule", _norm(text)) and not _pilier3_signals(text, filename)
     ):
         objets, garanties = _extract_vehicules(text)
         result["objets"] = objets

@@ -1,10 +1,11 @@
 """
-Harness réutilisable — rapport d'extraction PDF réels multi-compagnies.
+Harness réutilisable — rapport d'extraction PDF réels multi-compagnies / multi-branches.
 
 Usage:
   python scripts/_real_pdf_report.py
-  python scripts/_real_pdf_report.py "C:\\path\\offre.pdf" --form-type voyage
-  python scripts/_real_pdf_report.py --dir "C:\\Users\\offic\\Desktop\\offres-auto"
+  python scripts/_real_pdf_report.py "C:\\path\\offre.pdf" --form-type pilier3
+  python scripts/_real_pdf_report.py --dir "C:\\Users\\offic\\Desktop\\offres-3p"
+  python scripts/_real_pdf_report.py --preset 3p
 
 Ne déploie rien. Sortie Markdown stdout + JSON optionnel (--json out.json).
 """
@@ -27,8 +28,20 @@ from offre_extract_company_adapters import (  # noqa: E402
 )
 from offre_extract_structured import suggest_form_type  # noqa: E402
 
-# PDF réels connus (mettre à jour quand Cemile dépose AXA/Zurich/…)
+# PDF réels connus (auto + 3P) — mettre à jour quand Cemile dépose d'autres polices
 KNOWN_REAL_PDFS = [
+    Path(r"C:\Users\offic\Desktop\Insurance Porsche & Toyota 2026.pdf"),
+]
+
+PRESET_3P_PDFS = [
+    Path(r"C:\Users\offic\Desktop\Dossier client\CHABLOZ Jean Michel et Vanessa\3p axa vanessa.pdf"),
+    Path(r"C:\Users\offic\Desktop\Dossier client\CHABLOZ Jean Michel et Vanessa\AXA 3A Jean.pdf"),
+    Path(r"C:\Users\offic\Desktop\Dossier client\MAY Jean Yves\Jean-Yves May Axa.pdf"),
+    Path(r"C:\Users\offic\Desktop\Dossier client\MAY Jean Yves\Jean-Yves May Zurich.pdf"),
+    Path(r"C:\Users\offic\Downloads\HELFER William - Vaudoise Serenity Benefit Plan.pdf"),
+    Path(r"C:\Users\offic\Desktop\Dossier client\STEMPFEL Benoit\Nouvelles offres sans différé\Offre VAUDOISE 935K 15 ans.pdf"),
+    Path(r"C:\Users\offic\Desktop\Dossier client\MARTI René et Fatima\MARTI René et Fatima\Offres Vaudoise\Vaudoise RC 640k 15 ans.pdf"),
+    Path(r"C:\Users\offic\Downloads\WAHLEN Emmanuel-20261019T131930Z-1-001\WAHLEN Emmanuel\AXA 3a L50 1124952 Corinne.pdf"),
     Path(r"C:\Users\offic\Desktop\Insurance Porsche & Toyota 2026.pdf"),
 ]
 
@@ -44,6 +57,32 @@ EXPECTED_BY_STEM: dict[str, dict[str, Any]] = {
         "form_type": "voyage",
         "objets_min": 2,
     },
+    "Offre VAUDOISE 935K 15 ans": {
+        "prenom": "Benoit",
+        "nom": "Stempfel",
+        "compagnie": "Vaudoise",
+        "type_pilier": "3b",
+        "duree": 15,
+        "montant_investi": 935000.0,
+        "form_type": "pilier3",
+    },
+    "Vaudoise RC 640k 15 ans": {
+        "prenom": "René",
+        "nom": "Marti",
+        "compagnie": "Vaudoise",
+        "type_pilier": "3b",
+        "duree": 15,
+        "montant_investi": 640000.0,
+        "form_type": "pilier3",
+    },
+    "Jean-Yves May Axa": {
+        "prenom": "Jean-Yves",
+        "nom": "May",
+        "compagnie": "AXA",
+        "type_pilier": "3a",
+        "montant_prime": 3865.0,
+        "form_type": "pilier3",
+    },
 }
 
 CRM_KEYS = (
@@ -54,6 +93,10 @@ CRM_KEYS = (
     "adresse",
     "date_naissance",
     "montant_prime",
+    "montant_investi",
+    "rente_mensuelle_garantie",
+    "duree",
+    "type_pilier",
     "compagnie",
     "reference_police",
     "date_debut",
@@ -62,6 +105,7 @@ CRM_KEYS = (
     "civilite",
     "telephone",
     "email",
+    "periodicite",
 )
 
 
@@ -82,7 +126,10 @@ def _pick_form_type(raw: dict, override: Optional[str]) -> str:
         return "voyage"
     if len(veh) == 1:
         return "vehicule"
-    return "voyage"
+    # Ne plus forcer « voyage » par défaut (cassait les PDF 3P scannés).
+    if raw.get("type_pilier") or raw.get("rente_mensuelle_garantie") or raw.get("montant_investi"):
+        return "pilier3"
+    return "pilier3"
 
 
 def analyze_pdf(path: Path, *, form_type: Optional[str] = None) -> dict[str, Any]:
@@ -134,26 +181,44 @@ def analyze_pdf(path: Path, *, form_type: Optional[str] = None) -> dict[str, Any
                 return True
         return False
 
-    # Heuristique : mots visibles dans le PDF absents des objets / flat
-    for needle, label, check in (
-        ("franchise", "franchise_detail", "franchise"),
-        ("bonus", "bonus_malus", "bonus"),
-        ("leasing", "leasing_global", "leasing"),
-    ):
-        if needle in text.casefold() and not _obj_has_coverage(check):
-            present_unmapped.append(label)
+    # Heuristique auto : mots visibles dans le PDF absents des objets / flat
+    if (branche or "").startswith("vehicule") or ft in {"voyage", "vehicule"}:
+        for needle, label, check in (
+            ("franchise", "franchise_detail", "franchise"),
+            ("bonus", "bonus_malus", "bonus"),
+            ("leasing", "leasing_global", "leasing"),
+        ):
+            if needle in text.casefold() and not _obj_has_coverage(check):
+                present_unmapped.append(label)
+
+    # Heuristique 3P
+    if (branche == "pilier3" or ft.startswith("pilier3")) and text:
+        low = text.casefold()
+        if ("rente" in low or "fraction mensuelle" in low) and raw.get("rente_mensuelle_garantie") in (None, ""):
+            present_unmapped.append("rente_mensuelle")
+        if ("prime unique" in low or "montant investi" in low) and raw.get("montant_investi") in (None, ""):
+            present_unmapped.append("montant_investi")
+        if ("3a" in low or "3b" in low) and raw.get("type_pilier") in (None, ""):
+            present_unmapped.append("type_pilier")
+
+    if not (text or "").strip():
+        present_unmapped.append("texte_pdf_vide_ocr_indisponible")
 
     payload = mapped.get("form_payload") or {}
     return {
         "path": str(path),
         "size_kb": round(path.stat().st_size / 1024, 1),
         "mtime": path.stat().st_mtime,
-        "company_adapter": getattr(adapter, "company_id", None),
+        "company_adapter": getattr(adapter, "company_id", None) or raw.get("compagnie"),
         "branche": branche,
         "form_type_suggere": raw.get("form_type_suggere") or ft,
         "form_type_used": ft,
         "montant_prime": raw.get("montant_prime"),
         "montant_prime_mapped": (mapped.get("fields") or {}).get("montant_prime"),
+        "montant_investi": raw.get("montant_investi"),
+        "rente_mensuelle_garantie": raw.get("rente_mensuelle_garantie"),
+        "duree": raw.get("duree"),
+        "type_pilier": raw.get("type_pilier"),
         "objets_count": len(objets),
         "vehicules_count": len(vehicules),
         "vehicules": [
@@ -180,31 +245,46 @@ def analyze_pdf(path: Path, *, form_type: Optional[str] = None) -> dict[str, Any
             if isinstance(v, dict) and v.get("status") == "to_verify"
         ],
         "issues": _issues(raw, mapped, expected, ft),
+        "text_len": len(text or ""),
     }
 
 
 def _issues(raw: dict, mapped: dict, expected: dict, ft: str) -> list[str]:
     issues: list[str] = []
-    if raw.get("montant_prime") in (None, ""):
-        issues.append("prime_annuelle_non_extraite")
-    if (mapped.get("fields") or {}).get("montant_prime") in (None, ""):
-        issues.append("prime_non_mappee_dans_fields")
+    text_len = int(raw.get("_raw_text_len") or len(raw.get("_text") or ""))
+    if text_len == 0:
+        issues.append("pdf_sans_texte_ocr_echec")
+    is_3p = ft.startswith("pilier3") or raw.get("type_pilier") or (raw.get("form_type_suggere") or "") == "pilier3"
+    if is_3p:
+        if raw.get("montant_prime") in (None, "") and raw.get("montant_investi") in (None, ""):
+            issues.append("prime_ou_investi_non_extrait")
+        if raw.get("prenom") in (None, "") and raw.get("nom") in (None, ""):
+            issues.append("identite_absente")
+    else:
+        if raw.get("montant_prime") in (None, ""):
+            issues.append("prime_annuelle_non_extraite")
+        if (mapped.get("fields") or {}).get("montant_prime") in (None, ""):
+            issues.append("prime_non_mappee_dans_fields")
     if expected.get("montant_prime") is not None and raw.get("montant_prime") != expected.get("montant_prime"):
         issues.append(
             f"prime_mismatch_extrait={raw.get('montant_prime')}_attendu={expected.get('montant_prime')}"
+        )
+    if expected.get("montant_investi") is not None and raw.get("montant_investi") != expected.get("montant_investi"):
+        issues.append(
+            f"investi_mismatch_extrait={raw.get('montant_investi')}_attendu={expected.get('montant_investi')}"
         )
     if expected.get("objets_min") and len(raw.get("objets") or []) < int(expected["objets_min"]):
         issues.append("objets_insuffisants")
     if expected.get("form_type") and ft != expected["form_type"] and raw.get("form_type_suggere") != expected["form_type"]:
         issues.append(f"form_type_suggere_inattendu={raw.get('form_type_suggere')}")
-    if not raw.get("form_type_suggere"):
+    if not raw.get("form_type_suggere") and text_len > 0:
         issues.append("form_type_suggere_absent")
     return issues
 
 
 def render_markdown(rows: list[dict[str, Any]]) -> str:
     lines = [
-        "# Rapport PDF réels — extraction LeoSoft",
+        "# Rapport PDF réels — extraction LeoSoft (multi-branches)",
         "",
         f"Fichiers analysés : **{len(rows)}**",
         "",
@@ -212,26 +292,32 @@ def render_markdown(rows: list[dict[str, Any]]) -> str:
     if not rows:
         lines.extend(
             [
-                "> Aucun PDF réel multi-compagnies trouvé (hors ELVIA).",
+                "> Aucun PDF réel trouvé.",
                 "",
-                "Attendre de Cemile : polices/offres **AXA, Zurich, Vaudoise, Mobilière** (véhicule/voyage).",
+                "Attendre de Cemile : polices/offres **AXA, Zurich, Vaudoise, Mobilière** (auto et/ou 3P).",
                 "",
             ]
         )
         return "\n".join(lines)
 
-    lines.append("| PDF | Compagnie | branche | form_type | objets | prime | filled | OK | manquants | incorrects | problèmes |")
-    lines.append("|---|---|---|---|---:|---:|---:|---:|---:|---:|---|")
+    lines.append(
+        "| PDF | Compagnie | branche | form_type | prime / investi / rente | filled | OK | manquants | incorrects | problèmes |"
+    )
+    lines.append("|---|---|---|---|---|---:|---:|---:|---:|---|")
     for r in rows:
         c = (r.get("score") or {}).get("counts") or {}
+        money = "{pr} / {inv} / {re}".format(
+            pr=r.get("montant_prime"),
+            inv=r.get("montant_investi"),
+            re=r.get("rente_mensuelle_garantie"),
+        )
         lines.append(
-            "| {name} | {co} | {br} | {ft} | {n} | {pr} | {fk} | {ok} | {mi} | {inc} | {iss} |".format(
+            "| {name} | {co} | {br} | {ft} | {money} | {fk} | {ok} | {mi} | {inc} | {iss} |".format(
                 name=Path(r["path"]).name,
                 co=r.get("company_adapter") or "?",
                 br=r.get("branche") or "—",
                 ft=r.get("form_type_suggere") or r.get("form_type_used"),
-                n=r.get("vehicules_count") or r.get("objets_count") or 0,
-                pr=r.get("montant_prime"),
+                money=money,
                 fk=r.get("filled_keys_count"),
                 ok=c.get("ok", 0),
                 mi=c.get("missing", 0),
@@ -243,9 +329,15 @@ def render_markdown(rows: list[dict[str, Any]]) -> str:
     for r in rows:
         lines.append(f"## {Path(r['path']).name}")
         lines.append("")
-        lines.append(f"- Chemin : `{r['path']}` ({r['size_kb']} KB)")
-        lines.append(f"- Compagnie / branche / form_type : **{r.get('company_adapter')}** / `{r.get('branche')}` / `{r.get('form_type_suggere')}`")
-        lines.append(f"- Prime extraite / mappée : **{r.get('montant_prime')}** / `{r.get('montant_prime_mapped')}`")
+        lines.append(f"- Chemin : `{r['path']}` ({r['size_kb']} KB, texte={r.get('text_len')} car.)")
+        lines.append(
+            f"- Compagnie / branche / form_type : **{r.get('company_adapter')}** / `{r.get('branche')}` / `{r.get('form_type_suggere')}`"
+        )
+        lines.append(
+            f"- Prime / investi / rente / durée / type : "
+            f"**{r.get('montant_prime')}** / `{r.get('montant_investi')}` / "
+            f"`{r.get('rente_mensuelle_garantie')}` / `{r.get('duree')}` / `{r.get('type_pilier')}`"
+        )
         lines.append(f"- Véhicules : {r.get('vehicules')}")
         lines.append(f"- CRM remplis ({len(r.get('filled_crm') or {})}) : `{json.dumps(r.get('filled_crm'), ensure_ascii=False)}`")
         sc = r.get("score") or {}
@@ -256,13 +348,18 @@ def render_markdown(rows: list[dict[str, Any]]) -> str:
             lines.append(f"- Présents PDF non reconnus (heuristique) : {r['present_in_pdf_unrecognized']}")
         if r.get("issues"):
             lines.append(f"- Problèmes : {r['issues']}")
-        lines.append(f"- Préremplissage schéma : {r.get('filled_keys_count')} champs (ex. v1=`{r.get('payload_marque_v1')}`, v2=`{r.get('payload_marque_v2')}`, garage=`{r.get('payload_garage')}`)")
+        lines.append(
+            f"- Préremplissage schéma : {r.get('filled_keys_count')} champs "
+            f"(ex. v1=`{r.get('payload_marque_v1')}`, v2=`{r.get('payload_marque_v2')}`, garage=`{r.get('payload_garage')}`)"
+        )
         lines.append("")
     return "\n".join(lines)
 
 
-def collect_pdfs(paths: list[Path], directory: Optional[Path]) -> list[Path]:
+def collect_pdfs(paths: list[Path], directory: Optional[Path], preset: Optional[str]) -> list[Path]:
     found: list[Path] = []
+    if preset == "3p":
+        found.extend([p for p in PRESET_3P_PDFS if p.is_file()])
     for p in paths:
         if p.is_file() and p.suffix.lower() == ".pdf":
             found.append(p)
@@ -281,11 +378,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Rapport extraction PDF réels LeoSoft")
     parser.add_argument("pdfs", nargs="*", type=Path, help="PDF à analyser")
     parser.add_argument("--dir", type=Path, help="Dossier de PDF réels")
+    parser.add_argument("--preset", choices=["3p"], help="Jeu de PDF 3P + ELVIA connus")
     parser.add_argument("--form-type", type=str, default=None)
     parser.add_argument("--json", type=Path, help="Écrire le rapport JSON")
     args = parser.parse_args(argv)
 
-    pdfs = collect_pdfs(list(args.pdfs or []), args.dir)
+    pdfs = collect_pdfs(list(args.pdfs or []), args.dir, args.preset)
     rows = [analyze_pdf(p, form_type=args.form_type) for p in pdfs]
     md = render_markdown(rows)
     print(md)

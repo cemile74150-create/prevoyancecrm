@@ -190,6 +190,11 @@ def _find_rente_mensuelle(text: str) -> Optional[float]:
             "garantierte rente",
             "rente / mois",
             "rente/mois",
+            "fraction mensuelle",
+            "payable par fraction mensuelle",
+            "versement annuel, payable par fraction mensuelle",
+            "versements reguliers garantis",
+            "versements réguliers garantis",
         ),
         prefer_monthly=True,
     )
@@ -205,6 +210,16 @@ def _find_rente_mensuelle(text: str) -> Optional[float]:
         re.I,
     ):
         val = _compact_money_token(m.group(1))
+        if val is not None and 50 <= val <= 50000:
+            return val
+    # Vaudoise Serenity : « payable par fraction mensuelle de CHF 4'482.90 »
+    m_frac = re.search(
+        r"fraction\s+mensuelle\s+de\s+" + _MONEY_RE,
+        flat,
+        re.I,
+    )
+    if m_frac:
+        val = _compact_money_token(m_frac.group(1))
         if val is not None and 50 <= val <= 50000:
             return val
     return None
@@ -355,36 +370,130 @@ def _normalize_date(raw: str) -> Optional[str]:
     return f"{y:04d}-{mo:02d}-{d:02d}"
 
 
+_IDENTITY_HEADER_BLOCKLIST = {
+    "personne",
+    "assurée",
+    "assuree",
+    "assuré",
+    "assure",
+    "preneur",
+    "cocontractant",
+    "broker",
+    "service",
+    "center",
+    "prestations",
+    "nos",
+    "votre",
+    "police",
+    "dynamix",
+    "financement",
+}
+
+
+def _split_identity_parts(raw: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """(civilite, prenom, nom) depuis une chaîne libre."""
+    parts = [p for p in re.sub(r"\s+", " ", raw or "").strip().split() if p]
+    civilite = None
+    if parts and parts[0].casefold() in {
+        "monsieur", "madame", "mademoiselle", "herr", "frau", "fräulein", "fraulein", "mr", "mrs", "ms",
+    }:
+        tok = parts.pop(0)
+        low = tok.casefold()
+        if low in {"madame", "frau", "mrs", "ms"}:
+            civilite = "Madame"
+        elif low in {"mademoiselle", "fräulein", "fraulein"}:
+            civilite = "Mademoiselle"
+        else:
+            civilite = "Monsieur"
+    # Retirer un « nom » parasite collé (« Prénom, nom Monsieur X »)
+    if parts and parts[0].casefold() in {"nom", "name"}:
+        parts = parts[1:]
+    # Rejeter libellés de section capturés comme identité
+    if parts and any(p.casefold().strip("()") in _IDENTITY_HEADER_BLOCKLIST for p in parts[:2]):
+        return civilite, None, None
+    if len(parts) >= 2:
+        # « May Jean-Yves » (NOM Prénom composé) fréquent chez AXA
+        if len(parts) == 2 and "-" in parts[1] and "-" not in parts[0]:
+            return civilite, parts[1], parts[0]
+        if parts[0].isupper() and not parts[-1].isupper() and len(parts[0]) > 1:
+            return civilite, parts[-1], parts[0]
+        return civilite, parts[0], " ".join(parts[1:])
+    if len(parts) == 1:
+        return civilite, parts[0], None
+    return civilite, None, None
+
+
 def _find_person_name(text: str) -> Tuple[Optional[str], Optional[str]]:
     """Retourne (prenom, nom)."""
-    # « Prénom Nom » après Assuré / Preneur / Client
+    flat = text or ""
+
+    # Vaudoise Serenity : « Prénom, nom Monsieur Benoit Stempfel »
+    m_combo = re.search(
+        r"(?:^|\n)\s*pr[ée]nom\s*[,/]\s*nom\s*[:\-–]?\s*([^\n\r]{3,80})",
+        flat,
+        re.I | re.M,
+    )
+    if m_combo:
+        _civ, prenom, nom = _split_identity_parts(m_combo.group(1))
+        if prenom and nom:
+            return prenom, nom
+
+    m_combo2 = re.search(
+        r"(?:^|\n)\s*pr[ée]nom\s+et\s+nom\s*[:\-–]?\s*([^\n\r]{3,80})",
+        flat,
+        re.I | re.M,
+    )
+    if m_combo2:
+        _civ, prenom, nom = _split_identity_parts(m_combo2.group(1))
+        if prenom and nom:
+            return prenom, nom
+
+    # « Prénom Nom » après Assuré / Preneur / Client / Cocontractant (début de ligne OU inline)
     for label in (
         r"preneur\s+d['’]?assurance",
+        r"cocontractant",
+        r"personne\s+assur[ée]e",
         r"assur[ée]e?\b",
         r"client\b",
         r"titulaire",
         r"nom\s+et\s+pr[ée]nom",
         r"pr[ée]nom\s+et\s+nom",
     ):
-        m = re.search(
+        patterns = (
             rf"(?:^|\n)\s*{label}\s*[:\-–]?\s*([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][^\n\r]{{2,60}})",
-            text or "",
-            re.I | re.M,
+            rf"(?<![A-Za-zÀ-ÿ]){label}\s*[:\-–]?\s*([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][^\n\r]{{2,60}})",
         )
-        if m:
-            parts = re.sub(r"\s+", " ", m.group(1)).strip().split()
-            # Retirer civilité collée (« Madame Sophie Martin »)
-            if parts and parts[0].casefold() in {
-                "monsieur", "madame", "mademoiselle", "herr", "frau", "fräulein", "fraulein",
-            }:
-                parts = parts[1:]
-            if len(parts) >= 2:
-                # Souvent NOM Prénom ou Prénom NOM
-                if parts[0].isupper() and not parts[-1].isupper():
-                    return parts[-1], parts[0]
-                return parts[0], " ".join(parts[1:])
-    nom = _find_labeled_value(text, (r"nom(?:\s+de\s+famille)?", r"name\b"), max_len=40)
-    prenom = _find_labeled_value(text, (r"pr[ée]nom", r"vorname", r"first\s*name"), max_len=40)
+        for pat in patterns:
+            m = re.search(pat, flat, re.I | re.M)
+            if not m:
+                continue
+            raw = m.group(1).strip()
+            # Couper si collé à une autre rubrique (adresse agence, etc.)
+            raw = re.split(r"\s{2,}|(?<=\d)\s+(?=[A-Z])|NPA|T[ée]l[ée]phone|E-?mail", raw)[0].strip()
+            _civ, prenom, nom = _split_identity_parts(raw)
+            if prenom and nom:
+                return prenom, nom
+
+    nom = _find_labeled_value(
+        text,
+        (
+            r"(?<![A-Za-zÀ-ÿ,])nom(?:\s+de\s+famille)?(?!\s*,)",
+            r"(?<![A-Za-z])name\b",
+        ),
+        max_len=40,
+    )
+    prenom = _find_labeled_value(
+        text,
+        (
+            r"pr[ée]nom(?!\s*[,/])",
+            r"vorname",
+            r"first\s*name",
+        ),
+        max_len=40,
+    )
+    # Éviter « nom Monsieur … » capturé comme prénom via libellé ambigu
+    if prenom and re.match(r"(?i)^nom\b", prenom.strip()):
+        prenom = None
     if nom and prenom:
         return prenom, nom
     return prenom, nom
@@ -415,16 +524,31 @@ def _looks_like_insurer_address(npa: Optional[str], ville: Optional[str], ctx: s
     return False
 
 
+def _ctx_is_agency_contact(ctx: str) -> bool:
+    """True si le contexte est le bloc Contact / agence (pas l'adresse client)."""
+    flat = _norm(ctx)
+    return bool(
+        re.search(
+            r"votre\s+conseiller|agence\s+g[ée]n[ée]rale|contact\b|"
+            r"bureau\s+de\s+vente|service\s+comp[ée]tent|"
+            r"place\s+de\s+milan|vaudoise\.ch|axa\.ch|winterthur|"
+            r"broker\s+service",
+            flat,
+        )
+    )
+
+
 def _find_adresse_block(text: str) -> Dict[str, Optional[str]]:
-    """Priorise l'adresse du preneur / détenteur ; ignore l'en-tête assureur."""
+    """Priorise l'adresse du preneur / détenteur ; ignore l'en-tête assureur / agence."""
     adresse = None
     npa = None
     ville = None
+    raw = text or ""
 
     # 1) Bloc PRENEUR D'ASSURANCE « RUE, NPA VILLE »
     m_preneur = re.search(
         r"PRENEUR\s+D['’]?ASSURANCE\s+[^\n]+\s+([A-Z0-9][^\n,]{3,60}),\s*(\d{4})\s+([A-Za-zÀ-ÿ' \-]{2,40})",
-        text or "",
+        raw,
         re.I,
     )
     if m_preneur:
@@ -439,7 +563,7 @@ def _find_adresse_block(text: str) -> Dict[str, Optional[str]]:
             r"[A-Za-zÀ-ÿ' \-]{2,40}\s*\n"
             r"([A-Za-zÀ-ÿ0-9' \-]{3,60})\s*\n"
             r"(\d{4})\s+([A-Za-zÀ-ÿ' \-]{2,40})",
-            text or "",
+            raw,
             re.I,
         )
         if m_det:
@@ -447,53 +571,124 @@ def _find_adresse_block(text: str) -> Dict[str, Optional[str]]:
             npa = npa or m_det.group(2)
             ville = ville or m_det.group(3).strip()
 
-    if not adresse:
-        adresse = _find_labeled_value(
-            text,
-            (r"adresse", r"rue", r"domicile", r"strasse", r"address"),
-            max_len=100,
+    # Adresse AXA / letter : ligne après le nom du preneur (ex. Route de la Croix 10 / 1948 Sarreyer)
+    if not adresse or not npa:
+        m_letter = re.search(
+            r"(?:Monsieur|Madame|Mademoiselle)\s*\n"
+            r"[A-Za-zÀ-ÿ' \-]{2,50}\s*\n"
+            r"([A-Za-zÀ-ÿ0-9' \-]{3,60})\s*\n"
+            r"(\d{4})\s+([A-Za-zÀ-ÿ' \-]{2,40})",
+            raw,
+            re.I,
         )
+        if m_letter and not _ctx_is_agency_contact(raw[max(0, m_letter.start() - 80) : m_letter.end()]):
+            adresse = adresse or m_letter.group(1).strip()
+            npa = npa or m_letter.group(2)
+            ville = ville or m_letter.group(3).strip()
+
+    if not adresse:
+        for m_addr in re.finditer(
+            r"(?:^|\n)\s*(?:Adresse|Rue|Domicile|Strasse|Address)\s*[:\-–]?\s*([^\n\r]{3,100})",
+            raw,
+            re.I | re.M,
+        ):
+            ctx = raw[max(0, m_addr.start() - 120) : m_addr.end() + 40]
+            if _ctx_is_agency_contact(ctx):
+                continue
+            adresse = m_addr.group(1).strip(" \t.:;,-–")
+            break
 
     if not npa:
-        m = re.search(
-            r"(?:^|\n)\s*(?:NPA|CP|PLZ|Code\s*postal)\s*[:\-–]?\s*(\d{4})\b",
-            text or "",
+        for m in re.finditer(
+            r"(?:^|\n)\s*(?:NPA|CP|PLZ|Code\s*postal|NPA\s*-\s*Localit[ée])\s*[:\-–]?\s*(\d{4})\b",
+            raw,
             re.I | re.M,
-        )
-        if m:
+        ):
+            ctx = raw[max(0, m.start() - 120) : m.end() + 40]
+            if _ctx_is_agency_contact(ctx):
+                continue
             npa = m.group(1)
+            # Ville éventuellement collée : « 1204 Genève » (pas « 1000\nVille »)
+            m_ville_inline = re.search(
+                rf"{re.escape(npa)}\s+([A-Za-zÀ-ÿ' \-]{{2,40}})",
+                raw[m.start() : m.start() + 80],
+            )
+            if m_ville_inline and not ville:
+                cand_v = m_ville_inline.group(1).strip()
+                if cand_v.casefold() not in {
+                    "ville", "localité", "localite", "ort", "city", "npa", "adresse",
+                }:
+                    ville = cand_v
+            break
     if not ville:
-        m2 = re.search(
+        for m2 in re.finditer(
             r"(?:^|\n)\s*(?:Ville|Localit[ée]|Ort|City)\s*[:\-–]?\s*([A-Za-zÀ-ÿ' \-]{2,40})",
-            text or "",
+            raw,
             re.I | re.M,
-        )
-        if m2:
-            ville = m2.group(1).strip()
+        ):
+            ctx = raw[max(0, m2.start() - 120) : m2.end() + 40]
+            if _ctx_is_agency_contact(ctx):
+                continue
+            cand = m2.group(1).strip()
+            if re.search(r"(?i)\bwww\b|\.ch\b", cand):
+                continue
+            ville = cand
+            break
 
-    # Pattern « 1000 Lausanne » — ignorer en-tête assureur (8010 Zürich ELVIA)
+    def _plausible_swiss_npa(cand: str) -> bool:
+        if not cand or not cand.isdigit() or len(cand) != 4:
+            return False
+        # Années (éditions / dates) ≠ NPA suisses typiques hors plage postale
+        n = int(cand)
+        if 1900 <= n <= 2099:
+            return False
+        return 1000 <= n <= 9999
+
+    def _plausible_ville(cand: str) -> bool:
+        if not cand or len(cand) < 2 or len(cand) > 40:
+            return False
+        if re.search(
+            r"(?i)\b(www|cette|offre|tarif|valeur|édition|edition|agence|établi|"
+            r"naissance|nationalit|conseiller|cocontractant|de\s+naissance)\b",
+            cand,
+        ):
+            return False
+        if len(cand.split()) > 4:
+            return False
+        return True
+
+    # Pattern « 1000 Lausanne » — ignorer en-tête assureur (8010 Zürich ELVIA) et pied Vaudoise
     if not npa or not ville:
         for m3 in re.finditer(
             r"\b(\d{4})\s+([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-Za-zÀ-ÿ' \-]{1,40})\b",
-            text or "",
+            raw,
         ):
             cand_npa, cand_ville = m3.group(1), m3.group(2).strip()
-            ctx = (text or "")[max(0, m3.start() - 80) : m3.end() + 40]
-            if _looks_like_insurer_address(cand_npa, cand_ville, ctx):
+            ctx = raw[max(0, m3.start() - 80) : m3.end() + 40]
+            if not _plausible_swiss_npa(cand_npa) or not _plausible_ville(cand_ville):
+                continue
+            if _looks_like_insurer_address(cand_npa, cand_ville, ctx) or _ctx_is_agency_contact(ctx):
                 continue
             npa = npa or cand_npa
             ville = ville or cand_ville
             break
 
-    if npa and ville and _looks_like_insurer_address(npa, ville, text or ""):
-        # Dernier filet : ne pas renvoyer l'adresse assureur comme preneur
+    if npa and not _plausible_swiss_npa(str(npa)):
+        npa = None
+    if ville and not _plausible_ville(str(ville)):
+        ville = None
+
+    if npa and ville and (
+        _looks_like_insurer_address(npa, ville, raw) or _ctx_is_agency_contact(f"{adresse or ''} {ville}")
+    ):
+        # Dernier filet : ne pas renvoyer l'adresse assureur/agence comme preneur
         if not m_preneur:
-            npa, ville, adresse = None, None, adresse
+            npa, ville, adresse = None, None, None
 
     pays = None
     pays_match = re.search(
         r"(?:^|\n)\s*Pays\s*[:：]\s*([A-Za-zÀ-ÿ' .\-]{2,40})",
-        text or "",
+        raw,
         re.I,
     )
     if pays_match:
@@ -502,7 +697,16 @@ def _find_adresse_block(text: str) -> Dict[str, Optional[str]]:
 
 
 def _find_police_number(text: str) -> Optional[str]:
-    return _find_labeled_value(
+    raw = text or ""
+    # AXA / Zurich : « Police de prévoyance n° L50 1404842 »
+    m_prev = re.search(
+        r"police\s+de\s+pr[ée]voyance\s*n[°oº]?\s*([A-Z0-9][A-Z0-9./]*\s*[0-9][A-Z0-9./]*)",
+        raw,
+        re.I,
+    )
+    if m_prev:
+        return re.sub(r"\s+", " ", m_prev.group(1)).strip(" \t.:;,-–") or None
+    labeled = _find_labeled_value(
         text,
         (
             r"n[°oº]\s*(?:de\s+)?police",
@@ -514,6 +718,27 @@ def _find_police_number(text: str) -> Optional[str]:
         ),
         max_len=40,
     )
+    if labeled:
+        labeled = re.split(r"\s*[-–]\s*pr[ée]voyance|\s{2,}", labeled, maxsplit=1)[0].strip()
+        # Écarter OCR bruité / libellés de formulaire
+        if re.search(
+            r"(?i)mail|internet|téléphone|telephone|preneur|agence|conseiller|cocontractant",
+            labeled,
+        ):
+            labeled = None
+        elif not re.search(r"[0-9A-Za-z]", labeled or ""):
+            labeled = None
+        if labeled:
+            return labeled
+    # Vaudoise Serenity : « N° 86510062000281065 » près de l'offre / cocontractant
+    m_offre = re.search(
+        r"(?:^|\n)\s*N[°oº]\s*([0-9]{10,20})\b",
+        raw,
+        re.I | re.M,
+    )
+    if m_offre:
+        return m_offre.group(1).strip()
+    return None
 
 
 def _find_prime_annuelle(text: str) -> Optional[float]:
@@ -620,12 +845,26 @@ _INSURER_CONTACT_BLOCKLIST = (
     "+41433119990",
     "0433119990",
     "contact@elvia.ch",
+    "vaudoise.ch",
+    "axa.ch",
+    "zurich.ch",
+    "elvia.ch",
+    "allianz.ch",
+    "helvetia.ch",
+    "geneve@vaudoise",
+    "services.el@axa",
+    "prevoyance@axa",
 )
 
 
 def _is_insurer_contact(value: str, ctx: str = "") -> bool:
-    compact = re.sub(r"[\s./-]", "", (value or "").lower())
-    if any(b in compact for b in _INSURER_CONTACT_BLOCKLIST):
+    low = (value or "").lower()
+    compact = re.sub(r"[\s./-]", "", low)
+    for b in _INSURER_CONTACT_BLOCKLIST:
+        b_low = b.lower()
+        if b_low in low or re.sub(r"[\s./-]", "", b_low) in compact:
+            return True
+    if _ctx_is_agency_contact(ctx):
         return True
     flat_ctx = _norm(ctx)
     if re.search(r"sinistre|service\s+center|elvia\.ch|assureur\s+et\s+porteur", flat_ctx):
@@ -659,6 +898,10 @@ def _find_telephone(text: str) -> Optional[str]:
             val = m.group(1).strip(" \t.:;,-–")
             ctx = flat[max(0, m.start() - 100) : m.end() + 40]
             if not val or _is_insurer_contact(val, ctx):
+                continue
+            if not re.search(r"\d{2}", val):
+                continue
+            if re.search(r"(?i)mail|internet|lnternet|e-?mail", val):
                 continue
             return val
     return None
@@ -715,17 +958,35 @@ def extract_offre_fields(
     montant = _find_montant_investi(text)
     duree = _find_duree_ans(text, filename)
     prenom, nom = _find_person_name(text)
-    if structured_flat.get("prenom"):
+    # Ne pas écraser un parsing 3P correct par un prénom structuré trop large
+    # (ex. lettre AXA / cocontractant déjà résolus).
+    if structured_flat.get("prenom") and not prenom:
         prenom = structured_flat["prenom"]
-    if structured_flat.get("nom"):
+    elif structured_flat.get("prenom") and prenom:
+        # Prefer structured only if legacy looks broken
+        if re.match(r"(?i)^(nom|de|du|le)\b", str(prenom)) or "(" in str(prenom):
+            prenom = structured_flat["prenom"]
+    if structured_flat.get("nom") and not nom:
         nom = structured_flat["nom"]
     addr = _find_adresse_block(text)
-    if structured_flat.get("npa"):
+    # Adresse structurée (auto) prioritaire ; sinon éviter d'écraser un nettoyage 3P
+    if structured_flat.get("npa") and (structured_flat.get("form_type_suggere") or "").startswith("vehic"):
         addr["npa"] = structured_flat["npa"]
-    if structured_flat.get("ville"):
+    elif structured_flat.get("npa") and not addr.get("npa"):
+        addr["npa"] = structured_flat["npa"]
+    if structured_flat.get("ville") and (structured_flat.get("form_type_suggere") or "").startswith("vehic"):
         addr["ville"] = structured_flat["ville"]
-    if structured_flat.get("adresse"):
+    elif structured_flat.get("ville") and not addr.get("ville"):
+        addr["ville"] = structured_flat["ville"]
+    if structured_flat.get("adresse") and (structured_flat.get("form_type_suggere") or "").startswith("vehic"):
         addr["adresse"] = structured_flat["adresse"]
+    elif structured_flat.get("adresse") and not addr.get("adresse"):
+        addr["adresse"] = structured_flat["adresse"]
+    # Voyage / multi-véhicules : toujours prendre le bloc preneur structuré
+    if (structured_flat.get("form_type_suggere") or "") == "voyage":
+        for k in ("npa", "ville", "adresse"):
+            if structured_flat.get(k):
+                addr[k] = structured_flat[k]
 
     date_naissance = structured_flat.get("date_naissance") or _find_date(
         text,
@@ -739,13 +1000,42 @@ def extract_offre_fields(
     )
     date_debut = structured_flat.get("date_debut") or _find_date(
         text,
-        (r"date\s+de\s+d[ée]but", r"entr[ée]e\s+en\s+vigueur", r"d[ée]but\s+(?:du\s+)?contrat", r"beginn", r"start\s+date", r"valable\s+[àa]\s+partir\s+du"),
+        (
+            r"date\s+d['’]?effet",
+            r"date\s+de\s+d[ée]but",
+            r"entr[ée]e\s+en\s+vigueur",
+            r"d[ée]but\s+(?:du\s+)?contrat",
+            r"beginn",
+            r"start\s+date",
+            r"valable\s+[àa]\s+partir\s+du",
+            r"nouvelle\s+couverture\s+d[eè]s\s+le",
+        ),
     )
     date_fin = structured_flat.get("date_fin") or _find_date(
         text,
         (r"date\s+de\s+fin", r"[ée]ch[ée]ance", r"fin\s+(?:du\s+)?contrat", r"ablauf", r"end\s+date", r"terme", r"expiration\s+de\s+l['’]?assurance"),
     )
+    # Vaudoise : « Date d'effet - Echéance 01.11.2026 - 31.10.2041 »
+    if not date_debut or not date_fin:
+        m_eff = re.search(
+            r"date\s+d['’]?effet\s*[-–]\s*[ée]ch[ée]ance\s+"
+            r"(\d{1,2}[./]\d{1,2}[./]\d{2,4})\s*[-–]\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+            text or "",
+            re.I,
+        )
+        if m_eff:
+            date_debut = date_debut or _normalize_date(m_eff.group(1))
+            date_fin = date_fin or _normalize_date(m_eff.group(2))
+
     civilite = structured_flat.get("civilite") or _find_labeled_value(text, (r"civilit[ée]", r"anrede", r"title"), max_len=20)
+    if not civilite:
+        m_civ_line = re.search(
+            r"(?:^|\n)\s*pr[ée]nom\s*(?:[,/]|et)\s*nom\s*[:\-–]?\s*(Monsieur|Madame|Mademoiselle)\b",
+            text or "",
+            re.I | re.M,
+        )
+        if m_civ_line:
+            civilite = m_civ_line.group(1)
     if civilite:
         c = civilite.casefold()
         if "madame" in c or "frau" in c or c.startswith("mme"):
@@ -760,11 +1050,22 @@ def extract_offre_fields(
     montant_prime = structured_flat.get("montant_prime")
     if montant_prime is None:
         montant_prime = _find_prime_annuelle(text)
+    periodicite_val = structured_flat.get("periodicite") or _find_periodicite(text)
+    # Produits 3P à prime unique : exposer le capital investi comme montant_prime CRM
+    # si aucune cotisation annuelle n'est présente (Serenity / capitalisation).
+    if montant_prime is None and montant is not None and (
+        periodicite_val == "Prime unique" or "prime unique" in _norm(text)
+    ):
+        montant_prime = montant
 
     telephone = structured_flat.get("telephone")
+    if telephone and _is_insurer_contact(str(telephone), text[:800] if text else ""):
+        telephone = None
     if telephone is None:
         telephone = _find_telephone(text)
     email = structured_flat.get("email")
+    if email and _is_insurer_contact(str(email), text[:800] if text else ""):
+        email = None
     if email is None:
         email = _find_email(text)
 
@@ -805,7 +1106,7 @@ def extract_offre_fields(
         "sexe": _find_labeled_value(text, (r"sexe", r"geschlecht"), max_len=20),
         "statut_professionnel": _find_labeled_value(text, (r"statut\s+professionnel",), max_len=40),
         "fumeur": _find_labeled_value(text, (r"fumeur",), max_len=20),
-        "periodicite": structured_flat.get("periodicite") or _find_periodicite(text),
+        "periodicite": periodicite_val,
         "type_pilier": _find_type_pilier(text),
         "objets": structured_flat.get("objets") or [],
         "form_type_suggere": structured_flat.get("form_type_suggere"),
@@ -839,6 +1140,11 @@ def map_extract_to_form(
         fields["compagnies"] = [extracted["compagnie"]]
     if extracted.get("rente_mensuelle_garantie") is not None:
         fields["rente_invalidite"] = str(extracted["rente_mensuelle_garantie"])
+        fields["rente_mensuelle_garantie"] = extracted["rente_mensuelle_garantie"]
+    if extracted.get("montant_investi") is not None:
+        fields["montant_investi"] = extracted["montant_investi"]
+    if extracted.get("type_pilier"):
+        fields["type_pilier"] = extracted["type_pilier"]
     for extra in ("profession", "email", "telephone", "permis", "sexe", "statut_professionnel", "periodicite"):
         val = extracted.get(extra)
         if val not in (None, "", NON_INDIQUE):

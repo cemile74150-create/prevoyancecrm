@@ -27,8 +27,24 @@ SECTION_SYNONYMS: Dict[str, Tuple[str, ...]] = {
         "preneur dassurance",
         "versicherungsnehmer",
         "contratant",
+        "cocontractant",
         "policyholder",
         "titulaire de la police",
+        "personne assurée",
+    ),
+    "prime_unique": (
+        "prime unique",
+        "einmalprämie",
+        "einmalpraemie",
+        "single premium",
+        "versement unique",
+    ),
+    "rente_mensuelle": (
+        "rente mensuelle garantie",
+        "rente mensuelle",
+        "fraction mensuelle",
+        "versement annuel, payable par fraction mensuelle",
+        "monatliche rente",
     ),
     "detenteur": (
         "détenteur",
@@ -151,10 +167,14 @@ ADAPTERS: List[CompanyAdapter] = [
         label_rewrites={
             "N° de police": "Police no.",
             "Assuré principal": "PRENEUR D'ASSURANCE",
+            "Cocontractant": "PRENEUR D'ASSURANCE",
+            "Prénom, nom": "Prénom et nom",
             "Immatriculation": "Plaque",
             "Prime totale annuelle": "PRIME ANNUELLE",
             "Garage / parking: oui": "Place de garage à disposition: Oui",
+            "payable par fraction mensuelle de": "rente mensuelle garantie",
         },
+        notes=["Auto + prévoyance Serenity (prime unique / fraction mensuelle)"],
     ),
     CompanyAdapter(
         company_id="AXA",
@@ -162,12 +182,16 @@ ADAPTERS: List[CompanyAdapter] = [
         label_rewrites={
             "Vertragsnummer": "Police no.",
             "Versicherungsnehmer": "PRENEUR D'ASSURANCE",
+            "Preneur dassurance": "PRENEUR D'ASSURANCE",
             "Fahrzeug": "Véhicule assuré",
             "Kontrollschild": "Plaque",
             "Jahresprämie": "PRIME ANNUELLE",
             "Garagenplatz: Ja": "Place de garage à disposition: Oui",
             "Geburtsdatum": "Date de naissance",
+            "Police de prévoyance": "Police de prévoyance",
+            "Prévoyance liée 3a": "Prévoyance liée 3a",
         },
+        notes=["Auto + polices / valeurs 3a Dynamix"],
     ),
     CompanyAdapter(
         company_id="Zurich",
@@ -178,7 +202,11 @@ ADAPTERS: List[CompanyAdapter] = [
             "Registration plate": "Plaque",
             "Annual premium": "PRIME ANNUELLE",
             "Garage available: Yes": "Place de garage à disposition: Oui",
+            "3rd pillar": "pilier 3",
+            "pillar 3a": "pilier 3a",
+            "pillar 3b": "pilier 3b",
         },
+        notes=["Auto + 3P ; PDF scannés sans OCR → champs vides"],
     ),
 ]
 

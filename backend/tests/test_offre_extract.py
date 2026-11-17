@@ -144,3 +144,62 @@ Durée du contrat : 20 ans
     assert "Helvetia" in (mapped["fields"].get("compagnies") or [])
     assert mapped["numero_offre"] == "OFF-2026-0042"
 
+
+VAUDOISE_SERENITY_SAMPLE = """
+VAUDOISE VIE, Compagnie d'Assurances SA, Place de Milan, C.P. 120, 1001 Lausanne www.vaudoise.ch
+1/7 Offre Serenity Benefit Plan sans différé
+Prévoyance individuelle libre (pilier 3b)
+N° 86510062000281065
+Cocontractant
+Prénom, nom Monsieur Benoit Stempfel
+Date de naissance 19.11.1956
+Date d'effet - Echéance 01.11.2026 - 31.10.2041
+Durée 15 ans
+Contact
+Votre conseiller AGENCE MENDES Sàrl
+Adresse Bd du Théâtre 9
+NPA - Localité 1204 Genève
+Téléphone 022 317 72 72
+E-mail geneve@vaudoise.ch
+Versement annuel, payable par fraction mensuelle de
+CHF 4'482.90, la première fois le 30.11.2026
+Prime unique 935'000.00
+Montant investi dans le fonds Vaudoise Umbrella Fund - Dynamic S 74'143.50
+"""
+
+
+def test_vaudoise_serenity_3p_generic_extract(monkeypatch):
+    monkeypatch.setattr("pdf_generator._extract_pdf_text", lambda _b: VAUDOISE_SERENITY_SAMPLE)
+    result = extract_offre_fields(b"%PDF-1.4", filename="Offre VAUDOISE 935K 15 ans.pdf")
+    assert result["form_type_suggere"] == "pilier3"
+    assert result["compagnie"] == "Vaudoise"
+    assert result["type_pilier"] == "3b"
+    assert result["prenom"] == "Benoit"
+    assert result["nom"] == "Stempfel"
+    assert result["civilite"] == "Monsieur"
+    assert result["date_naissance"] == "1956-11-19"
+    assert result["duree"] == 15
+    assert result["montant_investi"] == 935000.0
+    assert result["rente_mensuelle_garantie"] == 4482.9
+    assert result["montant_prime"] == 935000.0
+    assert result["reference_police"] == "86510062000281065"
+    assert result["date_debut"] == "2026-11-01"
+    assert result["date_fin"] == "2041-10-31"
+    # Adresse agence non inventée comme adresse client
+    assert result["email"] is None
+    mapped = map_extract_to_form(result, form_type="pilier3")
+    assert mapped["fields"]["prenom"] == "Benoit"
+    assert mapped["fields"]["montant_investi"] == 935000.0
+    assert mapped["fields"]["type_pilier"] == "3b"
+
+
+def test_branche_rc_alone_does_not_override_pilier3():
+    from offre_extract_structured import _detect_branche
+
+    br = _detect_branche(
+        "Prévoyance individuelle libre (pilier 3b) Offre Serenity "
+        "responsabilité civile mention annexée sans véhicule",
+        "Vaudoise RC 640k 15 ans.pdf",
+    )
+    assert br.get("value") == "pilier3"
+
