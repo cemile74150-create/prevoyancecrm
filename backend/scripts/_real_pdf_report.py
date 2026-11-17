@@ -83,6 +83,15 @@ EXPECTED_BY_STEM: dict[str, dict[str, Any]] = {
         "montant_prime": 3865.0,
         "form_type": "pilier3",
     },
+    "Jean-Yves May Zurich": {
+        "prenom": "Jean-Yves",
+        "nom": "May",
+        "compagnie": "Zurich",
+        "reference_police": "9.363.640",
+        "montant_investi": 74931.0,
+        "form_type": "pilier3",
+        # Pas de montant_prime attendu (feuille prestations / valeurs)
+    },
 }
 
 CRM_KEYS = (
@@ -212,6 +221,10 @@ def analyze_pdf(path: Path, *, form_type: Optional[str] = None) -> dict[str, Any
         "company_adapter": getattr(adapter, "company_id", None) or raw.get("compagnie"),
         "branche": branche,
         "form_type_suggere": raw.get("form_type_suggere") or ft,
+        "form_type_candidates": raw.get("form_type_candidates") or [],
+        "form_type_needs_confirm": bool(raw.get("form_type_needs_confirm")),
+        "document_type": raw.get("document_type"),
+        "page_refs": raw.get("page_refs") or [],
         "form_type_used": ft,
         "montant_prime": raw.get("montant_prime"),
         "montant_prime_mapped": (mapped.get("fields") or {}).get("montant_prime"),
@@ -331,8 +344,13 @@ def render_markdown(rows: list[dict[str, Any]]) -> str:
         lines.append("")
         lines.append(f"- Chemin : `{r['path']}` ({r['size_kb']} KB, texte={r.get('text_len')} car.)")
         lines.append(
-            f"- Compagnie / branche / form_type : **{r.get('company_adapter')}** / `{r.get('branche')}` / `{r.get('form_type_suggere')}`"
+            f"- Compagnie / branche / form_type / document : **{r.get('company_adapter')}** / "
+            f"`{r.get('branche')}` / `{r.get('form_type_suggere')}` / `{r.get('document_type')}`"
         )
+        if r.get("form_type_candidates"):
+            lines.append(f"- Candidats form_type : `{r.get('form_type_candidates')}` (confirm={r.get('form_type_needs_confirm')})")
+        if r.get("page_refs"):
+            lines.append(f"- Pages OCR/source : `{r.get('page_refs')}`")
         lines.append(
             f"- Prime / investi / rente / durée / type : "
             f"**{r.get('montant_prime')}** / `{r.get('montant_investi')}` / "

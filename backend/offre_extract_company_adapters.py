@@ -206,7 +206,7 @@ ADAPTERS: List[CompanyAdapter] = [
             "pillar 3a": "pilier 3a",
             "pillar 3b": "pilier 3b",
         },
-        notes=["Auto + 3P ; PDF scannés sans OCR → champs vides"],
+        notes=["Auto + 3P ; scans : OCR images embarquées (feuille prestations)"],
     ),
 ]
 

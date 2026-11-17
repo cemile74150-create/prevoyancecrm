@@ -44,6 +44,8 @@ const EXTRACT_LABELS = {
   reference_police: "N° police",
   periodicite: "Périodicité",
   form_type_suggere: "Type suggéré",
+  document_type: "Type de document",
+  gf_subtype_suggere: "Sous-type GF",
   objets_count: "Véhicules / objets",
   email: "E-mail",
   telephone: "Téléphone",
@@ -117,6 +119,7 @@ export default function ModifierOffre() {
   const { hasPerm, user, isAdmin } = useAuth();
   const canEdit = hasPerm("demandes_offres.edit");
   const pdfRef = useRef(null);
+  const lastPdfFileRef = useRef(null);
   const userTouchedRef = useRef(false);
   const agentIdentity = useMemo(() => agentIdentityFromUser(user), [user]);
 
@@ -148,6 +151,7 @@ export default function ModifierOffre() {
   const [prefilledCount, setPrefilledCount] = useState(0);
   const [pdfFieldStatuses, setPdfFieldStatuses] = useState(null);
   const [pendingOverwrite, setPendingOverwrite] = useState(null); // { payload, statuses, filledKeys, skipped }
+  const [pendingFormType, setPendingFormType] = useState(null); // { suggested, candidates, current }
 
   useEffect(() => {
     let cancelled = false;
@@ -183,6 +187,8 @@ export default function ModifierOffre() {
     setPrefilledCount(0);
     setPdfFieldStatuses(null);
     setPendingOverwrite(null);
+    setPendingFormType(null);
+    lastPdfFileRef.current = null;
     userTouchedRef.current = false;
   };
 
@@ -331,50 +337,114 @@ export default function ModifierOffre() {
     toast.message("Valeurs existantes conservées — le PDF n'a pas écrasé les champs déjà saisis");
   };
 
+  const analysePdfFile = async (file, formTypeOverride) => {
+    if (!file || !(formTypeOverride || selectedType)) return null;
+    const formType = formTypeOverride || selectedType.form_type;
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("form_type", formType);
+    if (numeroInput.trim()) fd.append("numero", numeroInput.trim());
+    const res = await api.post("/demandes-offres/modifier/analyse-pdf", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  };
+
+  const applyAnalyseResult = (data) => {
+    const action = data.action || (data.demande?.id ? "rattacher" : "creer");
+    if (action === "creer" && source === "leosoft") {
+      toast.message("PDF hors LeoSoft : une nouvelle demande sera créée. L'offre déjà enregistrée n'est pas modifiée.");
+    }
+    const suggested = data.form_type_suggere;
+    const candidates = Array.isArray(data.form_type_candidates) ? data.form_type_candidates : [];
+    if (
+      data.form_type_needs_confirm
+      || (suggested && selectedType?.form_type && suggested !== selectedType.form_type)
+    ) {
+      setPendingFormType({
+        suggested,
+        candidates: candidates.length
+          ? candidates
+          : suggested
+            ? [{ form_type: suggested, label: suggested, confidence: 0.8 }]
+            : [],
+        current: selectedType?.form_type,
+        document_type: data.document_type || null,
+        gf_subtype: data.gf_subtype_suggere || null,
+      });
+    } else {
+      setPendingFormType(null);
+    }
+    applyPrefill(data);
+    const nFilled = Array.isArray(data.filled_keys)
+      ? data.filled_keys.length
+      : Object.keys(data.fields || {}).filter((k) => data.fields[k] != null && data.fields[k] !== "").length;
+    if (action === "rattacher") {
+      const kept = data.demande?.numero || data.numero || "la demande existante";
+      toast.success(`PDF rattaché à ${kept} — numéro OFF et objet e-mail conservés`);
+    } else if (action === "refus") {
+      toast.error("Ce n° OFF ne correspond à aucune demande. Aucune nouvelle demande n'a été créée.");
+    } else {
+      toast.success(
+        nFilled
+          ? `PDF analysé — ${nFilled} champ(s) prérempli(s)`
+          : "PDF importé — peu de champs détectés, vérifiez manuellement",
+      );
+    }
+  };
+
+  const confirmSuggestedFormType = async (candidate) => {
+    const file = lastPdfFileRef.current;
+    const nextType = candidate?.form_type;
+    if (!nextType || !file) {
+      setPendingFormType(null);
+      return;
+    }
+    if (nextType === selectedType?.form_type) {
+      setPendingFormType(null);
+      toast.message("Type de formulaire confirmé");
+      return;
+    }
+    setUploading(true);
+    try {
+      const label = candidate.label || nextType;
+      setSelectedType({ form_type: nextType, label });
+      if (!isLegacyType(nextType)) {
+        try {
+          const res = await api.get(`/demandes-offres/form-types/${nextType}`);
+          setSchema(res.data?.schema || res.data || null);
+        } catch {
+          setSchema(null);
+        }
+      } else {
+        setSchema(null);
+      }
+      const data = await analysePdfFile(file, nextType);
+      if (data) {
+        setPendingFormType(null);
+        applyAnalyseResult(data);
+        toast.success(`Formulaire basculé sur « ${label} » et ré-analysé`);
+      }
+    } catch (e) {
+      toast.error(errorMessage(e, "Impossible d'appliquer le type suggéré"));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const keepCurrentFormType = () => {
+    setPendingFormType(null);
+    toast.message("Type de formulaire actuel conservé — correction manuelle toujours possible");
+  };
+
   const uploadPdf = async (event) => {
     const file = event.target.files?.[0];
     if (!file || !selectedType) return;
+    lastPdfFileRef.current = file;
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("form_type", selectedType.form_type);
-      if (numeroInput.trim()) fd.append("numero", numeroInput.trim());
-
-      const res = await api.post("/demandes-offres/modifier/analyse-pdf", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      const data = res.data;
-      const action = data.action || (data.demande?.id ? "rattacher" : "creer");
-      if (action === "creer" && source === "leosoft") {
-        toast.message("PDF hors LeoSoft : une nouvelle demande sera créée. L'offre déjà enregistrée n'est pas modifiée.");
-      }
-      if (
-        data.form_type_suggere &&
-        selectedType?.form_type &&
-        data.form_type_suggere !== selectedType.form_type &&
-        ["voyage", "vehicule"].includes(data.form_type_suggere)
-      ) {
-        toast.message(
-          `Le PDF suggère le type « ${data.form_type_suggere} » (sélection actuelle : ${selectedType.form_type}).`,
-        );
-      }
-      applyPrefill(data);
-      const nFilled = Array.isArray(data.filled_keys)
-        ? data.filled_keys.length
-        : Object.keys(data.fields || {}).filter((k) => data.fields[k] != null && data.fields[k] !== "").length;
-      if (action === "rattacher") {
-        const kept = data.demande?.numero || data.numero || "la demande existante";
-        toast.success(`PDF rattaché à ${kept} — numéro OFF et objet e-mail conservés`);
-      } else if (action === "refus") {
-        toast.error("Ce n° OFF ne correspond à aucune demande. Aucune nouvelle demande n'a été créée.");
-      } else {
-        toast.success(
-          nFilled
-            ? `PDF analysé — ${nFilled} champ(s) prérempli(s)`
-            : "PDF importé — peu de champs détectés, vérifiez manuellement",
-        );
-      }
+      const data = await analysePdfFile(file);
+      if (data) applyAnalyseResult(data);
     } catch (e) {
       toast.error(errorMessage(e, "Extraction PDF impossible"));
     } finally {
@@ -966,6 +1036,46 @@ export default function ModifierOffre() {
 
             {(source === "leosoft" || source === "off" || pdfReady) && (
               <Card className="p-5 space-y-5">
+                {pendingFormType?.suggested && (
+                  <div
+                    className="rounded-md border border-sky-400/60 bg-sky-50 px-3 py-2 text-sm text-sky-950 space-y-2"
+                    data-testid="pdf-form-type-confirm"
+                  >
+                    <p>
+                      Le PDF suggère le formulaire{" "}
+                      <span className="font-semibold">« {pendingFormType.suggested} »</span>
+                      {pendingFormType.current ? (
+                        <> (sélection actuelle : {pendingFormType.current})</>
+                      ) : null}
+                      {pendingFormType.document_type ? (
+                        <> — document détecté : {pendingFormType.document_type}</>
+                      ) : null}
+                      {pendingFormType.gf_subtype ? (
+                        <> — sous-type GF : {pendingFormType.gf_subtype}</>
+                      ) : null}
+                      . Confirmez le type ou conservez la sélection.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {(pendingFormType.candidates || []).map((c) => (
+                        <Button
+                          key={c.form_type}
+                          type="button"
+                          size="sm"
+                          variant={c.form_type === pendingFormType.suggested ? "default" : "outline"}
+                          className={c.form_type === pendingFormType.suggested ? "bg-[#002FA7] hover:bg-[#00248a]" : ""}
+                          disabled={uploading}
+                          onClick={() => confirmSuggestedFormType(c)}
+                          data-testid={`pdf-form-type-pick-${c.form_type}`}
+                        >
+                          {c.label || c.form_type}
+                        </Button>
+                      ))}
+                      <Button type="button" size="sm" variant="ghost" onClick={keepCurrentFormType}>
+                        Garder « {pendingFormType.current || selectedType?.form_type} »
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {pendingOverwrite?.skipped?.length > 0 && (
                   <div
                     className="rounded-md border border-amber-400/60 bg-amber-50 px-3 py-2 text-sm text-amber-950 space-y-2"

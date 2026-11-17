@@ -1350,6 +1350,13 @@ def attach_demandes_offres_routes(
         matched = decision.get("demande") if decision.get("action") == "rattacher" else None
 
         # Labels utiles pour l'UI
+        suggested = raw.get("form_type_suggere") or mapped.get("form_type_suggere")
+        candidates = raw.get("form_type_candidates") or mapped.get("form_type_candidates") or []
+        needs_confirm = bool(
+            raw.get("form_type_needs_confirm")
+            or mapped.get("form_type_needs_confirm")
+            or (suggested and suggested != form_type)
+        )
         labels = {
             "compagnie": raw.get("compagnie_label"),
             "rente_mensuelle_garantie": raw.get("rente_mensuelle_garantie_label"),
@@ -1371,7 +1378,9 @@ def attach_demandes_offres_routes(
             "nationalite": raw.get("nationalite"),
             "periodicite": raw.get("periodicite"),
             "type_pilier": raw.get("type_pilier"),
-            "form_type_suggere": raw.get("form_type_suggere"),
+            "form_type_suggere": suggested,
+            "document_type": raw.get("document_type"),
+            "gf_subtype_suggere": raw.get("gf_subtype_suggere") or mapped.get("gf_subtype_suggere"),
             "objets_count": len(raw.get("objets") or []) or None,
         }
         extracted_ui = {k: v for k, v in labels.items() if v not in (None, "", "Non indiqué")}
@@ -1386,9 +1395,20 @@ def attach_demandes_offres_routes(
             hint = "Ce numéro OFF ne correspond à aucune demande. Aucune nouvelle demande n'est créée."
         else:
             hint = "Formulaire prérempli depuis le PDF. Aucun numéro OFF : l'envoi crée une nouvelle demande."
+        if needs_confirm and suggested:
+            hint = (
+                f"{hint} Le PDF suggère le formulaire « {suggested} » "
+                f"(sélection actuelle : {form_type}) — confirmez le type si besoin."
+            )
         return {
             "form_type": form_type,
-            "form_type_suggere": raw.get("form_type_suggere") or mapped.get("form_type_suggere"),
+            "form_type_suggere": suggested,
+            "form_type_candidates": candidates,
+            "form_type_needs_confirm": needs_confirm,
+            "gf_subtype_suggere": raw.get("gf_subtype_suggere") or mapped.get("gf_subtype_suggere"),
+            "document_type": raw.get("document_type"),
+            "document_type_status": raw.get("document_type_status"),
+            "page_refs": raw.get("page_refs") or mapped.get("page_refs") or [],
             "filename": filename,
             "action": action,
             "numero": (matched or {}).get("numero") if matched else (decision.get("numero") if action == "refus" else None),

@@ -3761,21 +3761,35 @@ def generate_decompte_letters(
 
 def _find_tessdata() -> Optional[str]:
     import os
+
+    user_local = Path.home() / "AppData" / "Local" / "tesseract" / "tessdata"
     candidates = [
         os.environ.get("TESSDATA_PREFIX", "").rstrip("/\\"),
         *(os.environ.get("OCR_TESSDATA_CANDIDATES", "").split(":")),
+        str(user_local),
         r"C:\Program Files\Tesseract-OCR\tessdata",
         "/usr/share/tesseract-ocr/5/tessdata",
         "/usr/share/tesseract-ocr/4.00/tessdata",
         "/usr/share/tessdata",
     ]
+    # Préférer le dossier avec le plus de langues utiles (fra/deu/eng).
+    best: Optional[str] = None
+    best_score = -1
     for p in candidates:
         if not p:
             continue
         path = Path(p)
-        if path.exists() and any(path.glob("*.traineddata")):
-            return str(path)
-    # Walk common roots
+        if not path.exists():
+            continue
+        langs = {f.stem for f in path.glob("*.traineddata")}
+        if not langs:
+            continue
+        score = sum(1 for lang in ("fra", "deu", "eng") if lang in langs)
+        if score > best_score:
+            best_score = score
+            best = str(path)
+    if best:
+        return best
     for root in (Path("/usr/share/tesseract-ocr"), Path("/usr/share")):
         if not root.exists():
             continue
@@ -3796,71 +3810,222 @@ def _ocr_languages(tessdata: Optional[str]) -> str:
     return "+".join(available) if available else "eng"
 
 
+def _configure_tesseract_cmd() -> None:
+    import os
+
+    try:
+        import pytesseract
+    except ImportError:
+        return
+    tess_cmd = os.environ.get("TESSERACT_CMD")
+    if not tess_cmd:
+        for candidate in (
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+            "/usr/bin/tesseract",
+            "tesseract",
+        ):
+            if candidate == "tesseract" or Path(candidate).exists():
+                tess_cmd = candidate
+                break
+    if tess_cmd and tess_cmd != "tesseract":
+        pytesseract.pytesseract.tesseract_cmd = tess_cmd
+
+
+def _preprocess_ocr_image(img: Any) -> Any:
+    """Niveaux de gris + contraste — indispensable pour scans photo / fond tramé."""
+    from PIL import ImageOps
+
+    gray = img.convert("L") if getattr(img, "mode", "RGB") != "L" else img
+    return ImageOps.autocontrast(gray)
+
+
+def _tesseract_image_to_text(img: Any, language: str) -> str:
+    import pytesseract
+
+    prepared = _preprocess_ocr_image(img)
+    configs = (
+        "--oem 3 --psm 6",
+        "--oem 3 --psm 4",
+        "--oem 3 --psm 3",
+    )
+    best = ""
+    best_compact = 0
+    for cfg in configs:
+        try:
+            txt = pytesseract.image_to_string(prepared, lang=language, config=cfg) or ""
+        except Exception:
+            try:
+                txt = pytesseract.image_to_string(prepared, lang="eng", config=cfg) or ""
+            except Exception:
+                txt = ""
+        compact = len(re.sub(r"\s+", "", txt))
+        if compact > best_compact:
+            best = txt
+            best_compact = compact
+            if compact >= 120:
+                break
+    return best
+
+
+def _ocr_embedded_page_images(page: Any, language: str, doc: Any) -> str:
+    """
+    OCR des images embarquées (PDF photo/scan).
+    Plus fiable que le pixmap page quand la photo ne remplit pas le A4
+    (ex. Zurich feuille des prestations photographiée).
+    """
+    from PIL import Image
+
+    parts: List[str] = []
+    images = page.get_images(full=True) or []
+    # Plus grande image d'abord (souvent la page scannée).
+    ranked = sorted(images, key=lambda info: int(info[2] or 0) * int(info[3] or 0), reverse=True)
+    for info in ranked[:3]:
+        xref = info[0]
+        try:
+            base = doc.extract_image(xref)
+        except Exception:
+            continue
+        raw = base.get("image") or b""
+        if len(raw) < 800:
+            continue
+        try:
+            img = Image.open(io.BytesIO(raw))
+        except Exception:
+            continue
+        # Ignorer logos / tampons minuscules
+        w, h = img.size
+        if w * h < 80_000:
+            continue
+        txt = _tesseract_image_to_text(img, language)
+        if len(re.sub(r"\s+", "", txt)) >= 40:
+            parts.append(txt)
+    return "\n".join(parts)
+
+
+def _ocr_page_pixmap(page: Any, language: str, *, dpi: int = 250) -> str:
+    from PIL import Image
+    import fitz
+
+    pix = page.get_pixmap(matrix=fitz.Matrix(dpi / 72.0, dpi / 72.0), alpha=False)
+    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    return _tesseract_image_to_text(img, language)
+
+
+def _extract_native_tables_hint(doc: Any) -> str:
+    """
+    Complément visuel tableaux natifs (PyMuPDF find_tables).
+    Limite : inutilisable sur pages 100 % image/OCR sans couche texte.
+    """
+    lines: List[str] = []
+    try:
+        for page_index, page in enumerate(doc, start=1):
+            if not hasattr(page, "find_tables"):
+                break
+            native = (page.get_text("text") or "").strip()
+            if len(re.sub(r"\s+", "", native)) < 40:
+                continue
+            try:
+                finder = page.find_tables()
+            except Exception:
+                continue
+            tables = getattr(finder, "tables", None) or []
+            for t_i, table in enumerate(tables[:3], start=1):
+                try:
+                    rows = table.extract() or []
+                except Exception:
+                    continue
+                if not rows:
+                    continue
+                lines.append(f"[table p{page_index}.{t_i}]")
+                for row in rows[:40]:
+                    cells = [re.sub(r"\s+", " ", str(c or "")).strip() for c in row]
+                    if any(cells):
+                        lines.append(" | ".join(cells))
+    except Exception:
+        return ""
+    return "\n".join(lines)
+
+
 def _ocr_pdf_text(pdf_bytes: bytes) -> str:
-    """OCR via PyMuPDF (render) + Tesseract — robuste pour PDF scannés."""
+    """OCR via images embarquées puis pixmap + Tesseract — robuste pour PDF scannés."""
     try:
         import fitz  # pymupdf
     except ImportError:
         return ""
 
-    import os
     import logging
 
     log = logging.getLogger("server")
     tessdata = _find_tessdata()
     language = _ocr_languages(tessdata)
     if tessdata:
-        os.environ.setdefault("TESSDATA_PREFIX", tessdata)
+        os.environ["TESSDATA_PREFIX"] = tessdata
 
-    text_parts: List[str] = []
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page_count = len(doc)
+    text_parts: List[str] = []
     try:
-        # 1) pytesseract on rendered pages (most reliable)
+        _configure_tesseract_cmd()
         try:
-            import pytesseract
-            from PIL import Image
+            import pytesseract  # noqa: F401
+            from PIL import Image  # noqa: F401
 
-            tess_cmd = os.environ.get("TESSERACT_CMD")
-            if not tess_cmd:
-                for candidate in (
-                    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-                    "/usr/bin/tesseract",
-                    "tesseract",
-                ):
-                    if candidate == "tesseract" or Path(candidate).exists():
-                        tess_cmd = candidate
-                        break
-            if tess_cmd and tess_cmd != "tesseract":
-                pytesseract.pytesseract.tesseract_cmd = tess_cmd
+            for page_index, page in enumerate(doc, start=1):
+                page_chunks: List[str] = []
+                # 1) Images embarquées (scans photo — Zurich, etc.)
+                try:
+                    embedded = _ocr_embedded_page_images(page, language, doc)
+                    if len(re.sub(r"\s+", "", embedded)) >= 40:
+                        page_chunks.append(embedded)
+                except Exception as e:
+                    log.warning("OCR embedded images page %s failed: %s", page_index, e)
 
-            for page in doc:
-                pix = page.get_pixmap(dpi=150)
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                page_text = pytesseract.image_to_string(img, lang=language) or ""
-                text_parts.append(page_text)
-            joined = "\n".join(text_parts)
+                # 2) Pixmap haute résolution si insuffisant
+                compact = len(re.sub(r"\s+", "", "\n".join(page_chunks)))
+                if compact < 40:
+                    try:
+                        rendered = _ocr_page_pixmap(page, language, dpi=250)
+                        if len(re.sub(r"\s+", "", rendered)) > compact:
+                            page_chunks = [rendered]
+                    except Exception as e:
+                        log.warning("OCR pixmap page %s failed: %s", page_index, e)
+
+                body = "\n".join(page_chunks).strip()
+                # Références de pages d'origine pour meta / audit extraction
+                header = f"Page {page_index} sur {page_count}"
+                text_parts.append(f"{header}\n{body}" if body else header)
+
+            joined = "\n\n".join(text_parts)
             if len(re.sub(r"\s+", "", joined)) >= 40:
-                log.info("OCR pytesseract ok pages=%s chars=%s langs=%s tessdata=%s", len(doc), len(joined), language, tessdata)
+                log.info(
+                    "OCR pytesseract ok pages=%s chars=%s langs=%s tessdata=%s",
+                    page_count,
+                    len(joined),
+                    language,
+                    tessdata,
+                )
                 return joined
         except Exception as e:
             log.warning("OCR pytesseract failed: %s", e)
             text_parts = []
 
-        # 2) Fallback PyMuPDF built-in OCR
-        for page in doc:
+        # 3) Fallback PyMuPDF built-in OCR
+        text_parts = []
+        for page_index, page in enumerate(doc, start=1):
             try:
-                kwargs = {"dpi": 200, "language": language}
+                kwargs: Dict[str, Any] = {"dpi": 250, "language": language}
                 if tessdata:
                     kwargs["tessdata"] = tessdata
                 tp = page.get_textpage_ocr(**kwargs)
-                text_parts.append(page.get_text(textpage=tp) or "")
+                body = page.get_text(textpage=tp) or ""
             except Exception as e:
                 log.warning("OCR fitz page failed: %s", e)
-                text_parts.append(page.get_text("text") or "")
+                body = page.get_text("text") or ""
+            text_parts.append(f"Page {page_index} sur {page_count}\n{body}".strip())
     finally:
         doc.close()
 
-    joined = "\n".join(text_parts)
+    joined = "\n\n".join(text_parts)
     log.info("OCR fitz fallback chars=%s langs=%s tessdata=%s", len(joined), language, tessdata)
     return joined
 
@@ -3870,21 +4035,43 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
     Extrait le texte de toutes les pages. Si le texte natif est trop pauvre,
     bascule sur OCR. Si le texte natif existe mais contient très peu de dates,
     fusionne avec l'OCR (cas PDF hybrides / tableaux scannés).
+    Complément optionnel : tableaux natifs PyMuPDF (inefficace sur scans purs).
     """
     reader = PdfReader(io.BytesIO(pdf_bytes))
-    text = "\n".join((page.extract_text() or "") for page in reader.pages)
+    native_pages: List[str] = []
+    for i, page in enumerate(reader.pages, start=1):
+        body = page.extract_text() or ""
+        native_pages.append(f"Page {i} sur {len(reader.pages)}\n{body}".strip())
+    text = "\n\n".join(native_pages)
     compact_len = len(re.sub(r"\s+", "", text))
     date_hits = len(re.findall(r"\d{1,2}[./]\d{1,2}[./]\d{2,4}", text or ""))
 
+    table_hint = ""
+    try:
+        import fitz
+
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            table_hint = _extract_native_tables_hint(doc)
+        finally:
+            doc.close()
+    except Exception:
+        table_hint = ""
+
     if compact_len < 80:
         ocr_text = _ocr_pdf_text(pdf_bytes)
-        return ocr_text if ocr_text.strip() else text
+        merged = ocr_text if ocr_text.strip() else text
+        if table_hint:
+            merged = f"{merged}\n\n{table_hint}"
+        return merged
 
     # Texte présent mais peu de dates → tenter OCR en complément (tableaux AXA, etc.)
     if date_hits < 2:
         ocr_text = _ocr_pdf_text(pdf_bytes)
         if ocr_text and len(re.sub(r"\s+", "", ocr_text)) > compact_len * 0.5:
-            return text + "\n" + ocr_text
+            text = text + "\n" + ocr_text
+    if table_hint and table_hint not in text:
+        text = f"{text}\n\n{table_hint}"
     return text
 
 

@@ -119,8 +119,16 @@ def empty_structured_extraction() -> Dict[str, Any]:
         "garanties": [],
         "meta": {
             "pages": None,
+            "page_refs": [],
             "filename": "",
             "form_type_suggere": None,
+            "form_type_candidates": [],
+            "form_type_needs_confirm": False,
+            "gf_subtype_suggere": None,
+            "document_type": None,
+            "document_type_status": STATUS_NOT_FOUND,
+            "ocr_used": False,
+            "visual_tables_limited": False,
             "notes": [],
         },
         "audit": {
@@ -156,10 +164,63 @@ def _pilier3_signals(text: str, filename: str = "") -> bool:
             r"cocontractant|"
             r"versements?\s+r[ée]guliers?\s+garantis|"
             r"police\s+de\s+pr[ée]voyance|"
-            r"prime\s+unique",
+            r"prime\s+unique|"
+            r"feuille\s+des\s+prestations|"
+            r"assurance\s+en\s+cas\s+de\s+vie|"
+            r"somme\s+d['’]?assurance|"
+            r"valeurs?\s+de\s+rachat|"
+            r"capitalisation",
             hay,
         )
     )
+
+
+def detect_document_type(text: str, filename: str = "") -> Dict[str, Any]:
+    """
+    Distingue offre | police | décompte | document valeurs de rachat.
+    Ne déduit jamais une prime : le type guide seulement le préremplissage.
+    """
+    hay = _norm(f"{filename}\n{text}")
+    fn = _norm(filename or "")
+    scores: Dict[str, float] = {
+        "offre": 0.0,
+        "police": 0.0,
+        "decompte": 0.0,
+        "valeurs_rachat": 0.0,
+    }
+    if re.search(r"\boffre\b|proposition\s+d['’]?assurance|devis\b|simulation", hay):
+        scores["offre"] += 0.85
+    if re.search(r"\boffre\b", fn):
+        scores["offre"] += 0.35  # nom de fichier « Offre … » prioritaire
+    if re.search(
+        r"feuille\s+des\s+prestations|valeurs?\s+de\s+rachat|"
+        r"tableau\s+des\s+prestations|"
+        r"rachat\s+partiel|valeur\s+de\s+transformation",
+        hay,
+    ):
+        scores["valeurs_rachat"] += 0.95
+    # « somme d'assurance » seul (hors offre commerciale) → indices valeurs
+    if re.search(r"somme\s+d['’]?assurance|feuille\s+des\s+prestations", hay) and scores["offre"] < 0.85:
+        scores["valeurs_rachat"] += 0.7
+    if re.search(
+        r"\bpolice\b|contrat\s+d['’]?assurance|attestation\s+d['’]?assurance|"
+        r"conditions\s+particuli[eè]res|valable\s+d[eè]s\s+le",
+        hay,
+    ):
+        scores["police"] += 0.7
+    if re.search(
+        r"d[ée]compte(?:\s+de\s+primes?)?|facture\s+de\s+primes?|"
+        r"avis\s+d['’]?[ée]ch[ée]ance|prime\s+[àa]\s+payer",
+        hay,
+    ):
+        scores["decompte"] += 0.9
+
+    best_type, best_score = max(scores.items(), key=lambda kv: kv[1])
+    if best_score < 0.55:
+        return _field(status=STATUS_NOT_FOUND)
+    # Feuille des prestations Zurich = valeurs (pas une offre commerciale).
+    status = STATUS_FOUND if best_score >= 0.8 else STATUS_TO_VERIFY
+    return _field(best_type, confidence=min(0.99, best_score), status=status, source="document_type")
 
 
 def _detect_branche(text: str, filename: str = "") -> Dict[str, Any]:
@@ -232,6 +293,43 @@ def _detect_marque(text: str) -> Dict[str, Any]:
 def _extract_preneur_block(text: str) -> Dict[str, Any]:
     """Bloc preneur prioritaire (pas l'en-tête assureur)."""
     out = empty_structured_extraction()["preneur"]
+
+    # Zurich / feuille des prestations OCR :
+    # PERSONNE ASSUREE: POLICE NO …
+    # MAY JEAN-YVES FP NO. …
+    # DATE DE NAISSANCE: 19.01.1962
+    m_zurich = re.search(
+        r"PERSONNE\s+ASSUR[ÉE]E\s*[:：]?[^\n]{0,80}\n\s*"
+        r"([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*)\s+"
+        r"([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*(?:-[A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*)*)"
+        r"(?=\s+FP\b|\s+\d|\s*$|\n)",
+        text,
+        re.I,
+    )
+    if m_zurich:
+        # Convention document : NOM puis PRÉNOM en majuscules
+        nom = m_zurich.group(1).strip().title()
+        prenom = m_zurich.group(2).strip().title()
+        if nom.casefold() not in {"police", "no", "fp"} and prenom.casefold() not in {"police", "no", "fp"}:
+            out["nom"] = _field(nom, page=_page_of(text, m_zurich.start()), confidence=0.88, status=STATUS_FOUND, source="personne_assuree")
+            out["prenom"] = _field(prenom, page=_page_of(text, m_zurich.start()), confidence=0.88, status=STATUS_FOUND, source="personne_assuree")
+
+    m_dob_zurich = re.search(
+        r"DATE\s+DE\s+NAISSANCE\s*[:：]\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        text,
+        re.I,
+    )
+    if m_dob_zurich:
+        dob = _normalize_date(m_dob_zurich.group(1))
+        if dob:
+            out["date_naissance"] = _field(
+                dob,
+                page=_page_of(text, m_dob_zurich.start()),
+                confidence=0.95,
+                status=STATUS_FOUND,
+                source="date_naissance",
+            )
+
     # Bloc explicite PRENEUR D'ASSURANCE … (jusqu'au prochain titre majuscule long)
     m = re.search(
         r"PRENEUR\s+D['’]?ASSURANCE\s+([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][^\n]{2,80})\s+"
@@ -406,7 +504,12 @@ def _extract_preneur_block(text: str) -> Dict[str, Any]:
 
 def _extract_police(text: str) -> Dict[str, Any]:
     police = empty_structured_extraction()["police"]
-    m = re.search(r"(?:N[°ºo]\s*de\s*police|Police\s*no\.?|NO\s+DE\s+POLICE)\s*[:：]?\s*([A-Z0-9][A-Z0-9./-]{4,30})", text, re.I)
+    m = re.search(
+        r"(?:N[°ºo]\s*de\s*police|Police\s*no\.?|NO\s+DE\s+POLICE|POLICE\s+NO\.?)\s*[:：]?\s*"
+        r"([A-Z0-9][A-Z0-9./-]{3,30})",
+        text,
+        re.I,
+    )
     if m:
         police["numero"] = _field(m.group(1).strip(), page=_page_of(text, m.start()), confidence=0.95, status=STATUS_FOUND, source="label")
     m2 = re.search(r"(?:Num[ée]ro\s+de\s+client|NUM[ÉE]RO\s+DE\s+CLIENT)\s*[:：]?\s*([A-Z0-9]{4,30})", text, re.I)
@@ -417,8 +520,31 @@ def _extract_police(text: str) -> Dict[str, Any]:
         d = _normalize_date(m3.group(1))
         if d:
             police["date_debut"] = _field(d, page=_page_of(text, m3.start()), confidence=0.9, status=STATUS_FOUND, source="label")
+    # Zurich OCR : VALABLE DES LE / DUREE … DU … AU …
+    if police["date_debut"]["status"] != STATUS_FOUND:
+        m3b = re.search(
+            r"VALABLE\s+D[EÈÉ]S\s+LE\s+(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+            text,
+            re.I,
+        )
+        if m3b:
+            d = _normalize_date(m3b.group(1))
+            if d:
+                police["date_debut"] = _field(d, page=_page_of(text, m3b.start()), confidence=0.9, status=STATUS_FOUND, source="valable_des")
+    m_duree = re.search(
+        r"DU\s+(\d{1,2}[./]\d{1,2}[./]\d{2,4})\s+AU\s+(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        text,
+        re.I,
+    )
+    if m_duree:
+        d0 = _normalize_date(m_duree.group(1))
+        d1 = _normalize_date(m_duree.group(2))
+        if d0 and police["date_debut"]["status"] != STATUS_FOUND:
+            police["date_debut"] = _field(d0, page=_page_of(text, m_duree.start()), confidence=0.88, status=STATUS_FOUND, source="duree")
+        if d1:
+            police["date_fin"] = _field(d1, page=_page_of(text, m_duree.start()), confidence=0.9, status=STATUS_FOUND, source="duree")
     m4 = re.search(r"EXPIRATION\s+DE\s+L['’]?ASSURANCE\s+(\d{1,2}[./]\d{1,2}[./]\d{2,4})", text, re.I)
-    if m4:
+    if m4 and police["date_fin"]["status"] != STATUS_FOUND:
         d = _normalize_date(m4.group(1))
         if d:
             police["date_fin"] = _field(d, page=_page_of(text, m4.start()), confidence=0.9, status=STATUS_FOUND, source="label")
@@ -427,6 +553,30 @@ def _extract_police(text: str) -> Dict[str, Any]:
         police["motif"] = _field(m5.group(1).strip(), page=_page_of(text, m5.start()), confidence=0.8, status=STATUS_FOUND, source="label")
     return police
 
+
+def _extract_somme_assurance(text: str) -> Optional[Dict[str, Any]]:
+    """
+    Capital / somme d'assurance (valeurs de rachat / feuille prestations).
+    Ce n'est PAS une prime — à exposer comme montant_investi uniquement.
+    """
+    m = re.search(
+        r"SOMME\s+D['’\s]*ASSURANCE\s+(?:DE\s+)?(?:FR\.?|CHF)?\s*"
+        r"([0-9][0-9\s'’\u00a0\u202f:.,]*)",
+        text,
+        re.I,
+    )
+    if not m:
+        return None
+    raw = m.group(1).replace(":", " ").replace(".", "")
+    # « 74 931 » / « 74: 931 » OCR
+    digits = re.sub(r"[^\d]", "", raw)
+    if len(digits) < 3:
+        return None
+    try:
+        value = float(digits)
+    except ValueError:
+        return None
+    return _field(value, page=_page_of(text, m.start()), confidence=0.85, status=STATUS_FOUND, source="somme_assurance")
 
 def _extract_primes(text: str) -> Dict[str, Any]:
     primes = empty_structured_extraction()["primes"]
@@ -775,18 +925,94 @@ def suggest_form_type(structured: Dict[str, Any]) -> Optional[str]:
     Suggestion non forcée : voyage = plaques interchangeables (2+ véhicules),
     vehicule = un seul. Id historique « voyage » = auto multi-plaques.
     """
+    info = suggest_form_type_with_candidates(structured)
+    return info.get("form_type_suggere")
+
+
+def suggest_form_type_with_candidates(
+    structured: Dict[str, Any],
+    *,
+    text: str = "",
+) -> Dict[str, Any]:
+    """
+    Propose le formulaire LeoSoft (+ sous-type GF) et liste les candidats
+    si plusieurs sont plausibles → confirmation UI requise.
+    """
     branche = (structured.get("branche") or {}).get("value")
+    meta = structured.get("meta") or {}
+    raw_doc = meta.get("document_type")
+    if isinstance(raw_doc, dict):
+        doc_type = raw_doc.get("value")
+    else:
+        doc_type = raw_doc
     objets = structured.get("objets") or []
     vehicules = [o for o in objets if o.get("type") == "vehicule"]
+    flat = _norm(text or "")
+
+    candidates: List[Dict[str, Any]] = []
+    gf_subtype: Optional[str] = None
+
     if len(vehicules) >= 2 or branche == "vehicule_plaques_interchangeables":
-        return "voyage"
-    if len(vehicules) == 1 or branche == "vehicule":
-        return "vehicule"
-    if branche == "pilier3":
-        return "pilier3"
+        candidates.append({"form_type": "voyage", "label": "Véhicule plaques interchangeables", "confidence": 0.95})
+    elif len(vehicules) == 1 or branche == "vehicule":
+        candidates.append({"form_type": "vehicule", "label": "Véhicule", "confidence": 0.9})
+        if re.search(r"motocycle|moto\b|scooter", flat):
+            candidates.append({"form_type": "motocycle", "label": "Motocycles", "confidence": 0.7})
+
+    if branche == "pilier3" or _pilier3_signals(text):
+        conf = 0.9 if branche == "pilier3" else 0.75
+        candidates.append({"form_type": "pilier3", "label": "3ème pilier", "confidence": conf})
+        if re.search(r"risque\s+pur|d[ée]c[eè]s\s+seul|temporaire\s+en\s+cas\s+de\s+d[ée]c[eè]s", flat):
+            candidates.append(
+                {"form_type": "pilier3_risque_pur", "label": "3ème pilier risque pur", "confidence": 0.8}
+            )
+            gf_subtype = "risque_pur"
+        elif re.search(r"parent[\s-]?enfant", flat):
+            candidates.append(
+                {"form_type": "pilier3_parent_enfant", "label": "3ème pilier parent-enfant", "confidence": 0.78}
+            )
+            gf_subtype = "parent_enfant"
+        elif doc_type in {"valeurs_rachat", "police", "decompte"}:
+            gf_subtype = "vie_capitalisation"
+
     if branche == "menage_rc":
-        return "menage_rc"
-    return None
+        candidates.append({"form_type": "menage_rc", "label": "RC seule", "confidence": 0.7})
+
+    # Dédupliquer en gardant la meilleure confiance
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for c in candidates:
+        fid = c["form_type"]
+        if fid not in by_id or float(c.get("confidence") or 0) > float(by_id[fid].get("confidence") or 0):
+            by_id[fid] = c
+    ordered = sorted(by_id.values(), key=lambda c: -float(c.get("confidence") or 0))
+
+    needs_confirm = len(ordered) > 1 and (
+        float(ordered[0].get("confidence") or 0) < 0.92
+        or abs(float(ordered[0].get("confidence") or 0) - float(ordered[1].get("confidence") or 0)) < 0.15
+    )
+    # Toujours confirmer si le top n'est pas le même « genre » que le 2e (ex. voyage vs pilier3)
+    if len(ordered) > 1:
+        top, second = ordered[0]["form_type"], ordered[1]["form_type"]
+        if top.split("_")[0] != second.split("_")[0] and not (
+            top.startswith("pilier3") and second.startswith("pilier3")
+        ):
+            needs_confirm = True
+
+    return {
+        "form_type_suggere": ordered[0]["form_type"] if ordered else None,
+        "form_type_candidates": ordered,
+        "form_type_needs_confirm": needs_confirm,
+        "gf_subtype_suggere": gf_subtype,
+    }
+
+
+def _apply_form_suggestions(result: Dict[str, Any], text: str = "") -> None:
+    info = suggest_form_type_with_candidates(result, text=text)
+    meta = result.setdefault("meta", {})
+    meta["form_type_suggere"] = info.get("form_type_suggere")
+    meta["form_type_candidates"] = info.get("form_type_candidates") or []
+    meta["form_type_needs_confirm"] = bool(info.get("form_type_needs_confirm"))
+    meta["gf_subtype_suggere"] = info.get("gf_subtype_suggere")
 
 
 def extract_structured_offre(
@@ -807,12 +1033,30 @@ def extract_structured_offre(
     result = empty_structured_extraction()
     result["meta"]["filename"] = filename or ""
     result["audit"]["raw_text_len"] = len(text or "")
-    pages = re.findall(r"Page\s+\d+\s+sur\s+(\d+)", text or "", re.I)
-    if pages:
+    page_markers = re.findall(r"Page\s+(\d+)\s+sur\s+(\d+)", text or "", re.I)
+    if page_markers:
         try:
-            result["meta"]["pages"] = max(int(p) for p in pages)
+            result["meta"]["pages"] = max(int(total) for _n, total in page_markers)
+            result["meta"]["page_refs"] = sorted({int(n) for n, _t in page_markers})
         except ValueError:
             result["meta"]["pages"] = None
+    # Heuristique OCR : marqueurs Page + peu/pas de texte natif dense avant OCR
+    if page_markers and re.search(r"feuille\s+des\s+prestations|zurich|scann|ocr", _norm(f"{filename}\n{text[:400]}")):
+        result["meta"]["ocr_used"] = True
+    if "[table p" in (text or ""):
+        result["meta"]["notes"].append(
+            "Tableaux natifs PyMuPDF fusionnés — limité aux PDF avec couche texte (pas scans purs)."
+        )
+    else:
+        result["meta"]["visual_tables_limited"] = True
+        if not (text or "").strip() or result["meta"].get("ocr_used"):
+            result["meta"]["notes"].append(
+                "Analyse visuelle tableaux limitée : scans image-only → OCR Tesseract uniquement (pas find_tables)."
+            )
+
+    doc_type_field = detect_document_type(text or "", filename)
+    result["meta"]["document_type"] = doc_type_field
+    result["meta"]["document_type_status"] = doc_type_field.get("status") or STATUS_NOT_FOUND
 
     if not (text or "").strip():
         result["meta"]["notes"].append("Texte PDF vide / OCR indisponible — aucune invention de champs.")
@@ -824,8 +1068,7 @@ def extract_structured_offre(
             result["assureur"] = _field(
                 compagnie_fn, confidence=0.6, status=STATUS_TO_VERIFY, source="filename"
             )
-        suggested_empty = suggest_form_type(result)
-        result["meta"]["form_type_suggere"] = suggested_empty
+        _apply_form_suggestions(result, filename)
         return result
 
     result["branche"] = _detect_branche(text, filename)
@@ -837,6 +1080,30 @@ def extract_structured_offre(
     result["police"] = _extract_police(text)
     result["preneur"] = _extract_preneur_block(text)
     result["primes"] = _extract_primes(text)
+
+    # Valeurs de rachat / feuille prestations : capital ≠ prime (ne jamais inventer prime).
+    doc_val = doc_type_field.get("value")
+    if doc_val in {"valeurs_rachat", "police", "decompte"}:
+        somme = _extract_somme_assurance(text)
+        if somme:
+            result.setdefault("capital", {})
+            result["capital"] = {"somme_assurance": somme}
+            result["meta"]["notes"].append(
+                "Somme d'assurance / capital détecté — non utilisé comme prime annuelle."
+            )
+        # Si aucune mention explicite de prime annuelle, forcer not_found (pas d'invention).
+        if not re.search(r"prime\s+annuelle|jahresprämie|cotisation\s+annuelle", _norm(text)):
+            for key in ("annuelle_brute", "annuelle_avec_taxes", "globale"):
+                if (result["primes"].get(key) or {}).get("status") == STATUS_FOUND:
+                    # Conservé seulement si libellé prime clair — sinon déjà not_found
+                    pass
+            if not re.search(r"\bprime\b|\bcotisation\b|\bprämie\b", _norm(text)):
+                result["primes"]["globale"] = _field(status=STATUS_NOT_FOUND, source="no_prime_on_document")
+                result["primes"]["annuelle_brute"] = _field(status=STATUS_NOT_FOUND, source="no_prime_on_document")
+                result["primes"]["annuelle_avec_taxes"] = _field(status=STATUS_NOT_FOUND, source="no_prime_on_document")
+                result["meta"]["notes"].append(
+                    "Document sans prime explicite — montant_prime laissé vide."
+                )
 
     if (result["branche"].get("value") or "").startswith("vehicule") or (
         re.search(r"v[ée]hicule", _norm(text)) and not _pilier3_signals(text, filename)
@@ -860,8 +1127,7 @@ def extract_structured_offre(
                 source="multi_vehicule_same_plate",
             )
 
-    suggested = suggest_form_type(result)
-    result["meta"]["form_type_suggere"] = suggested
+    _apply_form_suggestions(result, text)
 
     # Audit flat list
     audit_fields: List[Dict[str, Any]] = []
@@ -892,8 +1158,12 @@ def structured_to_flat_extracted(structured: Dict[str, Any]) -> Dict[str, Any]:
     preneur = structured.get("preneur") or {}
     police = structured.get("police") or {}
     primes = structured.get("primes") or {}
+    capital = structured.get("capital") or {}
+    meta = structured.get("meta") or {}
     marque = _value_or_none(structured.get("marque"))
     assureur = _value_or_none(structured.get("assureur"))
+    doc_raw = meta.get("document_type")
+    document_type = doc_raw.get("value") if isinstance(doc_raw, dict) else doc_raw
 
     flat: Dict[str, Any] = {
         "compagnie": marque or assureur,
@@ -913,12 +1183,19 @@ def structured_to_flat_extracted(structured: Dict[str, Any]) -> Dict[str, Any]:
         "date_debut": _value_or_none(police.get("date_debut")),
         "date_fin": _value_or_none(police.get("date_fin")),
         "montant_prime": _value_or_none(primes.get("globale")),
+        "montant_investi": _value_or_none(capital.get("somme_assurance")),
         "periodicite": _value_or_none(primes.get("periodicite")),
         "date_permis_conduire": _value_or_none(preneur.get("date_permis_conduire")),
         "numero_offre": None,
         "objets": structured.get("objets") or [],
         "structured": structured,
-        "form_type_suggere": (structured.get("meta") or {}).get("form_type_suggere"),
+        "form_type_suggere": meta.get("form_type_suggere"),
+        "form_type_candidates": meta.get("form_type_candidates") or [],
+        "form_type_needs_confirm": bool(meta.get("form_type_needs_confirm")),
+        "gf_subtype_suggere": meta.get("gf_subtype_suggere"),
+        "document_type": document_type,
+        "document_type_status": meta.get("document_type_status"),
+        "page_refs": meta.get("page_refs") or [],
     }
     if flat["compagnie"]:
         flat["compagnie_label"] = flat["compagnie"]

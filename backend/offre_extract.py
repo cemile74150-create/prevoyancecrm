@@ -427,6 +427,21 @@ def _find_person_name(text: str) -> Tuple[Optional[str], Optional[str]]:
     """Retourne (prenom, nom)."""
     flat = text or ""
 
+    # Zurich feuille prestations OCR : PERSONNE ASSUREE + ligne « NOM PRENOM » (avant FP)
+    m_fp = re.search(
+        r"PERSONNE\s+ASSUR[ÉE]E\s*[:：]?[^\n]{0,80}\n\s*"
+        r"([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*)\s+"
+        r"([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*(?:-[A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*)*)"
+        r"(?=\s+FP\b|\s+\d|\s*$|\n)",
+        flat,
+        re.I,
+    )
+    if m_fp:
+        nom = m_fp.group(1).strip().title()
+        prenom = m_fp.group(2).strip().title()
+        if nom.casefold() not in {"police", "no", "fp"} and prenom.casefold() not in {"police", "no", "fp"}:
+            return prenom, nom
+
     # Vaudoise Serenity : « Prénom, nom Monsieur Benoit Stempfel »
     m_combo = re.search(
         r"(?:^|\n)\s*pr[ée]nom\s*[,/]\s*nom\s*[:\-–]?\s*([^\n\r]{3,80})",
@@ -470,6 +485,9 @@ def _find_person_name(text: str) -> Tuple[Optional[str], Optional[str]]:
             raw = m.group(1).strip()
             # Couper si collé à une autre rubrique (adresse agence, etc.)
             raw = re.split(r"\s{2,}|(?<=\d)\s+(?=[A-Z])|NPA|T[ée]l[ée]phone|E-?mail", raw)[0].strip()
+            # Zurich : « PERSONNE ASSUREE: POLICE NO … » — le nom est à la ligne suivante
+            if re.match(r"(?i)^police\b", raw) or re.match(r"(?i)^fp\b", raw):
+                continue
             _civ, prenom, nom = _split_identity_parts(raw)
             if prenom and nom:
                 return prenom, nom
@@ -706,6 +724,14 @@ def _find_police_number(text: str) -> Optional[str]:
     )
     if m_prev:
         return re.sub(r"\s+", " ", m_prev.group(1)).strip(" \t.:;,-–") or None
+    # Zurich OCR : « POLICE NO 9.363.640 » (sans « de »)
+    m_police_no = re.search(
+        r"\bPOLICE\s+NO\.?\s*([A-Z0-9][A-Z0-9./-]{3,30})",
+        raw,
+        re.I,
+    )
+    if m_police_no:
+        return m_police_no.group(1).strip(" \t.:;,-–") or None
     labeled = _find_labeled_value(
         text,
         (
@@ -955,9 +981,10 @@ def extract_offre_fields(
 
     compagnie = structured_flat.get("compagnie") or _find_compagnie(text, filename)
     rente = _find_rente_mensuelle(text)
-    montant = _find_montant_investi(text)
+    montant = structured_flat.get("montant_investi") or _find_montant_investi(text)
     duree = _find_duree_ans(text, filename)
     prenom, nom = _find_person_name(text)
+    document_type = structured_flat.get("document_type")
     # Ne pas écraser un parsing 3P correct par un prénom structuré trop large
     # (ex. lettre AXA / cocontractant déjà résolus).
     if structured_flat.get("prenom") and not prenom:
@@ -1048,13 +1075,28 @@ def extract_offre_fields(
         duree = duree or _find_duree_ans("", filename)
 
     montant_prime = structured_flat.get("montant_prime")
-    if montant_prime is None:
+    # Ne jamais inventer une prime sur feuille des prestations / valeurs de rachat / décompte
+    # sans libellé prime explicite.
+    allow_prime_inference = document_type not in {"valeurs_rachat", "decompte"}
+    if montant_prime is None and (
+        allow_prime_inference or re.search(r"prime\s+annuelle|jahresprämie|cotisation", _norm(text))
+    ):
         montant_prime = _find_prime_annuelle(text)
+    if document_type == "valeurs_rachat" and not re.search(
+        r"prime\s+annuelle|jahresprämie|cotisation\s+annuelle|\bprime\b",
+        _norm(text),
+    ):
+        montant_prime = None
     periodicite_val = structured_flat.get("periodicite") or _find_periodicite(text)
     # Produits 3P à prime unique : exposer le capital investi comme montant_prime CRM
     # si aucune cotisation annuelle n'est présente (Serenity / capitalisation).
-    if montant_prime is None and montant is not None and (
-        periodicite_val == "Prime unique" or "prime unique" in _norm(text)
+    # Exception : document valeurs de rachat → capital ≠ prime.
+    if (
+        montant_prime is None
+        and montant is not None
+        and allow_prime_inference
+        and document_type != "valeurs_rachat"
+        and (periodicite_val == "Prime unique" or "prime unique" in _norm(text))
     ):
         montant_prime = montant
 
@@ -1110,6 +1152,12 @@ def extract_offre_fields(
         "type_pilier": _find_type_pilier(text),
         "objets": structured_flat.get("objets") or [],
         "form_type_suggere": structured_flat.get("form_type_suggere"),
+        "form_type_candidates": structured_flat.get("form_type_candidates") or [],
+        "form_type_needs_confirm": bool(structured_flat.get("form_type_needs_confirm")),
+        "gf_subtype_suggere": structured_flat.get("gf_subtype_suggere"),
+        "document_type": document_type,
+        "document_type_status": structured_flat.get("document_type_status"),
+        "page_refs": structured_flat.get("page_refs") or [],
         "structured": structured,
         "_text": text or "",
         "_raw_text_len": len(text or ""),
@@ -1189,6 +1237,12 @@ def map_extract_to_form(
         "objets": extracted.get("objets") or [],
         "objet_hints": objet_hints,
         "form_type_suggere": extracted.get("form_type_suggere"),
+        "form_type_candidates": extracted.get("form_type_candidates") or [],
+        "form_type_needs_confirm": bool(extracted.get("form_type_needs_confirm")),
+        "gf_subtype_suggere": extracted.get("gf_subtype_suggere"),
+        "document_type": extracted.get("document_type"),
+        "document_type_status": extracted.get("document_type_status"),
+        "page_refs": extracted.get("page_refs") or [],
         "structured": extracted.get("structured"),
         "extract_audit": (extracted.get("structured") or {}).get("audit") if isinstance(extracted.get("structured"), dict) else None,
     }
