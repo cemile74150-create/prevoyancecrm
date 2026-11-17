@@ -86,6 +86,20 @@ def test_form_library_lookups_are_cabinet_scoped_not_per_user():
     assert "_form_library_active_query" in helper
 
 
+def test_pick_preferred_library_procuration_prefers_mapped_newest():
+    from server import pick_preferred_library_procuration
+
+    items = [
+        {"id": "old", "name": "Procuration LPP AVS", "mapping_configured": True, "field_mapping": {"a": "nom"}, "created_at": "2026-01-01"},
+        {"id": "new", "name": "Procuration LPP AVS", "mapping_configured": True, "field_mapping": {"a": "nom", "b": "prenom", "c": "avs"}, "created_at": "2026-11-17"},
+        {"id": "other", "name": "Libre passage Pictet", "mapping_configured": True, "field_mapping": {"a": "nom"}, "created_at": "2026-12-01"},
+        {"id": "empty", "name": "Procuration brouillon", "mapping_configured": False, "field_mapping": {}, "created_at": "2026-12-02"},
+    ]
+    chosen = pick_preferred_library_procuration(items)
+    assert chosen["id"] == "new"
+    assert pick_preferred_library_procuration([items[2]]) is None
+
+
 def test_merge_catalog_keeps_imports_and_system_without_duplicate_names():
     # Logique miroir de _merge_library_catalog / _dedupe (sans importer server.py).
     def name_key(v):

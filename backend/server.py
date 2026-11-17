@@ -5177,6 +5177,71 @@ def _merge_library_catalog(imported_items: list[dict], system_items: list[dict])
     return [*extras, *items]
 
 
+def _is_library_procuration_form(item: dict) -> bool:
+    blob = " ".join(
+        str(item.get(k) or "")
+        for k in ("name", "original_filename", "category", "description")
+    ).casefold()
+    return "procuration" in blob
+
+
+def _rank_library_procuration(item: dict) -> tuple:
+    """Préfère une procuration mappée, avec le plus de champs liés, puis la plus récente."""
+    mapping = item.get("field_mapping") or {}
+    mapped = sum(1 for value in mapping.values() if value)
+    configured = 1 if item.get("mapping_configured") else 0
+    return (configured, mapped, str(item.get("created_at") or ""))
+
+
+def pick_preferred_library_procuration(items: list[dict]) -> Optional[dict]:
+    """Choisit la meilleure procuration importée en bibliothèque (hors soft-delete)."""
+    candidates = [item for item in items if _is_library_procuration_form(item)]
+    if not candidates:
+        return None
+    candidates.sort(key=_rank_library_procuration, reverse=True)
+    return candidates[0]
+
+
+async def _find_preferred_library_procuration() -> Optional[dict]:
+    items = await db.form_library.find(
+        _form_library_active_query(),
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(200)
+    return pick_preferred_library_procuration(items)
+
+
+async def _fill_library_form_pdf_for_client(
+    form: dict,
+    client: dict,
+    user: User,
+) -> bytes:
+    """Remplit un PDF bibliothèque avec le mapping admin, sans écraser le modèle."""
+    form = await _ensure_library_widgets(form)
+    raw = await _load_storage_bytes(form["storage_path"])
+    spouse = None
+    if client.get("linked_spouse_id"):
+        spouse = await db.clients.find_one(
+            {"id": client["linked_spouse_id"], "user_id": user.user_id},
+            {"_id": 0},
+        )
+        spouse = _decrypt_client_doc(spouse)
+    agent = client.get("conseiller") or getattr(user, "name", None) or ""
+    date_rdv = await _appointment_date_for_client(user.user_id, client["id"])
+    mapping = form.get("field_mapping") if isinstance(form.get("field_mapping"), dict) else None
+    pdf_bytes = await asyncio.to_thread(
+        fill_pdf_bytes_with_client,
+        raw,
+        client,
+        agent,
+        mapping,
+        spouse,
+        {"date_rdv": date_rdv},
+        form.get("widgets"),
+    )
+    pdf_bytes = await _resolve_maybe_awaitable(pdf_bytes)
+    return _coerce_file_bytes(pdf_bytes, label="pdf procuration bibliothèque")
+
+
 @api_router.get("/form-library")
 async def list_form_library(user: User = Depends(get_current_user)):
     """
@@ -5712,7 +5777,50 @@ async def generate_client_demand(client_id: str, payload: GenerateDemandRequest,
                     }
                 },
             )
-        generated = generate_demand_pack(payload.pack_id, client_for_pack, agent_name=agent)
+        # Demande LPP : procuration = PDF bibliothèque (nouvelle version mappée),
+        # pas l'ancien modèle système, dès qu'une procuration est en bibliothèque.
+        if payload.pack_id == "recherche_lpp":
+            pack = DEMAND_PACKS[payload.pack_id]
+            lib_procuration = await _find_preferred_library_procuration()
+            generated = []
+            for template_id in pack["templates"]:
+                if template_id == "procuration_avs_lpp" and lib_procuration:
+                    pdf_bytes = await _fill_library_form_pdf_for_client(
+                        lib_procuration, client_for_pack, user
+                    )
+                    template = get_template(template_id)
+                    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    client_slug = re.sub(
+                        r"[^A-Za-z0-9_-]+",
+                        "_",
+                        f"{client_for_pack.get('nom', '')}_{client_for_pack.get('prenom', '')}",
+                    ).strip("_") or "client"
+                    generated.append(
+                        (
+                            pdf_bytes,
+                            {
+                                "original_filename": f"{template['output_prefix']}_{client_slug}_{stamp}.pdf",
+                                "category": template["category"],
+                                # Garder l'id système pour la checklist / liste Demande LPP.
+                                "template_id": template_id,
+                                "template_label": lib_procuration.get("name") or template["label"],
+                                "checklist_item": template.get("checklist_item"),
+                                "library_form_id": lib_procuration.get("id"),
+                                "content_type": "application/pdf",
+                            },
+                        )
+                    )
+                    continue
+                generated.append(
+                    generate_document_pdf(
+                        template_id,
+                        client_for_pack,
+                        agent_name=agent,
+                        options=pack.get("options") or {},
+                    )
+                )
+        else:
+            generated = generate_demand_pack(payload.pack_id, client_for_pack, agent_name=agent)
     except HTTPException:
         raise
     except Exception as e:
