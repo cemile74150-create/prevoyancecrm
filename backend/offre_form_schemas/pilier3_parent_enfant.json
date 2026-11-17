@@ -183,7 +183,32 @@
       "options": [],
       "page": 1,
       "placeholder": "jj.mm.aaaa",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "any",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis B"
+          },
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis C"
+          },
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis G"
+          },
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis L"
+          }
+        ]
+      }
     },
     {
       "id": "41_59",
@@ -197,7 +222,17 @@
         "Non"
       ],
       "page": 1,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis G"
+          }
+        ]
+      }
     },
     {
       "id": "41_6_1",
@@ -258,7 +293,17 @@
       "required": true,
       "options": [],
       "page": 1,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis G"
+          }
+        ]
+      }
     },
     {
       "id": "41_24",
@@ -465,7 +510,27 @@
         "Permis G",
         "Permis L"
       ],
-      "page": 1
+      "page": 1,
+      "show_when": {
+        "logic": "any",
+        "rules": [
+          {
+            "field": "input_64",
+            "op": "isnot",
+            "value": "suisse"
+          },
+          {
+            "field": "input_64",
+            "op": "isnot",
+            "value": "Suisse"
+          },
+          {
+            "field": "input_64",
+            "op": "isnot",
+            "value": "CH"
+          }
+        ]
+      }
     },
     {
       "id": "41_67_1",
@@ -997,9 +1062,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Allianz"
           }
         ]
       }
@@ -1042,9 +1107,14 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_29",
             "op": "is",
-            "value": "Oui"
+            "value": "Pilier libre 3b"
+          },
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Retraites populaires"
           }
         ]
       }
@@ -1064,9 +1134,14 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_29",
             "op": "is",
-            "value": "Oui"
+            "value": "Pilier libre 3b"
+          },
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Retraites populaires"
           }
         ]
       }
@@ -1109,5 +1184,14 @@
       "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
       "default": "cdemirtas@agencemendes.ch"
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 41,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-10_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 18,
+    "added": 4,
+    "updated": 3,
+    "unchanged": 11
+  }
 }

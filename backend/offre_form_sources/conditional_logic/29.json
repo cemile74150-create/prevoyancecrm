@@ -1,0 +1,195 @@
+{
+  "gravity_form_id": 29,
+  "fields": {
+    "88": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_6",
+          "op": "is",
+          "value": "Raison individuelle"
+        },
+        {
+          "field": "input_7",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "76": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_7",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "81": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_7",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "78": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_30",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "31": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_30",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "36": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_30",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "32": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_30",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "33": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_30",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "34": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_30",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "35": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_30",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "89": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_65",
+          "op": "is",
+          "value": "Generali (Romandie Courtage uniquement)"
+        }
+      ],
+      "enabled": true
+    },
+    "96": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_65",
+          "op": "is",
+          "value": "Allianz"
+        },
+        {
+          "field": "input_65",
+          "op": "is",
+          "value": "Vaudoise"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "88": [
+      88
+    ],
+    "76": [
+      76
+    ],
+    "81": [
+      81
+    ],
+    "12": [
+      12
+    ],
+    "78": [
+      78
+    ],
+    "31": [
+      31
+    ],
+    "36": [
+      36
+    ],
+    "32": [
+      32
+    ],
+    "33": [
+      33
+    ],
+    "34": [
+      34
+    ],
+    "35": [
+      35
+    ],
+    "89": [
+      89
+    ],
+    "96": [
+      96
+    ]
+  },
+  "raw_blob_chars": 2889,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant_.html",
+  "schema_ids": [
+    "entreprise_29",
+    "gf_29"
+  ]
+}

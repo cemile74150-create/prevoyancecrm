@@ -1,0 +1,303 @@
+{
+  "gravity_form_id": 41,
+  "fields": {
+    "58": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_23",
+          "op": "is",
+          "value": "Permis B"
+        },
+        {
+          "field": "input_23",
+          "op": "is",
+          "value": "Permis C"
+        },
+        {
+          "field": "input_23",
+          "op": "is",
+          "value": "Permis G"
+        },
+        {
+          "field": "input_23",
+          "op": "is",
+          "value": "Permis L"
+        }
+      ],
+      "enabled": true
+    },
+    "59": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_23",
+          "op": "is",
+          "value": "Permis G"
+        }
+      ],
+      "enabled": true
+    },
+    "48": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_23",
+          "op": "is",
+          "value": "Permis G"
+        }
+      ],
+      "enabled": true
+    },
+    "70": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_69",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "66": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_64",
+          "op": "isnot",
+          "value": "suisse"
+        },
+        {
+          "field": "input_64",
+          "op": "isnot",
+          "value": "Suisse"
+        },
+        {
+          "field": "input_64",
+          "op": "isnot",
+          "value": "CH"
+        }
+      ],
+      "enabled": true
+    },
+    "38": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_37",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "27": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_37",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "39": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_37",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "40": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_37",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "49": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_37",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "50": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_37",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "42": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_41",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "43": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_41",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "52": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_41",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "53": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_41",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "78": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_51",
+          "op": "is",
+          "value": "Allianz"
+        }
+      ],
+      "enabled": true
+    },
+    "88": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_29",
+          "op": "is",
+          "value": "Pilier libre 3b"
+        },
+        {
+          "field": "input_51",
+          "op": "is",
+          "value": "Retraites populaires"
+        }
+      ],
+      "enabled": true
+    },
+    "89": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_29",
+          "op": "is",
+          "value": "Pilier libre 3b"
+        },
+        {
+          "field": "input_51",
+          "op": "is",
+          "value": "Retraites populaires"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "58": [
+      58
+    ],
+    "59": [
+      59
+    ],
+    "48": [
+      48
+    ],
+    "70": [
+      70
+    ],
+    "66": [
+      66
+    ],
+    "38": [
+      38
+    ],
+    "27": [
+      27
+    ],
+    "39": [
+      39
+    ],
+    "40": [
+      40
+    ],
+    "49": [
+      49
+    ],
+    "50": [
+      50
+    ],
+    "42": [
+      42
+    ],
+    "43": [
+      43
+    ],
+    "52": [
+      52
+    ],
+    "53": [
+      53
+    ],
+    "78": [
+      78,
+      79
+    ],
+    "88": [
+      88,
+      89
+    ],
+    "89": [
+      89
+    ]
+  },
+  "raw_blob_chars": 4673,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-10_.html",
+  "schema_ids": [
+    "gf_41",
+    "pilier3_parent_enfant"
+  ]
+}

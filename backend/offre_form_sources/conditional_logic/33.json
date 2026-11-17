@@ -1,0 +1,173 @@
+{
+  "gravity_form_id": 33,
+  "fields": {
+    "58": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_57",
+          "op": "is",
+          "value": "Société en nom collectif"
+        }
+      ],
+      "enabled": true
+    },
+    "203": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_64",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "191": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_203",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "204": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_203",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "190": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_177",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "178": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_177",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "179": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_177",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "180": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_177",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "205": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "La Mobilière (Romandie Courtage uniquement)"
+        }
+      ],
+      "enabled": true
+    },
+    "201": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Generali (Romandie Courtage uniquement)"
+        }
+      ],
+      "enabled": true
+    },
+    "210": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Allianz (Romandie Courtage uniquement)"
+        },
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Vaudoise"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "58": [
+      58
+    ],
+    "203": [
+      203
+    ],
+    "191": [
+      191
+    ],
+    "204": [
+      204
+    ],
+    "190": [
+      190
+    ],
+    "178": [
+      178
+    ],
+    "179": [
+      179
+    ],
+    "180": [
+      180
+    ],
+    "205": [
+      205
+    ],
+    "201": [
+      201
+    ],
+    "210": [
+      210
+    ]
+  },
+  "raw_blob_chars": 2997,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-3_.html",
+  "schema_ids": [
+    "entreprise_33",
+    "gf_33"
+  ]
+}

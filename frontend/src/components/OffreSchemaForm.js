@@ -27,10 +27,11 @@ import {
 import {
   incapaciteBlocksNext,
   isFieldVisible,
-  omitIncapaciteWhenHidden,
+  isRenderableField,
+  omitHiddenFieldValues,
 } from "@/lib/offreIncapaciteGain";
 
-export { isFieldVisible };
+export { isFieldVisible, isRenderableField };
 
 const CHANGED_CONTROL =
   "border-rose-600 bg-rose-50 text-rose-700 placeholder:text-rose-400 focus-visible:ring-rose-400";
@@ -401,7 +402,7 @@ export default function OffreSchemaForm({
     next = applyNationalitePermisRules(schema, next);
     // Combler civilité ↔ sexe manquants au chargement (sans écraser une saisie déjà cohérente).
     next = applyCiviliteSexeRules(schema, next, { fillMissingOnly: true });
-    next = omitIncapaciteWhenHidden(schema, next);
+    next = omitHiddenFieldValues(schema, next);
     if (!payloadsEqual(next, values)) onChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schema?.id, nationaliteSignature, agentSignature]);
@@ -413,7 +414,7 @@ export default function OffreSchemaForm({
     let next = { ...(values || {}), [name]: value };
     next = applyNationalitePermisRules(schema, next);
     next = applyCiviliteSexeRules(schema, next, { sourceFieldName: name });
-    next = omitIncapaciteWhenHidden(schema, next);
+    next = omitHiddenFieldValues(schema, next);
     if (typeof onManualEdit === "function") onManualEdit(name);
     onChange(next);
   };
@@ -424,7 +425,7 @@ export default function OffreSchemaForm({
     const current = Array.isArray(values?.[name]) ? values[name] : [];
     const field = (schema?.fields || []).find((f) => (f.name || f.id) === name);
     let next = { ...(values || {}), [name]: toggleExclusiveCheckboxSelection(current, option, field?.exclusive_none) };
-    next = omitIncapaciteWhenHidden(schema, next);
+    next = omitHiddenFieldValues(schema, next);
     if (typeof onManualEdit === "function") onManualEdit(name);
     onChange(next);
   };
@@ -446,7 +447,7 @@ export default function OffreSchemaForm({
 
   const visibleFields = fields.filter((field) => {
     if (hasPages && (field.page || 1) !== currentPage) return false;
-    return isFieldVisible(field, values || {});
+    return isRenderableField(field, fields, values || {});
   });
   // Non + nature vide : Suivant est bloqué. Oui : le champ est masqué, il ne bloque pas.
   const incapaciteBloqueSuivant = incapaciteBlocksNext(fields, values, currentPage);

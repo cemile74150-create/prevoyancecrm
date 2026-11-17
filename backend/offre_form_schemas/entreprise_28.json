@@ -163,9 +163,14 @@
         "logic": "all",
         "rules": [
           {
+            "field": "input_6",
+            "op": "is",
+            "value": "Raison individuelle"
+          },
+          {
             "field": "input_7",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -189,7 +194,7 @@
           {
             "field": "input_7",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -208,7 +213,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_7",
+            "field": "input_81",
             "op": "is",
             "value": "Oui"
           }
@@ -231,7 +236,7 @@
           {
             "field": "input_7",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -575,9 +580,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_26",
-            "op": "is",
-            "value": "Oui"
+            "field": "input_107",
+            "op": ">",
+            "value": "500000"
           }
         ]
       }
@@ -604,12 +609,12 @@
       "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois à nous communiquer une offre, voire ne pas l'envoyer du tout.",
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_26",
-            "op": "is",
-            "value": "Oui"
+            "field": "input_107",
+            "op": "<",
+            "value": "500000"
           }
         ]
       }
@@ -637,12 +642,12 @@
       "description": "3 compagnies maximum. ATTENTION : AXA et La Vaudoise peuvent mettre plus de 2 mois à nous communiquer une offre, voire ne pas l'envoyer du tout.",
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_26",
+            "field": "input_22",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -671,12 +676,22 @@
       "description": "Generali a rendu ce renseignement obligatoire. Pour le trouver, rendez-vous sur ce lien : https://links.agencemendes.ch/DmfC",
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_26",
+            "field": "input_65",
             "op": "is",
-            "value": "Oui"
+            "value": "Generali (Romandie Courtage uniquement)"
+          },
+          {
+            "field": "input_102",
+            "op": "is",
+            "value": "Generali (Romandie Courtage uniquement)"
+          },
+          {
+            "field": "input_103",
+            "op": "is",
+            "value": "Generali (Romandie Courtage uniquement)"
           }
         ]
       }
@@ -737,12 +752,37 @@
       "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document.",
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_83",
+            "field": "input_65",
             "op": "is",
-            "value": "Oui"
+            "value": "Allianz"
+          },
+          {
+            "field": "input_65",
+            "op": "is",
+            "value": "Vaudoise"
+          },
+          {
+            "field": "input_102",
+            "op": "is",
+            "value": "Allianz"
+          },
+          {
+            "field": "input_102",
+            "op": "is",
+            "value": "Vaudoise"
+          },
+          {
+            "field": "input_103",
+            "op": "is",
+            "value": "Allianz"
+          },
+          {
+            "field": "input_103",
+            "op": "is",
+            "value": "Vaudoise"
           }
         ]
       }
@@ -785,5 +825,14 @@
       "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir une copie à une autre adresse email que celle indiquée.",
       "default": "cdemirtas@agencemendes.ch"
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 28,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-6_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 14,
+    "added": 0,
+    "updated": 9,
+    "unchanged": 5
+  }
 }

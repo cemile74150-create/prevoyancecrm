@@ -950,11 +950,6 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_85",
-            "op": "is",
-            "value": "Oui"
-          },
-          {
             "field": "input_107",
             "op": "is",
             "value": "Dégâts causés par les animaux"
@@ -1027,9 +1022,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_85",
+            "field": "input_92",
             "op": "is",
-            "value": "Oui"
+            "value": "Précédent assureur"
           }
         ]
       }
@@ -1047,11 +1042,6 @@
       "show_when": {
         "logic": "all",
         "rules": [
-          {
-            "field": "input_85",
-            "op": "is",
-            "value": "Oui"
-          },
           {
             "field": "input_115",
             "op": "is",
@@ -1073,11 +1063,6 @@
       "show_when": {
         "logic": "all",
         "rules": [
-          {
-            "field": "input_85",
-            "op": "is",
-            "value": "Oui"
-          },
           {
             "field": "input_115",
             "op": "is",
@@ -1956,5 +1941,14 @@
         ]
       }
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 1,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-3_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 49,
+    "added": 0,
+    "updated": 4,
+    "unchanged": 45
+  }
 }

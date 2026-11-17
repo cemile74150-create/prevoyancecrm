@@ -14,6 +14,30 @@ import type { AnalyseRecord } from "../types";
 
 let browserPromise: Promise<Browser> | null = null;
 
+/** Limite les générations PDF concurrentes (Chromium) pour ~150 conseillers. */
+const PDF_MAX_CONCURRENT = Math.max(
+  1,
+  Number.parseInt(process.env.PDF_MAX_CONCURRENT || "2", 10) || 2,
+);
+let pdfSlots = PDF_MAX_CONCURRENT;
+const pdfWaiters: Array<() => void> = [];
+
+async function withPdfSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (pdfSlots <= 0) {
+    await new Promise<void>((resolve) => {
+      pdfWaiters.push(resolve);
+    });
+  }
+  pdfSlots -= 1;
+  try {
+    return await fn();
+  } finally {
+    pdfSlots += 1;
+    const next = pdfWaiters.shift();
+    if (next) next();
+  }
+}
+
 /** Même règle que analyses_routes._engine_env : Chromium local, pas un cache sandbox vide. */
 function useLocalPlaywrightBrowsers(): void {
   const local = process.env.LOCALAPPDATA;
@@ -50,45 +74,49 @@ export class PdfGenerationService {
   }
 
   async generatePdfBuffer(record: AnalyseRecord): Promise<Buffer> {
-    const payload = this.buildPayload(record);
-    const pages = buildReportPages(payload);
-    if (!pages.length) throw new Error("Aucune page PDF à générer.");
+    return withPdfSlot(async () => {
+      const payload = this.buildPayload(record);
+      const pages = buildReportPages(payload);
+      if (!pages.length) throw new Error("Aucune page PDF à générer.");
 
-    const browser = await getBrowser();
-    const merged = await PDFDocument.create();
+      const browser = await getBrowser();
+      const merged = await PDFDocument.create();
 
-    for (const spec of pages) {
-      const html = wrapSinglePage(spec.html, spec.kind);
-      const bytes = await this.htmlToPdf(browser, html, spec.kind);
-      const doc = await PDFDocument.load(bytes);
-      const copied = await merged.copyPages(doc, doc.getPageIndices());
-      // Une spec HTML peut tenir sur plusieurs pages A4 (tableau comparatif).
-      // Ne garder que copied[0] faisait disparaître les colonnes d'offres.
-      for (const page of copied) {
-        merged.addPage(page);
+      for (const spec of pages) {
+        const html = wrapSinglePage(spec.html, spec.kind);
+        const bytes = await this.htmlToPdf(browser, html, spec.kind);
+        const doc = await PDFDocument.load(bytes);
+        const copied = await merged.copyPages(doc, doc.getPageIndices());
+        // Une spec HTML peut tenir sur plusieurs pages A4 (tableau comparatif).
+        // Ne garder que copied[0] faisait disparaître les colonnes d'offres.
+        for (const page of copied) {
+          merged.addPage(page);
+        }
       }
-    }
 
-    const out = await merged.save();
-    return Buffer.from(out);
+      const out = await merged.save();
+      return Buffer.from(out);
+    });
   }
 
   /** Document HTML déjà complet. N'emprunte pas le rapport d'analyse. */
   async pdfFromDocument(html: string): Promise<Buffer> {
-    const browser = await getBrowser();
-    const page = await browser.newPage();
-    try {
-      await page.setContent(html, { waitUntil: "load", timeout: 30_000 });
-      const pdf = await page.pdf({
-        format: "A4",
-        printBackground: true,
-        preferCSSPageSize: true,
-        margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "12mm" },
-      });
-      return Buffer.from(pdf);
-    } finally {
-      await page.close();
-    }
+    return withPdfSlot(async () => {
+      const browser = await getBrowser();
+      const page = await browser.newPage();
+      try {
+        await page.setContent(html, { waitUntil: "load", timeout: 30_000 });
+        const pdf = await page.pdf({
+          format: "A4",
+          printBackground: true,
+          preferCSSPageSize: true,
+          margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "12mm" },
+        });
+        return Buffer.from(pdf);
+      } finally {
+        await page.close();
+      }
+    });
   }
 
   private async htmlToPdf(

@@ -294,6 +294,7 @@ async def upsert_hub_client_from_person(
     user_id: str = TENANT_USER_ID,
     module: Optional[str] = None,
     conseiller: Optional[str] = None,
+    conseiller_account_id: Optional[str] = None,
     create_if_missing: bool = True,
 ) -> Tuple[Optional[dict], str]:
     """
@@ -315,6 +316,7 @@ async def upsert_hub_client_from_person(
     )
 
     now = _now_iso()
+    account_stamp = (conseiller_account_id or person.get("conseiller_account_id") or "").strip() or None
     if existing:
         updates: Dict[str, Any] = {"updated_at": now}
         # Compléter les champs vides uniquement (ne pas écraser la fiche principale)
@@ -328,6 +330,8 @@ async def upsert_hub_client_from_person(
         updates["source_modules"] = _merge_source_modules(existing.get("source_modules"), module)
         if conseiller and not existing.get("conseiller"):
             updates["conseiller"] = conseiller
+            if account_stamp and not existing.get("conseiller_account_id"):
+                updates["conseiller_account_id"] = account_stamp
         patch = _encrypt_patch({k: v for k, v in updates.items() if k != "updated_at" and k != "source_modules"})
         patch["updated_at"] = now
         patch["source_modules"] = updates["source_modules"]
@@ -397,6 +401,8 @@ async def upsert_hub_client_from_person(
         "updated_at": now,
         **identity,
     }
+    if account_stamp:
+        doc["conseiller_account_id"] = account_stamp
     # Ne JAMAIS utiliser source_import=suivi_3p_excel (exclu de l'onglet Clients)
     to_store = _encrypt(doc)
     try:

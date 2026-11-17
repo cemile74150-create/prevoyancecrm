@@ -137,7 +137,17 @@
       "required": false,
       "options": [],
       "page": 1,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_57",
+            "op": "is",
+            "value": "Société en nom collectif"
+          }
+        ]
+      }
     },
     {
       "id": "30_196_1",
@@ -212,7 +222,7 @@
           {
             "field": "input_64",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -231,7 +241,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_64",
+            "field": "input_204",
             "op": "is",
             "value": "Oui"
           }
@@ -252,7 +262,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_64",
+            "field": "input_204",
             "op": "is",
             "value": "Oui"
           }
@@ -653,9 +663,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_64",
+            "field": "input_201",
             "op": "is",
-            "value": "Oui"
+            "value": "RC spécifique a l'activité"
           }
         ]
       }
@@ -737,6 +747,11 @@
           {
             "field": "input_64",
             "op": "is",
+            "value": "Non"
+          },
+          {
+            "field": "input_64",
+            "op": "isnot",
             "value": "Oui"
           }
         ]
@@ -774,7 +789,17 @@
       "page": 3,
       "description": "La Mobilière a rendu ce renseignement obligatoire.",
       "placeholder": "jj/mm/aaaa",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "La Mobilière"
+          }
+        ]
+      }
     },
     {
       "id": "30_200",
@@ -786,7 +811,17 @@
       "options": [],
       "page": 3,
       "description": "Generali a rendu ce renseignement obligatoire. Pour le trouver, rendez-vous sur ce lien : https://links.agencemendes.ch/DmfC",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Generali (Romandie Courtage uniquement)"
+          }
+        ]
+      }
     },
     {
       "id": "30_185",
@@ -855,12 +890,17 @@
       "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document.",
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_192",
+            "field": "input_32",
             "op": "is",
-            "value": "Oui"
+            "value": "Allianz"
+          },
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Vaudoise"
           }
         ]
       }
@@ -903,5 +943,14 @@
       "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
       "default": "cdemirtas@agencemendes.ch"
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 30,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_responsabilite-civile_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 9,
+    "added": 3,
+    "updated": 6,
+    "unchanged": 0
+  }
 }

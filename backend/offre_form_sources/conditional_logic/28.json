@@ -1,0 +1,253 @@
+{
+  "gravity_form_id": 28,
+  "fields": {
+    "93": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_6",
+          "op": "is",
+          "value": "Raison individuelle"
+        },
+        {
+          "field": "input_7",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "81": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_7",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "82": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_81",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "85": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_7",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "80": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_22",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "107": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_22",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "79": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_26",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "92": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_26",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "84": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_26",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "65": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_107",
+          "op": ">",
+          "value": "500000"
+        }
+      ],
+      "enabled": true
+    },
+    "102": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_107",
+          "op": "<",
+          "value": "500000"
+        }
+      ],
+      "enabled": true
+    },
+    "103": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_22",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "94": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_65",
+          "op": "is",
+          "value": "Generali (Romandie Courtage uniquement)"
+        },
+        {
+          "field": "input_102",
+          "op": "is",
+          "value": "Generali (Romandie Courtage uniquement)"
+        },
+        {
+          "field": "input_103",
+          "op": "is",
+          "value": "Generali (Romandie Courtage uniquement)"
+        }
+      ],
+      "enabled": true
+    },
+    "101": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_65",
+          "op": "is",
+          "value": "Allianz"
+        },
+        {
+          "field": "input_65",
+          "op": "is",
+          "value": "Vaudoise"
+        },
+        {
+          "field": "input_102",
+          "op": "is",
+          "value": "Allianz"
+        },
+        {
+          "field": "input_102",
+          "op": "is",
+          "value": "Vaudoise"
+        },
+        {
+          "field": "input_103",
+          "op": "is",
+          "value": "Allianz"
+        },
+        {
+          "field": "input_103",
+          "op": "is",
+          "value": "Vaudoise"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "93": [
+      93
+    ],
+    "81": [
+      81
+    ],
+    "82": [
+      82
+    ],
+    "85": [
+      85
+    ],
+    "12": [
+      12
+    ],
+    "80": [
+      80
+    ],
+    "107": [
+      107
+    ],
+    "79": [
+      79
+    ],
+    "92": [
+      92
+    ],
+    "84": [
+      84
+    ],
+    "65": [
+      65
+    ],
+    "102": [
+      102
+    ],
+    "103": [
+      103
+    ],
+    "94": [
+      94
+    ],
+    "101": [
+      101
+    ]
+  },
+  "raw_blob_chars": 3759,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_assurances-entreprise-independant_assurances-entreprise-independant-6_.html",
+  "schema_ids": [
+    "entreprise_28",
+    "gf_28"
+  ]
+}

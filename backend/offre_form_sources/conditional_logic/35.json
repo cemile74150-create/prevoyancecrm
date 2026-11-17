@@ -1,0 +1,174 @@
+{
+  "gravity_form_id": 35,
+  "fields": {
+    "6": {
+      "logic": "any",
+      "rules": [
+        {
+          "field": "input_4",
+          "op": "isnot",
+          "value": "suisse"
+        },
+        {
+          "field": "input_4",
+          "op": "isnot",
+          "value": "Suisse"
+        },
+        {
+          "field": "input_4",
+          "op": "isnot",
+          "value": "CH"
+        },
+        {
+          "field": "input_4",
+          "op": "isnot",
+          "value": "ch"
+        }
+      ],
+      "enabled": true
+    },
+    "31": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_28",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "34": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_8",
+          "op": "is",
+          "value": "d'une famille"
+        },
+        {
+          "field": "input_8",
+          "op": "isnot",
+          "value": "d'une personne seule"
+        }
+      ],
+      "enabled": true
+    },
+    "35": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_8",
+          "op": "is",
+          "value": "d'une famille"
+        },
+        {
+          "field": "input_8",
+          "op": "isnot",
+          "value": "d'une personne seule"
+        }
+      ],
+      "enabled": true
+    },
+    "46": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_8",
+          "op": "is",
+          "value": "d'une famille"
+        },
+        {
+          "field": "input_8",
+          "op": "isnot",
+          "value": "d'une personne seule"
+        }
+      ],
+      "enabled": true
+    },
+    "30": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_23",
+          "op": "is",
+          "value": "ARAG (Romandie Courtage uniquement)"
+        }
+      ],
+      "enabled": true
+    },
+    "40": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_23",
+          "op": "is",
+          "value": "Coop"
+        }
+      ],
+      "enabled": true
+    },
+    "42": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_44",
+          "op": "is",
+          "value": "Modules à sélectionner"
+        }
+      ],
+      "enabled": true
+    },
+    "45": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_44",
+          "op": "is",
+          "value": "Modules à sélectionner"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "6": [
+      6
+    ],
+    "31": [
+      31
+    ],
+    "34": [
+      34
+    ],
+    "35": [
+      35
+    ],
+    "46": [
+      46
+    ],
+    "30": [
+      30
+    ],
+    "40": [
+      40,
+      44,
+      43,
+      42,
+      45
+    ],
+    "42": [
+      42
+    ],
+    "45": [
+      45
+    ]
+  },
+  "raw_blob_chars": 2921,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-particulier_.html",
+  "schema_ids": [
+    "gf_35",
+    "protection_juridique_particulier"
+  ]
+}

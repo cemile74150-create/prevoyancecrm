@@ -435,7 +435,7 @@
           {
             "field": "input_107",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -456,7 +456,7 @@
           {
             "field": "input_107",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -478,7 +478,7 @@
           {
             "field": "input_107",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -499,7 +499,7 @@
           {
             "field": "input_107",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -520,7 +520,7 @@
           {
             "field": "input_107",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -541,7 +541,7 @@
           {
             "field": "input_107",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -562,7 +562,7 @@
           {
             "field": "input_107",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -583,7 +583,7 @@
           {
             "field": "input_107",
             "op": "is",
-            "value": "Oui"
+            "value": "Non"
           }
         ]
       }
@@ -964,7 +964,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_69",
+            "field": "input_72",
             "op": "is",
             "value": "Oui"
           }
@@ -1210,7 +1210,17 @@
       "options": [],
       "page": 4,
       "placeholder": "jj.mm.aaaa",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Zurich"
+          }
+        ]
+      }
     },
     {
       "id": "9_103",
@@ -1328,5 +1338,14 @@
       "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
       "default": "cdemirtas@agencemendes.ch"
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 9,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_motocycle_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 17,
+    "added": 1,
+    "updated": 9,
+    "unchanged": 11
+  }
 }

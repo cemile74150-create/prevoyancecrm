@@ -1,0 +1,443 @@
+{
+  "gravity_form_id": 12,
+  "fields": {
+    "40": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_39",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "44": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_43",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "142": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_141",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "80": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_79",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "81": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_79",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "82": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_79",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "84": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_79",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "57": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_56",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "133": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_59",
+          "op": "is",
+          "value": "Trajets professionnels"
+        }
+      ],
+      "enabled": true
+    },
+    "63": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_62",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "67": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_66",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "68": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_66",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "70": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_69",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "72": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_69",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "73": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_69",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "76": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_75",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "100": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_99",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "108": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_107",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "109": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_107",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "111": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_110",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "112": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_110",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "113": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_110",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "117": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_116",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "145": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Smile Direct"
+        }
+      ],
+      "enabled": true
+    },
+    "138": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Zurich"
+        }
+      ],
+      "enabled": true
+    },
+    "139": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Zurich"
+        }
+      ],
+      "enabled": true
+    },
+    "140": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Zurich"
+        }
+      ],
+      "enabled": true
+    },
+    "160": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Zurich"
+        }
+      ],
+      "enabled": true
+    },
+    "161": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Zurich"
+        }
+      ],
+      "enabled": true
+    },
+    "128": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Zurich"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "40": [
+      40
+    ],
+    "44": [
+      44
+    ],
+    "142": [
+      142
+    ],
+    "80": [
+      80
+    ],
+    "81": [
+      81
+    ],
+    "82": [
+      82
+    ],
+    "84": [
+      84
+    ],
+    "57": [
+      57
+    ],
+    "133": [
+      133
+    ],
+    "63": [
+      63
+    ],
+    "67": [
+      67
+    ],
+    "68": [
+      68
+    ],
+    "70": [
+      70
+    ],
+    "72": [
+      72
+    ],
+    "73": [
+      73
+    ],
+    "76": [
+      76
+    ],
+    "100": [
+      100
+    ],
+    "108": [
+      108
+    ],
+    "109": [
+      109
+    ],
+    "111": [
+      111
+    ],
+    "112": [
+      112
+    ],
+    "113": [
+      113
+    ],
+    "117": [
+      117
+    ],
+    "145": [
+      145,
+      146,
+      147
+    ],
+    "138": [
+      138,
+      139,
+      140,
+      160,
+      161,
+      34,
+      132,
+      128
+    ],
+    "139": [
+      139
+    ],
+    "140": [
+      140
+    ],
+    "160": [
+      160
+    ],
+    "161": [
+      161
+    ],
+    "128": [
+      128
+    ]
+  },
+  "raw_blob_chars": 7235,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-6_.html",
+  "schema_ids": [
+    "gf_12",
+    "voyage"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "gravity_form_id": 38,
+  "fields": {
+    "38": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_37",
+          "op": "is",
+          "value": "Protection juridique combinée privée+indépendant"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "38": [
+      38
+    ]
+  },
+  "raw_blob_chars": 853,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_protection-juridique_assurances-entreprise-independant-2_.html",
+  "schema_ids": [
+    "gf_38",
+    "protection_juridique_entreprise_2"
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "gravity_form_id": 11,
+  "fields": {
+    "60": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_59",
+          "op": "is",
+          "value": "Précédent assureur"
+        }
+      ],
+      "enabled": true
+    },
+    "78": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_59",
+          "op": "is",
+          "value": "Précédent assureur"
+        }
+      ],
+      "enabled": true
+    },
+    "77": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_78",
+          "op": "is",
+          "value": "Joindre la fiche de sinistralité"
+        }
+      ],
+      "enabled": true
+    },
+    "20": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_78",
+          "op": "is",
+          "value": "Indiquer les sinistres manuellement"
+        }
+      ],
+      "enabled": true
+    },
+    "47": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_46",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "45": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_44",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "75": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_11",
+          "op": "is",
+          "value": "Dégâts causés par les animaux"
+        }
+      ],
+      "enabled": true
+    },
+    "87": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_85",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "60": [
+      60
+    ],
+    "78": [
+      78
+    ],
+    "77": [
+      77
+    ],
+    "20": [
+      20
+    ],
+    "47": [
+      47
+    ],
+    "45": [
+      45
+    ],
+    "75": [
+      75
+    ],
+    "87": [
+      87
+    ]
+  },
+  "raw_blob_chars": 2332,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-7_.html",
+  "schema_ids": [
+    "assurances_particulier",
+    "gf_11"
+  ]
+}

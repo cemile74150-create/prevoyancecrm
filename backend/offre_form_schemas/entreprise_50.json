@@ -317,9 +317,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_151",
+            "field": "input_92",
             "op": "is",
-            "value": "Oui"
+            "value": "Conducteur principal"
           }
         ]
       }
@@ -339,9 +339,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_151",
+            "field": "input_92",
             "op": "is",
-            "value": "Oui"
+            "value": "Conducteur principal"
           }
         ]
       }
@@ -360,9 +360,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_151",
+            "field": "input_92",
             "op": "is",
-            "value": "Oui"
+            "value": "Conducteur principal"
           }
         ]
       }
@@ -381,9 +381,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_151",
+            "field": "input_92",
             "op": "is",
-            "value": "Oui"
+            "value": "Conducteur principal"
           }
         ]
       }
@@ -614,9 +614,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_56",
+            "field": "input_59",
             "op": "is",
-            "value": "Oui"
+            "value": "Trajets professionnels"
           }
         ]
       }
@@ -1170,7 +1170,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_114",
+            "field": "input_56",
             "op": "is",
             "value": "Oui"
           }
@@ -1225,9 +1225,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_114",
+            "field": "input_59",
             "op": "is",
-            "value": "Oui"
+            "value": "Trajets professionnels"
           }
         ]
       }
@@ -1292,7 +1292,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_121",
+            "field": "input_62",
             "op": "is",
             "value": "Non"
           }
@@ -1339,7 +1339,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_124",
+            "field": "input_66",
             "op": "is",
             "value": "Oui"
           }
@@ -1363,7 +1363,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_124",
+            "field": "input_66",
             "op": "is",
             "value": "Oui"
           }
@@ -1397,7 +1397,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_127",
+            "field": "input_69",
             "op": "is",
             "value": "Oui"
           }
@@ -1421,7 +1421,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_127",
+            "field": "input_69",
             "op": "is",
             "value": "Oui"
           }
@@ -1445,7 +1445,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_127",
+            "field": "input_69",
             "op": "is",
             "value": "Oui"
           }
@@ -1557,7 +1557,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_136",
+            "field": "input_75",
             "op": "is",
             "value": "Oui"
           }
@@ -1917,12 +1917,17 @@
       "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document.",
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_98",
+            "field": "input_32",
             "op": "is",
-            "value": "Oui"
+            "value": "Allianz"
+          },
+          {
+            "field": "input_32",
+            "op": "is",
+            "value": "Vaudoise"
           }
         ]
       }
@@ -1976,5 +1981,14 @@
       "options": [],
       "page": 4
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 50,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-entreprise-independant-3_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 31,
+    "added": 0,
+    "updated": 15,
+    "unchanged": 16
+  }
 }

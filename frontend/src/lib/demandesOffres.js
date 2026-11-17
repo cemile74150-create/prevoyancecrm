@@ -7,6 +7,7 @@ import {
   matchGenderOption,
   normalizeCrmCiviliteSexe,
 } from "./offreCiviliteSexe";
+import { isFieldVisible } from "./offreIncapaciteGain";
 
 export { formatDateFr, toIsoDate, toSwissDate };
 export {
@@ -578,18 +579,27 @@ export function formatDateTimeFr(iso) {
   }
 }
 
-/** Libellés des types d'e-mails CRM. */
+/** Libellés des types d'e-mails CRM / Messagerie. */
 export const EMAIL_TYPE_LABELS = {
   demande_offre: "Demande d'offre",
+  demande_offre_recap: "Récap demande d'offre",
   offre_recue: "Offre reçue",
   offres_completes: "Offres complètes",
   offre_incomplete: "Offre incomplète",
   offre_signee: "Offre signée",
   offre_modifiee: "Modification",
+  note_externe: "Note externe",
+  complement_demande: "Complément demandé",
+  complement_reponse: "Réponse complément",
+  fil_discussion: "Fil de discussion",
   rappel: "Rappel",
+  relance_agent_14j: "Relance agent J+14",
+  relance_agent_21j: "Relance agent J+21",
+  rdv_suivi_relance: "Relance RDV suivi",
   dossier_presente: "Dossier présenté",
   smtp_test: "Test SMTP",
   notification: "Notification",
+  user_activation: "Activation compte",
 };
 
 export function emailTypeLabel(type) {
@@ -844,20 +854,7 @@ export function buildDemandeResume(demande, options = {}) {
     for (const field of fields) {
       const name = field.name || field.id;
       if (!name) continue;
-      // Visibilité show_when (même esprit qu'OffreSchemaForm)
-      if (field.show_when?.rules?.length) {
-        const sw = field.show_when;
-        const results = sw.rules.map((rule) => {
-          const raw = payload[rule.field];
-          const expected = rule.value;
-          if (Array.isArray(raw)) return raw.includes(expected);
-          const actual = raw == null ? "" : String(raw);
-          if (rule.op === "isnot") return actual !== expected;
-          return actual === expected;
-        });
-        const ok = (sw.logic || "all") === "any" ? results.some(Boolean) : results.every(Boolean);
-        if (!ok) continue;
-      }
+      if (!isFieldVisible(field, payload)) continue;
       const raw = payload[name];
       if (!filled(raw)) continue;
       const label = (field.label || "").trim() || name;

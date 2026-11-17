@@ -1,0 +1,252 @@
+{
+  "gravity_form_id": 9,
+  "fields": {
+    "40": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_39",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "44": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_43",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "106": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_105",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "80": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_107",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "81": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_107",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "82": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_107",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "84": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_107",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "57": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_56",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "63": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_62",
+          "op": "is",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "67": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_66",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "68": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_66",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "98": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_69",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "72": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_72",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "73": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_69",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "76": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_75",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "94": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_93",
+          "op": "is",
+          "value": "Oui"
+        }
+      ],
+      "enabled": true
+    },
+    "114": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_32",
+          "op": "is",
+          "value": "Zurich"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "40": [
+      40
+    ],
+    "44": [
+      44
+    ],
+    "106": [
+      106
+    ],
+    "80": [
+      80
+    ],
+    "81": [
+      81
+    ],
+    "82": [
+      82
+    ],
+    "84": [
+      84
+    ],
+    "57": [
+      57
+    ],
+    "63": [
+      63
+    ],
+    "67": [
+      67
+    ],
+    "68": [
+      68
+    ],
+    "98": [
+      98
+    ],
+    "72": [
+      72
+    ],
+    "73": [
+      73
+    ],
+    "76": [
+      76
+    ],
+    "94": [
+      94
+    ],
+    "114": [
+      114
+    ]
+  },
+  "raw_blob_chars": 3764,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_motocycle_.html",
+  "schema_ids": [
+    "gf_9",
+    "motocycle"
+  ]
+}

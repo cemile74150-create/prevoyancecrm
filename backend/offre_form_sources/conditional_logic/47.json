@@ -1,0 +1,90 @@
+{
+  "gravity_form_id": 47,
+  "fields": {
+    "38": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_13",
+          "op": "is",
+          "value": "Chat"
+        }
+      ],
+      "enabled": true
+    },
+    "18": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_15",
+          "op": "is",
+          "value": "Oui"
+        },
+        {
+          "field": "input_15",
+          "op": "isnot",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "23": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_21",
+          "op": "is",
+          "value": "Oui"
+        },
+        {
+          "field": "input_21",
+          "op": "isnot",
+          "value": "Non"
+        }
+      ],
+      "enabled": true
+    },
+    "37": {
+      "logic": "all",
+      "rules": [
+        {
+          "field": "input_45",
+          "op": "is",
+          "value": "Simpego"
+        }
+      ],
+      "enabled": true
+    }
+  },
+  "dependents": {
+    "10": [
+      10
+    ],
+    "38": [
+      38
+    ],
+    "18": [
+      18
+    ],
+    "23": [
+      23
+    ],
+    "37": [
+      37,
+      52,
+      53,
+      46,
+      47,
+      48,
+      49
+    ]
+  },
+  "raw_blob_chars": 1777,
+  "html_markers": {},
+  "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-8_.html",
+  "schema_ids": [
+    "animaux",
+    "assurances_particulier_var",
+    "gf_47"
+  ]
+}

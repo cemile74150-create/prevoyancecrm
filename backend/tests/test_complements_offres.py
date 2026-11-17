@@ -14,6 +14,7 @@ import email_service as es  # noqa: E402
 from access_control import (  # noqa: E402
     PERM_DEMANDES_OFFRES_EDIT,
     PERM_DEMANDES_OFFRES_PROCESS,
+    ROLE_ADMIN,
     ROLE_CONSEILLER,
     ROLE_GESTIONNAIRE_OFFRES,
     permission_for_request,
@@ -153,6 +154,39 @@ def test_other_agent_and_offer_manager_cannot_answer():
     )
     assert user_can_answer_complement(owner, demande) is True
     assert user_can_answer_complement(other, demande) is False
+    assert user_can_answer_complement(manager, demande) is False
+
+
+def test_operator_creator_cannot_answer_when_agent_assigned():
+    demande = {
+        "id": "d2",
+        "created_by_account_id": "admin-1",
+        "created_by": "admin-1",
+        "agent_account_id": "agent-1",
+        "agent_label": "Camille Durand",
+        "agent_email": "camille@test.ch",
+    }
+    agent = _user(ROLE_CONSEILLER, user_id="agent-1")
+    operator = _user(
+        ROLE_ADMIN,
+        user_id="admin-1",
+        email="admin@test.ch",
+        prenom="Admin",
+        nom="Mendes",
+        name="Admin Mendes",
+        conseiller="Admin Mendes",
+    )
+    manager = _user(
+        ROLE_GESTIONNAIRE_OFFRES,
+        user_id="gest-1",
+        email="lea@test.ch",
+        prenom="Lea",
+        nom="Gestion",
+        name="Lea Gestion",
+        conseiller="Lea Gestion",
+    )
+    assert user_can_answer_complement(agent, demande) is True
+    assert user_can_answer_complement(operator, demande) is False
     assert user_can_answer_complement(manager, demande) is False
 
 

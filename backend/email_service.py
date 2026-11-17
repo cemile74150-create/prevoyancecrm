@@ -154,6 +154,7 @@ MAIL_TYPE_RELANCE_AGENT_21J = "relance_agent_21j"
 MAIL_TYPE_RELANCE_AGENT_14J = "relance_agent_14j"
 MAIL_TYPE_TEST = "smtp_test"
 MAIL_TYPE_NOTIFICATION = "notification"
+MAIL_TYPE_USER_ACTIVATION = "user_activation"
 
 # (filename, content_bytes, mime_type)
 Attachment = Tuple[str, bytes, str]
@@ -681,6 +682,11 @@ def build_email_log(
     preview = _truncate((preview_src or "").strip(), 800)
     now_iso = datetime.now(timezone.utc).isoformat()
     status_out = normalize_email_status(status) or "error"
+    text_raw = text_full if text_full is not None else ""
+    html_raw = body_html if body_html is not None else ""
+    body_truncated = (len(str(text_raw)) > BODY_TEXT_MAX) or (
+        bool(html_raw) and len(str(html_raw)) > BODY_HTML_MAX
+    )
     doc = {
         "id": log_id or str(uuid.uuid4()),
         "type": mail_type or MAIL_TYPE_NOTIFICATION,
@@ -695,6 +701,7 @@ def build_email_log(
         "body_preview": preview or None,
         "body_text": _truncate(text_full, BODY_TEXT_MAX),
         "body_html": _truncate(body_html, BODY_HTML_MAX) if body_html else None,
+        "body_truncated": body_truncated,
         "client_id": client_id,
         "dossier_id": dossier_id,
         "ref_id": ref_id,

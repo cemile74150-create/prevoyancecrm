@@ -253,6 +253,8 @@ def test_nouveau_client_identity_comes_from_preneur_payload():
             **body,
             "form_payload": {
                 **body["form_payload"],
+                # 2e personne visible seulement si input_61 = Oui (show_when GF)
+                "input_61": "Oui",
                 "input_62": "Martin",
                 "input_63": "Alice",
             },

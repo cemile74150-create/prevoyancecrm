@@ -303,9 +303,24 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_112",
-            "op": "is",
-            "value": "Oui"
+            "field": "input_11",
+            "op": "isnot",
+            "value": "Suisse"
+          },
+          {
+            "field": "input_11",
+            "op": "isnot",
+            "value": "suisse"
+          },
+          {
+            "field": "input_11",
+            "op": "isnot",
+            "value": "CH"
+          },
+          {
+            "field": "input_11",
+            "op": "isnot",
+            "value": "ch"
           }
         ]
       }
@@ -382,7 +397,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_15",
+            "field": "input_82",
             "op": "is",
             "value": "Oui"
           }
@@ -403,7 +418,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_15",
+            "field": "input_82",
             "op": "is",
             "value": "Oui"
           }
@@ -448,9 +463,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_15",
+            "field": "input_114",
             "op": "is",
-            "value": "Oui"
+            "value": "RC spécifique à l'activité"
           }
         ]
       }
@@ -590,7 +605,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_122",
+            "field": "input_123",
             "op": "is",
             "value": "Oui"
           }
@@ -611,7 +626,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_122",
+            "field": "input_123",
             "op": "is",
             "value": "Oui"
           }
@@ -1352,7 +1367,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_122",
+            "field": "input_142",
             "op": "is",
             "value": "Oui"
           }
@@ -1374,7 +1389,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_122",
+            "field": "input_142",
             "op": "is",
             "value": "Oui"
           }
@@ -1396,7 +1411,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_122",
+            "field": "input_142",
             "op": "is",
             "value": "Oui"
           }
@@ -1485,7 +1500,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_96",
+            "field": "input_97",
             "op": "is",
             "value": "Oui"
           }
@@ -1506,7 +1521,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_96",
+            "field": "input_97",
             "op": "is",
             "value": "Oui"
           }
@@ -1528,7 +1543,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_96",
+            "field": "input_15",
             "op": "is",
             "value": "Oui"
           }
@@ -1707,7 +1722,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_22",
+            "field": "input_85",
             "op": "is",
             "value": "Oui"
           }
@@ -1728,7 +1743,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_22",
+            "field": "input_85",
             "op": "is",
             "value": "Oui"
           }
@@ -1840,7 +1855,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_26",
+            "field": "input_113",
             "op": "is",
             "value": "Oui"
           }
@@ -1861,7 +1876,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_26",
+            "field": "input_113",
             "op": "is",
             "value": "Oui"
           }
@@ -2171,7 +2186,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_7",
             "op": "is",
             "value": "Oui"
           }
@@ -2195,7 +2210,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_7",
             "op": "is",
             "value": "Oui"
           }
@@ -2216,7 +2231,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2237,7 +2252,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2259,7 +2274,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2280,7 +2295,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2301,7 +2316,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2323,7 +2338,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2343,7 +2358,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2368,7 +2383,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2392,7 +2407,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2413,7 +2428,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_160",
             "op": "is",
             "value": "Oui"
           }
@@ -2434,7 +2449,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_160",
             "op": "is",
             "value": "Oui"
           }
@@ -2454,7 +2469,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2478,7 +2493,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2502,7 +2517,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_163",
             "op": "is",
             "value": "Oui"
           }
@@ -2523,7 +2538,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_187",
             "op": "is",
             "value": "Oui"
           }
@@ -2544,7 +2559,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_187",
             "op": "is",
             "value": "Oui"
           }
@@ -2568,7 +2583,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2592,7 +2607,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2618,7 +2633,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2648,7 +2663,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2673,7 +2688,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2705,7 +2720,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2727,7 +2742,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2752,7 +2767,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2776,7 +2791,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2798,7 +2813,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2822,7 +2837,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2846,7 +2861,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_159",
             "op": "is",
             "value": "Oui"
           }
@@ -2866,7 +2881,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2890,7 +2905,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_149",
             "op": "is",
             "value": "Oui"
           }
@@ -2914,7 +2929,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_176",
             "op": "is",
             "value": "Oui"
           }
@@ -2935,7 +2950,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_177",
             "op": "is",
             "value": "Oui"
           }
@@ -2956,7 +2971,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_177",
             "op": "is",
             "value": "Oui"
           }
@@ -2981,7 +2996,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_176",
             "op": "is",
             "value": "Oui"
           }
@@ -3007,7 +3022,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_176",
             "op": "is",
             "value": "Oui"
           }
@@ -3028,7 +3043,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_176",
             "op": "is",
             "value": "Oui"
           }
@@ -3092,9 +3107,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
-            "op": "is",
-            "value": "Oui"
+            "field": "input_88",
+            "op": ">",
+            "value": "500000"
           }
         ]
       }
@@ -3124,9 +3139,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
-            "op": "is",
-            "value": "Oui"
+            "field": "input_88",
+            "op": "<",
+            "value": "500000"
           }
         ]
       }
@@ -3158,9 +3173,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_65",
             "op": "is",
-            "value": "Oui"
+            "value": "Generali (Romandie Courtage uniquement)"
           }
         ]
       }
@@ -3175,12 +3190,12 @@
       "options": [],
       "page": 9,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_30",
+            "field": "input_65",
             "op": "is",
-            "value": "Oui"
+            "value": "La Mobilière"
           }
         ]
       }
@@ -3230,12 +3245,27 @@
       "description": "Ce document est obligatoire pour Allianz et Vaudoise, qui ne traitent plus les demandes d'offre sans ce document.",
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
           {
-            "field": "input_81",
+            "field": "input_194",
             "op": "is",
-            "value": "Oui"
+            "value": "Allianz"
+          },
+          {
+            "field": "input_194",
+            "op": "is",
+            "value": "Vaudoise"
+          },
+          {
+            "field": "input_65",
+            "op": "is",
+            "value": "Allianz"
+          },
+          {
+            "field": "input_65",
+            "op": "is",
+            "value": "Vaudoise"
           }
         ]
       }
@@ -3278,5 +3308,14 @@
       "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
       "default": "cdemirtas@agencemendes.ch"
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 94,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_formulaire-complet_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 106,
+    "added": 0,
+    "updated": 59,
+    "unchanged": 50
+  }
 }

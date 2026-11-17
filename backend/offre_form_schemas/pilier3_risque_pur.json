@@ -183,7 +183,32 @@
       "options": [],
       "page": 1,
       "placeholder": "jj.mm.aaaa",
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "any",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis B"
+          },
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis C"
+          },
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis G"
+          },
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis L"
+          }
+        ]
+      }
     },
     {
       "id": "42_59",
@@ -197,7 +222,17 @@
         "Non"
       ],
       "page": 1,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis G"
+          }
+        ]
+      }
     },
     {
       "id": "42_6_1",
@@ -258,7 +293,17 @@
       "required": true,
       "options": [],
       "page": 1,
-      "disabled": true
+      "disabled": true,
+      "show_when": {
+        "logic": "all",
+        "rules": [
+          {
+            "field": "input_23",
+            "op": "is",
+            "value": "Permis G"
+          }
+        ]
+      }
     },
     {
       "id": "42_24",
@@ -419,7 +464,7 @@
           {
             "field": "input_61",
             "op": "is",
-            "value": "Oui"
+            "value": "Madame"
           }
         ]
       }
@@ -572,8 +617,28 @@
       "placeholder": "jj.mm.aaaa",
       "disabled": true,
       "show_when": {
-        "logic": "all",
+        "logic": "any",
         "rules": [
+          {
+            "field": "input_67",
+            "op": "is",
+            "value": "Permis B"
+          },
+          {
+            "field": "input_67",
+            "op": "is",
+            "value": "Permis C"
+          },
+          {
+            "field": "input_67",
+            "op": "is",
+            "value": "Permis G"
+          },
+          {
+            "field": "input_67",
+            "op": "is",
+            "value": "Permis L"
+          },
           {
             "field": "input_61",
             "op": "is",
@@ -598,6 +663,11 @@
       "show_when": {
         "logic": "all",
         "rules": [
+          {
+            "field": "input_67",
+            "op": "is",
+            "value": "Permis G"
+          },
           {
             "field": "input_61",
             "op": "is",
@@ -724,6 +794,11 @@
       "show_when": {
         "logic": "all",
         "rules": [
+          {
+            "field": "input_67",
+            "op": "is",
+            "value": "Permis G"
+          },
           {
             "field": "input_61",
             "op": "is",
@@ -895,7 +970,7 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_101",
+            "field": "input_99",
             "op": "is",
             "value": "Oui"
           }
@@ -1393,9 +1468,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1417,9 +1492,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1438,7 +1513,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_77",
             "op": "is",
             "value": "Oui"
           }
@@ -1462,9 +1542,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1483,7 +1563,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_79",
             "op": "is",
             "value": "Oui"
           }
@@ -1507,9 +1592,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1528,7 +1613,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_81",
             "op": "is",
             "value": "Oui"
           }
@@ -1552,9 +1642,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1573,7 +1663,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_83",
             "op": "is",
             "value": "Oui"
           }
@@ -1594,7 +1689,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_83",
             "op": "is",
             "value": "Oui"
           }
@@ -1615,7 +1715,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_83",
             "op": "is",
             "value": "Oui"
           }
@@ -1636,7 +1741,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_83",
             "op": "is",
             "value": "Oui"
           }
@@ -1657,7 +1767,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_83",
             "op": "is",
             "value": "Oui"
           }
@@ -1678,7 +1793,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_83",
             "op": "is",
             "value": "Oui"
           }
@@ -1700,7 +1820,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_83",
             "op": "is",
             "value": "Oui"
           }
@@ -1724,9 +1849,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1748,9 +1873,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1772,9 +1897,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1798,9 +1923,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1818,9 +1943,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1842,9 +1967,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1863,7 +1988,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_88",
             "op": "is",
             "value": "Oui"
           }
@@ -1887,9 +2017,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1908,7 +2038,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_90",
             "op": "is",
             "value": "Oui"
           }
@@ -1932,9 +2067,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1953,7 +2088,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_92",
             "op": "is",
             "value": "Oui"
           }
@@ -1977,9 +2117,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -1998,7 +2138,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_94",
             "op": "is",
             "value": "Oui"
           }
@@ -2022,9 +2167,9 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
             "op": "is",
-            "value": "Oui"
+            "value": "Axa"
           }
         ]
       }
@@ -2043,7 +2188,12 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_51",
+            "op": "is",
+            "value": "Axa"
+          },
+          {
+            "field": "input_96",
             "op": "is",
             "value": "Oui"
           }
@@ -2063,9 +2213,14 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_29",
             "op": "is",
-            "value": "Oui"
+            "value": "Pilier libre 3b"
+          },
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Retraites populaires"
           }
         ]
       }
@@ -2085,9 +2240,14 @@
         "logic": "all",
         "rules": [
           {
-            "field": "input_60",
+            "field": "input_29",
             "op": "is",
-            "value": "Oui"
+            "value": "Pilier libre 3b"
+          },
+          {
+            "field": "input_51",
+            "op": "is",
+            "value": "Retraites populaires"
           }
         ]
       }
@@ -2130,5 +2290,14 @@
       "description": "Ce champ est rempli automatiquement. Vous pouvez le modifier pour recevoir les offres à une autre adresse email que celle indiquée.",
       "default": "cdemirtas@agencemendes.ch"
     }
-  ]
+  ],
+  "show_when_import": {
+    "gravity_form_id": 42,
+    "source_file": "C:\\Users\\offic\\Desktop\\CRM demande d'offre\\view-source_https___www.agencemendes.ch_intranet_offres_assurances-particulier-11_.html",
+    "imported_at": "2026-11-12T14:37:23Z",
+    "conditional_fields_in_export": 59,
+    "added": 3,
+    "updated": 37,
+    "unchanged": 27
+  }
 }

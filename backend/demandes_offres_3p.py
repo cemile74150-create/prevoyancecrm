@@ -535,17 +535,26 @@ def compute_erreurs_agent_stats(records: list) -> dict:
 
 def can_follow_signature(user, doc: dict) -> bool:
     """
-    Suivi Offre signée / non signée : réservé à l'agent créateur (ou conseiller de la demande).
-    Les gestionnaires purs (sans lien agent) ne doivent pas actionner ces boutons.
+    Suivi Offre signée / non signée : réservé à l'agent demandeur.
+    Si agent_account_id est posé : seul ce compte (pas l'opérateur créateur, pas de fallback nom).
+    Sans agent_account_id : créateur, puis fallback nom/e-mail en legacy/dual uniquement.
     """
     from access_control import (
         email_matches_conseiller,
+        effective_access_mode,
         labels_match_conseiller,
     )
 
     account_id = getattr(user, "account_id", None)
-    if account_id and doc.get("created_by_account_id") == account_id:
+    agent = str((doc or {}).get("agent_account_id") or "").strip()
+    created = str((doc or {}).get("created_by_account_id") or "").strip()
+    if agent:
+        return bool(account_id and account_id == agent)
+    if account_id and created and account_id == created:
         return True
+    mode = effective_access_mode(user)
+    if mode == "strict" or bool(getattr(user, "access_by_account_id_only", False)):
+        return False
     if labels_match_conseiller(doc.get("agent_label"), user):
         return True
     if email_matches_conseiller(doc, user):
@@ -1365,6 +1374,7 @@ def demandes_offres_base_query(user, conseiller: Optional[str] = None) -> dict:
         can_view_all_offres,
         TENANT_USER_ID,
         conseiller_scope_mongo_filter,
+        effective_access_mode,
     )
     import re
 
@@ -1373,10 +1383,41 @@ def demandes_offres_base_query(user, conseiller: Optional[str] = None) -> dict:
         if conseiller and conseiller != "all":
             q["agent_label"] = {"$regex": f"^{re.escape(conseiller.strip())}$", "$options": "i"}
         return q
-    # Conseiller : uniquement ses demandes
+    account_id = getattr(user, "account_id", None)
+    mode = effective_access_mode(user)
+    if mode == "strict":
+        if account_id:
+            q["$or"] = [
+                {"agent_account_id": account_id},
+                {"created_by_account_id": account_id},
+            ]
+        else:
+            q["created_by_account_id"] = "__aucun__"
+        return q
+    if mode == "dual":
+        ors = []
+        if account_id:
+            ors.append({"agent_account_id": account_id})
+            ors.append({"created_by_account_id": account_id})
+        name_scope = conseiller_scope_mongo_filter(user)
+        missing_aid = {
+            "$and": [
+                {
+                    "$or": [
+                        {"agent_account_id": {"$exists": False}},
+                        {"agent_account_id": None},
+                        {"agent_account_id": ""},
+                    ]
+                },
+                name_scope,
+            ]
+        }
+        ors.append(missing_aid)
+        q["$or"] = ors
+        return q
+    # legacy
     scope = conseiller_scope_mongo_filter(user)
     ors = list(scope.get("$or") or [])
-    account_id = getattr(user, "account_id", None)
     if account_id:
         ors.append({"created_by_account_id": account_id})
     if ors:
@@ -1391,11 +1432,34 @@ def can_access_demande(user, doc: dict) -> bool:
         can_view_all_offres,
         labels_match_conseiller,
         email_matches_conseiller,
+        effective_access_mode,
     )
 
     if can_view_all_offres(user):
         return True
-    if doc.get("created_by_account_id") and doc.get("created_by_account_id") == getattr(user, "account_id", None):
+    account_id = getattr(user, "account_id", None)
+    mode = effective_access_mode(user)
+    if mode == "strict":
+        return bool(
+            account_id
+            and (
+                doc.get("agent_account_id") == account_id
+                or doc.get("created_by_account_id") == account_id
+            )
+        )
+    if mode == "dual":
+        aid = str(doc.get("agent_account_id") or "").strip()
+        if aid:
+            return aid == str(account_id or "")
+        if doc.get("created_by_account_id") and doc.get("created_by_account_id") == account_id:
+            return True
+        # fallback nom si pas d'agent_account_id
+        if labels_match_conseiller(doc.get("agent_label"), user):
+            return True
+        if email_matches_conseiller(doc, user):
+            return True
+        return False
+    if doc.get("created_by_account_id") and doc.get("created_by_account_id") == account_id:
         return True
     if labels_match_conseiller(doc.get("agent_label"), user):
         return True

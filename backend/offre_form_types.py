@@ -353,7 +353,7 @@ def filter_form_payload_to_schema(
             out[k] = v
         elif is_field_comment_key(k) and base_field_name_from_comment_key(k) in allowed:
             out[k] = v
-    return blank_incapacite_gain_when_hidden(fid, out)
+    return blank_hidden_fields_when_invisible(fid, out)
 
 
 def _gender_key(value: Any) -> Optional[str]:
@@ -557,11 +557,64 @@ def prefill_form_payload_from_crm(
 INCAPACITE_GAIN_LABEL = "Nature de l'incapacité de gain et depuis quand ?"
 
 
-def blank_incapacite_gain_when_hidden(form_type_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """N'envoie pas une nature d'incapacité si les personnes sont en pleine capacité.
+def _rule_parent_answered(raw: Any) -> bool:
+    if isinstance(raw, list):
+        return len(raw) > 0
+    return raw is not None and str(raw).strip() != ""
 
-    Le champ n'est visible que si la réponse est Non. Une saisie faite puis
-    abandonnée en repassant à Oui est effacée avant enregistrement.
+
+def _parse_rule_number(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    text = str(value).strip().replace("'", "").replace(" ", "").replace(",", ".")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _rule_matches(rule: dict, payload: dict) -> bool:
+    raw = payload.get(rule.get("field"))
+    expected = rule.get("value")
+    op = rule.get("op") or "is"
+    if op in {">", "<", ">=", "<="}:
+        left_raw = raw[0] if isinstance(raw, list) and raw else raw
+        left = _parse_rule_number(left_raw)
+        right = _parse_rule_number(expected)
+        if left is None or right is None:
+            return False
+        if op == ">":
+            return left > right
+        if op == "<":
+            return left < right
+        if op == ">=":
+            return left >= right
+        return left <= right
+    if isinstance(raw, list):
+        return expected in raw
+    actual = "" if raw is None else str(raw)
+    if op == "isnot":
+        return actual != expected
+    return actual == expected
+
+
+def _show_when_parents_answered(field: dict, payload: dict) -> bool:
+    """True only when every parent referenced by show_when has an explicit answer."""
+    rules = (field.get("show_when") or {}).get("rules") or []
+    if not rules:
+        return False
+    return all(_rule_parent_answered(payload.get(rule.get("field"))) for rule in rules)
+
+
+def blank_hidden_fields_when_invisible(form_type_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Efface les valeurs masquées seulement si le parent a une réponse explicite.
+
+    Si le parent est vide (dossier partiellement rempli / réouverture), on conserve
+    la valeur déjà enregistrée pour ne pas détruire des données client.
     """
     if not isinstance(payload, dict):
         return {}
@@ -570,14 +623,21 @@ def blank_incapacite_gain_when_hidden(form_type_id: str, payload: dict[str, Any]
     for field in schema.get("fields") or []:
         if not isinstance(field, dict):
             continue
-        if (field.get("label") or "") != INCAPACITE_GAIN_LABEL:
+        ftype = field.get("type") or "text"
+        if ftype in {"section", "html", "hidden", "file"}:
             continue
         if _field_visible(field, payload):
+            continue
+        if not _show_when_parents_answered(field, payload):
             continue
         name = field.get("name") or field.get("id")
         if not name:
             continue
-        if str(out.get(name) or "").strip():
+        cur = out.get(name)
+        if isinstance(cur, list):
+            if cur:
+                out[name] = []
+        elif str(cur or "").strip():
             out[name] = ""
         comment = field_comment_key(str(name))
         if str(out.get(comment) or "").strip():
@@ -585,24 +645,17 @@ def blank_incapacite_gain_when_hidden(form_type_id: str, payload: dict[str, Any]
     return out
 
 
+def blank_incapacite_gain_when_hidden(form_type_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Compat : délégué au nettoyage générique des champs masqués."""
+    return blank_hidden_fields_when_invisible(form_type_id, payload)
+
+
 def _field_visible(field: dict, payload: dict) -> bool:
     sw = field.get("show_when") or {}
     rules = sw.get("rules") or []
     if not rules:
         return True
-    results = []
-    for rule in rules:
-        raw = payload.get(rule.get("field"))
-        expected = rule.get("value")
-        if isinstance(raw, list):
-            ok = expected in raw
-        else:
-            actual = "" if raw is None else str(raw)
-            if rule.get("op") == "isnot":
-                ok = actual != expected
-            else:
-                ok = actual == expected
-        results.append(ok)
+    results = [_rule_matches(rule, payload) for rule in rules]
     if (sw.get("logic") or "all") == "any":
         return any(results)
     return all(results)

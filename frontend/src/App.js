@@ -13,6 +13,9 @@ import Agenda from "@/pages/Agenda";
 import Rappels from "@/pages/Rappels";
 import Formulaires from "@/pages/Formulaires";
 import Utilisateurs from "@/pages/Utilisateurs";
+import RolesPermissions from "@/pages/RolesPermissions";
+import Entreprises from "@/pages/Entreprises";
+import ActiverCompte from "@/pages/ActiverCompte";
 import Echeances3P from "@/pages/Echeances3P";
 import Suivi3P from "@/pages/Suivi3P";
 import Suivi3PFiche from "@/pages/Suivi3PFiche";
@@ -20,7 +23,7 @@ import DemandesOffres from "@/pages/DemandesOffres";
 import GestionReponsesOffres from "@/pages/GestionReponsesOffres";
 import DemandeOffreFiche from "@/pages/DemandeOffreFiche";
 import ModifierOffre from "@/pages/ModifierOffre";
-import HistoriqueEmails from "@/pages/HistoriqueEmails";
+import Messagerie from "@/pages/Messagerie";
 import SuiviTechnique from "@/pages/SuiviTechnique";
 import EffectuerAnalyse from "@/pages/EffectuerAnalyse";
 import EffectuerAnalyseEditor from "@/pages/EffectuerAnalyseEditor";
@@ -67,6 +70,7 @@ function AppRoutes() {
         path="/login"
         element={loading ? null : user ? <Navigate to="/dashboard" replace /> : <Login />}
       />
+      <Route path="/activer-compte" element={<ActiverCompte />} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/dossiers" element={<Protected perm="dossiers.view"><Kanban /></Protected>} />
@@ -83,7 +87,8 @@ function AppRoutes() {
       <Route path="/gestion-reponses-offres" element={<Protected perm="demandes_offres.process"><GestionReponsesOffres /></Protected>} />
       <Route path="/modifier-offre" element={<Protected perm="demandes_offres.edit"><ModifierOffre /></Protected>} />
       <Route path="/demandes-offres/:demandeId" element={<Protected perm="demandes_offres.view"><DemandeOffreFiche /></Protected>} />
-      <Route path="/historique-emails" element={<Protected anyOf={["users.manage"]}><HistoriqueEmails /></Protected>} />
+      <Route path="/messagerie" element={<Protected perm="messagerie.view"><Messagerie /></Protected>} />
+      <Route path="/historique-emails" element={<Navigate to="/messagerie" replace />} />
       <Route path="/eligibilite" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
       <Route path="/eligibilite/:listId" element={<Protected anyOf={["clients.view", "dossiers.view"]}><Eligibilite /></Protected>} />
       <Route path="/conges" element={<Protected perm="leaves.access"><Conges /></Protected>} />
@@ -93,7 +98,9 @@ function AppRoutes() {
       <Route path="/echeances-3p" element={<Protected anyOf={["agenda.view", "suivi_3p.view", "dossiers.view"]}><Echeances3P /></Protected>} />
       <Route path="/formulaires" element={<Protected perm="formulaires.view"><Formulaires /></Protected>} />
       <Route path="/utilisateurs" element={<Protected perm="users.manage"><Utilisateurs /></Protected>} />
-      <Route path="/suivi-technique" element={<Protected perm="users.manage"><SuiviTechnique /></Protected>} />
+      <Route path="/roles-permissions" element={<Protected anyOf={["roles.manage", "users.manage"]}><RolesPermissions /></Protected>} />
+      <Route path="/entreprises" element={<Protected perm="entreprises.view"><Entreprises /></Protected>} />
+      <Route path="/suivi-technique" element={<Protected perm="suivi_technique.view"><SuiviTechnique /></Protected>} />
       <Route path="/lamal" element={<Protected perm="lamal_module_access"><LamalDashboard /></Protected>} />
       <Route path="/lamal/comparaison" element={<Protected perm="lamal_module_access"><LamalCompare /></Protected>} />
       <Route path="/lamal/clients" element={<Protected perm="lamal_module_access"><LamalClients /></Protected>} />
