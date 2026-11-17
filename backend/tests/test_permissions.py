@@ -34,6 +34,7 @@ from access_control import (  # noqa: E402
     PERM_SUIVI_3P_VIEW,
     PERM_SUIVI_3P_EDIT,
     PERM_DEMANDES_OFFRES_PROCESS,
+    PERM_DEMANDES_OFFRES_VIEW,
     PERM_RAPPELS_VIEW,
     PERM_RAPPELS_EDIT,
     PERM_LAMAL_MODULE_ACCESS,
@@ -1148,3 +1149,198 @@ def test_phase4_dual_strict_unaffected_by_module_overrides():
         assert can_access_client(user, {"conseiller": "Valentin Lugnier"}) is False
     finally:
         set_runtime_access_mode_override(None)
+
+
+# ---------- Phase 5 RBAC : auto-élévation + trous routes + grants ----------
+
+
+def test_phase5_deny_unknown_still_allows_legacy_absent():
+    """Non-régression P1 : hors catalogue → deny ; catalogue absent → allow."""
+    user = user_from_doc(_doc(permissions={PERM_CLIENTS_VIEW: True}))
+    assert has_perm(user, "totally.unknown.future") is False
+    assert has_perm(user, PERM_RAPPELS_VIEW) is True  # absente du snapshot → legacy allow
+
+
+def test_phase5_self_elevation_via_override_blocked():
+    from fastapi import HTTPException
+    from roles_service import assert_no_rbac_privilege_escalation
+
+    admin_perms = default_permissions(ROLE_ADMIN)
+    admin_perms[PERM_ROLES_MANAGE] = False  # admin users.manage sans roles.manage
+    before = _doc(
+        user_id="admin1",
+        role=ROLE_ADMIN,
+        permissions=admin_perms,
+        permission_overrides={},
+    )
+    actor = user_from_doc(before)
+    proposed = {
+        **before,
+        "permission_overrides": {PERM_ROLES_MANAGE: True},
+    }
+    try:
+        assert_no_rbac_privilege_escalation(
+            actor,
+            before_doc=before,
+            proposed_doc=proposed,
+            target_account_id="admin1",
+        )
+        assert False, "expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert "Auto-élévation" in str(exc.detail)
+
+
+def test_phase5_self_elevation_via_role_change_blocked():
+    from fastapi import HTTPException
+    from roles_service import assert_no_rbac_privilege_escalation
+
+    before = _doc(
+        user_id="mgr1",
+        role=ROLE_GESTIONNAIRE_OFFRES,
+        permissions=default_permissions(ROLE_GESTIONNAIRE_OFFRES),
+    )
+    # Acteur avec users.manage via override (peut appeler PUT /users) mais pas admin.
+    actor_perms = dict(before["permissions"])
+    actor_perms[PERM_USERS_MANAGE] = True
+    before["permissions"] = actor_perms
+    actor = user_from_doc(before)
+    proposed = {
+        **before,
+        "role": ROLE_ADMIN,
+        "permissions": default_permissions(ROLE_ADMIN),
+        "permission_overrides": {},
+    }
+    try:
+        assert_no_rbac_privilege_escalation(
+            actor,
+            before_doc=before,
+            proposed_doc=proposed,
+            target_account_id="mgr1",
+        )
+        assert False, "expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert "Auto-élévation" in str(exc.detail)
+
+
+def test_phase5_cannot_grant_roles_manage_without_holding_it():
+    from fastapi import HTTPException
+    from roles_service import assert_no_rbac_privilege_escalation
+
+    actor_perms = default_permissions(ROLE_ADMIN)
+    actor_perms[PERM_ROLES_MANAGE] = False
+    actor = user_from_doc(
+        _doc(user_id="admin_partial", role=ROLE_ADMIN, permissions=actor_perms)
+    )
+    target_before = _doc(
+        user_id="c1",
+        role=ROLE_CONSEILLER,
+        permissions=default_permissions(ROLE_CONSEILLER),
+        permission_overrides={},
+    )
+    proposed = {
+        **target_before,
+        "permission_overrides": {PERM_ROLES_MANAGE: True},
+    }
+    try:
+        assert_no_rbac_privilege_escalation(
+            actor,
+            before_doc=target_before,
+            proposed_doc=proposed,
+            target_account_id="c1",
+        )
+        assert False, "expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert "Élévation" in str(exc.detail)
+        assert PERM_ROLES_MANAGE in str(exc.detail)
+
+
+def test_phase5_admin_can_grant_held_permission_to_other():
+    from roles_service import assert_no_rbac_privilege_escalation
+
+    actor = user_from_doc(
+        _doc(
+            user_id="admin1",
+            role=ROLE_ADMIN,
+            permissions=default_permissions(ROLE_ADMIN),
+        )
+    )
+    target_before = _doc(
+        user_id="c1",
+        role=ROLE_CONSEILLER,
+        permissions=default_permissions(ROLE_CONSEILLER),
+        permission_overrides={},
+    )
+    proposed = {
+        **target_before,
+        "permission_overrides": {PERM_DEMANDES_OFFRES_PROCESS: True},
+    }
+    assert_no_rbac_privilege_escalation(
+        actor,
+        before_doc=target_before,
+        proposed_doc=proposed,
+        target_account_id="c1",
+    )
+
+
+def test_phase5_self_demotion_non_critical_allowed():
+    """Retirer un droit non critique sur soi-même n'est pas une élévation."""
+    from roles_service import assert_no_rbac_privilege_escalation
+
+    before = _doc(
+        user_id="admin1",
+        role=ROLE_ADMIN,
+        permissions=default_permissions(ROLE_ADMIN),
+        permission_overrides={},
+    )
+    actor = user_from_doc(before)
+    proposed = {
+        **before,
+        "permission_overrides": {PERM_MESSAGERIE_VIEW: False},
+    }
+    assert_no_rbac_privilege_escalation(
+        actor,
+        before_doc=before,
+        proposed_doc=proposed,
+        target_account_id="admin1",
+    )
+
+
+def test_phase5_route_holes_notes_patch_and_offre_notif_read():
+    assert permission_for_request("PATCH", "/api/clients/abc/notes/n1") == PERM_CLIENTS_EDIT
+    assert permission_for_request("POST", "/api/notifications/offres/n1/read") == PERM_DEMANDES_OFFRES_VIEW
+    # Non-régression modules admin scindés
+    assert permission_for_request("GET", "/api/roles") == PERM_ROLES_MANAGE
+    assert permission_for_request("GET", "/api/admin/email-logs") == PERM_MESSAGERIE_VIEW
+    assert permission_for_request("GET", "/api/entreprises") == PERM_ENTREPRISES_VIEW
+    assert permission_for_request("GET", "/api/admin/tech-status") == PERM_SUIVI_TECHNIQUE_VIEW
+    assert permission_for_request("PUT", "/api/users/abc") == PERM_USERS_MANAGE
+
+
+def test_phase5_create_admin_requires_actor_roles_manage():
+    from fastapi import HTTPException
+    from roles_service import assert_no_rbac_privilege_escalation
+
+    actor_perms = default_permissions(ROLE_ADMIN)
+    actor_perms[PERM_ROLES_MANAGE] = False
+    actor = user_from_doc(
+        _doc(user_id="partial", role=ROLE_ADMIN, permissions=actor_perms)
+    )
+    new_admin = _doc(
+        user_id="new_admin",
+        role=ROLE_ADMIN,
+        permissions=default_permissions(ROLE_ADMIN),
+    )
+    try:
+        assert_no_rbac_privilege_escalation(
+            actor,
+            before_doc=None,
+            proposed_doc=new_admin,
+            target_account_id=None,
+        )
+        assert False, "expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert PERM_ROLES_MANAGE in str(exc.detail)

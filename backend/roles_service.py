@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 from access_control import (
     PERMISSION_CATALOG,
     PERMISSION_KEYS,
+    PERM_LAMAL_MODULE_ACCESS,
+    PERM_LEAVES_MANAGE,
     PERM_ROLES_MANAGE,
     PERM_USERS_MANAGE,
     ROLE_ADMIN,
@@ -24,6 +26,7 @@ from access_control import (
     User,
     default_permissions,
     default_see_all_dossiers,
+    has_perm,
     prune_redundant_overrides,
     resolve_effective_permissions,
     sanitize_permission_overrides,
@@ -190,6 +193,78 @@ def _raise_missing_critical_admin(missing: List[str]) -> None:
             "Conservez ces droits sur le rôle Administrateur ou sur au moins un compte."
         ),
     )
+
+
+def newly_granted_permission_keys(
+    before_effective: Dict[str, bool],
+    after_effective: Dict[str, bool],
+) -> List[str]:
+    """Clés catalogue passées de false → true (hors LAMal système)."""
+    granted: List[str] = []
+    for key in PERMISSION_KEYS:
+        if key == PERM_LAMAL_MODULE_ACCESS:
+            continue
+        if after_effective.get(key) and not before_effective.get(key):
+            granted.append(key)
+    return granted
+
+
+def actor_can_grant_permission(actor: User, key: str) -> bool:
+    """Droit d'accorder une permission (≠ usage runtime domaine Congés / LAMal)."""
+    if key == PERM_LAMAL_MODULE_ACCESS:
+        return False
+    if key == PERM_LEAVES_MANAGE:
+        # Le domaine e-mail filtre l'usage runtime ; le grant suit le snapshot / rôle.
+        perms = getattr(actor, "permissions", None) or {}
+        if key in perms:
+            return bool(perms[key])
+        return getattr(actor, "role", None) == ROLE_ADMIN
+    return has_perm(actor, key)
+
+
+def assert_no_rbac_privilege_escalation(
+    actor: User,
+    *,
+    before_doc: Optional[dict],
+    proposed_doc: dict,
+    target_account_id: Optional[str] = None,
+) -> None:
+    """Phase 5 — empêche l'auto-élévation et l'accord de droits non détenus.
+
+    - Self-edit (``target_account_id`` = acteur) : aucun droit effectif supplémentaire
+      via ``role`` / ``permissions`` / ``permission_overrides``.
+    - Création ou édition d'un tiers : l'acteur ne peut accorder que des permissions
+      qu'il détient déjà effectivement (ex. pas de ``roles.manage`` sans l'avoir).
+    """
+    after = resolve_effective_permissions(proposed_doc)
+    if before_doc is None:
+        before = {key: False for key in PERMISSION_KEYS}
+    else:
+        before = resolve_effective_permissions(before_doc)
+    granted = newly_granted_permission_keys(before, after)
+    if not granted:
+        return
+
+    actor_id = str(getattr(actor, "account_id", "") or "")
+    target_id = str(target_account_id or "")
+    if target_id and actor_id and target_id == actor_id:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Auto-élévation interdite : vous ne pouvez pas vous accorder de droits "
+                f"supplémentaires ({', '.join(granted)})."
+            ),
+        )
+
+    forbidden = [key for key in granted if not actor_can_grant_permission(actor, key)]
+    if forbidden:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Élévation de privilèges interdite : vous ne pouvez pas accorder "
+                f"« {', '.join(forbidden)} » sans détenir cette permission."
+            ),
+        )
 
 
 async def assert_critical_admin_access_remains(

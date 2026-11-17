@@ -1110,7 +1110,7 @@ async def create_user(payload: UserCreate, user: User = Depends(get_current_user
     from entreprises import get_entreprise
     from user_activation import create_activation_token, send_activation_email
 
-    from roles_service import role_id_is_assignable
+    from roles_service import assert_no_rbac_privilege_escalation, role_id_is_assignable
 
     requested_role = (payload.role or ROLE_CONSEILLER).strip()
     if not await role_id_is_assignable(db, requested_role):
@@ -1158,6 +1158,13 @@ async def create_user(payload: UserCreate, user: User = Depends(get_current_user
             access_by_account_id_only=access_only,
         ),
     }
+    # Phase 5 : pas d'accord de droits que l'acteur ne détient pas (ex. roles.manage).
+    assert_no_rbac_privilege_escalation(
+        user,
+        before_doc=None,
+        proposed_doc=doc,
+        target_account_id=None,
+    )
     await db.users.insert_one(doc)
     if access_only:
         await log_user_access_flag(
@@ -1252,6 +1259,7 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
     from roles_service import (
         apply_override_state_to_user_fields,
         assert_critical_admin_after_user_change,
+        assert_no_rbac_privilege_escalation,
         prepare_overrides_for_role_change,
         resolve_role_template_permissions,
     )
@@ -1344,6 +1352,14 @@ async def update_user(account_id: str, payload: UserUpdate, user: User = Depends
         updates["see_all_dossiers"] = False
 
     proposed = {**doc, **updates}
+    # Phase 5 : auto-élévation self-edit + grant de permissions non détenues.
+    if phase4_perm_touch or payload.permissions is not None or payload.role is not None:
+        assert_no_rbac_privilege_escalation(
+            user,
+            before_doc=doc,
+            proposed_doc=proposed,
+            target_account_id=account_id,
+        )
     if phase4_perm_touch or payload.permissions is not None or payload.active is False:
         await assert_critical_admin_after_user_change(
             db,
