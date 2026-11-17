@@ -143,21 +143,32 @@ def _page_of(text: str, pos: int) -> Optional[int]:
 def _detect_branche(text: str) -> Dict[str, Any]:
     flat = _norm(text)
     if re.search(
-        r"assurance\s+v[ée]hicules?\s+[àa]\s+moteur|v[ée]hicules?\s+assur[ée]s|casco|responsabilit[ée]\s+civile",
+        r"assurance\s+v[ée]hicules?\s+[àa]\s+moteur|"
+        r"v[ée]hicules?\s+assur[ée]s|"
+        r"fahrzeugversicherung|motorfahrzeug|"
+        r"casco|kasko|"
+        r"responsabilit[ée]\s+civile|"
+        r"haftpflicht",
         flat,
     ):
         multi = bool(
-            re.search(r"plaques?\s+interchangeables|v[ée]hicules?\s+assur[ée]s.{0,80},", flat, re.S)
-        ) or len(re.findall(r"v[ée]hicule\s+assur[ée]\b", flat)) >= 2
+            re.search(
+                r"plaques?\s+interchangeables|"
+                r"wechselkennzeichen|"
+                r"v[ée]hicules?\s+assur[ée]s.{0,80},",
+                flat,
+                re.S,
+            )
+        ) or len(re.findall(r"v[ée]hicule\s+assur[ée]\b|fahrzeug\s+\d+", flat)) >= 2
         return _field(
             "vehicule_plaques_interchangeables" if multi else "vehicule",
             confidence=0.92 if multi else 0.85,
             status=STATUS_FOUND,
             source="keyword",
         )
-    if re.search(r"\b3\s*a\b|pilier\s*3|pr[ée]voyance", flat):
+    if re.search(r"\b3\s*a\b|pilier\s*3|pr[ée]voyance|säule\s*3", flat):
         return _field("pilier3", confidence=0.7, status=STATUS_FOUND, source="keyword")
-    if re.search(r"\bm[ée]nage\b|\brc\s+priv", flat):
+    if re.search(r"\bm[ée]nage\b|\brc\s+priv|hausrat", flat):
         return _field("menage_rc", confidence=0.65, status=STATUS_TO_VERIFY, source="keyword")
     return _field()
 
@@ -424,6 +435,26 @@ def _extract_primes(text: str) -> Dict[str, Any]:
         val = _compact_money_token(m_tax.group(1))
         if val is not None:
             primes["annuelle_avec_taxes"] = _field(val, page=_page_of(text, m_tax.start()), confidence=0.95, status=STATUS_FOUND, source="prime_avec_taxes")
+
+    # Synonymes multi-compagnies (DE/EN/FR) si libellés ELVIA absents.
+    if primes["annuelle_avec_taxes"]["status"] != STATUS_FOUND and primes["annuelle_brute"]["status"] != STATUS_FOUND:
+        for pattern, conf, source in (
+            (r"Jahrespr[aä]mie(?:\s+inkl\.?\s*(?:Steuern|Abgaben))?[^0-9\n]{0,40}([0-9][0-9'’\u00a0\u202f.,]*)", 0.9, "jahrespraemie"),
+            (r"(?:Prime|Cotisation)\s+totale(?:\s+annuelle)?[^0-9\n]{0,40}([0-9][0-9'’\u00a0\u202f.,]*)", 0.85, "prime_totale"),
+            (r"Annual\s+premium[^0-9\n]{0,40}([0-9][0-9'’\u00a0\u202f.,]*)", 0.85, "annual_premium"),
+            (r"Montant\s+de\s+la\s+prime[^0-9\n]{0,40}([0-9][0-9'’\u00a0\u202f.,]*)", 0.8, "montant_prime_label"),
+            (r"Prime\s*/\s*an[^0-9\n]{0,20}([0-9][0-9'’\u00a0\u202f.,]*)", 0.8, "prime_slash_an"),
+        ):
+            m_syn = re.search(pattern, text, re.I)
+            if not m_syn:
+                continue
+            val = _compact_money_token(m_syn.group(1))
+            if val is None or not (20 <= float(val) <= 500_000):
+                continue
+            primes["annuelle_brute"] = _field(
+                val, page=_page_of(text, m_syn.start()), confidence=conf, status=STATUS_FOUND, source=source
+            )
+            break
 
     # Une seule prime globale : taxes si dispo, sinon brute — jamais dupliquée.
     if primes["annuelle_avec_taxes"]["status"] == STATUS_FOUND:

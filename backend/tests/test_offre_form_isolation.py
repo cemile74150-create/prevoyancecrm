@@ -74,6 +74,32 @@ def test_apply_form_fields_clears_legacy_on_schema_save():
     )
 
 
+def test_apply_form_fields_persists_montant_prime_on_schema_put():
+    """Prime hors schéma : le PUT voyage/véhicule doit enregistrer montant_prime."""
+    target = empty_form_defaults(None, form_type="voyage")
+    target["form_type"] = "voyage"
+    target["montant_prime"] = None
+    payload = empty_form_payload("voyage")
+    apply_form_fields(
+        target,
+        {
+            "form_type": "voyage",
+            "form_payload": payload,
+            "montant_prime": "1'243.90",
+        },
+    )
+    assert target.get("montant_prime") == 1243.9
+    # Un second save sans prime dans le body ne doit pas l'effacer via clear_legacy.
+    apply_form_fields(
+        target,
+        {
+            "form_type": "voyage",
+            "form_payload": payload,
+        },
+    )
+    assert target.get("montant_prime") == 1243.9
+
+
 def test_vehicule_schema_summary_has_no_type_pilier_label_from_crm_pollution():
     """Même esprit que l'e-mail : résumé schéma sans colonnes CRM 3P."""
     payload = empty_form_payload("vehicule")

@@ -1013,16 +1013,20 @@ LEGACY_3P_CRM_KEYS: tuple[str, ...] = (
 
 
 def clear_legacy_3p_crm_fields(target: dict) -> None:
-    """Efface les colonnes 3P legacy pour éviter qu'elles polluent un autre form_type."""
+    """Efface les colonnes 3P legacy pour éviter qu'elles polluent un autre form_type.
+
+    ``montant_prime`` est hors schéma formulaire (bannière PDF + colonne CRM
+    partagée véhicule/voyage/3P) : on ne l'efface pas ici.
+    """
     for key in LEGACY_3P_CRM_KEYS:
+        if key == "montant_prime":
+            continue
         if key == "activites_risque":
             target[key] = False
         elif key == "activites_risque_liste":
             target[key] = []
         elif key in ("inclure_cga", "mandat_gestion"):
             target[key] = False
-        elif key == "montant_prime":
-            target[key] = None
         else:
             target[key] = ""
 
@@ -3172,9 +3176,12 @@ def apply_form_fields(target: dict, data: dict) -> None:
         val = data.get(key)
         target[key] = (str(val).strip() if val is not None else "") or None
 
+    # Prime annuelle globale : hors schéma (voyage/véhicule/3P). Toujours persistée
+    # si envoyée — ne pas la limiter au legacy, sinon le PUT schéma l'ignore.
+    if "montant_prime" in data:
+        target["montant_prime"] = parse_float(data.get("montant_prime"))
+
     if not is_schema_form:
-        if "montant_prime" in data:
-            target["montant_prime"] = parse_float(data.get("montant_prime"))
         if "activites_risque" in data:
             target["activites_risque"] = bool(data.get("activites_risque"))
         if "activites_risque_liste" in data:

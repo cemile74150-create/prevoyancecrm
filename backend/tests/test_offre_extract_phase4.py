@@ -182,6 +182,14 @@ def test_phase4_comparative_table_multi_companies(monkeypatch):
     print("PHASE4_COMPARATIVE", rows)
 
 
+def test_phase4_prime_synonym_jahrespraemie():
+    from offre_extract_structured import _extract_primes
+
+    primes = _extract_primes("Fahrzeugversicherung\nJahresprämie inkl. Steuern CHF 980.40\n")
+    assert primes["globale"]["status"] == "found"
+    assert primes["globale"]["value"] == 980.4
+
+
 def test_phase4_overwrite_requires_flag_end_to_end(monkeypatch):
     """A5 : parcours extract → map → merge sans écrasement sauf flag."""
     extracted = _extract_from_fixture(ELVIA, "elvia.pdf", monkeypatch)
