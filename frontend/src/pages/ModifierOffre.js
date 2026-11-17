@@ -152,15 +152,22 @@ export default function ModifierOffre() {
   const [pdfFieldStatuses, setPdfFieldStatuses] = useState(null);
   const [pendingOverwrite, setPendingOverwrite] = useState(null); // { payload, statuses, filledKeys, skipped }
   const [pendingFormType, setPendingFormType] = useState(null); // { suggested, candidates, current }
+  const [pdfStructuredEnabled, setPdfStructuredEnabled] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const res = await api.get("/demandes-offres/meta");
-        if (!cancelled) setFormMenu(res.data?.form_menu || null);
+        if (!cancelled) {
+          setFormMenu(res.data?.form_menu || null);
+          setPdfStructuredEnabled(Boolean(res.data?.pdf_extract_structured_enabled));
+        }
       } catch {
-        if (!cancelled) setFormMenu(null);
+        if (!cancelled) {
+          setFormMenu(null);
+          setPdfStructuredEnabled(false);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -355,11 +362,18 @@ export default function ModifierOffre() {
     if (action === "creer" && source === "leosoft") {
       toast.message("PDF hors LeoSoft : une nouvelle demande sera créée. L'offre déjà enregistrée n'est pas modifiée.");
     }
-    const suggested = data.form_type_suggere;
-    const candidates = Array.isArray(data.form_type_candidates) ? data.form_type_candidates : [];
+    if (typeof data.pdf_extract_structured_enabled === "boolean") {
+      setPdfStructuredEnabled(data.pdf_extract_structured_enabled);
+    }
+    const structuredOn = data.pdf_extract_structured_enabled !== false && (data.pdf_extract_structured_enabled || pdfStructuredEnabled);
+    const suggested = structuredOn ? data.form_type_suggere : null;
+    const candidates = structuredOn && Array.isArray(data.form_type_candidates) ? data.form_type_candidates : [];
     if (
-      data.form_type_needs_confirm
-      || (suggested && selectedType?.form_type && suggested !== selectedType.form_type)
+      structuredOn
+      && (
+        data.form_type_needs_confirm
+        || (suggested && selectedType?.form_type && suggested !== selectedType.form_type)
+      )
     ) {
       setPendingFormType({
         suggested,
@@ -1095,7 +1109,7 @@ export default function ModifierOffre() {
                     </div>
                   </div>
                 )}
-                {pdfReady && pdfFieldStatuses && (
+                {pdfReady && pdfStructuredEnabled && pdfFieldStatuses && (
                   <div
                     className="rounded-md border bg-slate-50 px-3 py-2 text-xs text-slate-700 flex flex-wrap gap-3"
                     data-testid="pdf-status-legend"

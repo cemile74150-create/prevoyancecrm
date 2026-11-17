@@ -3946,6 +3946,57 @@ def _extract_native_tables_hint(doc: Any) -> str:
     return "\n".join(lines)
 
 
+def _ocr_table_line_heuristics(ocr_text: str) -> str:
+    """
+    Heuristique pragmatique pour tableaux scannés (au-delà de find_tables).
+
+    Sur texte OCR : détecte les lignes multi-montants / multi-colonnes (espaces
+    larges ou séparateurs) et les réécrit en lignes « cell | cell ».
+
+    Limites documentées :
+    - Pas de vision layout ML ; dépend de la qualité Tesseract (fra+deu+eng).
+    - Colonnes mal alignées / OCR bruité → lignes ignorées (pas d'invention).
+    - Tableaux complexes multi-pages fusionnés manuellement restent fragiles.
+    """
+    if not (ocr_text or "").strip():
+        return ""
+    money_re = re.compile(
+        r"(?:CHF\s*)?(?:\d{1,3}(?:[ '’\u00a0\u202f]\d{3})+|\d+)(?:[.,]\d{2})?",
+        re.I,
+    )
+    out: List[str] = []
+    for raw_line in (ocr_text or "").splitlines():
+        line = re.sub(r"[ \t]{2,}", " | ", raw_line.strip())
+        line = re.sub(r"\s*\|\s*", " | ", line)
+        line = re.sub(r"\s+", " ", line).strip(" |")
+        if not line or len(line) < 8:
+            continue
+        money_hits = money_re.findall(line)
+        pipe_cells = [c.strip() for c in line.split("|") if c.strip()]
+        # Ligne tableau probable : ≥2 montants OU ≥3 cellules séparées
+        if len(money_hits) >= 2 or len(pipe_cells) >= 3:
+            if len(pipe_cells) >= 2:
+                out.append(" | ".join(pipe_cells[:12]))
+            else:
+                # Découpe grossière autour des montants
+                parts = money_re.split(line)
+                cells = []
+                amounts = money_hits
+                for i, part in enumerate(parts):
+                    label = re.sub(r"\s+", " ", part or "").strip(" :-")
+                    if label:
+                        cells.append(label)
+                    if i < len(amounts):
+                        cells.append(amounts[i])
+                if len(cells) >= 2:
+                    out.append(" | ".join(cells[:12]))
+        if len(out) >= 60:
+            break
+    if not out:
+        return ""
+    return "[ocr-table-heuristics]\n" + "\n".join(out)
+
+
 def _ocr_pdf_text(pdf_bytes: bytes) -> str:
     """OCR via images embarquées puis pixmap + Tesseract — robuste pour PDF scannés."""
     try:
@@ -3997,6 +4048,10 @@ def _ocr_pdf_text(pdf_bytes: bytes) -> str:
 
             joined = "\n\n".join(text_parts)
             if len(re.sub(r"\s+", "", joined)) >= 40:
+                # Heuristiques tableaux en annexe isolée — ne pas réécrire les lignes identité.
+                heur = _ocr_table_line_heuristics(joined)
+                if heur and heur not in joined:
+                    joined = f"{joined}\n\n----- OCR_TABLE_APPENDIX -----\n{heur}"
                 log.info(
                     "OCR pytesseract ok pages=%s chars=%s langs=%s tessdata=%s",
                     page_count,

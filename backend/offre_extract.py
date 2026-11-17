@@ -140,6 +140,32 @@ _MONEY_RE = (
 )
 
 
+def _amount_looks_like_calendar_fragment(raw: str, nearby: str) -> bool:
+    """Écarte années / fragments de dates (19.01.1962) pris pour des montants."""
+    token = (raw or "").strip()
+    nearby = nearby or ""
+    # Fragment clairement dans une date jj.mm.aaaa
+    if re.search(
+        rf"\d{{1,2}}[./]{re.escape(token)}[./]\d{{2,4}}|"
+        rf"\d{{1,2}}[./]\d{{1,2}}[./]{re.escape(token)}|"
+        rf"{re.escape(token)}[./]\d{{1,2}}[./]\d{{2,4}}",
+        nearby,
+    ):
+        return True
+    try:
+        val = float(token.replace("'", "").replace("’", "").replace(" ", "").replace(",", "."))
+    except ValueError:
+        return False
+    # Année calendaire sans devise à proximité
+    if 1900 <= val <= 2100 and val == int(val):
+        if not re.search(r"(?:chf|fr\.?|sfr\.?|eur|€)", nearby, re.I):
+            return True
+    # Pseudo-décimal de date « 19.01 » / « 01.11 »
+    if re.fullmatch(r"\d{1,2}[.,]\d{2}", token) and re.search(r"\d{1,2}[./]\d{1,2}[./]\d{2,4}", nearby):
+        return True
+    return False
+
+
 def _amounts_near_keywords(
     text: str,
     keywords: Tuple[str, ...],
@@ -156,11 +182,14 @@ def _amounts_near_keywords(
             end = min(len(flat), m.end() + window)
             chunk = flat[start:end]
             for am in re.finditer(_MONEY_RE, chunk, re.I):
-                val = _compact_money_token(am.group(1))
+                raw_amt = am.group(1)
+                val = _compact_money_token(raw_amt)
                 if val is None:
                     continue
-                score = 100 - abs(am.start() - (m.end() - start))
                 nearby = chunk[max(0, am.start() - 30) : am.end() + 30]
+                if _amount_looks_like_calendar_fragment(raw_amt, nearby):
+                    continue
+                score = 100 - abs(am.start() - (m.end() - start))
                 if prefer_monthly and re.search(r"(mois|/m|mensuel|monthly)", nearby):
                     score += 40
                 if prefer_monthly and re.search(r"(an\b|annuel|/a\b|jährlich)", nearby):
@@ -170,6 +199,9 @@ def _amounts_near_keywords(
                         score += 10
                 if not prefer_monthly and re.search(r"(unique|invest|capital|prime|versement|einmal)", nearby):
                     score += 25
+                # Bonus devise explicite
+                if re.search(r"(?:chf|fr\.?|sfr\.?)", nearby, re.I):
+                    score += 20
                 hits.append((val, score))
     hits.sort(key=lambda x: -x[1])
     return hits
@@ -387,12 +419,104 @@ _IDENTITY_HEADER_BLOCKLIST = {
     "police",
     "dynamix",
     "financement",
+    "suisse",
+    "romande",
+    "winterthur",
+    "lausanne",
+    "genève",
+    "geneve",
+    "mendes",
+    "chemin",
+    "case",
+    "postale",
+    "axa",
+    "zurich",
+    "vaudoise",
+    "assurance",
+    "assurances",
+    "compagnie",
+    "vie",
+    "nouvelle",
+    "couverture",
+    "début",
+    "debut",
+    "général",
+    "general",
+    "guisan",
+    "customer",
+    "operations",
+    "responsable",
+    "annexe",
+    "page",
+    "prénom",
+    "prenom",
+    "vorname",
+    "nachname",
+    "et",
 }
+
+
+def _strip_identity_noise(raw: str) -> str:
+    """Retire DOB / marques de rôle collées au nom (AXA, Winterthur)."""
+    cleaned = (raw or "").replace("|", " ")
+    cleaned = re.sub(
+        r",?\s*n[ée]\(?e?\)?\s*(?:le\s*)?[:：]?\s*\d{1,2}[./]\d{1,2}[./]\d{2,4}",
+        "",
+        cleaned,
+        flags=re.I,
+    )
+    cleaned = re.sub(r"\(\s*\d{1,2}[./]\d{1,2}[./]\d{2,4}\s*\)", "", cleaned)
+    # DOB OCR bruité : « ( 28.11 . 1967 ) »
+    cleaned = re.sub(
+        r"\(\s*\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*\d{2,4}\s*\)",
+        "",
+        cleaned,
+    )
+    cleaned = re.sub(r"\(\s*[A-Za-z]\s*\)", "", cleaned)
+    cleaned = re.sub(r"\b\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*\d{2,4}\b", "", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip(" ,;-|.")
+
+
+def _identity_dob_nearby(raw: str) -> Optional[str]:
+    m = re.search(r"\((\d{1,2}[./]\d{1,2}[./]\d{2,4})\)", raw or "")
+    if m:
+        return _normalize_date(m.group(1))
+    m = re.search(
+        r"n[ée]\(?e?\)?\s*(?:le\s*)?[:：]?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        raw or "",
+        re.I,
+    )
+    if m:
+        return _normalize_date(m.group(1))
+    return None
+
+
+def _is_plausible_person_name(prenom: Optional[str], nom: Optional[str]) -> bool:
+    """Zéro attribution erronée : rejeter orgs, dates, libellés, tokens trop courts."""
+    if not prenom or not nom:
+        return False
+    if re.search(r"\d", prenom) or re.search(r"\d", nom):
+        return False
+    if "(" in prenom or ")" in prenom or "(" in nom or ")" in nom:
+        return False
+    tokens = [t for t in f"{prenom} {nom}".split() if t]
+    if len(tokens) < 2:
+        return False
+    for tok in tokens:
+        low = tok.casefold().strip("().,;:")
+        if len(low) < 2:
+            return False
+        if low in _IDENTITY_HEADER_BLOCKLIST:
+            return False
+        if re.fullmatch(r"\d{1,2}[./]\d{1,2}[./]\d{2,4}", tok):
+            return False
+    return True
 
 
 def _split_identity_parts(raw: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """(civilite, prenom, nom) depuis une chaîne libre."""
-    parts = [p for p in re.sub(r"\s+", " ", raw or "").strip().split() if p]
+    cleaned = _strip_identity_noise(raw)
+    parts = [p for p in cleaned.split() if p]
     civilite = None
     if parts and parts[0].casefold() in {
         "monsieur", "madame", "mademoiselle", "herr", "frau", "fräulein", "fraulein", "mr", "mrs", "ms",
@@ -411,36 +535,141 @@ def _split_identity_parts(raw: str) -> Tuple[Optional[str], Optional[str], Optio
     # Rejeter libellés de section capturés comme identité
     if parts and any(p.casefold().strip("()") in _IDENTITY_HEADER_BLOCKLIST for p in parts[:2]):
         return civilite, None, None
+    # Écarter tokens date résiduels
+    parts = [p for p in parts if not re.fullmatch(r"\(?\d{1,2}[./]\d{1,2}[./]\d{2,4}\)?", p)]
     if len(parts) >= 2:
-        # « May Jean-Yves » (NOM Prénom composé) fréquent chez AXA
+        # « May Jean-Yves » / « Perritaz Corinne » (NOM Prénom) fréquent chez AXA
         if len(parts) == 2 and "-" in parts[1] and "-" not in parts[0]:
             return civilite, parts[1], parts[0]
-        if parts[0].isupper() and not parts[-1].isupper() and len(parts[0]) > 1:
-            return civilite, parts[-1], parts[0]
+        # Tout en majuscules : PRENOM NOM (police AXA ancienne) — pas NOM PRENOM
+        if all(p.isupper() and p.isalpha() for p in parts[:2]):
+            return civilite, parts[0].title(), " ".join(p.title() for p in parts[1:])
+        if parts[0].isupper() and not parts[-1].isupper() and len(parts[0]) > 1 and parts[-1][0].isupper():
+            # « MAY Jean-Yves » (NOM + prénom casse mixte)
+            return civilite, " ".join(parts[1:]), parts[0].title()
         return civilite, parts[0], " ".join(parts[1:])
     if len(parts) == 1:
         return civilite, parts[0], None
     return civilite, None, None
 
 
-def _find_person_name(text: str) -> Tuple[Optional[str], Optional[str]]:
-    """Retourne (prenom, nom)."""
-    flat = text or ""
-
-    # Zurich feuille prestations OCR : PERSONNE ASSUREE + ligne « NOM PRENOM » (avant FP)
+def _parse_zurich_personne_assuree_line(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Zurich feuille prestations : ligne MAJUSCULES « NOM PRENOM » juste sous PERSONNE ASSUREE.
+    Important : ne pas laisser \\s* avaler un saut de ligne (sinon Broker/Suisse Romande).
+    Noms en MAJUSCULES seulement (sans IGNORECASE sur les captures).
+    """
+    flat = (text or "").split("----- OCR_TABLE_APPENDIX -----", 1)[0]
     m_fp = re.search(
-        r"PERSONNE\s+ASSUR[ÉE]E\s*[:：]?[^\n]{0,80}\n\s*"
-        r"([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*)\s+"
-        r"([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*(?:-[A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*)*)"
-        r"(?=\s+FP\b|\s+\d|\s*$|\n)",
+        r"(?i)PERSONNE\s+ASSUR[ÉE]E\s*[:：]?[ \t]*(?:POLICE\b[^\n]{0,60})?\n[ \t]*"
+        r"([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]{1,40})\s+"
+        r"([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]{1,40}"
+        r"(?:-[A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]{1,40})*)"
+        r"(?=\s+FP\b|\s+\(|\s+\d|\s*$|\n)",
         flat,
-        re.I,
     )
-    if m_fp:
-        nom = m_fp.group(1).strip().title()
-        prenom = m_fp.group(2).strip().title()
-        if nom.casefold() not in {"police", "no", "fp"} and prenom.casefold() not in {"police", "no", "fp"}:
-            return prenom, nom
+    if not m_fp:
+        return None, None
+    nom = m_fp.group(1).strip().title()
+    prenom = m_fp.group(2).strip().title()
+    if not _is_plausible_person_name(prenom, nom):
+        return None, None
+    return prenom, nom
+
+
+def _parse_axa_inline_preneur(text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    AXA : identité sur la même ligne que le libellé.
+    Ex. « Preneur d'assurance VANESSA CHABLOZ (28.11.1967) »
+        « Preneur d'assurance Corinne Perritaz Wahlen, né(e) le 15.03.1978 »
+        « Preneur d'assurance Perritaz Corinne né(e) 15.03.1978 »
+    Retourne (prenom, nom, dob_iso|None). En cas de doute → (None, None, None).
+
+    Ignore les lignes formulaire Vaudoise « Prénom, nom Monsieur … » (autre parser).
+    """
+    flat = (text or "").split("----- OCR_TABLE_APPENDIX -----", 1)[0]
+    best: Tuple[Optional[str], Optional[str], Optional[str]] = (None, None, None)
+    for label in (r"preneur\s+d['’]?assurance", r"personne\s+assur[ée]e"):
+        # Même ligne uniquement (pas la ligne suivante = libellé formulaire)
+        for m in re.finditer(
+            rf"(?i)(?:^|\n)\s*[|\u2022]*\s*{label}[ \t]+([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][^\n\r]{{3,90}})",
+            flat,
+        ):
+            raw = m.group(1).strip()
+            if re.match(r"(?i)^(police|broker|nos|nouvelle|pr[ée]nom|nom)\b", raw):
+                continue
+            # « Prénom, nom Monsieur X » → laisser au parser combo dédié
+            if re.match(r"(?i)^pr[ée]nom\s*[,/]", raw) or re.match(r"(?i)^nom\s*[,/]", raw):
+                continue
+            dob = _identity_dob_nearby(raw)
+            _civ, prenom, nom = _split_identity_parts(raw)
+            if _is_plausible_person_name(prenom, nom):
+                return prenom, nom, dob
+            cleaned = _strip_identity_noise(raw)
+            parts = [p for p in cleaned.split() if p and p[0].isalpha()]
+            # Tout MAJUSCULES (VANESSA CHABLOZ) → Prénom Nom, jamais inverser
+            if len(parts) >= 2 and all(p.isupper() for p in parts[:2]):
+                prenom_u = parts[0].title()
+                nom_u = " ".join(p.title() for p in parts[1:])
+                if _is_plausible_person_name(prenom_u, nom_u):
+                    return prenom_u, nom_u, dob
+            # NOM Prénom seulement si prénom composé (May Jean-Yves / Perritaz Corinne-…)
+            if (
+                len(parts) == 2
+                and "-" in parts[1]
+                and "-" not in parts[0]
+                and _is_plausible_person_name(parts[1], parts[0])
+            ):
+                return parts[1], parts[0], dob
+            if len(parts) >= 3 and _is_plausible_person_name(parts[0], " ".join(parts[1:])):
+                return parts[0], " ".join(parts[1:]), dob
+    return best
+
+
+def _parse_axa_nom_prenom_near_dob(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """« May Jean-Yves » / « Perritaz Corinne (A) » juste au-dessus de né(e) le …"""
+    flat = text or ""
+    m = re.search(
+        r"(?m)^[ \t]*([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-Za-zÀ-ÿ'\-]{1,40})"
+        r"[ \t]+([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-Za-zÀ-ÿ'\-]{1,40}(?:-[A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-Za-zÀ-ÿ'\-]{1,40})*)"
+        r"(?:[ \t]*\(\s*[A-Za-z]\s*\))?[ \t]*\n[ \t]*n[ée]\(?e?\)?\s*(?:le\s*)?",
+        flat,
+    )
+    if not m:
+        return None, None
+    left, right = m.group(1).strip(), m.group(2).strip()
+    # Convention AXA police : Nom Prénom (May Jean-Yves)
+    if "-" in right and "-" not in left:
+        prenom, nom = right, left
+    elif left.isupper() and not right.isupper():
+        prenom, nom = right, left.title()
+    else:
+        # Ambigu : ne pas inventer — tenter Nom Prénom seulement si prénom composé / connu
+        if "-" in right:
+            prenom, nom = right, left
+        else:
+            return None, None
+    if _is_plausible_person_name(prenom, nom):
+        return prenom, nom
+    return None, None
+
+
+def _find_person_name(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """Retourne (prenom, nom). Jamais de faux positif : doute → (None, None)."""
+    # Ignorer l'annexe heuristiques tableaux OCR (peut répéter des lignes bruitées).
+    flat = (text or "").split("----- OCR_TABLE_APPENDIX -----", 1)[0]
+
+    axa_p, axa_n, _dob = _parse_axa_inline_preneur(flat)
+    if axa_p and axa_n:
+        return axa_p, axa_n
+
+    prenom, nom = _parse_zurich_personne_assuree_line(flat)
+    if prenom and nom:
+        return prenom, nom
+
+    prenom, nom = _parse_axa_nom_prenom_near_dob(flat)
+    if prenom and nom:
+        return prenom, nom
 
     # Vaudoise Serenity : « Prénom, nom Monsieur Benoit Stempfel »
     m_combo = re.search(
@@ -450,7 +679,7 @@ def _find_person_name(text: str) -> Tuple[Optional[str], Optional[str]]:
     )
     if m_combo:
         _civ, prenom, nom = _split_identity_parts(m_combo.group(1))
-        if prenom and nom:
+        if _is_plausible_person_name(prenom, nom):
             return prenom, nom
 
     m_combo2 = re.search(
@@ -460,7 +689,19 @@ def _find_person_name(text: str) -> Tuple[Optional[str], Optional[str]]:
     )
     if m_combo2:
         _civ, prenom, nom = _split_identity_parts(m_combo2.group(1))
-        if prenom and nom:
+        if _is_plausible_person_name(prenom, nom):
+            return prenom, nom
+
+    # Lettre : civilité puis nom sur la ligne suivante / même ligne
+    m_civ = re.search(
+        r"(?:^|\n)\s*(Monsieur|Madame|Mademoiselle|Herr|Frau|Fräulein)\s+"
+        r"(?:(?:\n\s*)?([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-Za-zÀ-ÿ' \-]{1,40}))",
+        flat,
+        re.M,
+    )
+    if m_civ and m_civ.group(2):
+        _civ, prenom, nom = _split_identity_parts(f"{m_civ.group(1)} {m_civ.group(2)}")
+        if _is_plausible_person_name(prenom, nom):
             return prenom, nom
 
     # « Prénom Nom » après Assuré / Preneur / Client / Cocontractant (début de ligne OU inline)
@@ -479,18 +720,16 @@ def _find_person_name(text: str) -> Tuple[Optional[str], Optional[str]]:
             rf"(?<![A-Za-zÀ-ÿ]){label}\s*[:\-–]?\s*([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][^\n\r]{{2,60}})",
         )
         for pat in patterns:
-            m = re.search(pat, flat, re.I | re.M)
-            if not m:
-                continue
-            raw = m.group(1).strip()
-            # Couper si collé à une autre rubrique (adresse agence, etc.)
-            raw = re.split(r"\s{2,}|(?<=\d)\s+(?=[A-Z])|NPA|T[ée]l[ée]phone|E-?mail", raw)[0].strip()
-            # Zurich : « PERSONNE ASSUREE: POLICE NO … » — le nom est à la ligne suivante
-            if re.match(r"(?i)^police\b", raw) or re.match(r"(?i)^fp\b", raw):
-                continue
-            _civ, prenom, nom = _split_identity_parts(raw)
-            if prenom and nom:
-                return prenom, nom
+            for m in re.finditer(pat, flat, re.I | re.M):
+                raw = m.group(1).strip()
+                # Couper si collé à une autre rubrique (adresse agence, etc.)
+                raw = re.split(r"\s{2,}|(?<=\d)\s+(?=[A-Z])|NPA|T[ée]l[ée]phone|E-?mail", raw)[0].strip()
+                # Zurich : « PERSONNE ASSUREE: POLICE NO … » — le nom est à la ligne suivante
+                if re.match(r"(?i)^(police|broker|nos|nouvelle|fp)\b", raw):
+                    continue
+                _civ, prenom, nom = _split_identity_parts(raw)
+                if _is_plausible_person_name(prenom, nom):
+                    return prenom, nom
 
     nom = _find_labeled_value(
         text,
@@ -512,9 +751,9 @@ def _find_person_name(text: str) -> Tuple[Optional[str], Optional[str]]:
     # Éviter « nom Monsieur … » capturé comme prénom via libellé ambigu
     if prenom and re.match(r"(?i)^nom\b", prenom.strip()):
         prenom = None
-    if nom and prenom:
+    if _is_plausible_person_name(prenom, nom):
         return prenom, nom
-    return prenom, nom
+    return None, None
 
 
 _INSURER_HEADER_CITIES = {
@@ -794,6 +1033,8 @@ def _find_prime_annuelle(text: str) -> Optional[float]:
         (
             "prime annuelle avec redevances",
             "prime annuelle",
+            "prime payable annuellement",
+            "prime payable",
             "prime / an",
             "prime par an",
             "cotisation annuelle",
@@ -937,11 +1178,14 @@ def extract_offre_fields(
     pdf_bytes: bytes,
     *,
     filename: str = "",
+    use_structured: bool = True,
 ) -> Dict[str, Any]:
     """
     Analyse un PDF d'offre et retourne des champs structurés.
     Valeurs absentes / peu sûres → None (affichage « Non indiqué »).
     Ne jamais inventer : en cas d'incertitude → None.
+
+    use_structured=False → kill-switch / legacy (pas d'extract structuré Phase 1+).
     """
     text = ""
     try:
@@ -965,19 +1209,20 @@ def extract_offre_fields(
     # Phase 1 : extraction structurée (multi-branches) puis aplatissement sûr.
     structured = None
     structured_flat: Dict[str, Any] = {}
-    try:
-        from offre_extract_structured import extract_structured_offre, structured_to_flat_extracted
+    if use_structured:
+        try:
+            from offre_extract_structured import extract_structured_offre, structured_to_flat_extracted
 
-        structured = extract_structured_offre(pdf_bytes, filename=filename, text=text)
-        if isinstance(structured, dict):
-            meta = structured.setdefault("meta", {})
-            if company_id:
-                meta["company_adapter"] = company_id
-            if adapter_notes:
-                meta.setdefault("notes", []).extend(adapter_notes)
-        structured_flat = structured_to_flat_extracted(structured)
-    except Exception:
-        logger.exception("Extraction structurée indisponible — repli legacy")
+            structured = extract_structured_offre(pdf_bytes, filename=filename, text=text)
+            if isinstance(structured, dict):
+                meta = structured.setdefault("meta", {})
+                if company_id:
+                    meta["company_adapter"] = company_id
+                if adapter_notes:
+                    meta.setdefault("notes", []).extend(adapter_notes)
+            structured_flat = structured_to_flat_extracted(structured)
+        except Exception:
+            logger.exception("Extraction structurée indisponible — repli legacy")
 
     compagnie = structured_flat.get("compagnie") or _find_compagnie(text, filename)
     rente = _find_rente_mensuelle(text)
@@ -985,16 +1230,19 @@ def extract_offre_fields(
     duree = _find_duree_ans(text, filename)
     prenom, nom = _find_person_name(text)
     document_type = structured_flat.get("document_type")
-    # Ne pas écraser un parsing 3P correct par un prénom structuré trop large
-    # (ex. lettre AXA / cocontractant déjà résolus).
-    if structured_flat.get("prenom") and not prenom:
-        prenom = structured_flat["prenom"]
-    elif structured_flat.get("prenom") and prenom:
-        # Prefer structured only if legacy looks broken
-        if re.match(r"(?i)^(nom|de|du|le)\b", str(prenom)) or "(" in str(prenom):
-            prenom = structured_flat["prenom"]
-    if structured_flat.get("nom") and not nom:
-        nom = structured_flat["nom"]
+    # Fusion identité : jamais conserver un faux positif (Suisse Romande, dates…).
+    if not _is_plausible_person_name(prenom, nom):
+        prenom, nom = None, None
+    sp, sn = structured_flat.get("prenom"), structured_flat.get("nom")
+    if _is_plausible_person_name(sp, sn):
+        if not prenom or not nom:
+            prenom, nom = sp, sn
+        elif re.match(r"(?i)^(nom|de|du|le)\b", str(prenom)) or "(" in str(prenom):
+            prenom, nom = sp, sn
+    elif prenom and nom and not _is_plausible_person_name(prenom, nom):
+        prenom, nom = None, None
+    # DOB AXA inline si absente
+    _axa_p, _axa_n, axa_dob = _parse_axa_inline_preneur(text)
     addr = _find_adresse_block(text)
     # Adresse structurée (auto) prioritaire ; sinon éviter d'écraser un nettoyage 3P
     if structured_flat.get("npa") and (structured_flat.get("form_type_suggere") or "").startswith("vehic"):
@@ -1015,15 +1263,19 @@ def extract_offre_fields(
             if structured_flat.get(k):
                 addr[k] = structured_flat[k]
 
-    date_naissance = structured_flat.get("date_naissance") or _find_date(
-        text,
-        (
-            r"date\s+de\s+naissance",
-            r"n[ée]\(?e?\)?\s*le",
-            r"n[ée]e?\s+le",
-            r"geburtsdatum",
-            r"date\s+of\s+birth",
-        ),
+    date_naissance = (
+        structured_flat.get("date_naissance")
+        or axa_dob
+        or _find_date(
+            text,
+            (
+                r"date\s+de\s+naissance",
+                r"n[ée]\(?e?\)?\s*le",
+                r"n[ée]e?\s+le",
+                r"geburtsdatum",
+                r"date\s+of\s+birth",
+            ),
+        )
     )
     date_debut = structured_flat.get("date_debut") or _find_date(
         text,
@@ -1168,10 +1420,13 @@ def map_extract_to_form(
     extracted: Dict[str, Any],
     *,
     form_type: str = "pilier3_legacy",
+    use_structured: bool = True,
 ) -> Dict[str, Any]:
     """
     Mappe l'extraction PDF vers les champs CRM (legacy + form_payload générique).
     Couche mapping : n'altère pas les JSON de formulaires.
+
+    use_structured=False → mapping analyse-pdf historique (offre_pdf_form_fill).
     """
     form_type = (form_type or "pilier3_legacy").strip() or "pilier3_legacy"
     fields: Dict[str, Any] = {}
@@ -1206,13 +1461,14 @@ def map_extract_to_form(
         payload = _legacy_alias_payload(extracted)
         filled_keys: List[str] = []
         objet_hints: Dict[str, Any] = {}
-        try:
-            from offre_extract_structured import map_objets_to_voyage_hints
+        if use_structured:
+            try:
+                from offre_extract_structured import map_objets_to_voyage_hints
 
-            objet_hints = map_objets_to_voyage_hints(list(extracted.get("objets") or []))
-        except Exception:
-            objet_hints = {}
-    else:
+                objet_hints = map_objets_to_voyage_hints(list(extracted.get("objets") or []))
+            except Exception:
+                objet_hints = {}
+    elif use_structured:
         from offre_pdf_form_map import map_structured_to_form_payload
 
         filled = map_structured_to_form_payload(
@@ -1225,6 +1481,19 @@ def map_extract_to_form(
         field_statuses = filled.get("field_statuses") or {}
         objet_hints = filled.get("objet_hints") or {}
         skipped_existing_keys = list(filled.get("skipped_existing_keys") or [])
+    else:
+        # Kill-switch : ancien mapping analyse-pdf (sans couche structurée).
+        from offre_pdf_form_fill import fill_form_payload_from_pdf
+
+        filled = fill_form_payload_from_pdf(
+            form_type,
+            extracted,
+            text=str(extracted.get("_text") or ""),
+        )
+        payload = filled.get("form_payload") or {}
+        filled_keys = list(filled.get("filled_keys") or [])
+        field_statuses = {}
+        objet_hints = {}
 
     return {
         "fields": fields,

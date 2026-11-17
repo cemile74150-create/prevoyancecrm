@@ -16,8 +16,14 @@ from offre_extract import (
     _compact_money_token,
     _find_compagnie,
     _find_offre_numero,
+    _is_plausible_person_name,
     _norm,
     _normalize_date,
+    _parse_axa_inline_preneur,
+    _parse_axa_nom_prenom_near_dob,
+    _parse_zurich_personne_assuree_line,
+    _split_identity_parts,
+    _strip_identity_noise,
 )
 
 STATUS_FOUND = "found"
@@ -290,29 +296,55 @@ def _detect_marque(text: str) -> Dict[str, Any]:
     return _field()
 
 
+def _set_preneur_name(
+    out: Dict[str, Any],
+    prenom: Optional[str],
+    nom: Optional[str],
+    *,
+    page: Optional[int],
+    confidence: float,
+    source: str,
+    min_confidence: float = 0.85,
+) -> None:
+    """N'écrit l'identité que si plausible ; sinon to_verify/vide (jamais faux)."""
+    if not _is_plausible_person_name(prenom, nom):
+        return
+    status = STATUS_FOUND if confidence >= min_confidence else STATUS_TO_VERIFY
+    if status == STATUS_TO_VERIFY:
+        # Incertitude : ne pas préremplir (flat ignore to_verify).
+        out["prenom"] = _field(prenom, page=page, confidence=confidence, status=STATUS_TO_VERIFY, source=source)
+        out["nom"] = _field(nom, page=page, confidence=confidence, status=STATUS_TO_VERIFY, source=source)
+        return
+    if out["prenom"]["status"] == STATUS_FOUND and out["nom"]["status"] == STATUS_FOUND:
+        return
+    out["prenom"] = _field(prenom, page=page, confidence=confidence, status=STATUS_FOUND, source=source)
+    out["nom"] = _field(nom, page=page, confidence=confidence, status=STATUS_FOUND, source=source)
+
+
 def _extract_preneur_block(text: str) -> Dict[str, Any]:
     """Bloc preneur prioritaire (pas l'en-tête assureur)."""
     out = empty_structured_extraction()["preneur"]
+    text = (text or "").split("----- OCR_TABLE_APPENDIX -----", 1)[0]
 
-    # Zurich / feuille des prestations OCR :
-    # PERSONNE ASSUREE: POLICE NO …
-    # MAY JEAN-YVES FP NO. …
-    # DATE DE NAISSANCE: 19.01.1962
-    m_zurich = re.search(
-        r"PERSONNE\s+ASSUR[ÉE]E\s*[:：]?[^\n]{0,80}\n\s*"
-        r"([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*)\s+"
-        r"([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*(?:-[A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ'\-]*)*)"
-        r"(?=\s+FP\b|\s+\d|\s*$|\n)",
-        text,
-        re.I,
-    )
-    if m_zurich:
-        # Convention document : NOM puis PRÉNOM en majuscules
-        nom = m_zurich.group(1).strip().title()
-        prenom = m_zurich.group(2).strip().title()
-        if nom.casefold() not in {"police", "no", "fp"} and prenom.casefold() not in {"police", "no", "fp"}:
-            out["nom"] = _field(nom, page=_page_of(text, m_zurich.start()), confidence=0.88, status=STATUS_FOUND, source="personne_assuree")
-            out["prenom"] = _field(prenom, page=_page_of(text, m_zurich.start()), confidence=0.88, status=STATUS_FOUND, source="personne_assuree")
+    # AXA inline (prioritaire) : « Preneur d'assurance VANESSA CHABLOZ (28.11.1967) »
+    axa_p, axa_n, axa_dob = _parse_axa_inline_preneur(text)
+    if axa_p and axa_n:
+        _set_preneur_name(out, axa_p, axa_n, page=_page_of(text, 0), confidence=0.92, source="axa_inline")
+        if axa_dob and out["date_naissance"]["status"] != STATUS_FOUND:
+            out["date_naissance"] = _field(
+                axa_dob, page=_page_of(text, 0), confidence=0.9, status=STATUS_FOUND, source="axa_inline_dob"
+            )
+
+    # Zurich / feuille des prestations OCR : ligne MAJUSCULES sous PERSONNE ASSUREE
+    z_prenom, z_nom = _parse_zurich_personne_assuree_line(text)
+    if z_prenom and z_nom:
+        _set_preneur_name(out, z_prenom, z_nom, page=_page_of(text, 0), confidence=0.9, source="personne_assuree")
+
+    axa_near = _parse_axa_nom_prenom_near_dob(text)
+    if axa_near[0] and axa_near[1]:
+        _set_preneur_name(
+            out, axa_near[0], axa_near[1], page=_page_of(text, 0), confidence=0.88, source="axa_nom_prenom_dob"
+        )
 
     m_dob_zurich = re.search(
         r"DATE\s+DE\s+NAISSANCE\s*[:：]\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
@@ -339,11 +371,16 @@ def _extract_preneur_block(text: str) -> Dict[str, Any]:
     )
     if m:
         full_name = re.sub(r"\s+", " ", m.group(1)).strip()
-        parts = full_name.split()
-        if len(parts) >= 2:
-            # FERNANDO GASCA → prénom / nom
-            out["prenom"] = _field(parts[0].title(), page=_page_of(text, m.start()), confidence=0.9, status=STATUS_FOUND, source="preneur_block")
-            out["nom"] = _field(" ".join(p.title() for p in parts[1:]), page=_page_of(text, m.start()), confidence=0.9, status=STATUS_FOUND, source="preneur_block")
+        _civ, prenom_b, nom_b = _split_identity_parts(full_name)
+        if prenom_b and nom_b:
+            _set_preneur_name(
+                out,
+                prenom_b.title() if prenom_b.isupper() else prenom_b,
+                nom_b.title() if nom_b.isupper() else nom_b,
+                page=_page_of(text, m.start()),
+                confidence=0.9,
+                source="preneur_block",
+            )
         addr = re.sub(r"\s+", " ", m.group(2)).strip()
         # Éviter N° de police collé
         if not re.search(r"police|client|v[ée]hicule", addr, re.I):
@@ -351,28 +388,6 @@ def _extract_preneur_block(text: str) -> Dict[str, Any]:
         out["npa"] = _field(m.group(3), page=_page_of(text, m.start()), confidence=0.9, status=STATUS_FOUND, source="preneur_block")
         ville = m.group(4).strip()
         out["ville"] = _field(ville.title() if ville.isupper() else ville, page=_page_of(text, m.start()), confidence=0.9, status=STATUS_FOUND, source="preneur_block")
-
-    _CIVILITE_TOKENS = {
-        "monsieur", "madame", "mademoiselle", "herr", "frau", "fräulein", "fraulein", "mr", "mrs", "ms",
-    }
-
-    def _split_civilite_name(raw: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        parts = [p for p in re.sub(r"\s+", " ", raw or "").strip().split() if p]
-        civilite = None
-        if parts and parts[0].casefold() in _CIVILITE_TOKENS:
-            tok = parts.pop(0)
-            low = tok.casefold()
-            if low in {"madame", "frau", "mrs", "ms"}:
-                civilite = "Madame"
-            elif low in {"mademoiselle", "fräulein", "fraulein"}:
-                civilite = "Mademoiselle"
-            else:
-                civilite = "Monsieur"
-        if len(parts) >= 2:
-            return civilite, parts[0], " ".join(parts[1:])
-        if len(parts) == 1:
-            return civilite, parts[0], None
-        return civilite, None, None
 
     # Adresse détenteur / preneur multi-lignes
     if out["adresse"]["status"] != STATUS_FOUND:
@@ -385,12 +400,13 @@ def _extract_preneur_block(text: str) -> Dict[str, Any]:
             re.I,
         )
         if m2:
-            civ, prenom, nom = _split_civilite_name(m2.group(1))
+            civ, prenom, nom = _split_identity_parts(m2.group(1))
             if civ and out["civilite"]["status"] != STATUS_FOUND:
                 out["civilite"] = _field(civ, page=_page_of(text, m2.start()), confidence=0.85, status=STATUS_FOUND, source="detenteur")
-            if prenom and nom and out["prenom"]["status"] != STATUS_FOUND:
-                out["prenom"] = _field(prenom, page=_page_of(text, m2.start()), confidence=0.85, status=STATUS_FOUND, source="detenteur")
-                out["nom"] = _field(nom, page=_page_of(text, m2.start()), confidence=0.85, status=STATUS_FOUND, source="detenteur")
+            if prenom and nom:
+                _set_preneur_name(
+                    out, prenom, nom, page=_page_of(text, m2.start()), confidence=0.85, source="detenteur"
+                )
             out["adresse"] = _field(m2.group(2).strip(), page=_page_of(text, m2.start()), confidence=0.86, status=STATUS_FOUND, source="detenteur")
             out["npa"] = _field(m2.group(3), page=_page_of(text, m2.start()), confidence=0.9, status=STATUS_FOUND, source="detenteur")
             out["ville"] = _field(m2.group(4).strip(), page=_page_of(text, m2.start()), confidence=0.9, status=STATUS_FOUND, source="detenteur")
@@ -418,22 +434,18 @@ def _extract_preneur_block(text: str) -> Dict[str, Any]:
                 status=STATUS_FOUND,
                 source="letter",
             )
-        if out["prenom"]["status"] != STATUS_FOUND and m_civ.group(2):
-            parts = m_civ.group(2).split()
-            if len(parts) >= 2:
-                out["prenom"] = _field(
-                    parts[0],
+        if m_civ.group(2):
+            _civ, prenom, nom = _split_identity_parts(_strip_identity_noise(m_civ.group(2)))
+            # Lettre AXA : confidence 0.8 → found si plausible ; doute → to_verify
+            if prenom and nom:
+                _set_preneur_name(
+                    out,
+                    prenom,
+                    nom,
                     page=_page_of(text, m_civ.start()),
-                    confidence=0.75,
-                    status=STATUS_FOUND,
+                    confidence=0.86,
                     source="letter",
-                )
-                out["nom"] = _field(
-                    " ".join(parts[1:]),
-                    page=_page_of(text, m_civ.start()),
-                    confidence=0.75,
-                    status=STATUS_FOUND,
-                    source="letter",
+                    min_confidence=0.85,
                 )
 
     # DOB : Né(e) le
@@ -1047,11 +1059,15 @@ def extract_structured_offre(
         result["meta"]["notes"].append(
             "Tableaux natifs PyMuPDF fusionnés — limité aux PDF avec couche texte (pas scans purs)."
         )
-    else:
+    if "[ocr-table-heuristics]" in (text or ""):
+        result["meta"]["notes"].append(
+            "Heuristiques lignes/colonnes OCR appliquées (scans) — qualité dépendante Tesseract fra+deu+eng."
+        )
+    if "[table p" not in (text or ""):
         result["meta"]["visual_tables_limited"] = True
-        if not (text or "").strip() or result["meta"].get("ocr_used"):
+        if not (text or "").strip() or result["meta"].get("ocr_used") or "[ocr-table-heuristics]" in (text or ""):
             result["meta"]["notes"].append(
-                "Analyse visuelle tableaux limitée : scans image-only → OCR Tesseract uniquement (pas find_tables)."
+                "Analyse visuelle tableaux limitée : scans → OCR Tesseract + heuristiques ; pas de find_tables fiable."
             )
 
     doc_type_field = detect_document_type(text or "", filename)

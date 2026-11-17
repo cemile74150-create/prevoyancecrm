@@ -92,6 +92,26 @@ EXPECTED_BY_STEM: dict[str, dict[str, Any]] = {
         "form_type": "pilier3",
         # Pas de montant_prime attendu (feuille prestations / valeurs)
     },
+    "3p axa vanessa": {
+        "prenom": "Vanessa",
+        "nom": "Chabloz",
+        "compagnie": "AXA",
+        "montant_prime": 6192.0,
+        "form_type": "pilier3",
+    },
+    "AXA 3A Jean": {
+        "prenom": "Jean-Michel",
+        "nom": "Chabloz",
+        "compagnie": "AXA",
+        "form_type": "pilier3",
+    },
+    "AXA 3a L50 1124952 Corinne": {
+        "prenom": "Corinne",
+        "nom": "Perritaz Wahlen",
+        "compagnie": "AXA",
+        # Prime : document multi-pages (annexe vs police) — identité prioritaire
+        "form_type": "pilier3",
+    },
 }
 
 CRM_KEYS = (

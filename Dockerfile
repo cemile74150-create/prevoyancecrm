@@ -16,6 +16,8 @@ RUN yarn build
 # Runtime: FastAPI serves API + static frontend
 FROM python:3.12-slim
 WORKDIR /app
+# OCR prod Railway : fra + deu + eng obligatoires (import PDF scannés).
+# Vérif après GO : `tesseract --list-langs` dans le conteneur.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     tesseract-ocr \
@@ -26,7 +28,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-crosextra-carlito \
     libreoffice-writer-nogui \
     && rm -rf /var/lib/apt/lists/* \
-    && (test -d /usr/share/tesseract-ocr/5/tessdata && echo export TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata > /etc/profile.d/tessdata.sh || true)
+    && (test -d /usr/share/tesseract-ocr/5/tessdata && echo export TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata > /etc/profile.d/tessdata.sh || true) \
+    && (ls /usr/share/tesseract-ocr/*/tessdata/fra.traineddata >/dev/null 2>&1 || ls /usr/share/tessdata/fra.traineddata >/dev/null 2>&1) \
+    && (ls /usr/share/tesseract-ocr/*/tessdata/deu.traineddata >/dev/null 2>&1 || ls /usr/share/tessdata/deu.traineddata >/dev/null 2>&1) \
+    && (ls /usr/share/tesseract-ocr/*/tessdata/eng.traineddata >/dev/null 2>&1 || ls /usr/share/tessdata/eng.traineddata >/dev/null 2>&1)
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 # Fallbacks used by app if path differs by distro
 ENV OCR_TESSDATA_CANDIDATES=/usr/share/tesseract-ocr/5/tessdata:/usr/share/tesseract-ocr/4.00/tessdata:/usr/share/tessdata

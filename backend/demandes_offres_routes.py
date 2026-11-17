@@ -1324,9 +1324,13 @@ def attach_demandes_offres_routes(
         form_type = (form_type or "pilier3_legacy").strip() or "pilier3_legacy"
 
         from offre_extract import extract_offre_fields, map_extract_to_form, offre_fields_for_storage
+        from offre_pdf_feature_flag import resolve_mode, user_can_use_structured_extract
 
-        raw = extract_offre_fields(data, filename=filename)
-        mapped = map_extract_to_form(raw, form_type=form_type)
+        pdf_mode = await resolve_mode(db)
+        use_structured = user_can_use_structured_extract(user, pdf_mode)
+
+        raw = extract_offre_fields(data, filename=filename, use_structured=use_structured)
+        mapped = map_extract_to_form(raw, form_type=form_type, use_structured=use_structured)
         fields = mapped.get("fields") or {}
         form_payload = mapped.get("form_payload") or {}
         lu_dans_pdf = mapped.get("numero_offre") or raw.get("numero_offre") or ""
@@ -1402,12 +1406,12 @@ def attach_demandes_offres_routes(
             )
         return {
             "form_type": form_type,
-            "form_type_suggere": suggested,
-            "form_type_candidates": candidates,
-            "form_type_needs_confirm": needs_confirm,
-            "gf_subtype_suggere": raw.get("gf_subtype_suggere") or mapped.get("gf_subtype_suggere"),
-            "document_type": raw.get("document_type"),
-            "document_type_status": raw.get("document_type_status"),
+            "form_type_suggere": suggested if use_structured else None,
+            "form_type_candidates": candidates if use_structured else [],
+            "form_type_needs_confirm": needs_confirm if use_structured else False,
+            "gf_subtype_suggere": (raw.get("gf_subtype_suggere") or mapped.get("gf_subtype_suggere")) if use_structured else None,
+            "document_type": raw.get("document_type") if use_structured else None,
+            "document_type_status": raw.get("document_type_status") if use_structured else None,
             "page_refs": raw.get("page_refs") or mapped.get("page_refs") or [],
             "filename": filename,
             "action": action,
@@ -1418,15 +1422,17 @@ def attach_demandes_offres_routes(
             "fields": fields,
             "form_payload": form_payload,
             "filled_keys": mapped.get("filled_keys") or [],
-            "field_statuses": mapped.get("field_statuses") or {},
+            "field_statuses": mapped.get("field_statuses") or {} if use_structured else {},
             "skipped_existing_keys": mapped.get("skipped_existing_keys") or [],
             "extracted": extracted_ui,
             "objets": mapped.get("objets") or raw.get("objets") or [],
-            "objet_hints": mapped.get("objet_hints") or {},
-            "structured": mapped.get("structured") or raw.get("structured"),
-            "extract_audit": mapped.get("extract_audit") or storage_snapshot.get("offre_extract_audit"),
+            "objet_hints": mapped.get("objet_hints") or {} if use_structured else {},
+            "structured": (mapped.get("structured") or raw.get("structured")) if use_structured else None,
+            "extract_audit": (mapped.get("extract_audit") or storage_snapshot.get("offre_extract_audit")) if use_structured else None,
             "offre_extract_snapshot": storage_snapshot.get("offre_extract"),
             "reference_police": mapped.get("reference_police") or raw.get("reference_police"),
+            "pdf_extract_structured_enabled": use_structured,
+            "pdf_extract_structured_mode": pdf_mode,
             "hint": hint,
         }
 
@@ -1442,6 +1448,15 @@ def attach_demandes_offres_routes(
         except Exception:
             status = {}
             smtp_ready = False
+        from offre_pdf_feature_flag import (
+            public_flag_payload,
+            resolve_mode,
+            user_can_use_structured_extract,
+        )
+
+        pdf_mode = await resolve_mode(db)
+        pdf_structured_on = user_can_use_structured_extract(user, pdf_mode)
+
         return {
             "statuts": STATUTS,
             "kanban_columns": KANBAN_COLUMNS,
@@ -1471,6 +1486,7 @@ def attach_demandes_offres_routes(
             "types_client": TYPES_CLIENT,
             "erreurs_incomplete_catalog": ERREURS_INCOMPLETE_CATALOG,
             "erreurs_champs_catalog": ERREURS_CHAMPS_CATALOG,
+            **public_flag_payload(pdf_structured_on, pdf_mode),
             "gestion_categories": {
                 cid: {
                     "label": conf["label"],
