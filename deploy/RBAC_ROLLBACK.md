@@ -11,16 +11,18 @@
 | P2 | `9d51794` | Modules admin scindés + backfill compat `users.manage` |
 | P3 | `daa0d6d` | UI / API Rôles, propagation, `roles.manage` (admins only) |
 | P4 | `832f7b7` | Exceptions individuelles (`permission_overrides`) + garde-fous |
-| P5 | *(HEAD Phase 5)* | Anti auto-élévation, trous routes, doc rollback |
+| P5 | `9bb48fe` | Anti auto-élévation, trous routes, tests non-régression, doc rollback |
 
-Lire les hashes exacts au moment du deploy : `git log --oneline bb5fe46^..HEAD`.
+Hashes vérifiés sur `feat/attribution-conseiller-account-id` (`git log --oneline bb5fe46^..9bb48fe`).
+Full P5 : `9bb48fe04cba3fd302fb73f5a3967920ba549ccc`.
 
 ## Avant tout déploiement futur
 
-1. **Backup Infomaniak (pro)** de la base Mongo / snapshot hébergeur — conserver la date et le ticket.
+1. **Backup Infomaniak (pro)** de la base Mongo / snapshot hébergeur — conserver la date, le nom `.crmbak`, le préfixe S3 (`crm-backups/` sur bucket `prevoyancecrm-backups`) et le rapport `*.report.json` (`verify.ok` + `remote.verified`).
 2. Noter `git rev-parse HEAD` déployé et le SHA GitHub de la branche.
-3. Confirmer `ACCESS_MODE` (legacy / dual / strict) — voir `deploy/ATTRIBUTION_CUTOVER.md`.
+3. Confirmer `ACCESS_MODE` (legacy / dual / strict) — voir `deploy/ATTRIBUTION_CUTOVER.md` (prod actuelle : `dual` via `app_settings.access_policy`).
 4. Ne **pas** supprimer la collection `roles` ni les champs `permissions` / `permission_overrides` users.
+5. Restauration données : procédure `deploy/infomaniak/BACKUP_RESTORE.md` (déchiffrer `.crmbak` → `verify_backup.py` → `restore_from_backup.py`). **Permissions + données** reviennent ensemble avec le restore ; un revert git seul ne droppe pas `roles`.
 
 ## Comportement au prochain démarrage prod (sans l’exécuter ici)
 
