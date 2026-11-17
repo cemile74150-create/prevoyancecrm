@@ -373,6 +373,11 @@ def _find_person_name(text: str) -> Tuple[Optional[str], Optional[str]]:
         )
         if m:
             parts = re.sub(r"\s+", " ", m.group(1)).strip().split()
+            # Retirer civilité collée (« Madame Sophie Martin »)
+            if parts and parts[0].casefold() in {
+                "monsieur", "madame", "mademoiselle", "herr", "frau", "fräulein", "fraulein",
+            }:
+                parts = parts[1:]
             if len(parts) >= 2:
                 # Souvent NOM Prénom ou Prénom NOM
                 if parts[0].isupper() and not parts[-1].isupper():
@@ -678,6 +683,16 @@ def extract_offre_fields(
         logger.exception("Lecture texte offre PDF échouée")
         text = ""
 
+    # Phase 4 : normalisation multi-compagnies (synonymes / formats) avant parsing.
+    company_id = None
+    adapter_notes: list = []
+    try:
+        from offre_extract_company_adapters import prepare_text_for_extraction
+
+        text, company_id, adapter_notes = prepare_text_for_extraction(text, filename)
+    except Exception:
+        logger.exception("Adaptateur compagnie indisponible — texte brut")
+
     # Phase 1 : extraction structurée (multi-branches) puis aplatissement sûr.
     structured = None
     structured_flat: Dict[str, Any] = {}
@@ -685,6 +700,12 @@ def extract_offre_fields(
         from offre_extract_structured import extract_structured_offre, structured_to_flat_extracted
 
         structured = extract_structured_offre(pdf_bytes, filename=filename, text=text)
+        if isinstance(structured, dict):
+            meta = structured.setdefault("meta", {})
+            if company_id:
+                meta["company_adapter"] = company_id
+            if adapter_notes:
+                meta.setdefault("notes", []).extend(adapter_notes)
         structured_flat = structured_to_flat_extracted(structured)
     except Exception:
         logger.exception("Extraction structurée indisponible — repli legacy")

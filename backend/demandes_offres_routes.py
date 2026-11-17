@@ -307,6 +307,8 @@ class ModificationRequest(BaseModel):
     form_type_label: Optional[str] = None
     note_service_offre: Optional[str] = None
     changes: Optional[list[dict[str, Any]]] = None
+    # Prime annuelle globale hors schéma GF (métadonnée CRM, pas un input_*)
+    montant_prime: Optional[float | str] = None
 
     @field_validator("changes", mode="before")
     @classmethod
@@ -5087,6 +5089,11 @@ def attach_demandes_offres_routes(
         note = (payload.note_service_offre or "").strip() or None
         if note is not None:
             updates["note_service_offre"] = note
+        if payload.montant_prime not in (None, ""):
+            try:
+                updates["montant_prime"] = float(str(payload.montant_prime).replace("'", "").replace(" ", "").replace(",", "."))
+            except (TypeError, ValueError):
+                updates["montant_prime"] = payload.montant_prime
         merged = {**doc, **updates}
         # changes explicites = éditions manuelles après préremplissage.
         # On ne réécrit pas ce diff avec chaque clé du formulaire prérempli.

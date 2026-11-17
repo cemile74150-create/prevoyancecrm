@@ -165,13 +165,40 @@ def _map_emploi(utilisation: Any) -> Optional[str]:
 def _map_garage(disponibilite: Any) -> Tuple[Optional[str], str]:
     """
     Retourne (valeur_option, status).
-    « Place de garage à disposition: Oui » → suggestion à vérifier (pas de détail lieu).
+    Preuve textuelle claire « Place de garage à disposition: Oui/Non » → found
+    (mapping GF : Oui → Garage au domicile, Non → Place publique).
+    Sans preuve → not_found (pas de faux to_verify).
     """
     folded = _fold(str(disponibilite or ""))
     if folded == "oui":
-        return "Garage au domicile", STATUS_TO_VERIFY
+        return "Garage au domicile", STATUS_FOUND
     if folded == "non":
-        return "Place publique", STATUS_TO_VERIFY
+        return "Place publique", STATUS_FOUND
+    return None, STATUS_NOT_FOUND
+
+
+def _conducteur_detenteur_from_text(text: str) -> Tuple[Optional[str], str]:
+    """
+    Remplit « conducteur = détenteur » uniquement si le PDF l'affirme clairement.
+    Sinon not_found (vide) — ne pas inventer un Oui en to_verify.
+    """
+    folded = _fold(text or "")
+    if not folded:
+        return None, STATUS_NOT_FOUND
+    if re.search(
+        r"conducteur\s+est[- ]?il\s+le\s+d[eé]tenteur\s*[:?]?\s*oui"
+        r"|le\s+conducteur\s+(?:est|=)\s+(?:le\s+)?d[eé]tenteur"
+        r"|conducteur\s*=\s*d[eé]tenteur"
+        r"|fahrer\s*=\s*halter",
+        folded,
+    ):
+        return "Oui", STATUS_FOUND
+    if re.search(
+        r"conducteur\s+est[- ]?il\s+le\s+d[eé]tenteur\s*[:?]?\s*non"
+        r"|le\s+conducteur\s+n['’]?est\s+pas\s+(?:le\s+)?d[eé]tenteur",
+        folded,
+    ):
+        return "Non", STATUS_FOUND
     return None, STATUS_NOT_FOUND
 
 
@@ -255,6 +282,7 @@ def _map_person_and_contract(
     statuses: Dict[str, Dict[str, Any]],
     filled: set,
     fields_by_name: Dict[str, dict],
+    text: str = "",
 ) -> None:
     from offre_pdf_form_fill import _canonical
 
@@ -375,25 +403,34 @@ def _map_person_and_contract(
                     source="compagnies_demande",
                 )
 
-    # Conducteur = détenteur si même identité (souvent le cas polices privées)
-    # Ne pas inventer : seulement si prénom+nom trouvés → to_verify Oui
-    if extracted.get("prenom") and extracted.get("nom"):
-        for field in fields_by_name.values():
-            lab = _fold(field.get("label") or "")
-            if "conducteur est il le detenteur" in lab or "conducteur est-il le detenteur" in lab:
-                name = field.get("name") or field.get("id")
-                if name and name not in filled:
-                    _assign_named(
-                        payload=payload,
-                        statuses=statuses,
-                        filled=filled,
-                        fields_by_name=fields_by_name,
-                        name=str(name),
-                        raw="Oui",
-                        status=STATUS_TO_VERIFY,
-                        source="detenteur_heuristique",
-                    )
+    # Conducteur = détenteur : uniquement preuve textuelle claire (sinon vide / not_found)
+    det_val, det_status = _conducteur_detenteur_from_text(text or str(extracted.get("_text") or ""))
+    for field in fields_by_name.values():
+        lab = _fold(field.get("label") or "")
+        if "conducteur est il le detenteur" in lab or "conducteur est-il le detenteur" in lab:
+            name = field.get("name") or field.get("id")
+            if not name or name in filled:
                 break
+            if det_val and det_status == STATUS_FOUND:
+                _assign_named(
+                    payload=payload,
+                    statuses=statuses,
+                    filled=filled,
+                    fields_by_name=fields_by_name,
+                    name=str(name),
+                    raw=det_val,
+                    status=STATUS_FOUND,
+                    source="detenteur_explicite",
+                )
+            else:
+                statuses[str(name)] = _field_meta(
+                    str(name),
+                    None,
+                    STATUS_NOT_FOUND,
+                    label=field.get("label") or "",
+                    source="detenteur_sans_preuve",
+                )
+            break
 
 
 def _apply_vehicle_slot(
@@ -623,6 +660,7 @@ def map_structured_to_form_payload(
         statuses=statuses,
         filled=filled,
         fields_by_name=fields_by_name,
+        text=text or str(extracted.get("_text") or ""),
     )
 
     if form_type == "voyage":

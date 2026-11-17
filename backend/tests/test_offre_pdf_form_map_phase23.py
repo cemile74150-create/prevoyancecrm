@@ -67,9 +67,43 @@ def test_phase23_voyage_mapping_two_blocks_no_mix(monkeypatch):
 
     assert statuses["input_48"]["status"] == "found"
     assert statuses["input_90"]["status"] == "found"
-    assert statuses["input_58"]["status"] == "to_verify"  # garage heuristique
+    # Garage : preuve « Place de garage à disposition: Oui » → found (pas to_verify)
+    assert statuses["input_58"]["status"] == "found"
+    assert payload["input_58"] == "Garage au domicile"
+    assert statuses["input_101"]["status"] == "found"
+    # Conducteur=détenteur : pas de preuve explicite ELVIA → not_found (pas inventé)
+    assert statuses.get("input_79", {}).get("status") == "not_found"
+    assert payload.get("input_79") in (None, "")
     # Champs typiquement absents du PDF
     assert statuses.get("input_60", {}).get("status") == "not_found" or payload.get("input_60") in (None, "")
+
+
+def test_phase23_filled_keys_are_schema_editable_inputs():
+    """A1 : ~54 input_* préremplis ∈ schéma voyage, non hidden (éditables en UI)."""
+    from offre_form_types import load_form_schema
+
+    text = _elvia_text()
+    import pdf_generator
+
+    pdf_generator._extract_pdf_text = lambda _b: text
+    extracted = extract_offre_fields(b"%PDF-1.4", filename="Insurance Porsche & Toyota 2026.pdf")
+    mapped = map_extract_to_form(extracted, form_type="voyage")
+    filled = mapped["filled_keys"]
+    schema = load_form_schema("voyage") or {}
+    by_name = {
+        (f.get("name") or f.get("id")): f
+        for f in (schema.get("fields") or [])
+        if isinstance(f, dict) and (f.get("name") or f.get("id"))
+    }
+    assert len(filled) >= 50
+    assert extracted["montant_prime"] == 1243.9
+    assert mapped["fields"]["montant_prime"] == 1243.9
+    # Prime hors schéma voyage (pas de doublon input_*)
+    assert "montant_prime" not in filled
+    for key in filled:
+        assert key in by_name, f"{key} absent du schéma voyage"
+        ftype = (by_name[key].get("type") or "text").lower()
+        assert ftype not in {"hidden", "html"}, f"{key} non éditable (type={ftype})"
 
 
 def test_phase23_merge_does_not_overwrite_without_flag():

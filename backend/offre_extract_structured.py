@@ -208,41 +208,73 @@ def _extract_preneur_block(text: str) -> Dict[str, Any]:
         ville = m.group(4).strip()
         out["ville"] = _field(ville.title() if ville.isupper() else ville, page=_page_of(text, m.start()), confidence=0.9, status=STATUS_FOUND, source="preneur_block")
 
+    _CIVILITE_TOKENS = {
+        "monsieur", "madame", "mademoiselle", "herr", "frau", "fräulein", "fraulein", "mr", "mrs", "ms",
+    }
+
+    def _split_civilite_name(raw: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        parts = [p for p in re.sub(r"\s+", " ", raw or "").strip().split() if p]
+        civilite = None
+        if parts and parts[0].casefold() in _CIVILITE_TOKENS:
+            tok = parts.pop(0)
+            low = tok.casefold()
+            if low in {"madame", "frau", "mrs", "ms"}:
+                civilite = "Madame"
+            elif low in {"mademoiselle", "fräulein", "fraulein"}:
+                civilite = "Mademoiselle"
+            else:
+                civilite = "Monsieur"
+        if len(parts) >= 2:
+            return civilite, parts[0], " ".join(parts[1:])
+        if len(parts) == 1:
+            return civilite, parts[0], None
+        return civilite, None, None
+
     # Adresse détenteur / preneur multi-lignes
     if out["adresse"]["status"] != STATUS_FOUND:
         m2 = re.search(
-            r"(?:D[ÉE]TENTEUR|CONDUCTEUR\s+PRINCIPAL|PRENEUR\s+D['’]?ASSURANCE)\s*\n"
-            r"([A-Za-zÀ-ÿ' \-]{2,40})\s*\n"
+            r"(?:D[ÉE]TENTEUR|CONDUCTEUR\s+PRINCIPAL|PRENEUR\s+D['’]?ASSURANCE|VERSICHERUNGSNEHMER|POLICYHOLDER)\s*\n"
+            r"([A-Za-zÀ-ÿ' \-]{2,60})\s*\n"
             r"([A-Za-zÀ-ÿ0-9' \-]{3,60})\s*\n"
             r"(\d{4})\s+([A-Za-zÀ-ÿ' \-]{2,40})",
             text,
             re.I,
         )
         if m2:
-            name_parts = m2.group(1).split()
-            if len(name_parts) >= 2 and out["prenom"]["status"] != STATUS_FOUND:
-                out["prenom"] = _field(name_parts[0], page=_page_of(text, m2.start()), confidence=0.85, status=STATUS_FOUND, source="detenteur")
-                out["nom"] = _field(" ".join(name_parts[1:]), page=_page_of(text, m2.start()), confidence=0.85, status=STATUS_FOUND, source="detenteur")
+            civ, prenom, nom = _split_civilite_name(m2.group(1))
+            if civ and out["civilite"]["status"] != STATUS_FOUND:
+                out["civilite"] = _field(civ, page=_page_of(text, m2.start()), confidence=0.85, status=STATUS_FOUND, source="detenteur")
+            if prenom and nom and out["prenom"]["status"] != STATUS_FOUND:
+                out["prenom"] = _field(prenom, page=_page_of(text, m2.start()), confidence=0.85, status=STATUS_FOUND, source="detenteur")
+                out["nom"] = _field(nom, page=_page_of(text, m2.start()), confidence=0.85, status=STATUS_FOUND, source="detenteur")
             out["adresse"] = _field(m2.group(2).strip(), page=_page_of(text, m2.start()), confidence=0.86, status=STATUS_FOUND, source="detenteur")
             out["npa"] = _field(m2.group(3), page=_page_of(text, m2.start()), confidence=0.9, status=STATUS_FOUND, source="detenteur")
             out["ville"] = _field(m2.group(4).strip(), page=_page_of(text, m2.start()), confidence=0.9, status=STATUS_FOUND, source="detenteur")
 
-    # Civilité lettre (même si prénom déjà trouvé via bloc PRENEUR)
+    # Civilité + nom : ligne séparée OU « Madame Sophie Martin » sur une ligne
     m_civ = re.search(
-        r"(?:^|\n)\s*(Monsieur|Madame|Mademoiselle)\s*\n\s*([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][^\n]{1,40})",
+        r"(?:^|\n)\s*(Monsieur|Madame|Mademoiselle|Herr|Frau|Fräulein)\s+"
+        r"(?:(?:\n\s*)?([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-Za-zÀ-ÿ' \-]{1,40}))",
         text,
         re.M,
     )
     if m_civ:
+        civ_map = {
+            "herr": "Monsieur",
+            "frau": "Madame",
+            "fräulein": "Mademoiselle",
+        }
+        civ_raw = m_civ.group(1)
+        civ = civ_map.get(civ_raw.casefold(), civ_raw if civ_raw in {"Monsieur", "Madame", "Mademoiselle"} else "Monsieur")
         if out["civilite"]["status"] != STATUS_FOUND:
             out["civilite"] = _field(
-                m_civ.group(1),
+                civ,
                 page=_page_of(text, m_civ.start()),
                 confidence=0.8,
                 status=STATUS_FOUND,
                 source="letter",
             )
-        if out["prenom"]["status"] != STATUS_FOUND:
+        if out["prenom"]["status"] != STATUS_FOUND and m_civ.group(2):
             parts = m_civ.group(2).split()
             if len(parts) >= 2:
                 out["prenom"] = _field(
@@ -457,6 +489,14 @@ def _extract_vehicules(text: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, 
             if pm:
                 plaque = re.sub(r"\s+", " ", pm.group(1)).upper()
         if not plaque:
+            pm_chunk = re.search(
+                r"(?:Plaque(?:\s+de\s+contr[ôo]le)?|Kennzeichen|Kontrollschild|Immatriculation|Registration\s+plate)\s*[:：]?\s*([A-Z]{1,2}\s*\d{1,6})",
+                chunk,
+                re.I,
+            )
+            if pm_chunk:
+                plaque = re.sub(r"\s+", " ", pm_chunk.group(1)).upper()
+        if not plaque:
             # « pour GR 96299 » global
             pm2 = re.search(r"\b([A-Z]{1,2})\s*(\d{4,6})\b", text)
             if pm2:
@@ -561,13 +601,14 @@ def _extract_vehicule_couvertures(chunk: str, *, page: Optional[int] = None) -> 
     has_detail = bool(re.search(r"votre\s+assurance\s+en\s+d[ée]tail|risques\s+assur[ée]s", flat))
 
     def yn(present: bool, *, conf: float = 0.85) -> Dict[str, Any]:
-        if not has_detail:
+        # Preuve textuelle claire → found ; sinon not_found (vide), pas de faux to_verify « Non ».
+        if not has_detail or not present:
             return _field()
         return _field(
-            "Oui" if present else "Non",
+            "Oui",
             page=page,
-            confidence=conf if present else 0.55,
-            status=STATUS_FOUND if present else STATUS_TO_VERIFY,
+            confidence=conf,
+            status=STATUS_FOUND,
             source="couverture_bloc",
         )
 

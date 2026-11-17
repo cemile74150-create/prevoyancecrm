@@ -30,6 +30,27 @@ import { toast } from "sonner";
 
 const ACCENT = "#002FA7";
 
+const EXTRACT_LABELS = {
+  montant_prime: "Prime annuelle (CHF)",
+  compagnie: "Compagnie",
+  prenom: "Prénom",
+  nom: "Nom",
+  date_naissance: "Date de naissance",
+  adresse: "Adresse",
+  npa: "NPA",
+  ville: "Ville",
+  date_debut: "Début",
+  date_fin: "Fin",
+  reference_police: "N° police",
+  periodicite: "Périodicité",
+  form_type_suggere: "Type suggéré",
+  objets_count: "Véhicules / objets",
+  email: "E-mail",
+  telephone: "Téléphone",
+  nationalite: "Nationalité",
+  profession: "Profession",
+};
+
 function errorMessage(e, fallback) {
   const detail = e?.response?.data?.detail;
   if (typeof detail === "string") return detail;
@@ -303,6 +324,11 @@ export default function ModifierOffre() {
     if (!pendingOverwrite?.data) return;
     applyPrefill(pendingOverwrite.data, { overwriteExisting: true });
     toast.success("Champs existants remplacés par les valeurs du PDF");
+  };
+
+  const keepExistingAgainstPdf = () => {
+    setPendingOverwrite(null);
+    toast.message("Valeurs existantes conservées — le PDF n'a pas écrasé les champs déjà saisis");
   };
 
   const uploadPdf = async (event) => {
@@ -590,6 +616,9 @@ export default function ModifierOffre() {
           body.form_payload = formPayload;
           body.form_type = selectedType.form_type;
           body.form_type_label = selectedType.label;
+          if (form.montant_prime !== "" && form.montant_prime != null) {
+            body.montant_prime = form.montant_prime;
+          }
         }
         const res = await api.post(`/demandes-offres/${demande.id}/modifier/envoyer`, body);
         toast.success("Modification envoyée — numéro OFF et objet e-mail conservés");
@@ -617,12 +646,16 @@ export default function ModifierOffre() {
         }
         await api.put(`/demandes-offres/${id}`, fields);
       } else {
-        await api.put(`/demandes-offres/${id}`, {
+        const putBody = {
           form_type: selectedType.form_type,
           form_payload: formPayload,
           commentaires: comment,
           note_service_offre: comment || null,
-        });
+        };
+        if (form.montant_prime !== "" && form.montant_prime != null) {
+          putBody.montant_prime = form.montant_prime;
+        }
+        await api.put(`/demandes-offres/${id}`, putBody);
       }
       await api.post(`/demandes-offres/${id}/validate`);
       const res = await api.post(`/demandes-offres/${id}/envoyer`);
@@ -891,17 +924,41 @@ export default function ModifierOffre() {
               </div>
 
               {extracted && Object.keys(extracted).length > 0 && (
-                <div className="rounded-md border border-emerald-200 bg-emerald-50/80 p-3 text-sm">
-                  <p className="font-semibold text-xs uppercase tracking-wide text-emerald-900 mb-2">
+                <div
+                  className="rounded-md border border-emerald-200 bg-emerald-50/80 p-3 text-sm space-y-3"
+                  data-testid="pdf-extract-banner"
+                >
+                  <p className="font-semibold text-xs uppercase tracking-wide text-emerald-900">
                     Extrait automatiquement du PDF
                   </p>
-                  <dl className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
-                    {Object.entries(extracted).map(([k, v]) => (
-                      <div key={k} className="flex justify-between gap-2 min-w-0">
-                        <dt className="text-muted-foreground truncate">{k}</dt>
-                        <dd className="font-medium text-right truncate">{String(v)}</dd>
+                  {(extracted.montant_prime != null && extracted.montant_prime !== "") ||
+                  (form.montant_prime != null && form.montant_prime !== "") ? (
+                    <div
+                      className="rounded-md border border-emerald-300/80 bg-white/70 px-3 py-2 flex flex-wrap items-center justify-between gap-2"
+                      data-testid="pdf-prime-annuelle"
+                    >
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-emerald-800/80 font-semibold">
+                          Prime annuelle globale
+                        </p>
+                        <p className="text-lg font-semibold text-emerald-950 tabular-nums">
+                          {formatChf(form.montant_prime ?? extracted.montant_prime)}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Hors schéma formulaire — une seule valeur, modifiable ci-dessous
+                        </p>
                       </div>
-                    ))}
+                    </div>
+                  ) : null}
+                  <dl className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
+                    {Object.entries(extracted)
+                      .filter(([k]) => k !== "montant_prime")
+                      .map(([k, v]) => (
+                        <div key={k} className="flex justify-between gap-2 min-w-0">
+                          <dt className="text-muted-foreground truncate">{EXTRACT_LABELS[k] || k}</dt>
+                          <dd className="font-medium text-right truncate">{String(v)}</dd>
+                        </div>
+                      ))}
                   </dl>
                 </div>
               )}
@@ -918,9 +975,14 @@ export default function ModifierOffre() {
                       {pendingOverwrite.skipped.length} champ(s) déjà renseigné(s) n&apos;ont pas été
                       écrasés par le PDF. Vérifiez le formulaire, ou remplacez explicitement.
                     </p>
-                    <Button type="button" size="sm" variant="outline" onClick={confirmOverwriteFromPdf}>
-                      Remplacer les champs existants par le PDF
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" size="sm" variant="outline" onClick={confirmOverwriteFromPdf}>
+                        Remplacer les champs existants par le PDF
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={keepExistingAgainstPdf}>
+                        Conserver les valeurs actuelles
+                      </Button>
+                    </div>
                   </div>
                 )}
                 {pdfReady && pdfFieldStatuses && (
@@ -1018,17 +1080,39 @@ export default function ModifierOffre() {
                     </Field>
                   </div>
                 ) : schema ? (
-                  <OffreSchemaForm
-                    schema={schema}
-                    values={formPayload}
-                    onChange={onSchemaChange}
-                    onManualEdit={onManualEdit}
-                    changedKeys={changedPayloadKeys}
-                    agentIdentity={formOrigin === "stored" ? null : agentIdentity}
-                    lockAgent={formOrigin === "stored" ? false : !isAdmin}
-                    skipDefaults
-                    pdfFieldStatuses={pdfFieldStatuses}
-                  />
+                  <>
+                    {(pdfReady || form.montant_prime != null) && (
+                      <Field
+                        label="Prime annuelle globale (CHF)"
+                        changed={isChanged("montant_prime")}
+                        className="max-w-sm"
+                      >
+                        <ChangedInput
+                          type="number"
+                          step="0.01"
+                          inputMode="decimal"
+                          value={form.montant_prime ?? ""}
+                          onChange={(e) => setValue("montant_prime", e.target.value === "" ? "" : e.target.value)}
+                          changed={isChanged("montant_prime")}
+                          data-testid="modifier-offre-prime-annuelle"
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          Métadonnée CRM hors champs GF — pas de doublon dans le formulaire voyage
+                        </p>
+                      </Field>
+                    )}
+                    <OffreSchemaForm
+                      schema={schema}
+                      values={formPayload}
+                      onChange={onSchemaChange}
+                      onManualEdit={onManualEdit}
+                      changedKeys={changedPayloadKeys}
+                      agentIdentity={formOrigin === "stored" ? null : agentIdentity}
+                      lockAgent={formOrigin === "stored" ? false : !isAdmin}
+                      skipDefaults
+                      pdfFieldStatuses={pdfFieldStatuses}
+                    />
+                  </>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {Object.keys({ ...payloadSnapshot, ...formPayload }).length === 0 ? (
