@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import api, { openAuthenticatedBlob } from "@/lib/api";
+import api, { downloadAuthenticatedBlob, openAuthenticatedBlob } from "@/lib/api";
 import Layout from "@/components/Layout";
 import FormMappingEditor from "@/components/FormMappingEditor";
 import { Card } from "@/components/ui/card";
@@ -8,7 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Files, Loader2, Plus, Trash2, Upload, FileText, Settings2 } from "lucide-react";
+import { Download, Files, Loader2, Plus, Trash2, Upload, FileText, Settings2 } from "lucide-react";
+
+function blankDownloadPath(form) {
+  return `/form-library/${encodeURIComponent(form.id)}/download?download=1`;
+}
+
+function viewPath(form) {
+  return `/form-library/${encodeURIComponent(form.id)}/download`;
+}
 
 export default function Formulaires() {
   const [forms, setForms] = useState([]);
@@ -90,6 +98,17 @@ export default function Formulaires() {
     }
   };
 
+  const downloadBlank = async (form) => {
+    try {
+      await downloadAuthenticatedBlob(
+        blankDownloadPath(form),
+        form.original_filename || `${form.name || "formulaire"}.pdf`,
+      );
+    } catch (err) {
+      toast.error("Téléchargement impossible");
+    }
+  };
+
   const mappedCount = (form) =>
     Object.values(form.field_mapping || {}).filter((v) => v).length;
 
@@ -99,10 +118,10 @@ export default function Formulaires() {
         <div>
           <h1 className="font-display font-black text-3xl sm:text-4xl tracking-tight flex items-center gap-3">
             <Files className="h-8 w-8 text-[#002FA7]" />
-            Bibliothèque de formulaires
+            Bibliothèque documentaire
           </h1>
           <p className="text-muted-foreground mt-1">
-            Importez un PDF, associez chaque champ visuellement à une donnée CRM, puis générez-le depuis le dossier client.
+            Retrouvez, consultez et téléchargez tous vos formulaires et documents professionnels vierges.
           </p>
         </div>
         <Button
@@ -128,50 +147,70 @@ export default function Formulaires() {
           </div>
         ) : (
           <div className="space-y-2">
-            {forms.map((f) => (
-              <div
-                key={f.id}
-                data-testid={`library-form-${f.id}`}
-                className="flex items-center gap-3 rounded-md border border-border px-3 py-3 bg-background"
-              >
-                <FileText className="h-5 w-5 text-[#002FA7] shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{f.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {f.original_filename}
-                    {typeof f.field_count === "number" ? ` · ${f.field_count} champ(s)` : ""}
-                    {` · ${mappedCount(f)} mappé(s)`}
-                    {!f.mapping_configured ? " · configuration à confirmer" : ""}
-                  </p>
+            {forms.map((f) => {
+              const isSystem = f.source === "system" || String(f.id || "").startsWith("system:");
+              const canMap = f.can_map !== false && !isSystem;
+              const canDelete = f.can_delete !== false && !isSystem;
+              return (
+                <div
+                  key={f.id}
+                  data-testid={`library-form-${f.id}`}
+                  className="flex items-center gap-3 rounded-md border border-border px-3 py-3 bg-background"
+                >
+                  <FileText className="h-5 w-5 text-[#002FA7] shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{f.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {isSystem ? "Formulaire LeoSoft" : f.original_filename}
+                      {f.category ? ` · ${f.category}` : ""}
+                      {!isSystem && typeof f.field_count === "number" ? ` · ${f.field_count} champ(s)` : ""}
+                      {!isSystem ? ` · ${mappedCount(f)} mappé(s)` : ""}
+                      {!isSystem && !f.mapping_configured ? " · configuration à confirmer" : ""}
+                    </p>
+                  </div>
+                  {canMap ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 shrink-0"
+                      onClick={() => setMappingFormId(f.id)}
+                      data-testid={`library-form-map-${f.id}`}
+                    >
+                      <Settings2 className="h-3.5 w-3.5" />
+                      Mapping
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 shrink-0"
+                    onClick={() => downloadBlank(f)}
+                    data-testid={`library-form-blank-${f.id}`}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Télécharger vierge
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => openAuthenticatedBlob(viewPath(f))}
+                    className="text-xs text-[#002FA7] hover:underline shrink-0"
+                  >
+                    Voir
+                  </button>
+                  {canDelete ? (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      onClick={() => removeForm(f.id)}
+                      data-testid={`library-form-delete-${f.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  ) : null}
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5 shrink-0"
-                  onClick={() => setMappingFormId(f.id)}
-                  data-testid={`library-form-map-${f.id}`}
-                >
-                  <Settings2 className="h-3.5 w-3.5" />
-                  Mapping
-                </Button>
-                <button
-                  type="button"
-                  onClick={() => openAuthenticatedBlob(`/form-library/${f.id}/download`)}
-                  className="text-xs text-[#002FA7] hover:underline shrink-0"
-                >
-                  Voir
-                </button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 text-destructive hover:text-destructive"
-                  onClick={() => removeForm(f.id)}
-                  data-testid={`library-form-delete-${f.id}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>
@@ -236,7 +275,7 @@ export default function Formulaires() {
         formId={mappingFormId}
         sources={sources}
         onSaved={(updated) => {
-          setForms((prev) => prev.map((f) => (f.id === updated.id ? { ...f, ...updated } : f)));
+          setForms((prev) => prev.map((f) => (f.id === updated.id ? { ...f, ...updated, source: f.source || "library", can_map: true, can_delete: true } : f)));
         }}
       />
     </Layout>

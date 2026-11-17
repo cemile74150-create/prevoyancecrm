@@ -148,6 +148,79 @@ def list_templates() -> List[Dict[str, Any]]:
     return out
 
 
+def is_letter_or_courrier_template(template: Dict[str, Any]) -> bool:
+    """True pour les lettres / courriers (exclus de la bibliothèque documentaire)."""
+    cat = str(template.get("category") or "").strip().lower()
+    if cat in {"courriers", "courrier", "lettres", "lettre"}:
+        return True
+    tid = str(template.get("id") or "").strip().lower()
+    if tid.startswith("lettre_") or tid.startswith("courrier_"):
+        return True
+    label = str(template.get("label") or "").strip().lower()
+    if label.startswith("lettre") or "courrier" in label or "d'accompagnement" in label:
+        return True
+    return False
+
+
+def list_blank_pdf_forms_for_library() -> List[Dict[str, Any]]:
+    """
+    Formulaires PDF système à exposer dans la bibliothèque documentaire.
+    Exclut lettres/courriers ; dédoublonne par nom de fichier.
+    """
+    out: List[Dict[str, Any]] = []
+    seen_filenames: set[str] = set()
+    for t in DOCUMENT_TEMPLATES:
+        if is_letter_or_courrier_template(t):
+            continue
+        filename = str(t.get("filename") or "").strip()
+        if not filename.lower().endswith(".pdf"):
+            continue
+        path = TEMPLATES_DIR / filename
+        if not path.exists():
+            continue
+        key = filename.lower()
+        if key in seen_filenames:
+            continue
+        seen_filenames.add(key)
+        out.append(
+            {
+                "id": f"system:{t['id']}",
+                "system_template_id": t["id"],
+                "source": "system",
+                "name": t["label"],
+                "original_filename": filename,
+                "description": t.get("description") or "",
+                "category": t.get("category") or "",
+                "field_count": None,
+                "field_mapping": {},
+                "mapping_configured": True,
+                "can_map": False,
+                "can_delete": False,
+                "available": True,
+                "size": path.stat().st_size,
+            }
+        )
+    out.sort(key=lambda row: str(row.get("name") or "").lower())
+    return out
+
+
+def read_blank_system_pdf(template_id: str) -> tuple[bytes, str, str]:
+    """
+    Lit le PDF vierge d'un modèle système éligible à la bibliothèque.
+    Retourne (bytes, filename, label).
+    """
+    template = get_template(template_id)
+    if is_letter_or_courrier_template(template):
+        raise KeyError(template_id)
+    filename = str(template.get("filename") or "").strip()
+    if not filename.lower().endswith(".pdf"):
+        raise KeyError(template_id)
+    path = TEMPLATES_DIR / filename
+    if not path.exists():
+        raise FileNotFoundError(filename)
+    return path.read_bytes(), filename, str(template.get("label") or filename)
+
+
 def list_demand_packs() -> List[Dict[str, Any]]:
     return [
         {

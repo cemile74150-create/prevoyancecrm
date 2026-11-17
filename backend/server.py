@@ -47,6 +47,8 @@ from access_control import (
     require_admin,
     require_perm,
     require_settings,
+    has_perm,
+    PERM_FORMULAIRES_VIEW,
     clients_base_query,
     force_conseiller_on_write,
     resolve_conseiller_account_id_for_write,
@@ -62,11 +64,13 @@ from access_control import (
 )
 from pdf_generator import (
     list_templates,
+    list_blank_pdf_forms_for_library,
     list_demand_packs,
     generate_document_pdf,
     generate_demand_pack,
     generate_decompte_letters,
     get_template,
+    read_blank_system_pdf,
     extract_pension_funds_from_pdf,
     extract_pension_funds_from_pdf_with_text,
     extract_3p_expiry_from_pdf,
@@ -755,12 +759,20 @@ async def get_current_user(request: Request, authorization: Optional[str] = Head
 
 
 def _set_session_cookie(response: Response, token: str):
+    # Prod HTTPS: Secure + SameSite=None. Local HTTP: Secure doit être off
+    # sinon le navigateur ignore le cookie et la session ne tient pas.
+    secure = str(os.environ.get("COOKIE_SECURE", "true")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     response.set_cookie(
         key="session_token",
         value=token,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=secure,
+        samesite="none" if secure else "lax",
         path="/",
         max_age=7 * 24 * 60 * 60,
     )
@@ -5088,18 +5100,130 @@ def _format_date_safe(value) -> str:
         return str(value or "")
 
 
+def _library_name_key(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _form_library_active_query(**extra: Any) -> dict:
+    """
+    Filtre bibliothèque active, partagée cabinet.
+
+    Important : ne jamais filtrer par user_id ici.
+    Les imports historiques sont souvent sous TENANT_USER_ID / local-dev,
+    alors que l'admin connecté a un user_* personnel — un filtre user_id
+    videait toute la Bibliothèque documentaire.
+    """
+    query: dict = {
+        # False explicite + champ absent (anciens docs) ; exclut soft-delete True.
+        "$or": [
+            {"is_deleted": False},
+            {"is_deleted": {"$exists": False}},
+        ],
+    }
+    query.update(extra)
+    return query
+
+
+async def _find_library_form_record(form_id: str) -> Optional[dict]:
+    """Formulaire bibliothèque partagé cabinet (tous conseillers)."""
+    return await db.form_library.find_one(
+        _form_library_active_query(id=form_id),
+        {"_id": 0},
+    )
+
+
+def _dedupe_library_items(items: list[dict]) -> list[dict]:
+    """Évite les doublons quand le même PDF a été importé plusieurs fois / modules."""
+    out: list[dict] = []
+    seen_filenames: set[str] = set()
+    seen_names: set[str] = set()
+    for item in items:
+        fn = _library_name_key(item.get("original_filename"))
+        nm = _library_name_key(item.get("name"))
+        if fn and fn in seen_filenames:
+            continue
+        if nm and nm in seen_names:
+            continue
+        if fn:
+            seen_filenames.add(fn)
+        if nm:
+            seen_names.add(nm)
+        out.append(item)
+    return out
+
+
+def _merge_library_catalog(imported_items: list[dict], system_items: list[dict]) -> list[dict]:
+    """Fusionne PDF importés + formulaires système, sans doublon fichier/nom."""
+    items = _dedupe_library_items(imported_items)
+    lib_filenames = {
+        _library_name_key(item.get("original_filename"))
+        for item in items
+        if _library_name_key(item.get("original_filename"))
+    }
+    lib_names = {
+        _library_name_key(item.get("name"))
+        for item in items
+        if _library_name_key(item.get("name"))
+    }
+    extras: list[dict] = []
+    for row in system_items:
+        fn = _library_name_key(row.get("original_filename"))
+        nm = _library_name_key(row.get("name"))
+        if fn and fn in lib_filenames:
+            continue
+        if nm and nm in lib_names:
+            continue
+        extras.append(row)
+    return [*extras, *items]
+
+
 @api_router.get("/form-library")
 async def list_form_library(user: User = Depends(get_current_user)):
+    """
+    Bibliothèque documentaire centralisée du cabinet :
+    PDF système (hors lettres/courriers) + tous les formulaires importés,
+    sans doublon de fichier/nom.
+
+    Accès : utilisateur authentifié du déploiement (cabinet) avec
+    ``formulaires.view`` (contrôle route). Jamais public / anonyme.
+    """
+    if not has_perm(user, PERM_FORMULAIRES_VIEW):
+        raise HTTPException(status_code=403, detail="Accès bibliothèque refusé")
     items = await db.form_library.find(
-        {"user_id": user.user_id, "is_deleted": {"$ne": True}},
+        _form_library_active_query(),
         {"_id": 0, "storage_path": 0, "storage_path_legacy": 0},
     ).sort("created_at", -1).to_list(500)
-    return items
+    for item in items:
+        item["source"] = "library"
+        item["can_map"] = True
+        item["can_delete"] = True
+
+    return _merge_library_catalog(items, list_blank_pdf_forms_for_library())
 
 
 @api_router.get("/form-library/field-sources")
 async def list_form_field_sources(user: User = Depends(get_current_user)):
     return CRM_FIELD_SOURCES
+
+
+@api_router.get("/form-library/system/{template_id}/download")
+async def download_system_form_blank(template_id: str, user: User = Depends(get_current_user)):
+    """Télécharge le PDF original vierge d'un formulaire système."""
+    tid = (template_id or "").strip()
+    if tid.startswith("system:"):
+        tid = tid.split(":", 1)[1]
+    try:
+        data, filename, label = read_blank_system_pdf(tid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Formulaire système introuvable")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Fichier modèle introuvable")
+    download_name = filename if filename.lower().endswith(".pdf") else f"{label}.pdf"
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers=_file_response_headers(download_name, inline=False),
+    )
 
 
 @api_router.post("/form-library")
@@ -5121,14 +5245,17 @@ async def upload_form_library(
 
     form_id = str(uuid.uuid4())
     try:
-        meta = await _prepare_and_store_library_pdf(user.user_id, form_id, data)
+        # Stockage cabinet (TENANT) pour centraliser la bibliothèque documentaire.
+        meta = await _prepare_and_store_library_pdf(TENANT_USER_ID, form_id, data)
     except Exception as e:
         logger.exception("Upload formulaire bibliothèque échoué")
         raise HTTPException(status_code=500, detail=f"Analyse du PDF impossible: {e}")
 
     doc = {
         "id": form_id,
-        "user_id": user.user_id,
+        "user_id": TENANT_USER_ID,
+        "uploaded_by_user_id": user.user_id,
+        "uploaded_by_name": getattr(user, "name", None) or getattr(user, "email", None) or "",
         "name": label,
         "original_filename": file.filename or f"{label}.pdf",
         "storage_path": meta["storage_path"],
@@ -5151,10 +5278,7 @@ async def upload_form_library(
 
 @api_router.get("/form-library/{form_id}")
 async def get_form_library(form_id: str, user: User = Depends(get_current_user)):
-    record = await db.form_library.find_one(
-        {"id": form_id, "user_id": user.user_id, "is_deleted": {"$ne": True}},
-        {"_id": 0},
-    )
+    record = await _find_library_form_record(form_id)
     if not record:
         raise HTTPException(status_code=404, detail="Formulaire introuvable")
     record = await _ensure_library_widgets(record)
@@ -5168,10 +5292,7 @@ async def update_form_library(
     user: User = Depends(get_current_user),
 ):
     require_settings(user)
-    record = await db.form_library.find_one(
-        {"id": form_id, "user_id": user.user_id, "is_deleted": {"$ne": True}},
-        {"_id": 0},
-    )
+    record = await _find_library_form_record(form_id)
     if not record:
         raise HTTPException(status_code=404, detail="Formulaire introuvable")
     record = await _ensure_library_widgets(record)
@@ -5202,7 +5323,7 @@ async def update_form_library(
         return public_storage_record(record)
 
     await db.form_library.update_one(
-        {"id": form_id, "user_id": user.user_id},
+        _form_library_active_query(id=form_id),
         {"$set": updates},
     )
     record.update(updates)
@@ -5212,8 +5333,9 @@ async def update_form_library(
 @api_router.delete("/form-library/{form_id}")
 async def delete_form_library(form_id: str, user: User = Depends(get_current_user)):
     require_settings(user)
+    # Soft-delete uniquement : jamais de delete_one / drop sur form_library.
     res = await db.form_library.update_one(
-        {"id": form_id, "user_id": user.user_id},
+        _form_library_active_query(id=form_id),
         {"$set": {"is_deleted": True}},
     )
     if res.matched_count == 0:
@@ -5222,11 +5344,30 @@ async def delete_form_library(form_id: str, user: User = Depends(get_current_use
 
 
 @api_router.get("/form-library/{form_id}/download")
-async def download_form_library(form_id: str, user: User = Depends(get_current_user)):
-    record = await db.form_library.find_one(
-        {"id": form_id, "user_id": user.user_id, "is_deleted": {"$ne": True}},
-        {"_id": 0},
-    )
+async def download_form_library(
+    form_id: str,
+    user: User = Depends(get_current_user),
+    download: bool = False,
+):
+    """
+    Ouvre (inline) ou télécharge (download=1) le PDF bibliothèque vierge,
+    sans données client.
+    """
+    if str(form_id).startswith("system:"):
+        tid = str(form_id).split(":", 1)[1]
+        try:
+            data, filename, label = read_blank_system_pdf(tid)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Formulaire système introuvable")
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Fichier modèle introuvable")
+        download_name = filename if filename.lower().endswith(".pdf") else f"{label}.pdf"
+        return Response(
+            content=data,
+            media_type="application/pdf",
+            headers=_file_response_headers(download_name, inline=not download),
+        )
+    record = await _find_library_form_record(form_id)
     if not record:
         raise HTTPException(status_code=404, detail="Formulaire introuvable")
     try:
@@ -5239,7 +5380,7 @@ async def download_form_library(form_id: str, user: User = Depends(get_current_u
     return Response(
         content=data,
         media_type="application/pdf",
-        headers=_file_response_headers(fname, inline=True),
+        headers=_file_response_headers(fname, inline=not download),
     )
 
 
@@ -5249,10 +5390,7 @@ async def form_library_page_preview(
     page_index: int,
     user: User = Depends(get_current_user),
 ):
-    record = await db.form_library.find_one(
-        {"id": form_id, "user_id": user.user_id, "is_deleted": {"$ne": True}},
-        {"_id": 0},
-    )
+    record = await _find_library_form_record(form_id)
     if not record:
         raise HTTPException(status_code=404, detail="Formulaire introuvable")
     record = await _ensure_library_widgets(record)
@@ -5278,10 +5416,7 @@ async def test_fill_library_form(
     payload: TestLibraryFormRequest,
     user: User = Depends(get_current_user),
 ):
-    record = await db.form_library.find_one(
-        {"id": form_id, "user_id": user.user_id, "is_deleted": {"$ne": True}},
-        {"_id": 0},
-    )
+    record = await _find_library_form_record(form_id)
     if not record:
         raise HTTPException(status_code=404, detail="Formulaire introuvable")
     record = await _ensure_library_widgets(record)
@@ -5328,10 +5463,7 @@ async def generate_library_form_for_client(
     user: User = Depends(get_current_user),
 ):
     c = await require_client(client_id, user)
-    form = await db.form_library.find_one(
-        {"id": payload.library_form_id, "user_id": user.user_id, "is_deleted": {"$ne": True}},
-        {"_id": 0},
-    )
+    form = await _find_library_form_record(payload.library_form_id)
     if not form:
         raise HTTPException(status_code=404, detail="Formulaire introuvable dans la bibliothèque")
     form = await _ensure_library_widgets(form)

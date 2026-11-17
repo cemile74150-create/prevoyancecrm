@@ -268,9 +268,9 @@ PERMISSION_CATALOG = [
     },
     {
         "id": "formulaires",
-        "label": "Formulaires",
+        "label": "Bibliothèque documentaire",
         "items": [
-            {"key": PERM_FORMULAIRES_VIEW, "label": "Voir les formulaires"},
+            {"key": PERM_FORMULAIRES_VIEW, "label": "Voir la bibliothèque documentaire"},
         ],
     },
     {

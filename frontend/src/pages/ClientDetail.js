@@ -494,7 +494,11 @@ export default function ClientDetail() {
         });
       };
       setDemandes(sortRappelsByDate(Array.isArray(dem.data) ? dem.data : []));
-      setLibraryForms(lib.data || []);
+      setLibraryForms(
+        (Array.isArray(lib.data) ? lib.data : []).filter(
+          (f) => f && f.source !== "system" && !String(f.id || "").startsWith("system:"),
+        ),
+      );
       const savedChecklist = c.data?.document_checklist || {};
       const migratedLpp = savedChecklist["Demande LPP"] || savedChecklist.Procuration || savedChecklist["Formulaire Recherche LPP"];
       const demandeItems = getDemandesChecklistItems(savedChecklist, d.data || []);
@@ -3226,7 +3230,7 @@ export default function ClientDetail() {
                       <p className="text-sm text-muted-foreground">
                         Aucun formulaire en bibliothèque. Ajoutez-en via le menu{" "}
                         <button type="button" className="text-[#002FA7] underline" onClick={() => navigate("/formulaires")}>
-                          Formulaires
+                          Bibliothèque documentaire
                         </button>
                         .
                       </p>

@@ -64,9 +64,9 @@ export const PERMISSION_CATALOG = [
   },
   {
     id: "formulaires",
-    label: "Formulaires",
+    label: "Bibliothèque documentaire",
     items: [
-      { key: "formulaires.view", label: "Voir les formulaires" },
+      { key: "formulaires.view", label: "Voir la bibliothèque documentaire" },
     ],
   },
   {
