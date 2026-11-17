@@ -39,6 +39,9 @@ def test_parse_swiss_money():
     assert _compact_money_token("385'000") == 385000.0
     assert _compact_money_token("1'250.–") == 1250.0
     assert _compact_money_token("1.250,50") == 1250.5
+    assert _compact_money_token("1178.50") == 1178.5
+    assert _compact_money_token("1'243.90") == 1243.9
+    assert _compact_money_token("CHF 1\u202f243.90") == 1243.9
 
 
 def test_format_chf_and_duree():

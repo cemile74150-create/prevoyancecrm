@@ -1321,7 +1321,7 @@ def attach_demandes_offres_routes(
         filename = file.filename or "offre.pdf"
         form_type = (form_type or "pilier3_legacy").strip() or "pilier3_legacy"
 
-        from offre_extract import extract_offre_fields, map_extract_to_form
+        from offre_extract import extract_offre_fields, map_extract_to_form, offre_fields_for_storage
 
         raw = extract_offre_fields(data, filename=filename)
         mapped = map_extract_to_form(raw, form_type=form_type)
@@ -1369,8 +1369,13 @@ def attach_demandes_offres_routes(
             "nationalite": raw.get("nationalite"),
             "periodicite": raw.get("periodicite"),
             "type_pilier": raw.get("type_pilier"),
+            "form_type_suggere": raw.get("form_type_suggere"),
+            "objets_count": len(raw.get("objets") or []) or None,
         }
         extracted_ui = {k: v for k, v in labels.items() if v not in (None, "", "Non indiqué")}
+
+        # Snapshot audit (traçabilité) — PDF original conservé côté upload existant.
+        storage_snapshot = offre_fields_for_storage(raw)
 
         action = decision.get("action") or "creer"
         if action == "rattacher":
@@ -1381,6 +1386,7 @@ def attach_demandes_offres_routes(
             hint = "Formulaire prérempli depuis le PDF. Aucun numéro OFF : l'envoi crée une nouvelle demande."
         return {
             "form_type": form_type,
+            "form_type_suggere": raw.get("form_type_suggere") or mapped.get("form_type_suggere"),
             "filename": filename,
             "action": action,
             "numero": (matched or {}).get("numero") if matched else (decision.get("numero") if action == "refus" else None),
@@ -1391,6 +1397,11 @@ def attach_demandes_offres_routes(
             "form_payload": form_payload,
             "filled_keys": mapped.get("filled_keys") or [],
             "extracted": extracted_ui,
+            "objets": mapped.get("objets") or raw.get("objets") or [],
+            "objet_hints": mapped.get("objet_hints") or {},
+            "structured": mapped.get("structured") or raw.get("structured"),
+            "extract_audit": mapped.get("extract_audit") or storage_snapshot.get("offre_extract_audit"),
+            "offre_extract_snapshot": storage_snapshot.get("offre_extract"),
             "reference_police": mapped.get("reference_police") or raw.get("reference_police"),
             "hint": hint,
         }

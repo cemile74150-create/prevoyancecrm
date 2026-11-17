@@ -180,6 +180,11 @@ def _match_company_options(company: str, options: list) -> list[str]:
 
 
 def _match_choice(value: Any, options: list) -> Optional[str]:
+    """
+    Aligne une valeur PDF sur une option de liste.
+    Pas de sous-chaîne 1 lettre (ex. « C » / « a » → « Aucun permis »).
+    En cas d'ambiguïté → None (pas d'invention).
+    """
     if value is None or not options:
         return None
     folded_value = _fold(str(value))
@@ -190,20 +195,36 @@ def _match_choice(value: Any, options: list) -> Optional[str]:
         yn = "oui"
     elif folded_value in {"non", "no", "nein", "false"}:
         yn = "non"
+    # Exact
+    for opt in options:
+        if _fold(str(opt)) == folded_value:
+            return str(opt)
+    # Code court type permis « C » → option contenant le même token (Permis C), pas « Aucun… »
+    if len(folded_value) <= 2:
+        token_hits = []
+        for opt in options:
+            folded_opt = _fold(str(opt))
+            tokens = folded_opt.split()
+            if folded_value in tokens and "aucun" not in tokens:
+                token_hits.append(str(opt))
+        if len(token_hits) == 1:
+            return token_hits[0]
+        return None
     best: Optional[str] = None
     best_len = -1
     for opt in options:
         folded_opt = _fold(str(opt))
         if not folded_opt:
             continue
-        if folded_opt == folded_value:
-            return str(opt)
         if yn and (folded_opt == yn or folded_opt.startswith(yn + " ")):
             if folded_opt == yn or best is None:
                 best = str(opt)
                 best_len = 1000 if folded_opt == yn else len(folded_opt)
             continue
-        if len(folded_opt) >= 4 and (folded_opt in folded_value or folded_value in folded_opt):
+        # Sous-chaîne seulement si les deux côtés sont assez longs (≥ 3 / ≥ 4)
+        if len(folded_value) >= 3 and len(folded_opt) >= 4 and (
+            folded_opt in folded_value or folded_value in folded_opt
+        ):
             if len(folded_opt) > best_len:
                 best = str(opt)
                 best_len = len(folded_opt)

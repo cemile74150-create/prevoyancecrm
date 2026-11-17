@@ -48,13 +48,21 @@ def _norm(text: str) -> str:
 
 
 def _compact_money_token(raw: str) -> Optional[float]:
-    """Parse un montant CHF saisi sous formes suisses / internationales."""
+    """Parse un montant CHF saisi sous formes suisses / internationales.
+
+    Gère 1178.50, 1'243.90, 1 243.90, espaces insécables (\\u00a0, \\u202f),
+    et ne tronque pas 1178.50 en 117.
+    """
     if not raw:
         return None
     s = str(raw).strip()
     s = s.replace("CHF", "").replace("Fr.", "").replace("fr.", "").replace("SFr.", "")
-    s = s.replace("'", "").replace("’", "").replace(" ", "").replace("\u00a0", "")
+    # Apostrophes / espaces milliers (y compris fine / no-break)
+    for ch in ("'", "’", "`", "´", " ", "\u00a0", "\u202f", "\u2009", "\u2007"):
+        s = s.replace(ch, "")
     s = s.replace(".–", "").replace(".-", "").replace("–", "").replace("—", "")
+    if not s or not re.search(r"\d", s):
+        return None
     if "," in s and "." in s:
         # 1.250,50 ou 1,250.50
         if s.rfind(",") > s.rfind("."):
@@ -68,7 +76,12 @@ def _compact_money_token(raw: str) -> Optional[float]:
         else:
             s = s.replace(",", "")
     elif s.count(".") > 1:
-        s = s.replace(".", "")
+        # 1.178.50 (milliers + décimales) → garder la dernière partie décimale
+        head, _, dec = s.rpartition(".")
+        if len(dec) <= 2 and dec.isdigit():
+            s = head.replace(".", "") + "." + dec
+        else:
+            s = s.replace(".", "")
     try:
         value = float(s)
     except ValueError:
@@ -116,7 +129,15 @@ def _find_compagnie(text: str, filename: str = "") -> Optional[str]:
     return best[1] if best else None
 
 
-_MONEY_RE = r"(?:CHF|Fr\.?|SFr\.?)?\s*([0-9]{1,3}(?:[ '’\u00a0.][0-9]{3})*(?:[.,][0-9]{1,2})?|[0-9]+(?:[.,][0-9]{1,2})?)"
+# Priorité : (1) milliers suisses avec au moins un groupe, (2) entier/décimal complet.
+# Évite de matcher « 117 » dans « 1178.50 ».
+_MONEY_RE = (
+    r"(?:CHF|Fr\.?|SFr\.?)?\s*"
+    r"("
+    r"[0-9]{1,3}(?:[ '’\u00a0\u202f\u2009.][0-9]{3})+(?:[.,][0-9]{1,2})?"
+    r"|[0-9]+(?:[.,][0-9]{1,2})?"
+    r")"
+)
 
 
 def _amounts_near_keywords(
@@ -272,21 +293,27 @@ def _find_offre_numero(text: str, filename: str = "") -> Optional[str]:
     return raw
 
 
-def _find_labeled_value(text: str, labels: Tuple[str, ...], *, max_len: int = 80) -> Optional[str]:
+def _find_labeled_value(
+    text: str,
+    labels: Tuple[str, ...],
+    *,
+    max_len: int = 80,
+    min_len: int = 1,
+) -> Optional[str]:
     flat = text or ""
     for label in labels:
         # Début de ligne, puis repli « Label : valeur » au milieu d'une ligne (PDF aplati).
         patterns = (
-            rf"(?:^|\n)\s*{label}\s*[:\-–]?\s*([^\n\r]{{2,{max_len}}})",
+            rf"(?:^|\n)\s*{label}\s*[:\-–]?\s*([^\n\r]{{{min_len},{max_len}}})",
             # Ne pas matcher « nom » à l'intérieur de « Prénom ».
-            rf"(?<![A-Za-zÀ-ÿ]){label}\s*[:：]\s*([^\n\r]{{2,{max_len}}})",
+            rf"(?<![A-Za-zÀ-ÿ]){label}\s*[:：]\s*([^\n\r]{{{min_len},{max_len}}})",
         )
         for pat in patterns:
             m = re.search(pat, flat, re.I | re.M)
             if not m:
                 continue
             val = m.group(1).strip(" \t.:;,-–")
-            if val and len(val) >= 2:
+            if val and len(val) >= min_len:
                 return val
     return None
 
@@ -300,10 +327,16 @@ def _find_date(text: str, labels: Tuple[str, ...]) -> Optional[str]:
         )
         m = re.search(pat, flat, re.I | re.M)
         if not m:
+            # Repli milieu de ligne (PDF aplati, ex. « Né(e) le: 04.07.1967 »)
+            pat2 = (
+                rf"(?<![A-Za-zÀ-ÿ]){label}\s*[:：]\s*"
+                rf"(\d{{1,2}}[./]\d{{1,2}}[./]\d{{2,4}}|\d{{4}}-\d{{2}}-\d{{2}})"
+            )
+            m = re.search(pat2, flat, re.I)
+        if not m:
             continue
         raw = m.group(1).strip()
         return _normalize_date(raw)
-    # Dates isolées près de mots-clés
     return None
 
 
@@ -352,35 +385,106 @@ def _find_person_name(text: str) -> Tuple[Optional[str], Optional[str]]:
     return prenom, nom
 
 
+_INSURER_HEADER_CITIES = {
+    "zurich",
+    "zürich",
+    "wallisellen",
+    "basel",
+    "genève",
+    "geneve",
+    "bern",
+    "berne",
+}
+
+
+def _looks_like_insurer_address(npa: Optional[str], ville: Optional[str], ctx: str = "") -> bool:
+    flat_ville = _norm(ville or "")
+    flat_ctx = _norm(ctx)
+    if flat_ville in _INSURER_HEADER_CITIES and re.search(
+        r"elvia|allianz|service\s+center|postfach|assureur|porteur\s+du\s+risque",
+        flat_ctx,
+    ):
+        return True
+    if npa == "8010" and "zurich" in flat_ville:
+        return True
+    return False
+
+
 def _find_adresse_block(text: str) -> Dict[str, Optional[str]]:
-    adresse = _find_labeled_value(
-        text,
-        (r"adresse", r"rue", r"domicile", r"strasse", r"address"),
-        max_len=100,
-    )
+    """Priorise l'adresse du preneur / détenteur ; ignore l'en-tête assureur."""
+    adresse = None
     npa = None
     ville = None
-    m = re.search(
-        r"(?:^|\n)\s*(?:NPA|CP|PLZ|Code\s*postal)\s*[:\-–]?\s*(\d{4})\b",
+
+    # 1) Bloc PRENEUR D'ASSURANCE « RUE, NPA VILLE »
+    m_preneur = re.search(
+        r"PRENEUR\s+D['’]?ASSURANCE\s+[^\n]+\s+([A-Z0-9][^\n,]{3,60}),\s*(\d{4})\s+([A-Za-zÀ-ÿ' \-]{2,40})",
         text or "",
-        re.I | re.M,
+        re.I,
     )
-    if m:
-        npa = m.group(1)
-    m2 = re.search(
-        r"(?:^|\n)\s*(?:Ville|Localit[ée]|Ort|City)\s*[:\-–]?\s*([A-Za-zÀ-ÿ' \-]{2,40})",
-        text or "",
-        re.I | re.M,
-    )
-    if m2:
-        ville = m2.group(1).strip()
-    # Pattern « 1000 Lausanne »
+    if m_preneur:
+        adresse = re.sub(r"\s+", " ", m_preneur.group(1)).strip()
+        npa = m_preneur.group(2)
+        ville = m_preneur.group(3).strip()
+
+    # 2) Détenteur / conducteur multi-lignes
     if not npa or not ville:
-        m3 = re.search(r"\b(\d{4})\s+([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-Za-zÀ-ÿ' \-]{1,40})\b", text or "")
-        if m3:
-            npa = npa or m3.group(1)
-            ville = ville or m3.group(2).strip()
-    # Pays uniquement s'il est écrit dans le PDF (un NPA suisse ne suffit pas).
+        m_det = re.search(
+            r"(?:D[ÉE]TENTEUR|CONDUCTEUR\s+PRINCIPAL)\s*\n"
+            r"[A-Za-zÀ-ÿ' \-]{2,40}\s*\n"
+            r"([A-Za-zÀ-ÿ0-9' \-]{3,60})\s*\n"
+            r"(\d{4})\s+([A-Za-zÀ-ÿ' \-]{2,40})",
+            text or "",
+            re.I,
+        )
+        if m_det:
+            adresse = adresse or m_det.group(1).strip()
+            npa = npa or m_det.group(2)
+            ville = ville or m_det.group(3).strip()
+
+    if not adresse:
+        adresse = _find_labeled_value(
+            text,
+            (r"adresse", r"rue", r"domicile", r"strasse", r"address"),
+            max_len=100,
+        )
+
+    if not npa:
+        m = re.search(
+            r"(?:^|\n)\s*(?:NPA|CP|PLZ|Code\s*postal)\s*[:\-–]?\s*(\d{4})\b",
+            text or "",
+            re.I | re.M,
+        )
+        if m:
+            npa = m.group(1)
+    if not ville:
+        m2 = re.search(
+            r"(?:^|\n)\s*(?:Ville|Localit[ée]|Ort|City)\s*[:\-–]?\s*([A-Za-zÀ-ÿ' \-]{2,40})",
+            text or "",
+            re.I | re.M,
+        )
+        if m2:
+            ville = m2.group(1).strip()
+
+    # Pattern « 1000 Lausanne » — ignorer en-tête assureur (8010 Zürich ELVIA)
+    if not npa or not ville:
+        for m3 in re.finditer(
+            r"\b(\d{4})\s+([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ][A-Za-zÀ-ÿ' \-]{1,40})\b",
+            text or "",
+        ):
+            cand_npa, cand_ville = m3.group(1), m3.group(2).strip()
+            ctx = (text or "")[max(0, m3.start() - 80) : m3.end() + 40]
+            if _looks_like_insurer_address(cand_npa, cand_ville, ctx):
+                continue
+            npa = npa or cand_npa
+            ville = ville or cand_ville
+            break
+
+    if npa and ville and _looks_like_insurer_address(npa, ville, text or ""):
+        # Dernier filet : ne pas renvoyer l'adresse assureur comme preneur
+        if not m_preneur:
+            npa, ville, adresse = None, None, adresse
+
     pays = None
     pays_match = re.search(
         r"(?:^|\n)\s*Pays\s*[:：]\s*([A-Za-zÀ-ÿ' .\-]{2,40})",
@@ -408,9 +512,31 @@ def _find_police_number(text: str) -> Optional[str]:
 
 
 def _find_prime_annuelle(text: str) -> Optional[float]:
+    flat = text or ""
+    # Priorité : prime TTC / avec redevances (ex. ELVIA 1243.90), une seule fois.
+    m_tax = re.search(
+        r"PRIME\s+ANNUELLE\s+AVEC\s+REDEVANCES[^0-9\n]{0,80}" + _MONEY_RE,
+        flat,
+        re.I,
+    )
+    if m_tax:
+        val = _compact_money_token(m_tax.group(1))
+        if val is not None and 20 <= val <= 500_000:
+            return val
+    m_brute = re.search(
+        r"PRIME\s+ANNUELLE(?!\s+AVEC)\s+" + _MONEY_RE,
+        flat,
+        re.I,
+    )
+    if m_brute:
+        val = _compact_money_token(m_brute.group(1))
+        if val is not None and 20 <= val <= 500_000:
+            return val
+
     hits = _amounts_near_keywords(
         text,
         (
+            "prime annuelle avec redevances",
             "prime annuelle",
             "prime / an",
             "prime par an",
@@ -427,7 +553,6 @@ def _find_prime_annuelle(text: str) -> Optional[float]:
     for val, score in hits:
         if 100 <= val <= 500_000 and score >= 60:
             return val
-    # Mensuelle * 12 si on a une prime mensuelle
     hits_m = _amounts_near_keywords(
         text,
         ("prime mensuelle", "prime / mois", "Monatsprämie", "monthly premium"),
@@ -484,20 +609,54 @@ def _find_type_pilier(text: str) -> Optional[str]:
     return None
 
 
+_INSURER_CONTACT_BLOCKLIST = (
+    "0800666222",
+    "0800055088",
+    "+41433119990",
+    "0433119990",
+    "contact@elvia.ch",
+)
+
+
+def _is_insurer_contact(value: str, ctx: str = "") -> bool:
+    compact = re.sub(r"[\s./-]", "", (value or "").lower())
+    if any(b in compact for b in _INSURER_CONTACT_BLOCKLIST):
+        return True
+    flat_ctx = _norm(ctx)
+    if re.search(r"sinistre|service\s+center|elvia\.ch|assureur\s+et\s+porteur", flat_ctx):
+        return True
+    if compact.endswith("@elvia.ch") or "sinistre@" in compact:
+        return True
+    return False
+
+
 def _find_email(text: str) -> Optional[str]:
     raw = _find_labeled_value(text, (r"e-?mail", r"courriel"), max_len=80)
     if not raw:
         return None
     m = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", raw)
-    return m.group(0) if m else None
+    if not m:
+        return None
+    email = m.group(0)
+    if _is_insurer_contact(email, raw):
+        return None
+    return email
 
 
 def _find_telephone(text: str) -> Optional[str]:
-    return _find_labeled_value(
-        text,
-        (r"t[ée]l[ée]phone", r"mobile", r"natel", r"t[ée]l\."),
-        max_len=30,
-    )
+    flat = text or ""
+    for label in (r"t[ée]l[ée]phone", r"mobile", r"natel", r"t[ée]l\."):
+        for m in re.finditer(
+            rf"(?:^|\n)\s*{label}\s*[:\-–]?\s*([^\n\r]{{7,30}})",
+            flat,
+            re.I | re.M,
+        ):
+            val = m.group(1).strip(" \t.:;,-–")
+            ctx = flat[max(0, m.start() - 100) : m.end() + 40]
+            if not val or _is_insurer_contact(val, ctx):
+                continue
+            return val
+    return None
 
 
 def extract_offre_fields(
@@ -508,6 +667,7 @@ def extract_offre_fields(
     """
     Analyse un PDF d'offre et retourne des champs structurés.
     Valeurs absentes / peu sûres → None (affichage « Non indiqué »).
+    Ne jamais inventer : en cas d'incertitude → None.
     """
     text = ""
     try:
@@ -518,25 +678,53 @@ def extract_offre_fields(
         logger.exception("Lecture texte offre PDF échouée")
         text = ""
 
-    compagnie = _find_compagnie(text, filename)
+    # Phase 1 : extraction structurée (multi-branches) puis aplatissement sûr.
+    structured = None
+    structured_flat: Dict[str, Any] = {}
+    try:
+        from offre_extract_structured import extract_structured_offre, structured_to_flat_extracted
+
+        structured = extract_structured_offre(pdf_bytes, filename=filename, text=text)
+        structured_flat = structured_to_flat_extracted(structured)
+    except Exception:
+        logger.exception("Extraction structurée indisponible — repli legacy")
+
+    compagnie = structured_flat.get("compagnie") or _find_compagnie(text, filename)
     rente = _find_rente_mensuelle(text)
     montant = _find_montant_investi(text)
     duree = _find_duree_ans(text, filename)
     prenom, nom = _find_person_name(text)
+    if structured_flat.get("prenom"):
+        prenom = structured_flat["prenom"]
+    if structured_flat.get("nom"):
+        nom = structured_flat["nom"]
     addr = _find_adresse_block(text)
-    date_naissance = _find_date(
+    if structured_flat.get("npa"):
+        addr["npa"] = structured_flat["npa"]
+    if structured_flat.get("ville"):
+        addr["ville"] = structured_flat["ville"]
+    if structured_flat.get("adresse"):
+        addr["adresse"] = structured_flat["adresse"]
+
+    date_naissance = structured_flat.get("date_naissance") or _find_date(
         text,
-        (r"date\s+de\s+naissance", r"n[ée]e?\s+le", r"geburtsdatum", r"date\s+of\s+birth"),
+        (
+            r"date\s+de\s+naissance",
+            r"n[ée]\(?e?\)?\s*le",
+            r"n[ée]e?\s+le",
+            r"geburtsdatum",
+            r"date\s+of\s+birth",
+        ),
     )
-    date_debut = _find_date(
+    date_debut = structured_flat.get("date_debut") or _find_date(
         text,
-        (r"date\s+de\s+d[ée]but", r"entr[ée]e\s+en\s+vigueur", r"d[ée]but\s+(?:du\s+)?contrat", r"beginn", r"start\s+date"),
+        (r"date\s+de\s+d[ée]but", r"entr[ée]e\s+en\s+vigueur", r"d[ée]but\s+(?:du\s+)?contrat", r"beginn", r"start\s+date", r"valable\s+[àa]\s+partir\s+du"),
     )
-    date_fin = _find_date(
+    date_fin = structured_flat.get("date_fin") or _find_date(
         text,
-        (r"date\s+de\s+fin", r"[ée]ch[ée]ance", r"fin\s+(?:du\s+)?contrat", r"ablauf", r"end\s+date", r"terme"),
+        (r"date\s+de\s+fin", r"[ée]ch[ée]ance", r"fin\s+(?:du\s+)?contrat", r"ablauf", r"end\s+date", r"terme", r"expiration\s+de\s+l['’]?assurance"),
     )
-    civilite = _find_labeled_value(text, (r"civilit[ée]", r"anrede", r"title"), max_len=20)
+    civilite = structured_flat.get("civilite") or _find_labeled_value(text, (r"civilit[ée]", r"anrede", r"title"), max_len=20)
     if civilite:
         c = civilite.casefold()
         if "madame" in c or "frau" in c or c.startswith("mme"):
@@ -547,6 +735,21 @@ def extract_offre_fields(
     if not text.strip():
         compagnie = compagnie or _find_compagnie("", filename)
         duree = duree or _find_duree_ans("", filename)
+
+    montant_prime = structured_flat.get("montant_prime")
+    if montant_prime is None:
+        montant_prime = _find_prime_annuelle(text)
+
+    telephone = structured_flat.get("telephone")
+    if telephone is None:
+        telephone = _find_telephone(text)
+    email = structured_flat.get("email")
+    if email is None:
+        email = _find_email(text)
+
+    permis = structured_flat.get("permis")
+    if permis is None:
+        permis = _find_labeled_value(text, (r"permis\s+de\s+s[ée]jour", r"permis(?:\s+de\s+s[ée]jour)?"), max_len=40, min_len=1)
 
     return {
         "compagnie": compagnie,
@@ -566,21 +769,25 @@ def extract_offre_fields(
         "adresse": addr.get("adresse"),
         "npa": addr.get("npa"),
         "ville": addr.get("ville"),
-        "pays": addr.get("pays"),
-        "reference_police": _find_police_number(text),
-        "montant_prime": _find_prime_annuelle(text),
+        "pays": addr.get("pays") or structured_flat.get("pays"),
+        "reference_police": structured_flat.get("reference_police") or _find_police_number(text),
+        "montant_prime": montant_prime,
         "date_debut": date_debut,
         "date_fin": date_fin,
-        "nationalite": _find_labeled_value(text, (r"nationalit[ée]", r"staatsangehörigkeit"), max_len=30),
+        "nationalite": structured_flat.get("nationalite")
+        or _find_labeled_value(text, (r"nationalit[ée]", r"staatsangehörigkeit"), max_len=30),
         "profession": _find_labeled_value(text, (r"profession", r"beruf", r"activit[ée]\s+professionnelle"), max_len=80),
-        "email": _find_email(text),
-        "telephone": _find_telephone(text),
-        "permis": _find_labeled_value(text, (r"permis(?:\s+de\s+s[ée]jour)?",), max_len=40),
+        "email": email,
+        "telephone": telephone,
+        "permis": permis,
         "sexe": _find_labeled_value(text, (r"sexe", r"geschlecht"), max_len=20),
         "statut_professionnel": _find_labeled_value(text, (r"statut\s+professionnel",), max_len=40),
         "fumeur": _find_labeled_value(text, (r"fumeur",), max_len=20),
         "periodicite": _find_periodicite(text),
         "type_pilier": _find_type_pilier(text),
+        "objets": structured_flat.get("objets") or [],
+        "form_type_suggere": structured_flat.get("form_type_suggere"),
+        "structured": structured,
         "_text": text or "",
         "_raw_text_len": len(text or ""),
     }
@@ -593,6 +800,7 @@ def map_extract_to_form(
 ) -> Dict[str, Any]:
     """
     Mappe l'extraction PDF vers les champs CRM (legacy + form_payload générique).
+    Couche mapping : n'altère pas les JSON de formulaires.
     """
     form_type = (form_type or "pilier3_legacy").strip() or "pilier3_legacy"
     fields: Dict[str, Any] = {}
@@ -630,12 +838,25 @@ def map_extract_to_form(
         payload = filled.get("form_payload") or {}
         filled_keys = list(filled.get("filled_keys") or [])
 
+    objet_hints: Dict[str, Any] = {}
+    try:
+        from offre_extract_structured import map_objets_to_voyage_hints
+
+        objet_hints = map_objets_to_voyage_hints(list(extracted.get("objets") or []))
+    except Exception:
+        objet_hints = {}
+
     return {
         "fields": fields,
         "form_payload": payload,
         "filled_keys": filled_keys,
         "numero_offre": extracted.get("numero_offre"),
         "reference_police": extracted.get("reference_police"),
+        "objets": extracted.get("objets") or [],
+        "objet_hints": objet_hints,
+        "form_type_suggere": extracted.get("form_type_suggere"),
+        "structured": extracted.get("structured"),
+        "extract_audit": (extracted.get("structured") or {}).get("audit") if isinstance(extracted.get("structured"), dict) else None,
     }
 
 
@@ -667,7 +888,8 @@ def _legacy_alias_payload(extracted: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def offre_fields_for_storage(extracted: Dict[str, Any]) -> Dict[str, Any]:
-    """Champs plats à enregistrer sur le document Mongo."""
+    """Champs plats à enregistrer sur le document Mongo (+ snapshot audit Phase 1)."""
+    structured = extracted.get("structured") if isinstance(extracted.get("structured"), dict) else None
     return {
         "compagnie": extracted.get("compagnie"),
         "rente_mensuelle_garantie": extracted.get("rente_mensuelle_garantie"),
@@ -693,5 +915,9 @@ def offre_fields_for_storage(extracted: Dict[str, Any]) -> Dict[str, Any]:
             "montant_prime": extracted.get("montant_prime"),
             "date_debut": extracted.get("date_debut"),
             "date_fin": extracted.get("date_fin"),
+            "form_type_suggere": extracted.get("form_type_suggere"),
+            "objets_count": len(extracted.get("objets") or []),
         },
+        "offre_extract_structured": structured,
+        "offre_extract_audit": (structured or {}).get("audit") if structured else None,
     }
