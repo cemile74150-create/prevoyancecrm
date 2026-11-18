@@ -15,6 +15,7 @@ from rapport_imprimer import (
     rapport_filename,
     resolve_ordered_documents,
     sort_documents_for_rapport,
+    virtual_planification_id,
 )
 
 
@@ -70,6 +71,38 @@ def test_sort_puts_latest_planification_first_without_duplicates():
     assert {d["id"] for d in ordered[1:]} == {"4", "3", "1", "cmp"}
     assert ensure_planification_first(["1", "old", "3"], docs) == ["new", "1", "3"]
     assert document_sort_rank(docs[3])[0] < document_sort_rank(docs[0])[0]
+
+
+def test_preferred_planification_from_analyses_wins_over_heuristic():
+    linked = {
+        "id": "linked",
+        "original_filename": "scan.pdf",
+        "title": "Divers",
+        "category": "Autre",
+        "is_planification": True,
+        "created_at": "2026-01-01",
+    }
+    heuristic = {
+        "id": "heur",
+        "original_filename": "Analyse_prevoyance_x.pdf",
+        "title": "Analyse de prévoyance",
+        "category": "Analyse de prévoyance",
+        "created_at": "2026-12-01",
+    }
+    offre = {"id": "o", "original_filename": "offre.pdf", "category": "Offre", "created_at": "2026-02-01"}
+    docs = [heuristic, linked, offre]
+    assert pick_latest_planification(docs, preferred_id="linked")["id"] == "linked"
+    assert sort_documents_for_rapport(docs, preferred_id="linked")[0]["id"] == "linked"
+    assert ensure_planification_first(["o", "heur"], docs, preferred_id="linked") == ["linked", "o"]
+    virt = virtual_planification_id("ana-1")
+    virtual_doc = {
+        "id": virt,
+        "title": "Analyse de prévoyance",
+        "is_planification": True,
+        "virtual_planification": True,
+        "created_at": "2026-11-18",
+    }
+    assert ensure_planification_first(["o"], [virtual_doc, offre], preferred_id=virt) == [virt, "o"]
 
 
 def test_normalize_and_resolve_detects_missing_ids():

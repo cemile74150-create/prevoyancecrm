@@ -1,7 +1,10 @@
 /** Helpers Rapport à imprimer (Planification). */
 
+export const PLANIFICATION_VIRTUAL_PREFIX = "planif-analyse:";
+
 export function isPdfClientDocument(doc) {
   if (!doc) return false;
+  if (doc.virtual_planification || doc.is_planification) return true;
   const name = String(doc.original_filename || doc.filename || "").toLowerCase();
   const ctype = String(doc.content_type || "").toLowerCase();
   if (name.endsWith(".pdf")) return true;
@@ -10,8 +13,14 @@ export function isPdfClientDocument(doc) {
   return false;
 }
 
+export function isVirtualPlanificationId(id) {
+  return String(id || "").startsWith(PLANIFICATION_VIRTUAL_PREFIX);
+}
+
 export function isPlanificationDocument(doc) {
   if (!doc) return false;
+  if (doc.is_planification || doc.virtual_planification) return true;
+  if (isVirtualPlanificationId(doc.id)) return true;
   const title = String(doc.title || "").toLowerCase();
   const filename = String(doc.original_filename || doc.filename || "").toLowerCase();
   const category = String(doc.category || "").toLowerCase();
@@ -28,7 +37,12 @@ export function isPlanificationDocument(doc) {
   return false;
 }
 
-export function pickLatestPlanification(docs) {
+export function pickLatestPlanification(docs, preferredId) {
+  const preferred = String(preferredId || "").trim();
+  if (preferred) {
+    const hit = (docs || []).find((d) => String(d?.id || "") === preferred);
+    if (hit) return hit;
+  }
   const plans = (docs || []).filter(isPlanificationDocument);
   if (!plans.length) return null;
   return [...plans].sort((a, b) => {
@@ -70,9 +84,17 @@ export function documentSortRank(doc) {
   return [rank, String(doc?.created_at || ""), String(doc?.original_filename || doc?.id || "").toLowerCase()];
 }
 
-export function sortDocumentsForRapport(docs) {
-  const latest = pickLatestPlanification(docs);
-  const others = (docs || []).filter((d) => !isPlanificationDocument(d));
+export function sortDocumentsForRapport(docs, preferredId) {
+  const latest = pickLatestPlanification(docs, preferredId);
+  const latestId = latest?.id ? String(latest.id) : "";
+  const planIds = new Set(
+    (docs || [])
+      .filter(isPlanificationDocument)
+      .map((d) => String(d.id || ""))
+      .filter(Boolean),
+  );
+  if (latestId) planIds.add(latestId);
+  const others = (docs || []).filter((d) => !planIds.has(String(d.id || "")));
   others.sort((a, b) => {
     const ra = documentSortRank(a);
     const rb = documentSortRank(b);
@@ -97,13 +119,16 @@ export function normalizeDocumentIds(ids) {
   return out;
 }
 
-export function ensurePlanificationFirst(documentIds, docs) {
-  const latest = pickLatestPlanification(docs);
-  const latestId = latest?.id ? String(latest.id) : "";
+export function ensurePlanificationFirst(documentIds, docs, preferredId) {
+  const latest = pickLatestPlanification(docs, preferredId);
+  const latestId = latest?.id ? String(latest.id) : String(preferredId || "").trim();
   const planIds = new Set(
     (docs || []).filter(isPlanificationDocument).map((d) => String(d.id || "")).filter(Boolean),
   );
-  const rest = normalizeDocumentIds(documentIds).filter((id) => !planIds.has(id));
+  if (latestId) planIds.add(latestId);
+  const rest = normalizeDocumentIds(documentIds).filter(
+    (id) => !planIds.has(id) && !isVirtualPlanificationId(id),
+  );
   if (latestId) return [latestId, ...rest];
   return rest;
 }

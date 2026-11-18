@@ -10,6 +10,7 @@ import io
 import zipfile
 import asyncio
 import inspect
+import tempfile
 import requests
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -2950,30 +2951,186 @@ async def _client_pdf_documents_by_id(user: User, client: dict) -> dict:
     return {row["id"]: row for row in rows if row.get("id") and is_pdf_document(row)}
 
 
+async def _resolve_planification_for_rapport(user: User, client: dict, by_id: dict) -> Optional[dict]:
+    """
+    Planification du sous-onglet Planifications :
+    1) PDF déjà lié (analyses.document_id) s'il est encore dans le dossier
+    2) sinon entrée virtuelle (PDF généré à la fusion, sans nouveau document stocké)
+    3) sinon heuristique sur les PDF « Analyse de prévoyance »
+    """
+    from rapport_imprimer import (
+        is_pdf_document,
+        pick_latest_planification,
+        virtual_planification_id,
+    )
+
+    client_id = client.get("id")
+    rows = await db.analyses.find(
+        {
+            "user_id": user.user_id,
+            "client_id": client_id,
+            "status": {"$ne": "annulee"},
+        },
+        {
+            "_id": 0,
+            "id": 1,
+            "document_id": 1,
+            "updated_at": 1,
+            "created_at": 1,
+            "status": 1,
+            "results": 1,
+            "input": 1,
+        },
+    ).sort("updated_at", -1).to_list(50)
+
+    for row in rows:
+        doc_id = str(row.get("document_id") or "").strip()
+        if doc_id and doc_id in by_id:
+            linked = dict(by_id[doc_id])
+            linked["is_planification"] = True
+            return linked
+        if doc_id:
+            stored = await db.documents.find_one(
+                {"id": doc_id, "is_deleted": {"$ne": True}},
+                {"_id": 0},
+            )
+            if stored and is_pdf_document(stored):
+                linked = dict(stored)
+                linked["is_planification"] = True
+                return linked
+
+    for row in rows:
+        if not row.get("results"):
+            continue
+        analyse_id = str(row.get("id") or "").strip()
+        if not analyse_id:
+            continue
+        person = ((row.get("input") or {}).get("client1") or {})
+        nom = str(person.get("nom") or client.get("nom") or "client").strip() or "client"
+        prenom = str(person.get("prenom") or client.get("prenom") or "").strip()
+        filename = f"Analyse_prevoyance_{nom}_{prenom}.pdf".replace(" ", "_")
+        return {
+            "id": virtual_planification_id(analyse_id),
+            "title": "Analyse de prévoyance",
+            "original_filename": filename,
+            "category": "Analyse de prévoyance",
+            "checklist_item": "Analyse de prévoyance",
+            "content_type": "application/pdf",
+            "created_at": row.get("updated_at") or row.get("created_at"),
+            "is_planification": True,
+            "virtual_planification": True,
+            "analyse_id": analyse_id,
+        }
+
+    return pick_latest_planification(list(by_id.values()))
+
+
+async def _planification_pdf_bytes(user: User, doc: dict) -> bytes:
+    """Lit le PDF stocké, ou régénère celui de l'analyse (sans créer de document)."""
+    from rapport_imprimer import analyse_id_from_virtual, is_virtual_planification_id
+
+    if doc.get("virtual_planification") or is_virtual_planification_id(doc.get("id")):
+        analyse_id = str(doc.get("analyse_id") or analyse_id_from_virtual(doc.get("id")) or "").strip()
+        if not analyse_id:
+            raise HTTPException(status_code=409, detail="Planification introuvable pour le rapport")
+        analyse = await db.analyses.find_one(
+            {"id": analyse_id, "user_id": user.user_id},
+            {"_id": 0},
+        )
+        if not analyse or not analyse.get("results"):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "La planification n'a pas de calcul à jour pour le rapport",
+                    "missing_ids": [doc.get("id")],
+                    "missing_labels": ["Planification"],
+                },
+            )
+        from analyses_routes import run_engine
+        from analyses_prefill import refresh_report_display_prenoms
+
+        record = {
+            "id": analyse.get("id"),
+            "clientId": analyse.get("client_id"),
+            "status": analyse.get("status") or "brouillon",
+            "input": analyse.get("input") or {},
+            "results": analyse.get("results"),
+        }
+        client_row = None
+        spouse_row = None
+        if analyse.get("client_id"):
+            client_row = await db.clients.find_one(
+                {"id": analyse["client_id"], "user_id": user.user_id},
+                {"_id": 0},
+            )
+            spouse_id = (client_row or {}).get("linked_spouse_id")
+            if spouse_id:
+                spouse_row = await db.clients.find_one(
+                    {"id": spouse_id, "user_id": user.user_id},
+                    {"_id": 0},
+                )
+        record = refresh_report_display_prenoms(record, client_row, spouse_row)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "analyse.pdf")
+            run_engine("pdf", {"record": record}, pdf_path=path, timeout=180)
+            return Path(path).read_bytes()
+
+    return await _load_storage_bytes(doc["storage_path"])
+
+
 @api_router.get("/clients/{client_id}/rapport-imprimer")
 async def get_rapport_imprimer(client_id: str, user: User = Depends(get_current_user)):
     """Sélection enregistrée + liste PDF (dernière planification en tête, sans doublon)."""
     from rapport_imprimer import (
         ensure_planification_first,
-        pick_latest_planification,
         sort_documents_for_rapport,
     )
 
     client = await require_client(client_id, user)
     by_id = await _client_pdf_documents_by_id(user, client)
+    planif = await _resolve_planification_for_rapport(user, client, by_id)
+    preferred_id = str((planif or {}).get("id") or "").strip() or None
     available_raw = list(by_id.values())
-    available = sort_documents_for_rapport(available_raw)
+    if planif and preferred_id and preferred_id not in by_id:
+        available_raw = [planif, *available_raw]
+    available = sort_documents_for_rapport(available_raw, preferred_id=preferred_id)
     saved = client.get("rapport_imprimer") if isinstance(client.get("rapport_imprimer"), dict) else {}
-    document_ids = ensure_planification_first(saved.get("document_ids") or [], available_raw)
-    missing = [doc_id for doc_id in document_ids if doc_id not in by_id]
-    latest = pick_latest_planification(available_raw)
+    document_ids = ensure_planification_first(
+        saved.get("document_ids") or [],
+        available_raw,
+        preferred_id=preferred_id,
+    )
+    missing = [
+        doc_id
+        for doc_id in document_ids
+        if doc_id not in by_id and doc_id != preferred_id
+    ]
     public_docs = []
     for row in available:
-        public_docs.append(public_storage_record(dict(row)))
+        if row.get("virtual_planification"):
+            public_docs.append(
+                {
+                    "id": row.get("id"),
+                    "title": row.get("title"),
+                    "original_filename": row.get("original_filename"),
+                    "category": row.get("category"),
+                    "checklist_item": row.get("checklist_item"),
+                    "content_type": "application/pdf",
+                    "created_at": row.get("created_at"),
+                    "is_planification": True,
+                    "virtual_planification": True,
+                    "analyse_id": row.get("analyse_id"),
+                }
+            )
+        else:
+            pub = public_storage_record(dict(row))
+            if preferred_id and pub and pub.get("id") == preferred_id:
+                pub["is_planification"] = True
+            public_docs.append(pub)
     return {
         "document_ids": document_ids,
         "missing_ids": missing,
-        "planification_document_id": (latest or {}).get("id"),
+        "planification_document_id": preferred_id,
         "documents": public_docs,
         "updated_at": saved.get("updated_at"),
     }
@@ -2986,13 +3143,25 @@ async def update_rapport_imprimer(
     user: User = Depends(get_current_user),
 ):
     """Enregistre uniquement les références ordonnées (pas de duplication PDF)."""
-    from rapport_imprimer import ensure_planification_first
+    from rapport_imprimer import ensure_planification_first, is_virtual_planification_id
 
     client = await require_client(client_id, user)
     by_id = await _client_pdf_documents_by_id(user, client)
+    planif = await _resolve_planification_for_rapport(user, client, by_id)
+    preferred_id = str((planif or {}).get("id") or "").strip() or None
     available_raw = list(by_id.values())
-    document_ids = ensure_planification_first(payload.document_ids, available_raw)
-    missing = [doc_id for doc_id in document_ids if doc_id not in by_id]
+    if planif and preferred_id and preferred_id not in by_id:
+        available_raw = [planif, *available_raw]
+    document_ids = ensure_planification_first(
+        payload.document_ids,
+        available_raw,
+        preferred_id=preferred_id,
+    )
+    missing = [
+        doc_id
+        for doc_id in document_ids
+        if doc_id not in by_id and not is_virtual_planification_id(doc_id)
+    ]
     if missing:
         raise HTTPException(
             status_code=409,
@@ -3025,20 +3194,32 @@ async def generate_rapport_imprimer_pdf(
         ensure_planification_first,
         merge_pdf_bytes,
         missing_labels,
-        normalize_document_ids,
         rapport_filename,
         resolve_ordered_documents,
     )
 
     client = await require_client(client_id, user)
     by_id = await _client_pdf_documents_by_id(user, client)
+    planif = await _resolve_planification_for_rapport(user, client, by_id)
+    preferred_id = str((planif or {}).get("id") or "").strip() or None
     available_raw = list(by_id.values())
+    if planif and preferred_id and preferred_id not in by_id:
+        available_raw = [planif, *available_raw]
+        by_id = {**by_id, preferred_id: planif}
     body = payload or RapportImprimerGenerateRequest()
     if body.document_ids is not None:
-        document_ids = ensure_planification_first(body.document_ids, available_raw)
+        document_ids = ensure_planification_first(
+            body.document_ids,
+            available_raw,
+            preferred_id=preferred_id,
+        )
     else:
         saved = client.get("rapport_imprimer") if isinstance(client.get("rapport_imprimer"), dict) else {}
-        document_ids = ensure_planification_first(saved.get("document_ids") or [], available_raw)
+        document_ids = ensure_planification_first(
+            saved.get("document_ids") or [],
+            available_raw,
+            preferred_id=preferred_id,
+        )
     if not document_ids:
         raise HTTPException(status_code=400, detail="Sélectionnez au moins un document PDF")
 
@@ -3056,7 +3237,9 @@ async def generate_rapport_imprimer_pdf(
     parts: List[bytes] = []
     for doc in ordered:
         try:
-            data = await _load_storage_bytes(doc["storage_path"])
+            data = await _planification_pdf_bytes(user, doc)
+        except HTTPException:
+            raise
         except Exception:
             logger.exception("Lecture PDF rapport échouée doc=%s", doc.get("id"))
             raise HTTPException(

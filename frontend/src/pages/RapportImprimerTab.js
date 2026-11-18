@@ -34,15 +34,18 @@ export default function RapportImprimerTab({ client }) {
   const [orderedIds, setOrderedIds] = useState([]);
   const [missingIds, setMissingIds] = useState([]);
   const [dragId, setDragId] = useState(null);
+  const [planifDocId, setPlanifDocId] = useState(null);
 
   const load = useCallback(async () => {
     if (!clientId) return;
     setLoading(true);
     try {
       const res = await api.get(`/clients/${clientId}/rapport-imprimer`);
-      const docs = sortDocumentsForRapport(res.data?.documents || []);
+      const preferredId = res.data?.planification_document_id || null;
+      const docs = sortDocumentsForRapport(res.data?.documents || [], preferredId);
       setDocuments(docs);
-      setOrderedIds(ensurePlanificationFirst(res.data?.document_ids || [], docs));
+      setPlanifDocId(preferredId);
+      setOrderedIds(ensurePlanificationFirst(res.data?.document_ids || [], docs, preferredId));
       setMissingIds(res.data?.missing_ids || []);
       if ((res.data?.missing_ids || []).length) {
         toast.warning("Certains documents enregistrés ne sont plus disponibles");
@@ -66,8 +69,8 @@ export default function RapportImprimerTab({ client }) {
   }, [documents]);
 
   const lockedPlanifId = useMemo(
-    () => pickLatestPlanification(documents)?.id || null,
-    [documents],
+    () => planifDocId || pickLatestPlanification(documents, planifDocId)?.id || null,
+    [documents, planifDocId],
   );
 
   const selectedDocs = useMemo(
@@ -84,7 +87,13 @@ export default function RapportImprimerTab({ client }) {
   }
 
   function selectAll() {
-    setOrderedIds(ensurePlanificationFirst(documents.map((d) => d.id), documents));
+    setOrderedIds(
+      ensurePlanificationFirst(
+        documents.map((d) => d.id),
+        documents,
+        lockedPlanifId,
+      ),
+    );
   }
 
   function selectNone() {
@@ -92,11 +101,23 @@ export default function RapportImprimerTab({ client }) {
     setOrderedIds(lockedPlanifId ? [lockedPlanifId] : []);
   }
 
+  function previewDocument(doc) {
+    if (!doc) return;
+    if (doc.virtual_planification || doc.analyse_id) {
+      const analyseId = doc.analyse_id || String(doc.id || "").replace(/^planif-analyse:/, "");
+      if (analyseId) {
+        openAuthenticatedBlob(`/analyses-prevoyance/${analyseId}/pdf`);
+        return;
+      }
+    }
+    openAuthenticatedBlob(`/documents/${doc.id}/download`);
+  }
+
   async function saveSelection() {
     if (!clientId || saving) return;
     setSaving(true);
     try {
-      const documentIds = ensurePlanificationFirst(orderedIds, documents);
+      const documentIds = ensurePlanificationFirst(orderedIds, documents, lockedPlanifId);
       await api.patch(`/clients/${clientId}/rapport-imprimer`, {
         document_ids: documentIds,
       });
@@ -138,7 +159,9 @@ export default function RapportImprimerTab({ client }) {
     setGenerating(true);
     try {
       const path = `/clients/${clientId}/rapport-imprimer/pdf${download ? "?download=1" : ""}`;
-      const body = { document_ids: ensurePlanificationFirst(orderedIds, documents) };
+      const body = {
+        document_ids: ensurePlanificationFirst(orderedIds, documents, lockedPlanifId),
+      };
       if (download) {
         await downloadAuthenticatedPost(path, body, rapportDownloadName(client));
         toast.success("Rapport téléchargé");
@@ -300,7 +323,7 @@ export default function RapportImprimerTab({ client }) {
                     <button
                       type="button"
                       className="text-xs text-[#002FA7] hover:underline shrink-0"
-                      onClick={() => openAuthenticatedBlob(`/documents/${doc.id}/download`)}
+                      onClick={() => previewDocument(doc)}
                       data-testid={`rapport-preview-doc-${doc.id}`}
                     >
                       Voir

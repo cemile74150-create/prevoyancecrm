@@ -58,6 +58,31 @@ describe("rapportImprimer helpers", () => {
     expect(ensurePlanificationFirst(["o", "old", "c"], docs)).toEqual(["new", "o", "c"]);
   });
 
+  test("prefers planification linked from Planifications sub-tab", () => {
+    const linked = {
+      id: "linked-pdf",
+      original_filename: "scan.pdf",
+      title: "Document",
+      category: "Autre",
+      is_planification: true,
+      created_at: "2026-01-01",
+    };
+    const otherPlan = {
+      id: "heuristic",
+      original_filename: "Analyse_prevoyance_x.pdf",
+      title: "Analyse de prévoyance",
+      category: "Analyse de prévoyance",
+      created_at: "2026-12-01",
+    };
+    const docs = [otherPlan, linked, { id: "o", original_filename: "offre.pdf", category: "Offre" }];
+    expect(pickLatestPlanification(docs, "linked-pdf").id).toBe("linked-pdf");
+    expect(sortDocumentsForRapport(docs, "linked-pdf").map((d) => d.id)[0]).toBe("linked-pdf");
+    expect(ensurePlanificationFirst(["o", "heuristic"], docs, "linked-pdf")).toEqual([
+      "linked-pdf",
+      "o",
+    ]);
+  });
+
   test("toggle and reorder keep planification locked first", () => {
     expect(normalizeDocumentIds(["a", "a", ""])).toEqual(["a"]);
     expect(toggleOrderedId(["a"], "b", true)).toEqual(["a", "b"]);

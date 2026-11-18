@@ -67,9 +67,39 @@ def is_planification_document(doc: Dict[str, Any]) -> bool:
     return False
 
 
-def pick_latest_planification(docs: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Dernière planification enregistrée (created_at), une seule."""
-    plans = [doc for doc in docs if is_planification_document(doc)]
+PLANIFICATION_VIRTUAL_PREFIX = "planif-analyse:"
+
+
+def is_virtual_planification_id(doc_id: Any) -> bool:
+    return str(doc_id or "").startswith(PLANIFICATION_VIRTUAL_PREFIX)
+
+
+def virtual_planification_id(analyse_id: str) -> str:
+    return f"{PLANIFICATION_VIRTUAL_PREFIX}{str(analyse_id or '').strip()}"
+
+
+def analyse_id_from_virtual(doc_id: Any) -> str:
+    raw = str(doc_id or "")
+    if not raw.startswith(PLANIFICATION_VIRTUAL_PREFIX):
+        return ""
+    return raw[len(PLANIFICATION_VIRTUAL_PREFIX) :].strip()
+
+
+def pick_latest_planification(
+    docs: Sequence[Dict[str, Any]],
+    *,
+    preferred_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Une seule planification : id préféré (lien analyses.document_id / virtuel),
+    sinon dernière version détectée par métadonnées.
+    """
+    preferred = str(preferred_id or "").strip()
+    if preferred:
+        for doc in docs:
+            if str(doc.get("id") or "").strip() == preferred:
+                return doc
+    plans = [doc for doc in docs if is_planification_document(doc) or doc.get("is_planification")]
     if not plans:
         return None
     plans.sort(
@@ -101,13 +131,25 @@ def document_sort_rank(doc: Dict[str, Any]) -> Tuple[int, str, str]:
     return (rank, created, name)
 
 
-def sort_documents_for_rapport(docs: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def sort_documents_for_rapport(
+    docs: Sequence[Dict[str, Any]],
+    *,
+    preferred_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """
     Liste UI : dernière planification en tête (sans doublon d'anciennes versions),
     puis les autres PDF triés par famille.
     """
-    latest = pick_latest_planification(docs)
-    others = [doc for doc in docs if not is_planification_document(doc)]
+    latest = pick_latest_planification(docs, preferred_id=preferred_id)
+    latest_id = str((latest or {}).get("id") or "").strip()
+    plan_ids = {
+        str(doc.get("id") or "").strip()
+        for doc in docs
+        if (is_planification_document(doc) or doc.get("is_planification")) and doc.get("id")
+    }
+    if latest_id:
+        plan_ids.add(latest_id)
+    others = [doc for doc in docs if str(doc.get("id") or "").strip() not in plan_ids]
     others_sorted = sorted(others, key=document_sort_rank)
     if latest:
         return [latest, *others_sorted]
@@ -118,23 +160,27 @@ def ensure_planification_first(
     document_ids: Sequence[str],
     docs: Sequence[Dict[str, Any]],
     *,
+    preferred_id: Optional[str] = None,
     default_select: bool = True,
 ) -> List[str]:
     """
     Force la dernière planification en 1re position, sélectionnée,
     et retire les anciennes versions / doublons de planification.
     """
-    latest = pick_latest_planification(docs)
+    latest = pick_latest_planification(docs, preferred_id=preferred_id)
     latest_id = str((latest or {}).get("id") or "").strip()
     plan_ids = {
         str(doc.get("id") or "").strip()
         for doc in docs
-        if is_planification_document(doc) and doc.get("id")
+        if (is_planification_document(doc) or doc.get("is_planification")) and doc.get("id")
     }
+    if latest_id:
+        plan_ids.add(latest_id)
+    # Anciens ids virtuels / anciennes versions de planification exclus du reste
     rest = [
         doc_id
         for doc_id in normalize_document_ids(document_ids)
-        if doc_id not in plan_ids
+        if doc_id not in plan_ids and not is_virtual_planification_id(doc_id)
     ]
     if latest_id:
         return [latest_id, *rest]
