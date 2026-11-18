@@ -572,6 +572,17 @@ class StatutUpdate(BaseModel):
 class DocumentChecklistUpdate(BaseModel):
     document_checklist: dict
 
+
+class RapportImprimerUpdate(BaseModel):
+    """Sélection ordonnée de documents PDF (références uniquement)."""
+    document_ids: List[str]
+
+
+class RapportImprimerGenerateRequest(BaseModel):
+    """Génère le PDF fusionné. Si document_ids est omis, reprend la sélection enregistrée."""
+    document_ids: Optional[List[str]] = None
+
+
 class GenerateDocumentRequest(BaseModel):
     template_id: str
     custom_filename: Optional[str] = None
@@ -2927,6 +2938,158 @@ async def update_document_checklist(client_id: str, payload: DocumentChecklistUp
     except Exception:
         logger.exception("Sync relances checklist échoué client=%s", client_id)
     return updated
+
+
+async def _client_pdf_documents_by_id(user: User, client: dict) -> dict:
+    """PDF accessibles du dossier (couple inclus), indexés par id."""
+    from rapport_imprimer import is_pdf_document
+
+    scope = await _dossier_scope(user.user_id, client)
+    query = _documents_list_query(user.user_id, client["id"], scope)
+    rows = await db.documents.find(query, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    return {row["id"]: row for row in rows if row.get("id") and is_pdf_document(row)}
+
+
+@api_router.get("/clients/{client_id}/rapport-imprimer")
+async def get_rapport_imprimer(client_id: str, user: User = Depends(get_current_user)):
+    """Sélection enregistrée + liste PDF disponibles (planification proposée en premier)."""
+    from rapport_imprimer import normalize_document_ids, sort_documents_for_rapport
+
+    client = await require_client(client_id, user)
+    by_id = await _client_pdf_documents_by_id(user, client)
+    available = sort_documents_for_rapport(list(by_id.values()))
+    saved = client.get("rapport_imprimer") if isinstance(client.get("rapport_imprimer"), dict) else {}
+    document_ids = normalize_document_ids(saved.get("document_ids"))
+    missing = [doc_id for doc_id in document_ids if doc_id not in by_id]
+    public_docs = []
+    for row in available:
+        public_docs.append(public_storage_record(dict(row)))
+    return {
+        "document_ids": document_ids,
+        "missing_ids": missing,
+        "documents": public_docs,
+        "updated_at": saved.get("updated_at"),
+    }
+
+
+@api_router.patch("/clients/{client_id}/rapport-imprimer")
+async def update_rapport_imprimer(
+    client_id: str,
+    payload: RapportImprimerUpdate,
+    user: User = Depends(get_current_user),
+):
+    """Enregistre uniquement les références ordonnées (pas de duplication PDF)."""
+    from rapport_imprimer import normalize_document_ids
+
+    client = await require_client(client_id, user)
+    by_id = await _client_pdf_documents_by_id(user, client)
+    document_ids = normalize_document_ids(payload.document_ids)
+    missing = [doc_id for doc_id in document_ids if doc_id not in by_id]
+    if missing:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Certains documents ne sont plus disponibles",
+                "missing_ids": missing,
+            },
+        )
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rapport = {"document_ids": document_ids, "updated_at": now_iso}
+    await db.clients.update_one(
+        {"user_id": user.user_id, "id": client_id},
+        {"$set": {"rapport_imprimer": rapport, "updated_at": now_iso}},
+    )
+    return {"ok": True, "rapport_imprimer": rapport}
+
+
+@api_router.post("/clients/{client_id}/rapport-imprimer/pdf")
+async def generate_rapport_imprimer_pdf(
+    client_id: str,
+    payload: Optional[RapportImprimerGenerateRequest] = None,
+    user: User = Depends(get_current_user),
+    download: bool = False,
+):
+    """
+    Fusionne les PDF sélectionnés dans l'ordre choisi.
+    N'altère pas les fichiers sources. Refuse une fusion incomplète.
+    """
+    from rapport_imprimer import (
+        merge_pdf_bytes,
+        missing_labels,
+        normalize_document_ids,
+        rapport_filename,
+        resolve_ordered_documents,
+    )
+
+    client = await require_client(client_id, user)
+    by_id = await _client_pdf_documents_by_id(user, client)
+    body = payload or RapportImprimerGenerateRequest()
+    if body.document_ids is not None:
+        document_ids = normalize_document_ids(body.document_ids)
+    else:
+        saved = client.get("rapport_imprimer") if isinstance(client.get("rapport_imprimer"), dict) else {}
+        document_ids = normalize_document_ids(saved.get("document_ids"))
+    if not document_ids:
+        raise HTTPException(status_code=400, detail="Sélectionnez au moins un document PDF")
+
+    ordered, missing = resolve_ordered_documents(document_ids, by_id)
+    if missing:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Impossible de générer le rapport : document(s) manquant(s) ou inaccessible(s)",
+                "missing_ids": missing,
+                "missing_labels": missing_labels(missing),
+            },
+        )
+
+    parts: List[bytes] = []
+    for doc in ordered:
+        try:
+            data = await _load_storage_bytes(doc["storage_path"])
+        except Exception:
+            logger.exception("Lecture PDF rapport échouée doc=%s", doc.get("id"))
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Impossible de lire un document du rapport",
+                    "missing_ids": [doc.get("id")],
+                    "missing_labels": [
+                        doc.get("original_filename") or doc.get("title") or doc.get("id")
+                    ],
+                },
+            )
+        if not data or data[:4] != b"%PDF":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Un fichier sélectionné n'est pas un PDF valide",
+                    "missing_ids": [doc.get("id")],
+                    "missing_labels": [
+                        doc.get("original_filename") or doc.get("title") or doc.get("id")
+                    ],
+                },
+            )
+        parts.append(data)
+
+    try:
+        merged = await asyncio.to_thread(merge_pdf_bytes, parts)
+    except Exception as e:
+        logger.exception("Fusion rapport PDF échouée client=%s", client_id)
+        raise HTTPException(status_code=500, detail=f"Fusion PDF impossible: {e}")
+
+    filename = rapport_filename(client.get("nom") or "", client.get("prenom") or "")
+    await log_action(
+        user.user_id,
+        client_id,
+        f"Rapport à imprimer généré ({len(ordered)} document(s))",
+    )
+    return Response(
+        content=merged,
+        media_type="application/pdf",
+        headers=_file_response_headers(filename, inline=not download),
+    )
+
 
 @api_router.patch("/clients/{client_id}/lpp-caisse-tracking")
 async def update_lpp_caisse_tracking(client_id: str, payload: LppCaisseTrackingUpdate, user: User = Depends(get_current_user)):

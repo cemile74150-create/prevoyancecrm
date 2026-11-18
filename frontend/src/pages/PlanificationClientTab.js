@@ -3,11 +3,13 @@ import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
 import {
   aUnePlanificationActive,
   planificationsDuClient,
 } from "@/lib/planificationClient";
+import RapportImprimerTab from "@/pages/RapportImprimerTab";
 import { Calculator, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -34,11 +36,7 @@ function formatDateTimeFr(value) {
   return `${day} à ${time}`;
 }
 
-/**
- * Liste les planifications déjà enregistrées pour cet identifiant client
- * et ouvre le module existant. La création reprend la fiche et le conjoint lié.
- */
-export default function PlanificationClientTab({ client }) {
+function PlanificationsPanel({ client }) {
   const navigate = useNavigate();
   const { hasPerm } = useAuth();
   const canEdit = hasPerm("analyses.edit");
@@ -98,10 +96,10 @@ export default function PlanificationClientTab({ client }) {
   const canCreate = !aUnePlanificationActive(items);
 
   return (
-    <Card className="p-6 space-y-4" data-testid="client-tab-planification">
+    <Card className="p-6 space-y-4" data-testid="client-tab-planifications">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <p className="text-sm font-semibold text-[#002FA7]">Planification</p>
+          <p className="text-sm font-semibold text-[#002FA7]">Planifications</p>
           <p className="text-xs text-muted-foreground mt-1 max-w-xl">
             {client?.prenom} {client?.nom} est déjà sélectionné. La planification s’ouvre dans le module existant, sans nouvelle recherche.
             {spouseLinked
@@ -160,5 +158,34 @@ export default function PlanificationClientTab({ client }) {
         </ul>
       )}
     </Card>
+  );
+}
+
+/**
+ * Liste les planifications déjà enregistrées pour cet identifiant client
+ * et ouvre le module existant. Sous-onglet Rapport à imprimer pour fusionner les PDF du dossier.
+ */
+export default function PlanificationClientTab({ client }) {
+  const [subTab, setSubTab] = useState("planifications");
+
+  return (
+    <div className="space-y-4" data-testid="client-tab-planification">
+      <Tabs value={subTab} onValueChange={setSubTab}>
+        <TabsList className="h-auto flex-wrap">
+          <TabsTrigger value="planifications" data-testid="planif-subtab-planifications">
+            Planifications
+          </TabsTrigger>
+          <TabsTrigger value="rapport" data-testid="planif-subtab-rapport">
+            Rapport à imprimer
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="planifications" className="mt-4">
+          <PlanificationsPanel client={client} />
+        </TabsContent>
+        <TabsContent value="rapport" className="mt-4">
+          <RapportImprimerTab client={client} />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
