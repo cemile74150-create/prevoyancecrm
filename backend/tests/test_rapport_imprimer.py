@@ -6,9 +6,12 @@ from pypdf import PdfWriter
 
 from rapport_imprimer import (
     document_sort_rank,
+    ensure_planification_first,
     is_pdf_document,
+    is_planification_document,
     merge_pdf_bytes,
     normalize_document_ids,
+    pick_latest_planification,
     rapport_filename,
     resolve_ordered_documents,
     sort_documents_for_rapport,
@@ -31,16 +34,42 @@ def test_is_pdf_document_accepts_filename_and_content_type():
     assert not is_pdf_document({"original_filename": "note.docx", "content_type": "application/vnd.openxmlformats"})
 
 
-def test_sort_puts_planification_before_other_categories():
+def test_sort_puts_latest_planification_first_without_duplicates():
     docs = [
         {"id": "1", "original_filename": "offre.pdf", "category": "Offre", "created_at": "2026-01-03"},
-        {"id": "2", "original_filename": "plan.pdf", "category": "Analyse de prévoyance", "created_at": "2026-01-01"},
+        {
+            "id": "old",
+            "original_filename": "Analyse_prevoyance_old.pdf",
+            "title": "Analyse de prévoyance",
+            "category": "Analyse de prévoyance",
+            "created_at": "2026-01-01",
+        },
+        {
+            "id": "new",
+            "original_filename": "Analyse_prevoyance_new.pdf",
+            "title": "Analyse de prévoyance",
+            "category": "Analyse de prévoyance",
+            "created_at": "2026-11-18",
+        },
         {"id": "3", "original_filename": "lpp.pdf", "category": "Certificat LPP", "created_at": "2026-01-02"},
         {"id": "4", "original_filename": "reponse.pdf", "category": "Réponse recherche LPP", "created_at": "2026-01-02"},
+        {
+            "id": "cmp",
+            "original_filename": "Comparatif_rentes_x.pdf",
+            "title": "Comparatif des rentes",
+            "category": "Analyse de prévoyance",
+            "created_at": "2026-12-01",
+        },
     ]
+    assert is_planification_document(docs[2])
+    assert not is_planification_document(docs[5])
+    assert pick_latest_planification(docs)["id"] == "new"
     ordered = sort_documents_for_rapport(docs)
-    assert [d["id"] for d in ordered] == ["2", "4", "3", "1"]
-    assert document_sort_rank(docs[1])[0] < document_sort_rank(docs[0])[0]
+    assert ordered[0]["id"] == "new"
+    assert "old" not in [d["id"] for d in ordered]
+    assert {d["id"] for d in ordered[1:]} == {"4", "3", "1", "cmp"}
+    assert ensure_planification_first(["1", "old", "3"], docs) == ["new", "1", "3"]
+    assert document_sort_rank(docs[3])[0] < document_sort_rank(docs[0])[0]
 
 
 def test_normalize_and_resolve_detects_missing_ids():

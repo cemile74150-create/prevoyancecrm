@@ -5,8 +5,9 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { documentDisplayName } from "@/lib/documents";
 import {
+  ensurePlanificationFirst,
   moveOrderedId,
-  normalizeDocumentIds,
+  pickLatestPlanification,
   reorderOrderedIds,
   rapportDownloadName,
   sortDocumentsForRapport,
@@ -41,7 +42,7 @@ export default function RapportImprimerTab({ client }) {
       const res = await api.get(`/clients/${clientId}/rapport-imprimer`);
       const docs = sortDocumentsForRapport(res.data?.documents || []);
       setDocuments(docs);
-      setOrderedIds(normalizeDocumentIds(res.data?.document_ids || []));
+      setOrderedIds(ensurePlanificationFirst(res.data?.document_ids || [], docs));
       setMissingIds(res.data?.missing_ids || []);
       if ((res.data?.missing_ids || []).length) {
         toast.warning("Certains documents enregistrés ne sont plus disponibles");
@@ -64,6 +65,11 @@ export default function RapportImprimerTab({ client }) {
     return map;
   }, [documents]);
 
+  const lockedPlanifId = useMemo(
+    () => pickLatestPlanification(documents)?.id || null,
+    [documents],
+  );
+
   const selectedDocs = useMemo(
     () => orderedIds.map((id) => byId.get(id)).filter(Boolean),
     [orderedIds, byId],
@@ -72,24 +78,29 @@ export default function RapportImprimerTab({ client }) {
   const selectedSet = useMemo(() => new Set(orderedIds), [orderedIds]);
 
   function setChecked(docId, checked) {
-    setOrderedIds((prev) => toggleOrderedId(prev, docId, checked));
+    setOrderedIds((prev) =>
+      toggleOrderedId(prev, docId, checked, { lockedId: lockedPlanifId }),
+    );
   }
 
   function selectAll() {
-    setOrderedIds(documents.map((d) => d.id));
+    setOrderedIds(ensurePlanificationFirst(documents.map((d) => d.id), documents));
   }
 
   function selectNone() {
-    setOrderedIds([]);
+    // Conserve uniquement la planification (toujours en tête).
+    setOrderedIds(lockedPlanifId ? [lockedPlanifId] : []);
   }
 
   async function saveSelection() {
     if (!clientId || saving) return;
     setSaving(true);
     try {
+      const documentIds = ensurePlanificationFirst(orderedIds, documents);
       await api.patch(`/clients/${clientId}/rapport-imprimer`, {
-        document_ids: orderedIds,
+        document_ids: documentIds,
       });
+      setOrderedIds(documentIds);
       setMissingIds([]);
       toast.success("Sélection enregistrée");
     } catch (err) {
@@ -127,7 +138,7 @@ export default function RapportImprimerTab({ client }) {
     setGenerating(true);
     try {
       const path = `/clients/${clientId}/rapport-imprimer/pdf${download ? "?download=1" : ""}`;
-      const body = { document_ids: orderedIds };
+      const body = { document_ids: ensurePlanificationFirst(orderedIds, documents) };
       if (download) {
         await downloadAuthenticatedPost(path, body, rapportDownloadName(client));
         toast.success("Rapport téléchargé");
@@ -152,6 +163,7 @@ export default function RapportImprimerTab({ client }) {
   }
 
   function onDragStart(id) {
+    if (lockedPlanifId && id === lockedPlanifId) return;
     setDragId(id);
   }
 
@@ -164,7 +176,9 @@ export default function RapportImprimerTab({ client }) {
       setDragId(null);
       return;
     }
-    setOrderedIds((prev) => reorderOrderedIds(prev, dragId, targetId));
+    setOrderedIds((prev) =>
+      reorderOrderedIds(prev, dragId, targetId, { lockedId: lockedPlanifId }),
+    );
     setDragId(null);
   }
 
@@ -182,7 +196,8 @@ export default function RapportImprimerTab({ client }) {
         <div>
           <p className="text-sm font-semibold text-[#002FA7]">Rapport à imprimer</p>
           <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
-            Cochez les PDF déjà présents dans le dossier, ordonnez-les, puis générez un seul document à imprimer.
+            La dernière planification enregistrée est toujours en première position.
+            Cochez les autres PDF du dossier, réordonnez-les, puis générez un seul document à imprimer.
             Les fichiers sources ne sont pas dupliqués.
           </p>
         </div>
@@ -254,15 +269,21 @@ export default function RapportImprimerTab({ client }) {
             <ul className="space-y-1.5 max-h-[28rem] overflow-y-auto pr-1">
               {documents.map((doc) => {
                 const checked = selectedSet.has(doc.id);
-                const category = doc.category || doc.checklist_item || "";
+                const locked = Boolean(lockedPlanifId && doc.id === lockedPlanifId);
+                const category = locked
+                  ? "Planification (toujours en 1re position)"
+                  : (doc.category || doc.checklist_item || "");
                 return (
                   <li
                     key={doc.id}
-                    className="flex items-start gap-2 rounded-md border px-2.5 py-2 bg-background"
+                    className={`flex items-start gap-2 rounded-md border px-2.5 py-2 bg-background ${
+                      locked ? "border-[#002FA7]/40 bg-[#002FA7]/5" : ""
+                    }`}
                     data-testid={`rapport-doc-${doc.id}`}
                   >
                     <Checkbox
-                      checked={checked}
+                      checked={checked || locked}
+                      disabled={locked}
                       onCheckedChange={(v) => setChecked(doc.id, Boolean(v))}
                       className="mt-0.5"
                       data-testid={`rapport-check-${doc.id}`}
@@ -298,35 +319,41 @@ export default function RapportImprimerTab({ client }) {
               <p className="text-sm text-muted-foreground">Aucun document sélectionné.</p>
             ) : (
               <ul className="space-y-1.5 max-h-[28rem] overflow-y-auto pr-1">
-                {selectedDocs.map((doc, index) => (
+                {selectedDocs.map((doc, index) => {
+                  const locked = Boolean(lockedPlanifId && doc.id === lockedPlanifId);
+                  return (
                   <li
                     key={doc.id}
-                    draggable
+                    draggable={!locked}
                     onDragStart={() => onDragStart(doc.id)}
                     onDragOver={onDragOver}
                     onDrop={() => onDrop(doc.id)}
                     className={`flex items-center gap-2 rounded-md border px-2.5 py-2 bg-background ${
                       dragId === doc.id ? "opacity-50" : ""
-                    }`}
+                    } ${locked ? "border-[#002FA7]/40 bg-[#002FA7]/5" : ""}`}
                     data-testid={`rapport-order-${doc.id}`}
                   >
-                    <GripVertical className="h-4 w-4 text-muted-foreground shrink-0 cursor-grab" />
+                    <GripVertical className={`h-4 w-4 text-muted-foreground shrink-0 ${locked ? "opacity-30" : "cursor-grab"}`} />
                     <span className="text-xs tabular-nums text-muted-foreground w-5 shrink-0">{index + 1}.</span>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{documentDisplayName(doc)}</p>
-                      {(doc.category || doc.checklist_item) && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          {doc.category || doc.checklist_item}
-                        </p>
-                      )}
+                      <p className="text-xs text-muted-foreground truncate">
+                        {locked
+                          ? "Planification (fixe en 1re position)"
+                          : (doc.category || doc.checklist_item || "")}
+                      </p>
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <Button
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7"
-                        onClick={() => setOrderedIds((prev) => moveOrderedId(prev, doc.id, "up"))}
-                        disabled={index === 0}
+                        onClick={() =>
+                          setOrderedIds((prev) =>
+                            moveOrderedId(prev, doc.id, "up", { lockedId: lockedPlanifId }),
+                          )
+                        }
+                        disabled={locked || index <= 1}
                         data-testid={`rapport-up-${doc.id}`}
                       >
                         <ArrowUp className="h-3.5 w-3.5" />
@@ -335,15 +362,20 @@ export default function RapportImprimerTab({ client }) {
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7"
-                        onClick={() => setOrderedIds((prev) => moveOrderedId(prev, doc.id, "down"))}
-                        disabled={index === selectedDocs.length - 1}
+                        onClick={() =>
+                          setOrderedIds((prev) =>
+                            moveOrderedId(prev, doc.id, "down", { lockedId: lockedPlanifId }),
+                          )
+                        }
+                        disabled={locked || index === selectedDocs.length - 1}
                         data-testid={`rapport-down-${doc.id}`}
                       >
                         <ArrowDown className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>

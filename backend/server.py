@@ -2952,21 +2952,28 @@ async def _client_pdf_documents_by_id(user: User, client: dict) -> dict:
 
 @api_router.get("/clients/{client_id}/rapport-imprimer")
 async def get_rapport_imprimer(client_id: str, user: User = Depends(get_current_user)):
-    """Sélection enregistrée + liste PDF disponibles (planification proposée en premier)."""
-    from rapport_imprimer import normalize_document_ids, sort_documents_for_rapport
+    """Sélection enregistrée + liste PDF (dernière planification en tête, sans doublon)."""
+    from rapport_imprimer import (
+        ensure_planification_first,
+        pick_latest_planification,
+        sort_documents_for_rapport,
+    )
 
     client = await require_client(client_id, user)
     by_id = await _client_pdf_documents_by_id(user, client)
-    available = sort_documents_for_rapport(list(by_id.values()))
+    available_raw = list(by_id.values())
+    available = sort_documents_for_rapport(available_raw)
     saved = client.get("rapport_imprimer") if isinstance(client.get("rapport_imprimer"), dict) else {}
-    document_ids = normalize_document_ids(saved.get("document_ids"))
+    document_ids = ensure_planification_first(saved.get("document_ids") or [], available_raw)
     missing = [doc_id for doc_id in document_ids if doc_id not in by_id]
+    latest = pick_latest_planification(available_raw)
     public_docs = []
     for row in available:
         public_docs.append(public_storage_record(dict(row)))
     return {
         "document_ids": document_ids,
         "missing_ids": missing,
+        "planification_document_id": (latest or {}).get("id"),
         "documents": public_docs,
         "updated_at": saved.get("updated_at"),
     }
@@ -2979,11 +2986,12 @@ async def update_rapport_imprimer(
     user: User = Depends(get_current_user),
 ):
     """Enregistre uniquement les références ordonnées (pas de duplication PDF)."""
-    from rapport_imprimer import normalize_document_ids
+    from rapport_imprimer import ensure_planification_first
 
     client = await require_client(client_id, user)
     by_id = await _client_pdf_documents_by_id(user, client)
-    document_ids = normalize_document_ids(payload.document_ids)
+    available_raw = list(by_id.values())
+    document_ids = ensure_planification_first(payload.document_ids, available_raw)
     missing = [doc_id for doc_id in document_ids if doc_id not in by_id]
     if missing:
         raise HTTPException(
@@ -3014,6 +3022,7 @@ async def generate_rapport_imprimer_pdf(
     N'altère pas les fichiers sources. Refuse une fusion incomplète.
     """
     from rapport_imprimer import (
+        ensure_planification_first,
         merge_pdf_bytes,
         missing_labels,
         normalize_document_ids,
@@ -3023,12 +3032,13 @@ async def generate_rapport_imprimer_pdf(
 
     client = await require_client(client_id, user)
     by_id = await _client_pdf_documents_by_id(user, client)
+    available_raw = list(by_id.values())
     body = payload or RapportImprimerGenerateRequest()
     if body.document_ids is not None:
-        document_ids = normalize_document_ids(body.document_ids)
+        document_ids = ensure_planification_first(body.document_ids, available_raw)
     else:
         saved = client.get("rapport_imprimer") if isinstance(client.get("rapport_imprimer"), dict) else {}
-        document_ids = normalize_document_ids(saved.get("document_ids"))
+        document_ids = ensure_planification_first(saved.get("document_ids") or [], available_raw)
     if not document_ids:
         raise HTTPException(status_code=400, detail="Sélectionnez au moins un document PDF")
 

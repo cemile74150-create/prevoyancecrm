@@ -45,6 +45,43 @@ def is_pdf_document(doc: Dict[str, Any]) -> bool:
     return False
 
 
+def is_planification_document(doc: Dict[str, Any]) -> bool:
+    """
+    PDF issus de « Enregistrer dans le dossier » (Planifications).
+    Exclut les comparatifs de rentes (même catégorie historique).
+    """
+    title = str(doc.get("title") or "").casefold()
+    filename = str(doc.get("original_filename") or doc.get("filename") or "").casefold()
+    category = str(doc.get("category") or "").casefold()
+    checklist = str(doc.get("checklist_item") or "").casefold()
+    if "comparatif" in title or filename.startswith("comparatif_rentes"):
+        return False
+    if title.startswith("analyse de prévoyance") or title.startswith("analyse de prevoyance"):
+        return True
+    if filename.startswith("analyse_prevoyance"):
+        return True
+    if category == "analyse de prévoyance" or checklist == "analyse de prévoyance":
+        return "comparatif" not in filename
+    if category == "analyse de prevoyance" or checklist == "analyse de prevoyance":
+        return "comparatif" not in filename
+    return False
+
+
+def pick_latest_planification(docs: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Dernière planification enregistrée (created_at), une seule."""
+    plans = [doc for doc in docs if is_planification_document(doc)]
+    if not plans:
+        return None
+    plans.sort(
+        key=lambda doc: (
+            str(doc.get("created_at") or ""),
+            str(doc.get("id") or ""),
+        ),
+        reverse=True,
+    )
+    return plans[0]
+
+
 def _blob(doc: Dict[str, Any]) -> str:
     return " ".join(
         str(doc.get(key) or "")
@@ -53,7 +90,7 @@ def _blob(doc: Dict[str, Any]) -> str:
 
 
 def document_sort_rank(doc: Dict[str, Any]) -> Tuple[int, str, str]:
-    """Classe les PDF pour proposer la planification en premier, puis les familles usuelles."""
+    """Classe les PDF hors planification pour l'ordre proposé."""
     blob = _blob(doc)
     rank = 900
     for needle, value in _CATEGORY_RANK:
@@ -65,7 +102,45 @@ def document_sort_rank(doc: Dict[str, Any]) -> Tuple[int, str, str]:
 
 
 def sort_documents_for_rapport(docs: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return sorted(docs, key=document_sort_rank)
+    """
+    Liste UI : dernière planification en tête (sans doublon d'anciennes versions),
+    puis les autres PDF triés par famille.
+    """
+    latest = pick_latest_planification(docs)
+    others = [doc for doc in docs if not is_planification_document(doc)]
+    others_sorted = sorted(others, key=document_sort_rank)
+    if latest:
+        return [latest, *others_sorted]
+    return others_sorted
+
+
+def ensure_planification_first(
+    document_ids: Sequence[str],
+    docs: Sequence[Dict[str, Any]],
+    *,
+    default_select: bool = True,
+) -> List[str]:
+    """
+    Force la dernière planification en 1re position, sélectionnée,
+    et retire les anciennes versions / doublons de planification.
+    """
+    latest = pick_latest_planification(docs)
+    latest_id = str((latest or {}).get("id") or "").strip()
+    plan_ids = {
+        str(doc.get("id") or "").strip()
+        for doc in docs
+        if is_planification_document(doc) and doc.get("id")
+    }
+    rest = [
+        doc_id
+        for doc_id in normalize_document_ids(document_ids)
+        if doc_id not in plan_ids
+    ]
+    if latest_id:
+        return [latest_id, *rest]
+    if default_select:
+        return rest
+    return rest
 
 
 def normalize_document_ids(raw: Any) -> List[str]:

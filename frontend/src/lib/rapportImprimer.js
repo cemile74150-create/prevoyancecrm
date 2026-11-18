@@ -10,8 +10,36 @@ export function isPdfClientDocument(doc) {
   return false;
 }
 
+export function isPlanificationDocument(doc) {
+  if (!doc) return false;
+  const title = String(doc.title || "").toLowerCase();
+  const filename = String(doc.original_filename || doc.filename || "").toLowerCase();
+  const category = String(doc.category || "").toLowerCase();
+  const checklist = String(doc.checklist_item || "").toLowerCase();
+  if (title.includes("comparatif") || filename.startsWith("comparatif_rentes")) return false;
+  if (title.startsWith("analyse de prévoyance") || title.startsWith("analyse de prevoyance")) return true;
+  if (filename.startsWith("analyse_prevoyance")) return true;
+  if (category.includes("analyse de prévoyance") || category.includes("analyse de prevoyance")) {
+    return !filename.includes("comparatif");
+  }
+  if (checklist.includes("analyse de prévoyance") || checklist.includes("analyse de prevoyance")) {
+    return !filename.includes("comparatif");
+  }
+  return false;
+}
+
+export function pickLatestPlanification(docs) {
+  const plans = (docs || []).filter(isPlanificationDocument);
+  if (!plans.length) return null;
+  return [...plans].sort((a, b) => {
+    const ca = String(a.created_at || "");
+    const cb = String(b.created_at || "");
+    if (ca !== cb) return ca < cb ? 1 : -1;
+    return String(a.id || "") < String(b.id || "") ? 1 : -1;
+  })[0];
+}
+
 const RANK_RULES = [
-  [/analyse de pr[eé]voyance|planification|comparatif/, 10],
   [/imp[oô]t|declaration|déclaration/, 20],
   [/\bavs\b/, 30],
   [/r[eé]ponse recherche lpp|fonds de garantie/, 40],
@@ -43,7 +71,9 @@ export function documentSortRank(doc) {
 }
 
 export function sortDocumentsForRapport(docs) {
-  return [...(docs || [])].sort((a, b) => {
+  const latest = pickLatestPlanification(docs);
+  const others = (docs || []).filter((d) => !isPlanificationDocument(d));
+  others.sort((a, b) => {
     const ra = documentSortRank(a);
     const rb = documentSortRank(b);
     for (let i = 0; i < ra.length; i += 1) {
@@ -52,6 +82,7 @@ export function sortDocumentsForRapport(docs) {
     }
     return 0;
   });
+  return latest ? [latest, ...others] : others;
 }
 
 export function normalizeDocumentIds(ids) {
@@ -66,10 +97,26 @@ export function normalizeDocumentIds(ids) {
   return out;
 }
 
+export function ensurePlanificationFirst(documentIds, docs) {
+  const latest = pickLatestPlanification(docs);
+  const latestId = latest?.id ? String(latest.id) : "";
+  const planIds = new Set(
+    (docs || []).filter(isPlanificationDocument).map((d) => String(d.id || "")).filter(Boolean),
+  );
+  const rest = normalizeDocumentIds(documentIds).filter((id) => !planIds.has(id));
+  if (latestId) return [latestId, ...rest];
+  return rest;
+}
+
 /** Ajoute un id en fin d'ordre s'il n'y est pas ; retire s'il est décoché. */
-export function toggleOrderedId(orderedIds, docId, checked) {
+export function toggleOrderedId(orderedIds, docId, checked, { lockedId } = {}) {
   const id = String(docId || "").trim();
   if (!id) return normalizeDocumentIds(orderedIds);
+  if (lockedId && id === String(lockedId)) {
+    // Planification toujours sélectionnée.
+    const current = normalizeDocumentIds(orderedIds).filter((x) => x !== id);
+    return [String(lockedId), ...current];
+  }
   const current = normalizeDocumentIds(orderedIds);
   if (checked) {
     if (current.includes(id)) return current;
@@ -78,26 +125,39 @@ export function toggleOrderedId(orderedIds, docId, checked) {
   return current.filter((x) => x !== id);
 }
 
-export function moveOrderedId(orderedIds, docId, direction) {
+export function moveOrderedId(orderedIds, docId, direction, { lockedId } = {}) {
   const ids = normalizeDocumentIds(orderedIds);
+  const lock = lockedId ? String(lockedId) : "";
   const index = ids.indexOf(docId);
   if (index < 0) return ids;
+  if (lock && docId === lock) return ids;
   const target = direction === "up" ? index - 1 : index + 1;
   if (target < 0 || target >= ids.length) return ids;
+  if (lock && target === 0 && ids[0] === lock) return ids;
   const next = [...ids];
   const [row] = next.splice(index, 1);
   next.splice(target, 0, row);
+  if (lock && next[0] !== lock) {
+    const without = next.filter((x) => x !== lock);
+    return [lock, ...without];
+  }
   return next;
 }
 
-export function reorderOrderedIds(orderedIds, fromId, toId) {
+export function reorderOrderedIds(orderedIds, fromId, toId, { lockedId } = {}) {
   const ids = normalizeDocumentIds(orderedIds);
+  const lock = lockedId ? String(lockedId) : "";
+  if (lock && (fromId === lock || toId === lock)) return ids;
   const from = ids.indexOf(fromId);
   const to = ids.indexOf(toId);
   if (from < 0 || to < 0 || from === to) return ids;
   const next = [...ids];
   const [row] = next.splice(from, 1);
   next.splice(to, 0, row);
+  if (lock && next[0] !== lock) {
+    const without = next.filter((x) => x !== lock);
+    return [lock, ...without];
+  }
   return next;
 }
 
