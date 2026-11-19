@@ -74,6 +74,7 @@ from pdf_generator import (
     read_blank_system_pdf,
     extract_pension_funds_from_pdf,
     extract_pension_funds_from_pdf_with_text,
+    extract_pension_funds_from_cached_text,
     extract_3p_expiry_from_pdf,
     extract_3p_contracts_from_pdf,
     fill_pdf_bytes_with_client,
@@ -717,6 +718,16 @@ class LppAssignPersonRequest(BaseModel):
     person: str
     name: str
     source_doc_id: Optional[str] = None
+
+
+class LppFundAddressUpdate(BaseModel):
+    """Correction manuelle nom / adresse caisse avant génération des courriers."""
+    name: str
+    source_doc_id: Optional[str] = None
+    person: Optional[str] = None
+    new_name: Optional[str] = None
+    address: Optional[str] = None
+
 
 class CreateSpouseRequest(BaseModel):
     prenom: str = ""
@@ -1558,7 +1569,15 @@ async def require_client(client_id: str, user: User) -> dict:
         raise HTTPException(status_code=404, detail="Client introuvable")
     if not can_access_client(user, c) and not await _journal_assignee_can_open(user, c):
         raise HTTPException(status_code=403, detail="Accès non autorisé à ce dossier")
-    return _decrypt_client_doc(c)
+    c = _decrypt_client_doc(c)
+    # Affichage : nettoyer adresses LPP déjà stockées (sans réécriture Mongo ici).
+    funds = c.get("lpp_detected_funds") if isinstance(c, dict) else None
+    if isinstance(funds, list) and funds:
+        from lpp_fund_extract import sanitize_funds_list
+
+        c = dict(c)
+        c["lpp_detected_funds"] = sanitize_funds_list(funds)
+    return c
 
 
 async def require_resource_client(resource: dict, user: User, label: str = "Ressource"):
@@ -2204,6 +2223,12 @@ def _lpp_tracking_from_funds(funds: List[dict], existing: Optional[List[dict]] =
     return tracking
 
 
+def _pdf_content_sha256(data: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(data or b"").hexdigest()
+
+
 async def _persist_merged_lpp_funds(
     *,
     client_id: str,
@@ -2214,13 +2239,22 @@ async def _persist_merged_lpp_funds(
     response_doc_id: Optional[str] = None,
 ) -> tuple:
     """Fusionne les caisses détectées (M./Mme) et met à jour le suivi."""
+    from lpp_fund_extract import (
+        apply_address_overrides,
+        collect_address_overrides,
+        sanitize_funds_list,
+    )
+
     existing = list(client.get("lpp_detected_funds") or [])
+    # Conserver les adresses corrigées manuellement même si on remplace le parse d'un PDF.
+    overrides = collect_address_overrides(existing)
     if replace_source_doc_id:
         existing = [
             f for f in existing
             if not isinstance(f, dict) or f.get("source_doc_id") != replace_source_doc_id
         ]
-    merged = merge_lpp_detected_funds(existing, new_funds)
+    incoming = apply_address_overrides(new_funds, overrides)
+    merged = sanitize_funds_list(merge_lpp_detected_funds(existing, incoming))
     tracking = _lpp_tracking_from_funds(merged, client.get("lpp_caisse_tracking"))
     payload = {
         "lpp_detected_funds": merged,
@@ -6225,12 +6259,17 @@ async def parse_lpp_response(client_id: str, file: UploadFile = File(...), user:
         await log_action(user.user_id, client_id, f"Réponse LPP enregistrée mais analyse échouée: {e}")
         return {"document": public_storage_record(doc), "funds": [], "fund_count": 0, "error": str(e)}
 
+    from lpp_fund_extract import apply_address_overrides, collect_address_overrides, sanitize_funds_list
+
     person = resolve_lpp_person(
         filename=file.filename,
         text=ocr_text,
         client=c,
     )
-    funds = tag_lpp_funds_with_person(funds, person, source_doc_id=doc["id"])
+    funds = sanitize_funds_list(tag_lpp_funds_with_person(funds, person, source_doc_id=doc["id"]))
+    # Nouveau PDF : pas de réutilisation de l'ancien cache ; overrides manuels du dossier conservés.
+    funds = apply_address_overrides(funds, collect_address_overrides(c.get("lpp_detected_funds") or []))
+    content_sha = _pdf_content_sha256(data)
 
     await db.documents.update_one(
         {"id": doc["id"]},
@@ -6238,6 +6277,10 @@ async def parse_lpp_response(client_id: str, file: UploadFile = File(...), user:
             "detected_funds": funds,
             "fund_count": len(funds),
             "lpp_person": person,
+            "ocr_text": ocr_text,
+            "ocr_content_sha256": content_sha,
+            "ocr_cached_at": datetime.now(timezone.utc).isoformat(),
+            "ocr_from_cache": False,
         }},
     )
     doc["detected_funds"] = funds
@@ -6269,8 +6312,15 @@ async def parse_lpp_response(client_id: str, file: UploadFile = File(...), user:
     }
 
 @api_router.post("/clients/{client_id}/reparse-lpp-response/{doc_id}")
-async def reparse_lpp_response(client_id: str, doc_id: str, user: User = Depends(get_current_user)):
-    """Relance l'OCR sur une réponse LPP déjà téléversée (sans écraser l'autre personne)."""
+async def reparse_lpp_response(
+    client_id: str,
+    doc_id: str,
+    user: User = Depends(get_current_user),
+    force_ocr: bool = False,
+):
+    """Réanalyse une réponse LPP. Réutilise ocr_text en cache sauf force_ocr=1 ou PDF remplacé."""
+    from lpp_fund_extract import apply_address_overrides, collect_address_overrides, sanitize_funds_list
+
     c = await require_client(client_id, user)
     doc = await db.documents.find_one(
         {"id": doc_id, "client_id": client_id, "user_id": user.user_id, "is_deleted": False},
@@ -6286,17 +6336,37 @@ async def reparse_lpp_response(client_id: str, doc_id: str, user: User = Depends
         logger.exception("Lecture PDF pour reparse échouée")
         raise HTTPException(status_code=500, detail=f"Impossible de relire le PDF: {e}")
 
-    funds, ocr_text = extract_pension_funds_from_pdf_with_text(data)
+    content_sha = _pdf_content_sha256(data)
+    cached_sha = str(doc.get("ocr_content_sha256") or "").strip()
+    ocr_text = (doc.get("ocr_text") or "").strip()
+    # Remplacement du PDF (hash différent) → invalider l'ancien cache OCR.
+    cache_valid = bool(ocr_text) and cached_sha and cached_sha == content_sha
+    used_cache = False
+    if cache_valid and not force_ocr:
+        funds = extract_pension_funds_from_cached_text(ocr_text)
+        used_cache = True
+    else:
+        funds, ocr_text = extract_pension_funds_from_pdf_with_text(data)
+
     person = resolve_lpp_person(
         filename=doc.get("original_filename"),
         text=ocr_text,
         client=c,
         explicit=doc.get("lpp_person"),
     )
-    funds = tag_lpp_funds_with_person(funds, person, source_doc_id=doc_id)
+    funds = sanitize_funds_list(tag_lpp_funds_with_person(funds, person, source_doc_id=doc_id))
+    funds = apply_address_overrides(funds, collect_address_overrides(c.get("lpp_detected_funds") or []))
     await db.documents.update_one(
         {"id": doc_id},
-        {"$set": {"detected_funds": funds, "fund_count": len(funds), "lpp_person": person}},
+        {"$set": {
+            "detected_funds": funds,
+            "fund_count": len(funds),
+            "lpp_person": person,
+            "ocr_text": ocr_text,
+            "ocr_content_sha256": content_sha,
+            "ocr_cached_at": datetime.now(timezone.utc).isoformat(),
+            "ocr_from_cache": used_cache,
+        }},
     )
     merged, tracking = await _persist_merged_lpp_funds(
         client_id=client_id,
@@ -6324,8 +6394,18 @@ async def reparse_lpp_response(client_id: str, doc_id: str, user: User = Depends
 
 
 @api_router.post("/clients/{client_id}/reparse-all-lpp-responses")
-async def reparse_all_lpp_responses(client_id: str, user: User = Depends(get_current_user)):
-    """Réanalyse les réponses LPP de CETTE personne (pas celles du conjoint)."""
+async def reparse_all_lpp_responses(
+    client_id: str,
+    user: User = Depends(get_current_user),
+    force_ocr: bool = False,
+):
+    """Réanalyse les réponses LPP. Par défaut : cache OCR, sans Tesseract."""
+    from lpp_fund_extract import (
+        apply_address_overrides,
+        collect_address_overrides,
+        sanitize_funds_list,
+    )
+
     c = await require_client(client_id, user)
     scope = await _dossier_scope(user.user_id, c)
     query = _documents_list_query(user.user_id, client_id, scope)
@@ -6335,29 +6415,53 @@ async def reparse_all_lpp_responses(client_id: str, user: User = Depends(get_cur
     if not docs:
         raise HTTPException(status_code=404, detail="Aucune réponse LPP à réanalyser")
 
+    overrides = collect_address_overrides(c.get("lpp_detected_funds") or [])
     all_funds: List[dict] = []
     last_doc = None
+    cache_hits = 0
+    ocr_runs = 0
     for doc in docs:
         try:
             data = await _load_storage_bytes(doc.get("storage_path") or "")
         except Exception:
             logger.exception("Skip reparse doc=%s", doc.get("id"))
             continue
-        funds, ocr_text = extract_pension_funds_from_pdf_with_text(data)
+        content_sha = _pdf_content_sha256(data)
+        cached_sha = str(doc.get("ocr_content_sha256") or "").strip()
+        ocr_text = (doc.get("ocr_text") or "").strip()
+        cache_valid = bool(ocr_text) and cached_sha and cached_sha == content_sha
+        used_cache = False
+        if cache_valid and not force_ocr:
+            funds = extract_pension_funds_from_cached_text(ocr_text)
+            used_cache = True
+            cache_hits += 1
+        else:
+            funds, ocr_text = extract_pension_funds_from_pdf_with_text(data)
+            ocr_runs += 1
         person = resolve_lpp_person(
             filename=doc.get("original_filename"),
             text=ocr_text,
             client=c,
             explicit=doc.get("lpp_person"),
         )
-        funds = tag_lpp_funds_with_person(funds, person, source_doc_id=doc["id"])
+        funds = sanitize_funds_list(tag_lpp_funds_with_person(funds, person, source_doc_id=doc["id"]))
+        funds = apply_address_overrides(funds, overrides)
         await db.documents.update_one(
             {"id": doc["id"]},
-            {"$set": {"detected_funds": funds, "fund_count": len(funds), "lpp_person": person}},
+            {"$set": {
+                "detected_funds": funds,
+                "fund_count": len(funds),
+                "lpp_person": person,
+                "ocr_text": ocr_text,
+                "ocr_content_sha256": content_sha,
+                "ocr_cached_at": datetime.now(timezone.utc).isoformat(),
+                "ocr_from_cache": used_cache,
+            }},
         )
         all_funds = merge_lpp_detected_funds(all_funds, funds)
         last_doc = doc
 
+    all_funds = sanitize_funds_list(apply_address_overrides(all_funds, overrides))
     tracking = _lpp_tracking_from_funds(all_funds, c.get("lpp_caisse_tracking"))
     await db.clients.update_one(
         {"id": client_id, "user_id": user.user_id},
@@ -6371,21 +6475,101 @@ async def reparse_all_lpp_responses(client_id: str, user: User = Depends(get_cur
     await log_action(
         user.user_id,
         client_id,
-        f"Réanalyse LPP complète: {len(docs)} fichier(s), {len(all_funds)} caisse(s)",
+        f"Réanalyse LPP: {len(docs)} fichier(s), {len(all_funds)} caisse(s), "
+        f"cache={cache_hits}, ocr={ocr_runs}",
     )
     return {
         "funds": all_funds,
         "fund_count": len(all_funds),
         "documents_parsed": len(docs),
         "lpp_caisse_tracking": tracking,
+        "cache_hits": cache_hits,
+        "ocr_runs": ocr_runs,
     }
+
+
+@api_router.patch("/clients/{client_id}/lpp-funds/address")
+async def update_lpp_fund_address(
+    client_id: str,
+    payload: LppFundAddressUpdate,
+    user: User = Depends(get_current_user),
+):
+    """Corrige manuellement le nom / l'adresse d'une caisse (utilisée dans le courrier)."""
+    from lpp_fund_extract import sanitize_fund_record
+
+    c = await require_client(client_id, user)
+    funds = list(c.get("lpp_detected_funds") or [])
+    name_key = (payload.name or "").strip().casefold()
+    person_key = (payload.person or "").strip()
+    updated = False
+    for i, fund in enumerate(funds):
+        if not isinstance(fund, dict):
+            continue
+        if (fund.get("name") or "").strip().casefold() != name_key:
+            continue
+        if payload.source_doc_id and fund.get("source_doc_id") != payload.source_doc_id:
+            continue
+        if person_key and (fund.get("person") or "") != person_key:
+            continue
+        row = dict(fund)
+        if payload.new_name and payload.new_name.strip():
+            row["name"] = payload.new_name.strip()
+        if payload.address is not None:
+            addr = str(payload.address).strip()
+            row["address_override"] = addr
+            row["address"] = addr
+            row["adresse"] = addr
+        funds[i] = sanitize_fund_record(row)
+        updated = True
+        break
+    if not updated:
+        raise HTTPException(status_code=404, detail="Caisse introuvable")
+
+    tracking = _lpp_tracking_from_funds(funds, c.get("lpp_caisse_tracking"))
+    await db.clients.update_one(
+        {"user_id": user.user_id, "id": client_id},
+        {"$set": {
+            "lpp_detected_funds": funds,
+            "lpp_caisse_tracking": tracking,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    source_ids = {
+        str(f.get("source_doc_id") or "")
+        for f in funds
+        if isinstance(f, dict) and f.get("source_doc_id")
+    }
+    for sid in source_ids:
+        doc_funds = [f for f in funds if isinstance(f, dict) and f.get("source_doc_id") == sid]
+        await db.documents.update_one(
+            {"id": sid, "client_id": client_id, "user_id": user.user_id},
+            {"$set": {"detected_funds": doc_funds, "fund_count": len(doc_funds)}},
+        )
+    await log_action(user.user_id, client_id, f"Adresse caisse LPP corrigée: {payload.name}")
+    return {"funds": funds, "lpp_caisse_tracking": tracking}
+
 
 @api_router.post("/clients/{client_id}/generate-decompte-letters")
 async def generate_decompte_for_funds(client_id: str, payload: GenerateDecompteRequest, user: User = Depends(get_current_user)):
+    """Génère les courriers depuis les caisses déjà détectées/corrigées — sans OCR."""
+    import time
+    from lpp_fund_extract import (
+        funds_blocking_generation,
+        sanitize_fund_record,
+        sanitize_funds_list,
+    )
+
+    t0 = time.perf_counter()
     c = await require_client(client_id, user)
     if not payload.funds:
         raise HTTPException(status_code=400, detail="Sélectionnez au moins une caisse")
-    # Enrichir avec tracking_id / person depuis le suivi client
+
+    # Réutiliser les adresses validées / corrigées déjà en base
+    persisted = {
+        _lpp_track_key(f): f
+        for f in (c.get("lpp_detected_funds") or [])
+        if isinstance(f, dict) and f.get("name")
+    }
     tracking = c.get("lpp_caisse_tracking") or []
     by_key = {
         _lpp_track_key(e): e for e in tracking if isinstance(e, dict) and e.get("name")
@@ -6397,11 +6581,30 @@ async def generate_decompte_for_funds(client_id: str, payload: GenerateDecompteR
         f = dict(fund)
         key = _lpp_track_key(f)
         prior = by_key.get(key) or {}
-        # La personne de la caisse (PDF) prime ; le tracking ne comble que si absent.
+        stored = persisted.get(key) or {}
+        if stored:
+            # Adresse / override persistés primaires
+            for field in ("address", "adresse", "address_override", "recipient_block", "name", "raw"):
+                if stored.get(field) not in (None, ""):
+                    f[field] = stored[field]
         if not f.get("person") and prior.get("person"):
             f["person"] = prior["person"]
         f["tracking_id"] = prior.get("id") or f.get("tracking_id") or f.get("id")
-        enriched.append(f)
+        enriched.append(sanitize_fund_record(f))
+
+    blocked = funds_blocking_generation(enriched)
+    if blocked:
+        names = ", ".join(b["name"] for b in blocked[:5])
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": (
+                    "Corrigez les adresses incomplètes avant de générer les courriers "
+                    f"({names})."
+                ),
+                "funds_needing_address": blocked,
+            },
+        )
 
     spouse = None
     spouse_id = c.get("linked_spouse_id")
@@ -6418,11 +6621,12 @@ async def generate_decompte_for_funds(client_id: str, payload: GenerateDecompteR
         )
         spouse = _decrypt_client_doc(spouse) if spouse else None
 
+    t1 = time.perf_counter()
     try:
         agent = c.get("conseiller") or user.name or ""
         generated = generate_decompte_letters(
             c,
-            enriched or payload.funds,
+            enriched or sanitize_funds_list(payload.funds),
             agent_name=agent,
             spouse=spouse,
         )
@@ -6432,12 +6636,22 @@ async def generate_decompte_for_funds(client_id: str, payload: GenerateDecompteR
         logger.exception("Génération décomptes échouée")
         raise HTTPException(status_code=500, detail=f"Génération impossible: {e}")
 
+    t2 = time.perf_counter()
     docs = []
     for pdf_bytes, meta in generated:
         doc = await _store_pdf_bytes(user.user_id, pdf_bytes, meta, client_id, checklist_item=meta.get("checklist_item"))
         docs.append(doc)
+    t3 = time.perf_counter()
+    timing = {
+        "prepare_ms": round((t1 - t0) * 1000, 1),
+        "pdf_ms": round((t2 - t1) * 1000, 1),
+        "store_ms": round((t3 - t2) * 1000, 1),
+        "total_ms": round((t3 - t0) * 1000, 1),
+        "letters": len(docs),
+    }
+    logger.info("generate-decompte-letters client=%s timing=%s", client_id, timing)
     await log_action(user.user_id, client_id, f"Demandes de décompte générées: {len(docs)}")
-    return {"documents": docs, "count": len(docs)}
+    return {"documents": docs, "count": len(docs), "timing": timing}
 
 @api_router.post("/clients/{client_id}/create-spouse")
 async def create_spouse(client_id: str, payload: CreateSpouseRequest, user: User = Depends(get_current_user)):

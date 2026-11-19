@@ -1043,19 +1043,13 @@ def _map_procuration(values: Dict[str, str], options: Optional[Dict[str, Any]] =
 def _map_lettre_decompte(values: Dict[str, str], options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     options = options or {}
     fund = options.get("fund") or {}
-    # Bloc destinataire complet (nom multi-lignes + adresse) pour le champ AcroForm
-    recipient = _safe(
-        fund.get("recipient_block")
-        or fund.get("raw")
-        or ""
-    )
-    if not recipient:
-        name = _safe(fund.get("name") or fund.get("nom"))
-        address = _safe(fund.get("address") or fund.get("adresse"))
-        if name and address and _norm(name) not in _norm(address):
-            recipient = f"{name}\n{address}"
-        else:
-            recipient = name or address
+    from lpp_fund_extract import build_recipient_block, sanitize_fund_record
+
+    cleaned = sanitize_fund_record(fund if isinstance(fund, dict) else {})
+    name = _safe(cleaned.get("name") or cleaned.get("nom"))
+    address = _safe(cleaned.get("address") or cleaned.get("adresse"))
+    # Nom + adresse nettoyée uniquement (jamais raw/OCR bruité).
+    recipient = _safe(cleaned.get("recipient_block")) or build_recipient_block(name, address)
     # Identité = assuré de CETTE lettre (déjà basculé avant appel), jamais un autre membre.
     nom = _safe(values.get("nom")).upper()
     prenom = _safe(values.get("prenom"))
@@ -1328,6 +1322,9 @@ TEMPLATE_EXPECTED_TEXT_FIELDS: Dict[str, List[str]] = {
 }
 
 
+_VALIDATE_TEMPLATE_CACHE: Dict[str, List[str]] = {}
+
+
 def validate_template_fields(template_id: str, template_path: Path) -> List[str]:
     """Retourne la liste des champs attendus introuvables dans le PDF."""
     if str(template_path).lower().endswith(".docx"):
@@ -1335,12 +1332,20 @@ def validate_template_fields(template_id: str, template_path: Path) -> List[str]
     expected = TEMPLATE_EXPECTED_TEXT_FIELDS.get(template_id) or []
     if not expected:
         return []
+    try:
+        cache_key = f"{template_id}:{template_path}:{template_path.stat().st_mtime_ns}"
+    except OSError:
+        cache_key = f"{template_id}:{template_path}"
+    cached = _VALIDATE_TEMPLATE_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
     reader = PdfReader(str(template_path))
     existing = reader.get_fields() or {}
     missing: List[str] = []
     for name in expected:
         if _resolve_field_name(existing, name) is None:
             missing.append(name)
+    _VALIDATE_TEMPLATE_CACHE[cache_key] = list(missing)
     return missing
 
 
@@ -2317,34 +2322,6 @@ def _fill_acroform(
         raise ValueError(f"Aucun mapping AcroForm pour {template_id}")
 
     field_map = mapper(values, options)
-    # #region agent log
-    if template_id in ("procuration_avs_lpp", "lettre_decompte_lpp"):
-        try:
-            import json as _json
-            _log = Path(__file__).resolve().parents[2] / "debug-5656aa.log"
-            _log.open("a", encoding="utf-8").write(_json.dumps({
-                "sessionId": "5656aa",
-                "hypothesisId": "M",
-                "location": "pdf_generator.py:_fill_acroform",
-                "message": "acroform field map",
-                "data": {
-                    "template_id": template_id,
-                    "Adresse caisse": (field_map.get("Adresse caisse") or "")[:500],
-                    "adresse_len": len(field_map.get("Adresse caisse") or ""),
-                    "fill_style": {
-                        "pdf_font": fill_style.get("pdf_font"),
-                        "size": fill_style.get("size"),
-                        "bold": fill_style.get("bold"),
-                        "acro_font": fill_style.get("acro_font"),
-                        "reportlab_font": fill_style.get("reportlab_font"),
-                    },
-                },
-                "timestamp": int(datetime.now().timestamp() * 1000),
-                "runId": "font-match",
-            }) + "\n")
-        except Exception:
-            pass
-    # #endregion
     existing = reader.get_fields() or {}
     text_values: Dict[str, Any] = {}
     button_values: Dict[str, Any] = {}  # str | list[str]
@@ -3684,12 +3661,19 @@ def merge_lpp_detected_funds(
         key = lpp_fund_merge_key(item)
         if key in merged:
             prev = merged[key]
-            merged[key] = {
+            combined = {
                 **prev,
                 **{k: v for k, v in item.items() if v not in (None, "")},
                 "name": name,
                 "person": item.get("person") or prev.get("person") or "",
             }
+            # La correction manuelle survit à une réanalyse / nouveau parse.
+            override = _safe(item.get("address_override")) or _safe(prev.get("address_override"))
+            if override:
+                combined["address_override"] = override
+                combined["address"] = override
+                combined["adresse"] = override
+            merged[key] = combined
         else:
             merged[key] = item
             order.append(key)
@@ -3787,11 +3771,14 @@ def generate_decompte_letters(
     spouse: Optional[Dict[str, Any]] = None,
 ) -> List[tuple[bytes, Dict[str, Any]]]:
     """Une lettre de décompte par caisse — identité = personne détectée pour CETTE caisse."""
+    from lpp_fund_extract import sanitize_fund_record
+
     results: List[tuple[bytes, Dict[str, Any]]] = []
     for fund in funds:
-        name = _safe(fund.get("name") or fund.get("nom") or "Caisse")
+        cleaned = sanitize_fund_record(fund if isinstance(fund, dict) else {})
+        name = _safe(cleaned.get("name") or cleaned.get("nom") or "Caisse")
         # Uniquement la personne attachée à la caisse (PDF), jamais le titulaire global.
-        person = resolve_lpp_person(explicit=fund.get("person"))
+        person = resolve_lpp_person(explicit=cleaned.get("person") or fund.get("person"))
         if person not in {"Madame", "Monsieur"}:
             # Pas de Madame/Monsieur détecté : la lettre standard part quand même.
             letter_client = dict(client)
@@ -3818,16 +3805,16 @@ def generate_decompte_letters(
             letter_client,
             agent_name=agent_name,
             custom_filename=fname,
-            options={"fund": fund, "lpp_person": person},
+            options={"fund": cleaned, "lpp_person": person},
         )
         meta["caisse_name"] = name
-        meta["caisse_address"] = _safe(fund.get("address") or fund.get("adresse"))
-        meta["caisse_reference"] = _safe(fund.get("reference") or fund.get("ref"))
+        meta["caisse_address"] = _safe(cleaned.get("address") or cleaned.get("adresse"))
+        meta["caisse_reference"] = _safe(cleaned.get("reference") or cleaned.get("ref"))
         meta["lpp_person"] = person
         meta["assure_prenom"] = _safe(letter_client.get("prenom"))
         meta["assure_nom"] = _safe(letter_client.get("nom"))
         meta["assure_avs"] = _format_avs(letter_client.get("avs_number"))
-        meta["lpp_tracking_id"] = _safe(fund.get("tracking_id") or fund.get("id"))
+        meta["lpp_tracking_id"] = _safe(cleaned.get("tracking_id") or fund.get("tracking_id") or fund.get("id"))
         results.append((pdf_bytes, meta))
     return results
 
@@ -4207,174 +4194,57 @@ def _parse_funds_from_text(text: str) -> List[Dict[str, str]]:
     """
     Détection générique des institutions dans une réponse de la Centrale du 2e pilier.
     Basée sur la structure du courrier (bloc après « institution suivante »),
-    sans liste fixe de noms de caisses.
+    sans liste fixe de noms de caisses. Adresses nettoyées (pas de pages / tableaux).
     """
-    reference = ""
-    ref_m = re.search(r"(?:n[°o]\.?\s*de\s*r[ée]f[ée]rence|reference)\s*[:\s]\s*([0-9./-]+)", text, re.I)
-    if ref_m:
-        reference = ref_m.group(1).strip()
+    from lpp_fund_extract import parse_funds_from_clean_text, strip_lpp_parse_noise
 
-    found: List[Dict[str, str]] = []
-    seen = set()
-
-    def _is_address_line(line: str) -> bool:
-        """Lignes d'adresse postale (pas le début d'un nom du type 'CP paritaire…')."""
-        low = line.lower().strip()
-        if re.match(r"^\d{4}\b", low):  # NPA en tête
-            return True
-        if re.match(
-            r"^(c/o\b|postfach\b|case\s+postale\b|case\s+postal\b|p\.?\s*o\.?\s*box\b|"
-            r"rue\b|route\b|avenue\b|chemin\b|boulevard\b|quai\b|place\b|"
-            r"strasse\b|weg\b|gasse\b|allee\b|allée\b)",
-            low,
-            re.I,
-        ):
-            return True
-        # Case postale / Postfach au milieu, ou NPA + localité
-        if re.search(r"\b(case\s+postale|postfach)\b", low) and re.search(r"\d", low):
-            return True
-        if re.search(r"\b\d{4}\s+[A-Za-zÀ-ÿ]", line):
-            return True
-        return False
-
-    def _is_boilerplate(line: str) -> bool:
-        low = _norm(line)
-        starts = (
-            "nous attirons", "la comparaison", "nous esperons", "nous vous",
-            "afin d", "chaque annee", "madame monsieur", "agence mendes",
-            "centrale du", "fonds de garantie",
-        )
-        return any(low.startswith(s) for s in starts)
-
-    def _is_name_continuation(line: str) -> bool:
-        if not line or _is_boilerplate(line) or _is_address_line(line):
-            return False
-        if len(line) > 90:
-            return False
-        # Phrases de courrier, pas des noms d'institution
-        low = line.lower()
-        if any(x in low for x in ("nous ", "votre attention", "seul l", "competente", "compétente")):
-            return False
-        return True
-
-    def _add_block(lines: List[str]) -> None:
-        if not lines:
-            return
-        # Séparer nom (une ou plusieurs lignes) et adresse
-        name_lines = [lines[0]]
-        idx = 1
-        while idx < len(lines) and _is_name_continuation(lines[idx]):
-            name_lines.append(lines[idx])
-            idx += 1
-        addr_lines = lines[idx:]
-        # Si aucune adresse reconnue mais lignes restantes, tout garder dans le bloc destinataire
-        name = re.sub(r"\s+", " ", " ".join(name_lines)).strip(" :.-")
-        # Réparer coupures OCR fréquentes en fin de ligne (« … de », « … et »)
-        name = re.sub(r"\s+", " ", name)
-        if len(name) < 5 or len(name) > 200:
-            return
-        low = name.lower()
-        # Rejeter uniquement le vrai bruit (pas « fondation de libre passage … »)
-        reject_starts = (
-            "nous ", "votre ", "vos ", "afin ", "chaque ", "depuis ", "vue d",
-            "il existe", "la comparaison", "en raison", "eu egard", "eu égard",
-            "responsable", "madame", "monsieur", "demande de recherche",
-        )
-        if any(low.startswith(s) for s in reject_starts):
-            return
-        if low.startswith("c/o ") or low.startswith("postfach") or low.startswith("rue "):
-            return
-        if any(x in low for x in ("agence mendes", "centrale du 2", "fonds de garantie")):
-            return
-
-        address = "\n".join(addr_lines)
-        recipient_block = "\n".join(lines)
-        key = _norm(name)
-        if key in seen:
-            return
-        seen.add(key)
-        found.append({
-            "name": name,
-            "address": address,
-            "reference": reference,
-            "raw": recipient_block,
-            "recipient_block": recipient_block,
-        })
-
-    # 1) Blocs structurés après « institution(s) suivante(s) »
-    for m in re.finditer(r"institutions?\s+suivantes?", text, re.I):
-        chunk = text[m.end(): m.end() + 800]
-        colon = re.search(r"[:：]\s*", chunk)
-        body = chunk[colon.end():] if colon else chunk
-        stop = re.search(
-            r"\n\s*Nous\s+attirons|\n\s*La\s+comparaison|\n\s*Nous\s+esp[ée]rons|\n\s*En\s+raison",
-            body,
-            re.I,
-        )
-        if stop:
-            body = body[: stop.start()]
-        lines = []
-        for ln in body.splitlines():
-            cleaned = re.sub(r"\s+", " ", ln).strip(" :\t•-")
-            if not cleaned or cleaned in {":", "-", "•"}:
-                continue
-            if _is_boilerplate(cleaned):
-                break
-            lines.append(cleaned)
-        _add_block(lines)
-
-    if found:
-        return found[:40]
-
-    # 2) Fallback générique : bloc se terminant par NPA + localité, précédé d'un nom d'institution
-    lines = [re.sub(r"\s+", " ", ln).strip() for ln in text.splitlines()]
-    lines = [ln for ln in lines if ln]
-    i = 0
-    while i < len(lines):
-        # Chercher une ligne NPA (fin d'adresse suisse)
-        if not re.search(r"\b\d{4}\s+[A-Za-zÀ-ÿ]", lines[i]) and not re.match(r"^\d{4}\b", lines[i]):
-            i += 1
-            continue
-        # Remonter pour trouver le début du bloc (max 6 lignes)
-        start = i
-        for back in range(1, 7):
-            j = i - back
-            if j < 0:
-                break
-            if _is_boilerplate(lines[j]):
-                break
-            start = j
-        block = lines[start: i + 1]
-        # Le nom ne doit pas être une simple ligne d'adresse
-        if block and not _is_address_line(block[0]):
-            # Éviter en-têtes / pied de page
-            head = block[0].lower()
-            if not any(x in head for x in ("agence mendes", "centrale", "fonds de garantie", "route de saint")):
-                _add_block(block)
-        i += 1
-
-    return found[:40]
+    return parse_funds_from_clean_text(strip_lpp_parse_noise(text or ""))
 
 
 def extract_pension_funds_from_pdf(pdf_bytes: bytes) -> List[Dict[str, str]]:
     """Extrait une liste de caisses / fondations depuis un PDF de réponse LPP."""
     import logging
+    import time
+
+    t0 = time.perf_counter()
     text = _extract_pdf_text(pdf_bytes)
+    t1 = time.perf_counter()
     funds = _parse_funds_from_text(text)
+    t2 = time.perf_counter()
     logging.getLogger("server").info(
-        "LPP parse text_len=%s funds=%s names=%s",
+        "LPP parse text_len=%s funds=%s names=%s extract_ms=%.0f parse_ms=%.0f",
         len(text),
         len(funds),
         [f.get("name") for f in funds],
+        (t1 - t0) * 1000,
+        (t2 - t1) * 1000,
     )
     return funds
 
 
 def extract_pension_funds_from_pdf_with_text(pdf_bytes: bytes) -> tuple[List[Dict[str, str]], str]:
     """Comme extract_pension_funds_from_pdf, mais retourne aussi le texte OCR."""
+    import logging
+    import time
+
+    t0 = time.perf_counter()
     text = _extract_pdf_text(pdf_bytes)
+    t1 = time.perf_counter()
     funds = _parse_funds_from_text(text)
+    t2 = time.perf_counter()
+    logging.getLogger("server").info(
+        "LPP parse+text text_len=%s funds=%s extract_ms=%.0f parse_ms=%.0f",
+        len(text),
+        len(funds),
+        (t1 - t0) * 1000,
+        (t2 - t1) * 1000,
+    )
     return funds, text
+
+
+def extract_pension_funds_from_cached_text(ocr_text: str) -> List[Dict[str, str]]:
+    """Reparse rapide depuis texte OCR déjà stocké (sans relancer Tesseract)."""
+    return _parse_funds_from_text(ocr_text or "")
 
 
 # Types de documents 3e pilier reconnus (ordre d'affichage UI).

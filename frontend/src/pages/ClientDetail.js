@@ -419,6 +419,9 @@ export default function ClientDetail() {
   const [lppResponseDoc, setLppResponseDoc] = useState(null);
   const [parsingLpp, setParsingLpp] = useState(false);
   const [assigningLppKey, setAssigningLppKey] = useState("");
+  const [lppAddressDrafts, setLppAddressDrafts] = useState({});
+  const [savingLppAddressKey, setSavingLppAddressKey] = useState("");
+  const [decompteProgress, setDecompteProgress] = useState(null);
   const [apptDialog, setApptDialog] = useState(false);
   const [apptForm, setApptForm] = useState({ titre: "", date: "", type: "Rendez-vous", lieu: "" });
   const [generateDialog, setGenerateDialog] = useState(false);
@@ -1693,6 +1696,40 @@ export default function ClientDetail() {
     }
   };
 
+  const lppFundRowKey = (fund, index) =>
+    `${fundTrackKey(fund) || fund?.name || "caisse"}-${index}`;
+
+  const saveLppFundAddress = async (fund, index) => {
+    const name = fund?.name || fund?.nom || "";
+    if (!name) return;
+    const rowKey = lppFundRowKey(fund, index);
+    const draft = lppAddressDrafts[rowKey];
+    const address = draft !== undefined ? draft : (fund?.address || fund?.adresse || "");
+    setSavingLppAddressKey(rowKey);
+    try {
+      const res = await api.patch(`/clients/${id}/lpp-funds/address`, {
+        name,
+        source_doc_id: fund?.source_doc_id || undefined,
+        person: fund?.person || undefined,
+        address,
+      });
+      if (Array.isArray(res.data?.funds)) setLppFunds(res.data.funds);
+      if (Array.isArray(res.data?.lpp_caisse_tracking)) {
+        setLppCaisseTracking(res.data.lpp_caisse_tracking);
+      }
+      setLppAddressDrafts((prev) => {
+        const next = { ...prev };
+        delete next[rowKey];
+        return next;
+      });
+      toast.success("Adresse caisse enregistrée");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Impossible d'enregistrer l'adresse");
+    } finally {
+      setSavingLppAddressKey("");
+    }
+  };
+
   const toggleFund = (index) => {
     setSelectedFunds((prev) =>
       prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
@@ -1750,18 +1787,50 @@ export default function ClientDetail() {
       if (!fund) return null;
       const tracking = trackingForFund(fund);
       const person = fund.person || tracking?.person || "";
+      const rowKey = lppFundRowKey(fund, i);
+      const draft = lppAddressDrafts[rowKey];
+      const address =
+        draft !== undefined ? draft : (fund.address || fund.adresse || "");
       return {
         ...fund,
+        address,
+        adresse: address,
+        address_override: draft !== undefined ? draft : fund.address_override,
         // Personne détectée sur LE PDF de cette caisse — jamais le titulaire global du dossier.
         person,
         tracking_id: tracking?.id,
         id: tracking?.id || fund.id,
       };
     }).filter(Boolean);
+    const incomplete = funds.filter((f) => {
+      const addr = String(f.address || "").trim();
+      return (
+        !addr ||
+        addr === "Adresse à vérifier" ||
+        f.address_uncertain === true ||
+        !/\b\d{4}\b/.test(addr)
+      );
+    });
+    if (incomplete.length) {
+      toast.error(
+        `Corrigez l'adresse de ${incomplete.length} caisse(s) avant de générer les courriers.`,
+      );
+      return;
+    }
     setGeneratingDemand("decompte_lpp");
+    setDecompteProgress({ current: 0, total: funds.length, label: "Préparation…" });
     try {
+      // Pas de ré-OCR : génération AcroForm uniquement à partir des caisses déjà détectées.
       const res = await api.post(`/clients/${id}/generate-decompte-letters`, { funds });
       const documents = res.data?.documents ?? [];
+      const timing = res.data?.timing;
+      setDecompteProgress({
+        current: documents.length,
+        total: funds.length,
+        label: timing?.total_ms
+          ? `Terminé en ${(timing.total_ms / 1000).toFixed(1)} s`
+          : "Terminé",
+      });
       const byPerson = documents.reduce((acc, d) => {
         const p = d.lpp_person || "?";
         acc[p] = (acc[p] || 0) + 1;
@@ -1770,10 +1839,13 @@ export default function ClientDetail() {
       const detail = Object.entries(byPerson)
         .map(([p, n]) => `${n}× ${p}`)
         .join(", ");
+      const timingHint = timing?.total_ms
+        ? ` · ${(timing.total_ms / 1000).toFixed(1)} s (PDF ${((timing.pdf_ms || 0) / 1000).toFixed(1)} s)`
+        : "";
       toast.success(
         detail
-          ? `${documents.length} demande(s) de décompte générée(s) (${detail})`
-          : `${documents.length} demande(s) de décompte générée(s)`
+          ? `${documents.length} demande(s) de décompte générée(s) (${detail})${timingHint}`
+          : `${documents.length} demande(s) de décompte générée(s)${timingHint}`
       );
       const [d, h] = await Promise.all([
         api.get(`/clients/${id}/documents`),
@@ -1782,9 +1854,15 @@ export default function ClientDetail() {
       setDocs(d.data);
       setActions(h.data);
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Échec de la génération");
+      const detail = err?.response?.data?.detail;
+      const message =
+        typeof detail === "string"
+          ? detail
+          : detail?.message || "Échec de la génération";
+      toast.error(message);
     } finally {
       setGeneratingDemand(null);
+      setTimeout(() => setDecompteProgress(null), 2500);
     }
   };
 
@@ -3357,7 +3435,15 @@ export default function ClientDetail() {
                         {(lppFunds.length > 0 ? lppFunds : lppCaisseTracking).map((fund, index) => {
                           const label = fund?.name ?? fund?.nom ?? `Caisse ${index + 1}`;
                           const person = fund?.person || trackingForFund(fund)?.person || "";
-                          const block = fund?.recipient_block || fund?.raw || fund?.address || fund?.adresse || "";
+                          const rowKey = lppFundRowKey(fund, index);
+                          const addressValue =
+                            lppAddressDrafts[rowKey] !== undefined
+                              ? lppAddressDrafts[rowKey]
+                              : (fund?.address || fund?.adresse || "");
+                          const addressUncertain =
+                            Boolean(fund?.address_uncertain) ||
+                            addressValue === "Adresse à vérifier" ||
+                            !String(addressValue || "").trim();
                           const ref = fund?.reference || fund?.ref || "";
                           const tracking =
                             trackingForFund(fund) ||
@@ -3373,6 +3459,7 @@ export default function ClientDetail() {
                           const canSelectForGeneration = lppFunds.length > 0;
                           const canToggleStatus = Boolean(tracking?.id);
                           const letters = decompteDocsForFund({ ...fund, person: person || fund?.person });
+                          const canEditAddress = lppFunds.length > 0;
                           return (
                             <div
                               key={tracking?.id || fundTrackKey(fund) || `fund-${index}`}
@@ -3389,7 +3476,7 @@ export default function ClientDetail() {
                                       className="mt-0.5"
                                     />
                                   )}
-                                  <div className="min-w-0">
+                                  <div className="min-w-0 w-full">
                                     <div className="flex flex-wrap items-center gap-2">
                                       {personBadgeLabel(person) && (
                                         <Badge
@@ -3404,8 +3491,49 @@ export default function ClientDetail() {
                                       <Badge className={badge.className} data-testid={`lpp-caisse-badge-${index}`}>
                                         {badge.label}
                                       </Badge>
+                                      {addressUncertain && (
+                                        <Badge variant="outline" className="border-amber-500/50 text-amber-800">
+                                          Adresse à vérifier
+                                        </Badge>
+                                      )}
                                     </div>
-                                    {block && <p className="text-xs text-muted-foreground whitespace-pre-line mt-0.5">{block}</p>}
+                                    {canEditAddress ? (
+                                      <div className="mt-2 space-y-1.5" data-testid={`lpp-caisse-address-edit-${index}`}>
+                                        <label className="text-xs text-muted-foreground">Adresse postale (modifiable)</label>
+                                        <textarea
+                                          className="w-full min-h-[4.5rem] rounded-md border border-input bg-background px-2 py-1.5 text-xs whitespace-pre-line"
+                                          value={addressValue}
+                                          onChange={(e) =>
+                                            setLppAddressDrafts((prev) => ({
+                                              ...prev,
+                                              [rowKey]: e.target.value,
+                                            }))
+                                          }
+                                          placeholder={"Rue et n°\nNPA Ville"}
+                                          data-testid={`lpp-caisse-address-${index}`}
+                                        />
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 text-xs"
+                                          disabled={savingLppAddressKey === rowKey}
+                                          onClick={() => saveLppFundAddress(fund, index)}
+                                          data-testid={`lpp-caisse-address-save-${index}`}
+                                        >
+                                          {savingLppAddressKey === rowKey ? (
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                          ) : null}
+                                          Enregistrer l&apos;adresse
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      addressValue && (
+                                        <p className="text-xs text-muted-foreground whitespace-pre-line mt-0.5">
+                                          {addressValue}
+                                        </p>
+                                      )
+                                    )}
                                     {ref && <p className="text-xs text-muted-foreground">Réf. {ref}</p>}
                                     {!person && (
                                       <div className="flex flex-wrap items-center gap-2 mt-2" data-testid={`lpp-person-choice-${index}`}>
@@ -3463,19 +3591,31 @@ export default function ClientDetail() {
                         })}
                       </div>
                       {lppFunds.length > 0 && (
-                        <Button
-                          onClick={generateForSelectedFunds}
-                          disabled={selectedFunds.length === 0 || generatingDemand === "decompte_lpp"}
-                          data-testid="generate-lpp-funds-btn"
-                          className="bg-[#002FA7] hover:bg-[#00248a] gap-1.5"
-                        >
-                          {generatingDemand === "decompte_lpp" ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Sparkles className="h-4 w-4" />
+                        <div className="space-y-2">
+                          <Button
+                            onClick={generateForSelectedFunds}
+                            disabled={selectedFunds.length === 0 || generatingDemand === "decompte_lpp"}
+                            data-testid="generate-lpp-funds-btn"
+                            className="bg-[#002FA7] hover:bg-[#00248a] gap-1.5"
+                          >
+                            {generatingDemand === "decompte_lpp" ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Sparkles className="h-4 w-4" />
+                            )}
+                            {generatingDemand === "decompte_lpp"
+                              ? `Génération ${decompteProgress?.current || 0}/${decompteProgress?.total || selectedFunds.length}…`
+                              : "Générer les demandes de décompte"}
+                          </Button>
+                          {decompteProgress && (
+                            <p className="text-xs text-muted-foreground" data-testid="lpp-decompte-progress">
+                              {decompteProgress.label}
+                              {decompteProgress.total
+                                ? ` (${decompteProgress.current}/${decompteProgress.total})`
+                                : ""}
+                            </p>
                           )}
-                          Générer les demandes de décompte
-                        </Button>
+                        </div>
                       )}
                     </div>
                   )}

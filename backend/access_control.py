@@ -1725,6 +1725,7 @@ _ROUTE_PERMISSIONS: List[Tuple[Optional[Tuple[str, ...]], str, Optional[Union[st
     (("POST",), r"^/clients/[^/]+/rapport-imprimer/pdf$", (PERM_DOCUMENTS_VIEW, PERM_ANALYSES_VIEW)),
     (("PATCH",), r"^/clients/[^/]+/lpp-caisse-tracking$", PERM_DOSSIERS_EDIT),
     (("PATCH",), r"^/clients/[^/]+/lpp-funds/person$", PERM_DOSSIERS_EDIT),
+    (("PATCH",), r"^/clients/[^/]+/lpp-funds/address$", PERM_DOSSIERS_EDIT),
     (("DELETE",), r"^/clients/[^/]+$", (PERM_CLIENTS_DELETE, PERM_DOSSIERS_DELETE)),
     (("PUT",), r"^/clients/[^/]+$", PERM_CLIENTS_EDIT),
     (("GET",), r"^/dossiers/", PERM_DOSSIERS_VIEW),
