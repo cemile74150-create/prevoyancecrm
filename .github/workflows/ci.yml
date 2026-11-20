@@ -1,5 +1,5 @@
 # CI LeoSoft — tests automatiques, aucun déploiement.
-# Déclenché sur PR vers develop/main et push sur develop.
+# PR vers develop ET main ; push develop ; manuel.
 name: ci
 
 on:
@@ -41,13 +41,12 @@ jobs:
 
       - name: Unit tests (no prod secrets)
         env:
-          # Valeurs fictives uniquement — jamais de secrets prod
           ACCESS_MODE: legacy
           TENANT_USER_ID: ci-test
+          PYTHONUNBUFFERED: "1"
         run: |
-          # Sous-ensemble stable sur main (pas de Mongo/S3/SMTP prod).
-          # Étendre la liste au fil des merges develop sans casser CI.
-          pytest -n 0 \
+          # -n 0 : override pytest.ini xdist pour CI déterministe
+          python -m pytest -n 0 -vv --tb=short \
             tests/test_email_service_config.py \
             tests/test_email_headers.py \
             tests/test_backup_retention.py \
@@ -67,12 +66,17 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+          else
+            npm install --legacy-peer-deps
+          fi
 
       - name: Build
         env:
