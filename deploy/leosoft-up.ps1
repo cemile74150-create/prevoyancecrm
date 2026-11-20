@@ -14,6 +14,7 @@ if ($LASTEXITCODE -ne 0) {
   throw "Refus : le contrôle pré-déploiement a échoué."
 }
 
+$branch = git rev-parse --abbrev-ref HEAD
 $head = git rev-parse HEAD
 $remoteMain = (git ls-remote origin refs/heads/main | Select-Object -First 1).Split("`t")[0]
 if (-not $remoteMain) {
@@ -22,6 +23,9 @@ if (-not $remoteMain) {
 git merge-base --is-ancestor $remoteMain HEAD
 if ($LASTEXITCODE -ne 0) {
   throw "Refus : cette copie ne descend pas de GitHub main ($remoteMain). Déploiement annulé."
+}
+if ($branch -ne "main" -or $head -ne $remoteMain) {
+  Write-Output "INFO : déploiement depuis '$branch' (descend de GitHub main). Flux hebdomadaire recommandé : merger dans main."
 }
 
 $required = @(
